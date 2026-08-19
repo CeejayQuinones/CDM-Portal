@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">CDM Portal icon</title>
+  <rect width="512" height="512" rx="96" fill="#1f7a5a"/>
+  <path fill="#ffffff" d="M128 160c0-17.7 14.3-32 32-32h192c17.7 0 32 14.3 32 32v224H128V160Z"/>
+  <path fill="#dff2e8" d="M168 176h184v208H168V176Z"/>
+  <path fill="#1f7a5a" d="M196 216h112v28H196v-28Zm0 56h156v28H196v-28Zm0 56h132v28H196v-28Z"/>
+  <path fill="#ffffff" d="M112 384h288v32H112v-32Z"/>
+</svg>
