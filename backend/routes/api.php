@@ -1,7 +1,10 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\RegistrarDocumentRequestController;
+use App\Http\Controllers\Api\RegistrarDocumentTypeController;
 use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\StudentDocumentRequestController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
@@ -17,5 +20,28 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/students/{student}', [StudentController::class, 'show']);
         Route::get('/students/{student}/documents', [StudentController::class, 'documents']);
         Route::patch('/students/{student}', [StudentController::class, 'update']);
+    });
+
+    Route::middleware('role.student')->group(function (): void {
+        Route::get('/document-types', [StudentDocumentRequestController::class, 'documentTypes']);
+        Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);
+        Route::post('/document-requests', [StudentDocumentRequestController::class, 'store']);
+        Route::get('/document-requests/{documentRequest}', [StudentDocumentRequestController::class, 'show']);
+        Route::post('/document-requests/{documentRequest}/appointments', [StudentDocumentRequestController::class, 'book']);
+        Route::get('/appointment-slots', [StudentDocumentRequestController::class, 'slots']);
+        Route::get('/appointment-overview', [StudentDocumentRequestController::class, 'appointmentOverview']);
+        Route::get('/appointments', [StudentDocumentRequestController::class, 'appointments']);
+    });
+
+    Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
+        Route::get('/document-types', [RegistrarDocumentTypeController::class, 'index']);
+        Route::post('/document-types', [RegistrarDocumentTypeController::class, 'store']);
+        Route::patch('/document-types/{documentType}', [RegistrarDocumentTypeController::class, 'update']);
+        Route::get('/document-requests', [RegistrarDocumentRequestController::class, 'index']);
+        Route::get('/document-requests/history', [RegistrarDocumentRequestController::class, 'history']);
+        Route::get('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'show']);
+        Route::patch('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'update']);
+        Route::get('/appointments', [RegistrarDocumentRequestController::class, 'appointments']);
+        Route::patch('/appointments/{appointment}', [RegistrarDocumentRequestController::class, 'updateAppointment']);
     });
 });

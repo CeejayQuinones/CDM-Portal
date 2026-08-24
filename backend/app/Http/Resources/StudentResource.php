@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Student;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\Student */
+/** @mixin Student */
 class StudentResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -73,6 +74,15 @@ class StudentResource extends JsonResource
                 'name' => $this->latestEnrollment->semester->semester_name,
             ] : null),
             'enrollment_status' => $this->whenLoaded('latestEnrollment', fn () => $this->latestEnrollment?->status),
+            'documents' => StudentDocumentResource::collection($this->whenLoaded('documents')),
+            'recent_document_requests' => $this->whenLoaded('documentRequests', fn () => $this->documentRequests->map(fn ($documentRequest) => [
+                'id' => $documentRequest->id,
+                'document' => $documentRequest->relationLoaded('documentType') ? $documentRequest->documentType?->document_name : null,
+                'status' => $documentRequest->status,
+                'request_date' => $documentRequest->request_date?->toDateString(),
+                'release_date' => $documentRequest->release_date?->toDateString(),
+                'remarks' => $documentRequest->remarks,
+            ])),
         ];
     }
 }

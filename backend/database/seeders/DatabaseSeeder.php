@@ -30,6 +30,10 @@ class DatabaseSeeder extends Seeder
             RegistrarStaffSeeder::class,
             ProfessorsSeeder::class,
             StudentsSeeder::class,
+
+            // Registrar services
+            DocumentTypesSeeder::class,
+            StudentDocumentsSeeder::class,
         ]);
     }
 }

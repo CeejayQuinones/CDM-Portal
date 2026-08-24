@@ -4,10 +4,14 @@ namespace Tests\Feature;
 
 use App\Models\Course;
 use App\Models\Curriculum;
+use App\Models\DocumentRequest;
+use App\Models\DocumentType;
 use App\Models\Role;
 use App\Models\Student;
+use App\Models\StudentDocument;
 use App\Models\User;
 use App\Models\UserProfile;
+use Database\Seeders\StudentDocumentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
@@ -22,6 +26,9 @@ class StudentRecordsTest extends TestCase
         $registrar = $this->createUserWithRole(Role::REGISTRAR_STAFF);
         $firstStudent = $this->createStudent('2026-000001', 'Alicia', 'Reyes', 'regular', 1);
         $this->createStudent('2026-000002', 'Bruno', 'Santos', 'graduated', 4);
+        $documentType = DocumentType::query()->create(['document_name' => 'Birth Certificate', 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false, 'status' => 'inactive']);
+        StudentDocument::query()->create(['student_id' => $firstStudent->id, 'document_type_id' => $documentType->id, 'availability_status' => 'available', 'verification_status' => 'verified', 'submitted_date' => '2026-08-01', 'remarks' => 'Original copy on file.']);
+        DocumentRequest::query()->create(['student_id' => $firstStudent->id, 'document_type_id' => $documentType->id, 'quantity' => 1, 'total_fee' => 0, 'status' => 'pending', 'request_date' => today()]);
 
         Sanctum::actingAs($registrar);
 
@@ -44,7 +51,12 @@ class StudentRecordsTest extends TestCase
             ->assertJsonPath('data.account.role', Role::STUDENT)
             ->assertJsonPath('data.account.is_first_login', true)
             ->assertJsonPath('data.enrollment_status', 'enrolled')
-            ->assertJsonPath('data.profile.email', 'alicia.reyes@example.com');
+            ->assertJsonPath('data.profile.email', 'alicia.reyes@example.com')
+            ->assertJsonPath('data.documents.0.name', 'Birth Certificate')
+            ->assertJsonPath('data.documents.0.status', 'available')
+            ->assertJsonPath('data.documents.0.received_at', '2026-08-01')
+            ->assertJsonPath('data.recent_document_requests.0.document', 'Birth Certificate')
+            ->assertJsonPath('data.recent_document_requests.0.status', 'pending');
 
         $this->patchJson("/api/students/{$firstStudent->id}", [
             'first_name' => 'Alice',
@@ -93,6 +105,23 @@ class StudentRecordsTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.student.id', $student->id)
             ->assertJsonPath('data.documents', []);
+    }
+
+    public function test_john_doe_starter_document_records_are_seeded_idempotently(): void
+    {
+        $john = $this->createStudent('26-00001', 'John', 'Doe', 'regular', 1);
+
+        $this->seed(StudentDocumentsSeeder::class);
+        $this->seed(StudentDocumentsSeeder::class);
+
+        $this->assertDatabaseCount('student_documents', 5);
+        $records = $john->documents()->with('documentType')->get()->keyBy(fn (StudentDocument $document) => $document->documentType->document_name);
+
+        $this->assertSame('available', $records['Birth Certificate']->availability_status);
+        $this->assertSame('available', $records['Form 137']->availability_status);
+        $this->assertSame('missing', $records['Good Moral Certificate']->availability_status);
+        $this->assertSame('missing', $records['Certificate of Enrollment']->availability_status);
+        $this->assertSame('missing', $records['Transcript of Records']->availability_status);
     }
 
     private function createStudent(string $number, string $firstName, string $lastName, string $status, int $yearLevel): Student

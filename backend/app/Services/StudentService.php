@@ -44,6 +44,11 @@ class StudentService
                 'curriculum',
                 'latestEnrollment.academicYear',
                 'latestEnrollment.semester',
+                'documents.documentType',
+                'documentRequests' => fn ($requests) => $requests
+                    ->with('documentType:id,document_name')
+                    ->latest()
+                    ->limit(10),
             ])
             ->findOrFail($studentId);
     }

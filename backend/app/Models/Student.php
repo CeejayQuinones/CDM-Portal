@@ -61,4 +61,14 @@ class Student extends Model
     {
         return $this->hasMany(StudentDocument::class);
     }
+
+    public function documentRequests(): HasMany
+    {
+        return $this->hasMany(DocumentRequest::class);
+    }
+
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class);
+    }
 }

@@ -14,7 +14,12 @@ import AdmissionView from '../modules/admission/AdmissionView.vue'
 import EnrollmentView from '../modules/enrollment/EnrollmentView.vue'
 import GradingView from '../modules/grading/GradingView.vue'
 import MonitoringView from '../modules/monitoring/MonitoringView.vue'
-import DocumentRequestView from '../modules/document-request/DocumentRequestView.vue'
+import DocumentTypesManagementView from '../modules/document-request/DocumentTypesManagementView.vue'
+import StudentDocumentRequestView from '../modules/document-request/StudentDocumentRequestView.vue'
+import StudentAppointmentsView from '../modules/document-request/StudentAppointmentsView.vue'
+import RegistrarDocumentRequestView from '../modules/document-request/RegistrarDocumentRequestView.vue'
+import RegistrarAppointmentsView from '../modules/document-request/RegistrarAppointmentsView.vue'
+import RegistrarDocumentRequestHistoryView from '../modules/document-request/RegistrarDocumentRequestHistoryView.vue'
 import StudentRecordsView from '../modules/student-management/StudentRecordsView.vue'
 import StudentProfileView from '../modules/student-management/StudentProfileView.vue'
 import StudentDocumentsView from '../modules/student-management/StudentDocumentsView.vue'
@@ -38,13 +43,17 @@ const routes = [
       protectedRoute({ path: 'registrar-dashboard', name: 'registrar-dashboard', component: RoleDashboardView, props: { role: ROLES.REGISTRAR_STAFF }, meta: { title: 'Registrar Dashboard', roles: ROUTE_ROLES['registrar-dashboard'] } }),
       protectedRoute({ path: 'admin-dashboard', name: 'admin-dashboard', component: RoleDashboardView, props: { role: ROLES.ADMIN }, meta: { title: 'Admin Dashboard', roles: ROUTE_ROLES['admin-dashboard'] } }),
       protectedRoute({ path: 'profile', name: 'guest-profile', component: ComingSoonView, props: { title: 'My Profile', description: 'Profile management will be delivered by its assigned module team.' }, meta: { title: 'My Profile', roles: ROUTE_ROLES['guest-profile'] } }),
-      protectedRoute({ path: 'appointments', name: 'appointments', component: ComingSoonView, props: { title: 'Appointments', description: 'Appointment booking will be available in a future module release.' }, meta: { title: 'Appointments', roles: ROUTE_ROLES.appointments } }),
       protectedRoute({ path: 'activate-student-account', name: 'activate-student-account', component: ComingSoonView, props: { title: 'Activate Student Account', description: 'Student account activation will be available after registrar verification workflows are released.' }, meta: { title: 'Activate Student Account', roles: ROUTE_ROLES['activate-student-account'] } }),
       protectedRoute({ path: 'admission', name: 'admission', component: AdmissionView, meta: { title: 'Admission', roles: ROUTE_ROLES.admission } }),
       protectedRoute({ path: 'enrollment', name: 'enrollment', component: EnrollmentView, meta: { title: 'Enrollment', roles: ROUTE_ROLES.enrollment } }),
       protectedRoute({ path: 'grading', name: 'grading', component: GradingView, meta: { title: 'Grading', roles: ROUTE_ROLES.grading } }),
       protectedRoute({ path: 'monitoring', name: 'monitoring', component: MonitoringView, meta: { title: 'Monitoring', roles: ROUTE_ROLES.monitoring } }),
-      protectedRoute({ path: 'document-request', name: 'document-request', component: DocumentRequestView, meta: { title: 'Document Requests', roles: ROUTE_ROLES['document-request'] } }),
+      protectedRoute({ path: 'document-requests', name: 'student-document-requests', component: StudentDocumentRequestView, meta: { title: 'Document Requests', roles: ROUTE_ROLES['student-document-requests'] } }),
+      protectedRoute({ path: 'document-requests/appointments', name: 'student-document-appointments', component: StudentAppointmentsView, meta: { title: 'Appointments', roles: ROUTE_ROLES['student-document-appointments'] } }),
+      protectedRoute({ path: 'registrar/document-types', name: 'registrar-document-types', component: DocumentTypesManagementView, meta: { title: 'Document Types', roles: ROUTE_ROLES['registrar-document-types'] } }),
+      protectedRoute({ path: 'registrar/document-requests', name: 'registrar-document-requests', component: RegistrarDocumentRequestView, meta: { title: 'Document Requests', roles: ROUTE_ROLES['registrar-document-requests'] } }),
+      protectedRoute({ path: 'registrar/appointments', name: 'registrar-document-appointments', component: RegistrarAppointmentsView, meta: { title: 'Appointments', roles: ROUTE_ROLES['registrar-document-appointments'] } }),
+      protectedRoute({ path: 'registrar/document-requests/history', name: 'registrar-document-request-history', component: RegistrarDocumentRequestHistoryView, meta: { title: 'Document Request History', roles: ROUTE_ROLES['registrar-document-request-history'] } }),
       protectedRoute({ path: 'student-management', name: 'student-management', component: StudentRecordsView, meta: { title: 'Student Management', roles: ROUTE_ROLES['student-management'] } }),
       protectedRoute({ path: 'student-management/:id', name: 'student-details', component: StudentProfileView, meta: { title: 'Student Profile', roles: ROUTE_ROLES['student-management'] } }),
       protectedRoute({ path: 'student-management/:id/documents', name: 'student-documents', component: StudentDocumentsView, meta: { title: 'Student Documents', roles: ROUTE_ROLES['student-management'] } }),
