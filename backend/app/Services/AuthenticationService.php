@@ -13,7 +13,7 @@ class AuthenticationService
     /**
      * Authenticate an active user and create a Sanctum token.
      *
-     * @param array{username: string, password: string} $credentials
+     * @param  array{username: string, password: string}  $credentials
      * @return array{user: User, token: string}
      *
      * @throws AuthenticationException
@@ -65,7 +65,7 @@ class AuthenticationService
     /**
      * Change the user's password and mark the initial password as changed.
      *
-     * @param array{current_password: string, password: string} $data
+     * @param  array{current_password: string, password: string}  $data
      *
      * @throws ValidationException
      */

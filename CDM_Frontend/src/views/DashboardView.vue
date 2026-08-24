@@ -15,9 +15,7 @@ const moduleCards = computed(() =>
   <section class="page-header">
     <p class="page-kicker">Welcome</p>
     <h1 class="page-title">CDM Portal Dashboard</h1>
-    <p class="page-description">
-      Welcome to OneServe, your centralized campus information workspace.
-    </p>
+    <p class="page-description">Welcome to OneServe, your centralized campus information workspace.</p>
   </section>
 
   <section class="dashboard-grid" aria-label="Campus management modules">
@@ -68,7 +66,10 @@ const moduleCards = computed(() =>
   color: var(--color-dartmouth-green);
   font-size: 0;
 }
-.module-icon::after { content: '✦'; font-size: 1.25rem; }
+.module-icon::after {
+  content: '✦';
+  font-size: 1.25rem;
+}
 
 .module-card h2 {
   margin: 0;

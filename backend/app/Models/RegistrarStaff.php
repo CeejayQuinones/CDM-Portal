@@ -12,7 +12,18 @@ class RegistrarStaff extends Model
 
     protected $fillable = ['user_id', 'user_profile_id', 'employee_number', 'position', 'employment_status', 'status'];
 
-    public function user(): BelongsTo { return $this->belongsTo(User::class); }
-    public function handledRequests(): HasMany { return $this->hasMany(DocumentRequest::class); }
-    public function appointments(): HasMany { return $this->hasMany(Appointment::class); }
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function handledRequests(): HasMany
+    {
+        return $this->hasMany(DocumentRequest::class);
+    }
+
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class);
+    }
 }

@@ -13,5 +13,8 @@ const isRegistrarStaff = computed(() => authStore.currentRole === ROLES.REGISTRA
 <template>
   <StudentDocumentRequestView v-if="isStudent" />
   <RegistrarDocumentRequestView v-else-if="isRegistrarStaff" />
-  <section v-else class="placeholder-panel"><h2>Unauthorized</h2><p>This feature is available to Students and Registrar Staff only.</p></section>
+  <section v-else class="placeholder-panel">
+    <h2>Unauthorized</h2>
+    <p>This feature is available to Students and Registrar Staff only.</p>
+  </section>
 </template>

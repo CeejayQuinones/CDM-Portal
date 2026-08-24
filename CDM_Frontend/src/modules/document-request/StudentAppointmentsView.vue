@@ -92,12 +92,17 @@ onMounted(refresh)
   <section v-if="bookingRequest" class="dr-panel">
     <h2>Book: {{ bookingRequest.document_type.document_name }}</h2>
     <form class="form-grid" @submit.prevent="book">
-      <label>Date<input v-model="appointmentDate" type="date" :min="today" required @change="loadSlots" /></label>
+      <label>
+        Date
+        <input v-model="appointmentDate" type="date" :min="today" required @change="loadSlots" />
+      </label>
       <label>
         Available time
         <select v-model="appointmentTime" required :disabled="!appointmentDate">
           <option value="" disabled>Select a time</option>
-          <option v-for="slot in slots.filter((slot) => slot.available)" :key="slot.time" :value="slot.time">{{ slot.time }}</option>
+          <option v-for="slot in slots.filter((slot) => slot.available)" :key="slot.time" :value="slot.time">
+            {{ slot.time }}
+          </option>
         </select>
       </label>
       <button :disabled="loading">Confirm appointment</button>
@@ -110,8 +115,9 @@ onMounted(refresh)
     <p v-if="!appointments.length" class="empty">No appointments booked yet.</p>
     <div v-for="appointment in appointments" :key="appointment.id" class="appointment">
       <span>
-        <strong>{{ appointment.document_request.document_type.document_name }}</strong> · Request #{{ appointment.document_request_id }} ·
-        {{ appointment.appointment_date }} at {{ String(appointment.appointment_time).slice(0, 5) }}
+        <strong>{{ appointment.document_request.document_type.document_name }}</strong>
+        · Request #{{ appointment.document_request_id }} · {{ appointment.appointment_date }} at
+        {{ String(appointment.appointment_time).slice(0, 5) }}
       </span>
       <span class="badge" :class="appointment.status">{{ appointment.status.replaceAll('_', ' ') }}</span>
     </div>

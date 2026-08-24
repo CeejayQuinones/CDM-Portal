@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import PaginationControls from '../../components/PaginationControls.vue'
 import { documentRequestService as api } from './documentRequestService'
 
 const requests = ref([])
@@ -74,11 +75,15 @@ onMounted(refresh)
       <input v-model="search" placeholder="Student number, name, or document" />
       <select v-model="requestStatus">
         <option value="">All final request statuses</option>
-        <option v-for="value in finalRequestStatuses" :key="value" :value="value">{{ value }}</option>
+        <option v-for="value in finalRequestStatuses" :key="value" :value="value">
+          {{ value }}
+        </option>
       </select>
       <select v-model="appointmentStatus">
         <option value="">All historical appointment statuses</option>
-        <option v-for="value in historicalAppointmentStatuses" :key="value" :value="value">{{ value.replaceAll('_', ' ') }}</option>
+        <option v-for="value in historicalAppointmentStatuses" :key="value" :value="value">
+          {{ value.replaceAll('_', ' ') }}
+        </option>
       </select>
       <button :disabled="loading">Search</button>
     </form>
@@ -98,23 +103,38 @@ onMounted(refresh)
         <strong>Request status</strong>
         <strong>Registrar remarks</strong>
       </div>
-      <div v-for="appointment in appointments" :key="appointment.id" class="history-row appointment-history-row" role="row">
+      <div
+        v-for="appointment in appointments"
+        :key="appointment.id"
+        class="history-row appointment-history-row"
+        role="row"
+      >
         <span>
-          <strong>{{ appointment.student.user.profile.first_name }} {{ appointment.student.user.profile.last_name }}</strong>
+          <strong>
+            {{ appointment.student.user.profile.first_name }} {{ appointment.student.user.profile.last_name }}
+          </strong>
           <small>{{ appointment.student.student_number }}</small>
         </span>
         <span>{{ appointment.document_request.document_type.document_name }}</span>
         <span>{{ appointment.appointment_date }} at {{ String(appointment.appointment_time).slice(0, 5) }}</span>
-        <span><span class="badge" :class="appointment.status">{{ appointment.status.replaceAll('_', ' ') }}</span></span>
-        <span><span class="badge" :class="appointment.document_request.status">{{ appointment.document_request.status.replaceAll('_', ' ') }}</span></span>
+        <span>
+          <span class="badge" :class="appointment.status">{{ appointment.status.replaceAll('_', ' ') }}</span>
+        </span>
+        <span>
+          <span class="badge" :class="appointment.document_request.status">
+            {{ appointment.document_request.status.replaceAll('_', ' ') }}
+          </span>
+        </span>
         <span>{{ appointment.remarks || appointment.document_request.remarks || '—' }}</span>
       </div>
     </div>
-    <div v-if="lastAppointmentPage > 1" class="pagination">
-      <button class="secondary" :disabled="appointmentPage <= 1" @click="changeAppointmentPage(appointmentPage - 1)">Previous</button>
-      <span>Page {{ appointmentPage }} of {{ lastAppointmentPage }}</span>
-      <button class="secondary" :disabled="appointmentPage >= lastAppointmentPage" @click="changeAppointmentPage(appointmentPage + 1)">Next</button>
-    </div>
+    <PaginationControls
+      :current-page="appointmentPage"
+      :last-page="lastAppointmentPage"
+      :busy="loading"
+      aria-label="Appointment history pages"
+      @page-change="changeAppointmentPage"
+    />
   </section>
 
   <section class="dr-panel">
@@ -139,21 +159,26 @@ onMounted(refresh)
         </span>
         <span>{{ item.document_type.document_name }}</span>
         <span>{{ item.request_date }}</span>
-        <span><span class="badge" :class="item.status">{{ item.status }}</span></span>
+        <span>
+          <span class="badge" :class="item.status">{{ item.status }}</span>
+        </span>
         <span v-if="item.latest_appointment">
-          {{ item.latest_appointment.appointment_date }} at {{ String(item.latest_appointment.appointment_time).slice(0, 5) }}
-          · {{ item.latest_appointment.status.replaceAll('_', ' ') }}
+          {{ item.latest_appointment.appointment_date }} at
+          {{ String(item.latest_appointment.appointment_time).slice(0, 5) }} ·
+          {{ item.latest_appointment.status.replaceAll('_', ' ') }}
         </span>
         <span v-else>—</span>
         <span>{{ completedDate(item) }}</span>
         <span>{{ item.remarks || '—' }}</span>
       </div>
     </div>
-    <div v-if="lastRequestPage > 1" class="pagination">
-      <button class="secondary" :disabled="requestPage <= 1" @click="changeRequestPage(requestPage - 1)">Previous</button>
-      <span>Page {{ requestPage }} of {{ lastRequestPage }}</span>
-      <button class="secondary" :disabled="requestPage >= lastRequestPage" @click="changeRequestPage(requestPage + 1)">Next</button>
-    </div>
+    <PaginationControls
+      :current-page="requestPage"
+      :last-page="lastRequestPage"
+      :busy="loading"
+      aria-label="Document request history pages"
+      @page-change="changeRequestPage"
+    />
   </section>
 </template>
 

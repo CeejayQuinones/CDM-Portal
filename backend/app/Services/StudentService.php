@@ -45,6 +45,7 @@ class StudentService
                 'latestEnrollment.academicYear',
                 'latestEnrollment.semester',
                 'documents.documentType',
+                'physicalRecordLocation.cabinetSlot.cabinet',
                 'documentRequests' => fn ($requests) => $requests
                     ->with('documentType:id,document_name')
                     ->latest()

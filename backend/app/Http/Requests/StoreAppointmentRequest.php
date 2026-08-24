@@ -4,7 +4,10 @@ namespace App\Http\Requests;
 
 class StoreAppointmentRequest extends ApiFormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
 
     public function rules(): array
     {

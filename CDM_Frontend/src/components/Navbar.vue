@@ -17,7 +17,9 @@ const installPrompt = ref(null)
 const canInstall = ref(false)
 const displayName = computed(() => {
   const profile = authStore.currentUser?.profile
-  return [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || authStore.currentUser?.username || 'User'
+  return (
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || authStore.currentUser?.username || 'User'
+  )
 })
 const initials = computed(() => displayName.value.slice(0, 1).toUpperCase())
 const pageTitle = computed(() => router.currentRoute.value.meta.title || 'CDM Portal')
@@ -58,13 +60,14 @@ const logout = async () => {
     </div>
 
     <div class="navbar-actions">
-      <button v-if="canInstall" class="install-button" type="button" @click="installApp">
-        Install App
-      </button>
+      <button v-if="canInstall" class="install-button" type="button" @click="installApp">Install App</button>
 
       <div class="navbar-user" aria-label="Signed in user">
         <span class="user-avatar">{{ initials }}</span>
-        <span class="user-name"><strong>{{ displayName }}</strong><small>{{ authStore.currentRole }}</small></span>
+        <span class="user-name">
+          <strong>{{ displayName }}</strong>
+          <small>{{ authStore.currentRole }}</small>
+        </span>
         <button class="logout-button" type="button" @click="logout">Sign out</button>
       </div>
     </div>
@@ -82,7 +85,7 @@ const logout = async () => {
   justify-content: space-between;
   gap: 18px;
   border-bottom: 1px solid var(--color-border);
-  background: rgba(255,255,255,.94);
+  background: rgba(255, 255, 255, 0.94);
   padding: 14px 28px;
   backdrop-filter: blur(12px);
 }
@@ -148,7 +151,15 @@ h1 {
   cursor: pointer;
 }
 
-.logout-button { border: 1px solid var(--color-border); border-radius: 8px; background: #fff; color: var(--color-dartmouth-green); font-weight: 700; padding: 8px 11px; cursor: pointer; }
+.logout-button {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-dartmouth-green);
+  font-weight: 700;
+  padding: 8px 11px;
+  cursor: pointer;
+}
 
 .install-button:hover {
   background: var(--color-dark-spring-green);
@@ -163,7 +174,19 @@ h1 {
   background: var(--color-naples-yellow);
   color: var(--color-eerie-black);
 }
-.user-name strong,.user-name small { display:block; }.user-name strong { font-size:.86rem; }.user-name small { color:var(--color-muted); font-size:.72rem; font-weight:500; margin-top:2px; }
+.user-name strong,
+.user-name small {
+  display: block;
+}
+.user-name strong {
+  font-size: 0.86rem;
+}
+.user-name small {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  margin-top: 2px;
+}
 
 @media (max-width: 860px) {
   .navbar {

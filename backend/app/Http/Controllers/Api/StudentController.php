@@ -5,17 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StudentIndexRequest;
 use App\Http\Requests\UpdateStudentRequest;
-use App\Http\Resources\StudentResource;
 use App\Http\Resources\StudentDocumentResource;
+use App\Http\Resources\StudentResource;
 use App\Models\Student;
 use App\Services\StudentService;
 use Illuminate\Http\JsonResponse;
 
 class StudentController extends Controller
 {
-    public function __construct(private readonly StudentService $studentService)
-    {
-    }
+    public function __construct(private readonly StudentService $studentService) {}
 
     public function index(StudentIndexRequest $request): JsonResponse
     {

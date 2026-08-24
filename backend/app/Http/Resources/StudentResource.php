@@ -75,6 +75,12 @@ class StudentResource extends JsonResource
             ] : null),
             'enrollment_status' => $this->whenLoaded('latestEnrollment', fn () => $this->latestEnrollment?->status),
             'documents' => StudentDocumentResource::collection($this->whenLoaded('documents')),
+            'physical_record_location' => $this->whenLoaded(
+                'physicalRecordLocation',
+                fn () => $this->physicalRecordLocation
+                    ? new StudentRecordLocationResource($this->physicalRecordLocation)
+                    : null,
+            ),
             'recent_document_requests' => $this->whenLoaded('documentRequests', fn () => $this->documentRequests->map(fn ($documentRequest) => [
                 'id' => $documentRequest->id,
                 'document' => $documentRequest->relationLoaded('documentType') ? $documentRequest->documentType?->document_name : null,

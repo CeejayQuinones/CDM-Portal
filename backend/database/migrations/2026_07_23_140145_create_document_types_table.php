@@ -10,31 +10,31 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-{
-    Schema::create('document_types', function (Blueprint $table) {
+    {
+        Schema::create('document_types', function (Blueprint $table) {
 
-        $table->id();
+            $table->id();
 
-        // Document Information
-        $table->string('document_name', 150)->unique();
-        $table->text('description')->nullable();
+            // Document Information
+            $table->string('document_name', 150)->unique();
+            $table->text('description')->nullable();
 
-        // Processing Information
-        $table->decimal('processing_fee', 8, 2)->default(0);
-        $table->unsignedTinyInteger('processing_days')->default(1);
+            // Processing Information
+            $table->decimal('processing_fee', 8, 2)->default(0);
+            $table->unsignedTinyInteger('processing_days')->default(1);
 
-        // Availability
-        $table->boolean('requires_appointment')->default(false);
+            // Availability
+            $table->boolean('requires_appointment')->default(false);
 
-        // Status
-        $table->enum('status', [
-            'active',
-            'inactive'
-        ])->default('active');
+            // Status
+            $table->enum('status', [
+                'active',
+                'inactive',
+            ])->default('active');
 
-        $table->timestamps();
-    });
-}
+            $table->timestamps();
+        });
+    }
 
     /**
      * Reverse the migrations.

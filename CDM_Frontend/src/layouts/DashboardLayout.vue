@@ -10,12 +10,7 @@ const isSidebarOpen = ref(false)
   <div class="app-shell">
     <Sidebar :is-open="isSidebarOpen" @close="isSidebarOpen = false" />
 
-    <div
-      v-if="isSidebarOpen"
-      class="sidebar-backdrop"
-      aria-hidden="true"
-      @click="isSidebarOpen = false"
-    ></div>
+    <div v-if="isSidebarOpen" class="sidebar-backdrop" aria-hidden="true" @click="isSidebarOpen = false"></div>
 
     <div class="shell-content">
       <Navbar @toggle-sidebar="isSidebarOpen = !isSidebarOpen" />

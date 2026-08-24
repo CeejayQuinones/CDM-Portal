@@ -14,15 +14,15 @@ return new class extends Migration
 
             // Curriculum
             $table->foreignId('curriculum_id')
-                  ->constrained('curriculums')
-                  ->cascadeOnUpdate()
-                  ->cascadeOnDelete();
+                ->constrained('curriculums')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
 
             // Semester
             $table->foreignId('semester_id')
-                  ->constrained('semesters')
-                  ->cascadeOnUpdate()
-                  ->restrictOnDelete();
+                ->constrained('semesters')
+                ->cascadeOnUpdate()
+                ->restrictOnDelete();
 
             // Subject Information
             $table->string('subject_code', 20);
@@ -37,14 +37,14 @@ return new class extends Migration
 
             // Prerequisite
             $table->foreignId('prerequisite_subject_id')
-                  ->nullable()
-                  ->constrained('subjects')
-                  ->nullOnDelete();
+                ->nullable()
+                ->constrained('subjects')
+                ->nullOnDelete();
 
             // Status
             $table->enum('status', [
                 'active',
-                'inactive'
+                'inactive',
             ])->default('active');
 
             $table->timestamps();

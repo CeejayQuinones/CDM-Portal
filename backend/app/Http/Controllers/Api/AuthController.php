@@ -18,9 +18,7 @@ class AuthController extends Controller
     public function __construct(
         private readonly AuthenticationService $authenticationService,
         private readonly GuestRegistrationService $guestRegistrationService,
-    )
-    {
-    }
+    ) {}
 
     /**
      * Register a public Guest account. Email verification will be added later.

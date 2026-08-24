@@ -7,7 +7,10 @@ use Illuminate\Validation\Rule;
 
 class UpdateDocumentTypeRequest extends ApiFormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
 
     public function rules(): array
     {

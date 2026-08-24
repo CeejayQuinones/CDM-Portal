@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDocumentRequestController;
 use App\Http\Controllers\Api\RegistrarDocumentTypeController;
 use App\Http\Controllers\Api\StudentController;
@@ -34,6 +35,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     });
 
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
+        Route::get('/cabinets', [RegistrarCabinetController::class, 'index']);
+        Route::post('/cabinets', [RegistrarCabinetController::class, 'store']);
+        Route::get('/cabinets/{cabinet}', [RegistrarCabinetController::class, 'show']);
+        Route::get('/cabinet-slots/{cabinetSlot}', [RegistrarCabinetController::class, 'showSlot']);
+        Route::match(['put', 'patch'], '/students/{student}/record-location', [RegistrarCabinetController::class, 'updateStudentLocation']);
         Route::get('/document-types', [RegistrarDocumentTypeController::class, 'index']);
         Route::post('/document-types', [RegistrarDocumentTypeController::class, 'store']);
         Route::patch('/document-types/{documentType}', [RegistrarDocumentTypeController::class, 'update']);

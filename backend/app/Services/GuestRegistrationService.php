@@ -12,7 +12,7 @@ class GuestRegistrationService
     /**
      * Create one active Guest account and its profile.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function register(array $data): User
     {

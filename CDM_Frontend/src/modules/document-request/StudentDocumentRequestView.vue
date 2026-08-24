@@ -14,9 +14,8 @@ const error = ref('')
 const selectedType = computed(() => documentTypes.value.find((item) => item.id === Number(selectedTypeId.value)))
 const requestError = (err) => err.response?.data?.message || 'The request could not be completed.'
 const formatMoney = (value) => Number(value).toFixed(2)
-const documentTypeLabel = (type) => Number(type.processing_fee) > 0
-  ? `${type.document_name} — ₱${formatMoney(type.processing_fee)}`
-  : type.document_name
+const documentTypeLabel = (type) =>
+  Number(type.processing_fee) > 0 ? `${type.document_name} — ₱${formatMoney(type.processing_fee)}` : type.document_name
 
 async function loadRequests() {
   requests.value = await api.myRequests()
@@ -76,11 +75,19 @@ onMounted(refresh)
         Document
         <select v-model="selectedTypeId" required>
           <option value="" disabled>Select a document</option>
-          <option v-for="type in documentTypes" :key="type.id" :value="type.id">{{ documentTypeLabel(type) }}</option>
+          <option v-for="type in documentTypes" :key="type.id" :value="type.id">
+            {{ documentTypeLabel(type) }}
+          </option>
         </select>
       </label>
-      <label>Copies<input v-model="quantity" type="number" min="1" max="10" required /></label>
-      <label class="wide">Purpose<textarea v-model="purpose" rows="2" placeholder="Optional purpose"></textarea></label>
+      <label>
+        Copies
+        <input v-model="quantity" type="number" min="1" max="10" required />
+      </label>
+      <label class="wide">
+        Purpose
+        <textarea v-model="purpose" rows="2" placeholder="Optional purpose"></textarea>
+      </label>
       <p v-if="selectedType" class="form-note wide">
         Processing time: {{ selectedType.processing_days }} day(s).
         {{ selectedType.requires_appointment ? 'An appointment is required.' : 'No appointment is required.' }}
@@ -98,13 +105,14 @@ onMounted(refresh)
         <strong>{{ item.document_type.document_name }}</strong>
         <p>
           Requested {{ item.request_date }} · {{ item.quantity }} copy/copies
-          <template v-if="Number(item.total_fee) > 0"> · ₱{{ formatMoney(item.total_fee) }}</template>
+          <template v-if="Number(item.total_fee) > 0">· ₱{{ formatMoney(item.total_fee) }}</template>
         </p>
         <p v-if="item.remarks">Registrar remarks: {{ item.remarks }}</p>
       </div>
       <span class="badge" :class="item.status">{{ item.status.replaceAll('_', ' ') }}</span>
       <div v-for="appointment in item.appointments" :key="appointment.id" class="appointment">
-        Appointment: {{ appointment.appointment_date }} at {{ String(appointment.appointment_time).slice(0, 5) }} — {{ appointment.status }}
+        Appointment: {{ appointment.appointment_date }} at {{ String(appointment.appointment_time).slice(0, 5) }} —
+        {{ appointment.status }}
       </div>
     </div>
   </section>

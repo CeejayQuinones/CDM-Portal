@@ -2,11 +2,12 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Validation\Rule;
-
 class StoreDocumentTypeRequest extends ApiFormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
 
     public function rules(): array
     {

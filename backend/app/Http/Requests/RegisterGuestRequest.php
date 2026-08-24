@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class RegisterGuestRequest extends ApiFormRequest
 {
@@ -11,7 +12,7 @@ class RegisterGuestRequest extends ApiFormRequest
         return true;
     }
 
-    /** @return array<string, list<string|\Illuminate\Validation\Rules\Password>> */
+    /** @return array<string, list<string|Password>> */
     public function rules(): array
     {
         return [

@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
             // Registrar services
             DocumentTypesSeeder::class,
             StudentDocumentsSeeder::class,
+            PhysicalRecordsSeeder::class,
         ]);
     }
 }

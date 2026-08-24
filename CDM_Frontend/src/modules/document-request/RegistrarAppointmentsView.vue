@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import PaginationControls from '../../components/PaginationControls.vue'
 import { documentRequestService as api } from './documentRequestService'
 
 const appointments = ref([])
@@ -42,11 +43,13 @@ async function updateStatus(appointment, nextStatus) {
   error.value = ''
   message.value = ''
   try {
-    const updated = await api.updateAppointment(appointment.id, { status: nextStatus })
+    const updated = await api.updateAppointment(appointment.id, {
+      status: nextStatus,
+    })
     if (!activeStatuses.includes(updated.status) || (status.value && status.value !== updated.status)) {
       appointments.value = appointments.value.filter((item) => item.id !== updated.id)
     } else {
-      appointments.value = appointments.value.map((item) => item.id === updated.id ? updated : item)
+      appointments.value = appointments.value.map((item) => (item.id === updated.id ? updated : item))
     }
     message.value = 'Appointment updated.'
   } catch (err) {
@@ -72,7 +75,9 @@ onMounted(refresh)
       <input v-model="date" type="date" />
       <select v-model="status">
         <option value="">All active statuses</option>
-        <option v-for="value in statuses" :key="value" :value="value">{{ value.replaceAll('_', ' ') }}</option>
+        <option v-for="value in statuses" :key="value" :value="value">
+          {{ value.replaceAll('_', ' ') }}
+        </option>
       </select>
       <button :disabled="loading">Filter</button>
     </form>
@@ -80,23 +85,37 @@ onMounted(refresh)
     <p v-else-if="!appointments.length" class="empty">No matching appointments.</p>
     <div v-for="appointment in appointments" :key="appointment.id" class="appointment appointment-row">
       <span>
-        <strong>{{ appointment.document_request.document_type.document_name }}</strong> ·
-        {{ appointment.student.user.profile.first_name }} {{ appointment.student.user.profile.last_name }}
-        ({{ appointment.student.student_number }}) · {{ appointment.appointment_date }} at {{ String(appointment.appointment_time).slice(0, 5) }}
+        <strong>{{ appointment.document_request.document_type.document_name }}</strong>
+        · {{ appointment.student.user.profile.first_name }} {{ appointment.student.user.profile.last_name }} ({{
+          appointment.student.student_number
+        }}) · {{ appointment.appointment_date }} at
+        {{ String(appointment.appointment_time).slice(0, 5) }}
       </span>
       <span class="badge" :class="appointment.status">{{ appointment.status.replaceAll('_', ' ') }}</span>
       <span class="actions">
         <button v-if="appointment.status === 'pending'" @click="updateStatus(appointment, 'confirmed')">Confirm</button>
-        <button v-if="appointment.status === 'confirmed'" @click="updateStatus(appointment, 'completed')">Complete</button>
-        <button v-if="['pending', 'confirmed'].includes(appointment.status)" class="secondary" @click="updateStatus(appointment, 'cancelled')">Cancel</button>
-        <button v-if="appointment.status === 'confirmed'" class="danger" @click="updateStatus(appointment, 'no_show')">No show</button>
+        <button v-if="appointment.status === 'confirmed'" @click="updateStatus(appointment, 'completed')">
+          Complete
+        </button>
+        <button
+          v-if="['pending', 'confirmed'].includes(appointment.status)"
+          class="secondary"
+          @click="updateStatus(appointment, 'cancelled')"
+        >
+          Cancel
+        </button>
+        <button v-if="appointment.status === 'confirmed'" class="danger" @click="updateStatus(appointment, 'no_show')">
+          No show
+        </button>
       </span>
     </div>
-    <div v-if="lastPage > 1" class="pagination">
-      <button class="secondary" :disabled="page <= 1" @click="changePage(page - 1)">Previous</button>
-      <span>Page {{ page }} of {{ lastPage }}</span>
-      <button class="secondary" :disabled="page >= lastPage" @click="changePage(page + 1)">Next</button>
-    </div>
+    <PaginationControls
+      :current-page="page"
+      :last-page="lastPage"
+      :busy="loading"
+      aria-label="Registrar appointment pages"
+      @page-change="changePage"
+    />
   </section>
 </template>
 

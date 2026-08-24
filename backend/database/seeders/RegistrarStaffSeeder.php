@@ -2,10 +2,10 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use App\Models\UserProfile;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class RegistrarStaffSeeder extends Seeder
 {

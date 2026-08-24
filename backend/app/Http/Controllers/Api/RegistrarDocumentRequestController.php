@@ -278,6 +278,7 @@ class RegistrarDocumentRequestController extends Controller
             'student.course:id,course_code,course_name',
             'student.documents:id,student_id,document_type_id,availability_status,verification_status,remarks,submitted_date',
             'student.documents.documentType:id,document_name',
+            'student.physicalRecordLocation.cabinetSlot.cabinet:id,cabinet_code,description,rows,columns',
             'documentType:id,document_name,requires_appointment',
             'appointments:id,document_request_id,appointment_date,appointment_time,status,remarks',
         ];
