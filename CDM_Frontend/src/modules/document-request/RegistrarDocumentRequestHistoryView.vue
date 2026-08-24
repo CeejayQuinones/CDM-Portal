@@ -1,28 +1,79 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
+import RegistrarRecentActivity from './RegistrarRecentActivity.vue'
+import {
+  appointmentDateTime,
+  formatExactDateTime,
+  formatRelativeTime,
+  requestReference,
+  studentName,
+  TIME_FILTERS,
+} from './documentRequestPresentation'
 import { documentRequestService as api } from './documentRequestService'
 
+const route = useRoute()
 const requests = ref([])
 const appointments = ref([])
 const search = ref('')
 const requestStatus = ref('')
 const appointmentStatus = ref('')
+const timeFilter = ref('all')
 const loading = ref(false)
 const error = ref('')
 const requestPage = ref(1)
 const appointmentPage = ref(1)
 const lastRequestPage = ref(1)
 const lastAppointmentPage = ref(1)
+const requestIdFilter = ref(null)
+const appointmentIdFilter = ref(null)
+const focusedRequestId = ref(null)
+const focusedAppointmentId = ref(null)
+const focusedSection = ref('')
 const finalRequestStatuses = ['released', 'rejected', 'cancelled']
 const historicalAppointmentStatuses = ['cancelled', 'completed', 'no_show']
 const requestError = (err) => err.response?.data?.message || 'Document request history could not be loaded.'
-const completedDate = (item) => {
-  const value = item.released_at || item.release_date || item.rejected_at
-  return value ? String(value).slice(0, 10) : '—'
+const queryValue = (value) => (Array.isArray(value) ? value[0] : value)
+const positiveId = (value) => {
+  const id = Number(queryValue(value))
+
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+const referenceFor = (item) => item?.request_reference || requestReference(item?.id)
+const appointmentReference = (appointment) =>
+  appointment?.document_request?.request_reference ||
+  requestReference(appointment?.document_request_id || appointment?.document_request?.id)
+const requestTimestamp = (item) => item?.created_at || item?.request_date || null
+const completionTimestamp = (item) =>
+  item?.released_at || item?.rejected_at || item?.cancelled_at || item?.updated_at || item?.release_date || null
+const focusId = (value, type) => {
+  const match = String(queryValue(value) || '').match(new RegExp(`^${type}-(\\d+)$`))
+
+  return match ? positiveId(match[1]) : null
 }
 
-async function refresh(resetPages = false) {
+function applyRouteQuery(query) {
+  const nextRequestStatus = String(queryValue(query.request_status) || '')
+  const nextAppointmentStatus = String(queryValue(query.appointment_status) || '')
+  const nextTimeFilter = String(queryValue(query.time_filter) || 'all')
+
+  search.value = String(queryValue(query.search) || '')
+  requestStatus.value = finalRequestStatuses.includes(nextRequestStatus) ? nextRequestStatus : ''
+  appointmentStatus.value = historicalAppointmentStatuses.includes(nextAppointmentStatus) ? nextAppointmentStatus : ''
+  timeFilter.value = TIME_FILTERS.some((option) => option.value === nextTimeFilter) ? nextTimeFilter : 'all'
+  requestIdFilter.value = positiveId(query.request_id)
+  appointmentIdFilter.value = positiveId(query.appointment_id)
+  focusedRequestId.value = focusId(query.focus, 'request') || (appointmentIdFilter.value ? null : requestIdFilter.value)
+  focusedAppointmentId.value = focusId(query.focus, 'appointment') || appointmentIdFilter.value
+  focusedSection.value = ['requests', 'appointments'].includes(String(queryValue(query.section)))
+    ? String(queryValue(query.section))
+    : ''
+  requestPage.value = 1
+  appointmentPage.value = 1
+}
+
+async function refresh(resetPages = false, section = null) {
   if (resetPages) {
     requestPage.value = 1
     appointmentPage.value = 1
@@ -34,13 +85,23 @@ async function refresh(resetPages = false) {
       request_status: requestStatus.value || undefined,
       appointment_status: appointmentStatus.value || undefined,
       search: search.value || undefined,
+      time_filter: timeFilter.value,
+      request_id: requestIdFilter.value || undefined,
+      appointment_id: appointmentIdFilter.value || undefined,
+      section: section || undefined,
       request_page: requestPage.value,
       appointment_page: appointmentPage.value,
     })
-    requests.value = history.requests.data
-    appointments.value = history.appointments.data
-    lastRequestPage.value = history.requests.last_page
-    lastAppointmentPage.value = history.appointments.last_page
+    if (history.requests) {
+      requests.value = history.requests.data
+      requestPage.value = history.requests.current_page || requestPage.value
+      lastRequestPage.value = history.requests.last_page
+    }
+    if (history.appointments) {
+      appointments.value = history.appointments.data
+      appointmentPage.value = history.appointments.current_page || appointmentPage.value
+      lastAppointmentPage.value = history.appointments.last_page
+    }
   } catch (err) {
     error.value = requestError(err)
   } finally {
@@ -48,17 +109,62 @@ async function refresh(resetPages = false) {
   }
 }
 
+async function revealFocusedRecord() {
+  await nextTick()
+
+  const target =
+    focusedSection.value === 'appointments'
+      ? focusedAppointmentId.value && document.getElementById(`appointment-${focusedAppointmentId.value}`)
+      : focusedRequestId.value && document.getElementById(`request-${focusedRequestId.value}`)
+  const fallback =
+    target ||
+    (focusedAppointmentId.value && document.getElementById(`appointment-${focusedAppointmentId.value}`)) ||
+    (focusedRequestId.value && document.getElementById(`request-${focusedRequestId.value}`))
+
+  fallback?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+async function applyFilters() {
+  requestIdFilter.value = null
+  appointmentIdFilter.value = null
+  focusedRequestId.value = null
+  focusedAppointmentId.value = null
+  focusedSection.value = ''
+  await refresh(true)
+}
+
+async function selectTimeFilter(value) {
+  timeFilter.value = value
+  await applyFilters()
+}
+
 async function changeRequestPage(nextPage) {
   requestPage.value = nextPage
-  await refresh()
+  focusedRequestId.value = null
+  await refresh(false, 'requests')
 }
 
 async function changeAppointmentPage(nextPage) {
   appointmentPage.value = nextPage
-  await refresh()
+  focusedAppointmentId.value = null
+  await refresh(false, 'appointments')
 }
 
-onMounted(refresh)
+onMounted(async () => {
+  applyRouteQuery(route.query)
+  await refresh()
+  await revealFocusedRecord()
+})
+
+watch(
+  () => route.fullPath,
+  async () => {
+    applyRouteQuery(route.query)
+    await refresh()
+    await revealFocusedRecord()
+  },
+  { flush: 'post' },
+)
 </script>
 
 <template>
@@ -70,9 +176,23 @@ onMounted(refresh)
 
   <p v-if="error" class="notice error">{{ error }}</p>
 
+  <RegistrarRecentActivity />
+
   <section class="dr-panel">
-    <form class="toolbar" @submit.prevent="refresh(true)">
-      <input v-model="search" placeholder="Student number, name, or document" />
+    <nav class="group-tabs time-filter-tabs" aria-label="History time period">
+      <button
+        v-for="option in TIME_FILTERS"
+        :key="option.value"
+        type="button"
+        :class="{ active: timeFilter === option.value }"
+        :aria-pressed="timeFilter === option.value"
+        @click="selectTimeFilter(option.value)"
+      >
+        {{ option.label }}
+      </button>
+    </nav>
+    <form class="toolbar" @submit.prevent="applyFilters">
+      <input v-model="search" placeholder="REQ-000001, student number, name, or document" />
       <select v-model="requestStatus">
         <option value="">All final request statuses</option>
         <option v-for="value in finalRequestStatuses" :key="value" :value="value">
@@ -105,18 +225,32 @@ onMounted(refresh)
       </div>
       <div
         v-for="appointment in appointments"
+        :id="`appointment-${appointment.id}`"
         :key="appointment.id"
         class="history-row appointment-history-row"
+        :class="{ 'focused-record': focusedAppointmentId === appointment.id }"
         role="row"
       >
         <span>
-          <strong>
-            {{ appointment.student.user.profile.first_name }} {{ appointment.student.user.profile.last_name }}
-          </strong>
+          <strong>{{ studentName(appointment.student) }}</strong>
           <small>{{ appointment.student.student_number }}</small>
         </span>
-        <span>{{ appointment.document_request.document_type.document_name }}</span>
-        <span>{{ appointment.appointment_date }} at {{ String(appointment.appointment_time).slice(0, 5) }}</span>
+        <span>
+          <strong>{{ appointmentReference(appointment) }}</strong>
+          <small>{{ appointment.document_request.document_type.document_name }}</small>
+        </span>
+        <span>
+          <strong>{{ appointmentDateTime(appointment.appointment_date, appointment.appointment_time) }}</strong>
+          <time
+            v-if="appointment.updated_at"
+            class="time-display"
+            :datetime="appointment.updated_at"
+            :title="formatExactDateTime(appointment.updated_at)"
+          >
+            Updated {{ formatRelativeTime(appointment.updated_at) }}
+            <small>{{ formatExactDateTime(appointment.updated_at) }}</small>
+          </time>
+        </span>
         <span>
           <span class="badge" :class="appointment.status">{{ appointment.status.replaceAll('_', ' ') }}</span>
         </span>
@@ -152,13 +286,32 @@ onMounted(refresh)
         <strong>Completed</strong>
         <strong>Registrar remarks</strong>
       </div>
-      <div v-for="item in requests" :key="item.id" class="history-row" role="row">
+      <div
+        v-for="item in requests"
+        :id="`request-${item.id}`"
+        :key="item.id"
+        class="history-row"
+        :class="{ 'focused-record': focusedRequestId === item.id }"
+        role="row"
+      >
         <span>
-          <strong>{{ item.student.user.profile.first_name }} {{ item.student.user.profile.last_name }}</strong>
+          <strong>{{ studentName(item.student) }}</strong>
           <small>{{ item.student.student_number }}</small>
         </span>
-        <span>{{ item.document_type.document_name }}</span>
-        <span>{{ item.request_date }}</span>
+        <span>
+          <strong>{{ referenceFor(item) }}</strong>
+          <small>{{ item.document_type.document_name }}</small>
+        </span>
+        <time
+          v-if="requestTimestamp(item)"
+          class="time-display"
+          :datetime="requestTimestamp(item)"
+          :title="formatExactDateTime(requestTimestamp(item))"
+        >
+          {{ formatRelativeTime(requestTimestamp(item)) }}
+          <small>{{ formatExactDateTime(requestTimestamp(item)) }}</small>
+        </time>
+        <span v-else>—</span>
         <span>
           <span class="badge" :class="item.status">{{ item.status }}</span>
         </span>
@@ -168,7 +321,16 @@ onMounted(refresh)
           {{ item.latest_appointment.status.replaceAll('_', ' ') }}
         </span>
         <span v-else>—</span>
-        <span>{{ completedDate(item) }}</span>
+        <time
+          v-if="completionTimestamp(item)"
+          class="time-display"
+          :datetime="completionTimestamp(item)"
+          :title="formatExactDateTime(completionTimestamp(item))"
+        >
+          {{ formatRelativeTime(completionTimestamp(item)) }}
+          <small>{{ formatExactDateTime(completionTimestamp(item)) }}</small>
+        </time>
+        <span v-else>—</span>
         <span>{{ item.remarks || '—' }}</span>
       </div>
     </div>

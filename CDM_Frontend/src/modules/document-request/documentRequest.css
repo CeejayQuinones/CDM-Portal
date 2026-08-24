@@ -329,6 +329,119 @@
   font-size: 0.8rem;
   text-transform: uppercase;
 }
+
+.recent-activity-heading,
+.workflow-heading {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.recent-activity-heading h2,
+.recent-activity-heading p {
+  margin-bottom: 0;
+}
+
+.compact-button {
+  min-height: 36px !important;
+  padding: 7px 11px !important;
+}
+
+.recent-activity-list {
+  margin-top: 14px;
+}
+
+.recent-activity-item {
+  align-items: center;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-eerie-black);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 12px 4px;
+  text-decoration: none;
+}
+
+.recent-activity-item:hover,
+.recent-activity-item:focus-visible {
+  background: #f7fbf8;
+  outline: none;
+}
+
+.activity-marker {
+  background: var(--color-naples-yellow);
+  border: 3px solid #fff4cc;
+  border-radius: 999px;
+  height: 13px;
+  width: 13px;
+}
+
+.activity-summary,
+.activity-summary small,
+.recent-activity-item time,
+.recent-activity-item time small {
+  display: block;
+}
+
+.activity-summary small,
+.recent-activity-item time {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.recent-activity-item time {
+  text-align: right;
+}
+
+.recent-activity-item time small {
+  font-size: 0.72rem;
+  margin-top: 2px;
+}
+
+.time-display,
+.reference-line {
+  display: block;
+}
+
+.time-display small {
+  color: var(--color-muted);
+  display: block;
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.focused-record {
+  background: #fffbe8 !important;
+  box-shadow: inset 4px 0 var(--color-naples-yellow);
+}
+
+.group-tabs {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.group-tabs button {
+  background: transparent;
+  border: 1px solid var(--color-dartmouth-green);
+  color: var(--color-dartmouth-green);
+  min-height: 36px;
+  padding: 7px 12px;
+}
+
+.group-tabs button.active {
+  background: var(--color-naples-yellow);
+  border-color: var(--color-naples-yellow);
+  color: #243024;
+}
+
+.group-tabs .history-shortcut {
+  border-color: var(--color-border);
+  color: var(--color-muted);
+}
 .types-row .actions {
   align-items: center;
   display: flex;
@@ -366,5 +479,13 @@
   }
   .record-document-columns {
     grid-template-columns: 1fr;
+  }
+  .recent-activity-item {
+    align-items: start;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .recent-activity-item time {
+    grid-column: 2;
+    text-align: left;
   }
 }

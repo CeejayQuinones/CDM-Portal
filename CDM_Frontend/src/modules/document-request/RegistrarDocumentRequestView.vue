@@ -1,19 +1,30 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
+import RegistrarRecentActivity from './RegistrarRecentActivity.vue'
+import {
+  formatExactDateTime,
+  formatRelativeTime,
+  requestReference,
+  TIME_FILTERS,
+} from './documentRequestPresentation'
 import { documentRequestService as api } from './documentRequestService'
 
+const route = useRoute()
 const router = useRouter()
 const requests = ref([])
 const selected = ref(null)
 const status = ref('')
 const search = ref('')
+const timeFilter = ref('all')
 const loading = ref(false)
 const message = ref('')
 const error = ref('')
 const page = ref(1)
 const lastPage = ref(1)
+const requestIdFilter = ref(null)
+const focusedRequestId = ref(null)
 const activeStatuses = ['pending', 'processing', 'ready_for_release']
 const requestError = (err) => err.response?.data?.message || 'The request could not be completed.'
 const formatMoney = (value) => Number(value).toFixed(2)
@@ -70,6 +81,32 @@ const requestedDocumentAvailable = computed(() =>
 )
 const formatStatus = (value) =>
   value ? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Missing'
+const referenceFor = (item) => item?.request_reference || requestReference(item?.id)
+const requestTimestamp = (item) => item?.updated_at || item?.created_at || item?.request_date || null
+const queryValue = (value) => (Array.isArray(value) ? value[0] : value)
+const positiveId = (value) => {
+  const id = Number(queryValue(value))
+
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+const focusedId = (value) => {
+  const match = String(queryValue(value) || '').match(/^request-(\d+)$/)
+
+  return match ? positiveId(match[1]) : null
+}
+
+function applyRouteQuery(query) {
+  const nextStatus = String(queryValue(query.status) || '')
+  const nextTimeFilter = String(queryValue(query.time_filter) || 'all')
+
+  search.value = String(queryValue(query.search) || '')
+  status.value = activeStatuses.includes(nextStatus) ? nextStatus : ''
+  timeFilter.value = TIME_FILTERS.some((option) => option.value === nextTimeFilter) ? nextTimeFilter : 'all'
+  requestIdFilter.value = positiveId(query.request_id)
+  focusedRequestId.value = focusedId(query.focus) || requestIdFilter.value
+  page.value = 1
+  selected.value = null
+}
 
 function viewCabinet() {
   if (!physicalLocation.value) return
@@ -90,9 +127,12 @@ async function refresh(resetPage = false) {
     const queue = await api.registrarRequests({
       status: status.value || undefined,
       search: search.value || undefined,
+      time_filter: timeFilter.value,
+      request_id: requestIdFilter.value || undefined,
       page: page.value,
     })
     requests.value = queue.data
+    page.value = queue.current_page || page.value
     lastPage.value = queue.last_page
   } catch (err) {
     error.value = requestError(err)
@@ -101,9 +141,30 @@ async function refresh(resetPage = false) {
   }
 }
 
+async function revealFocusedRequest() {
+  if (!focusedRequestId.value) return
+
+  await selectRequest({ id: focusedRequestId.value })
+  await nextTick()
+  document.getElementById(`request-${focusedRequestId.value}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+async function applyFilters() {
+  requestIdFilter.value = null
+  focusedRequestId.value = null
+  selected.value = null
+  await refresh(true)
+}
+
+async function selectTimeFilter(value) {
+  timeFilter.value = value
+  await applyFilters()
+}
+
 async function changePage(nextPage) {
   page.value = nextPage
   selected.value = null
+  focusedRequestId.value = null
   await refresh()
 }
 
@@ -120,7 +181,16 @@ function updateQueueItem(updated) {
   const remainsInQueue = activeStatuses.includes(updated.status) && (!status.value || updated.status === status.value)
 
   requests.value = remainsInQueue
-    ? requests.value.map((item) => (item.id === updated.id ? { ...item, status: updated.status } : item))
+    ? requests.value.map((item) =>
+        item.id === updated.id
+          ? {
+              ...item,
+              status: updated.status,
+              updated_at: updated.updated_at,
+              request_reference: updated.request_reference || item.request_reference,
+            }
+          : item,
+      )
     : requests.value.filter((item) => item.id !== updated.id)
 }
 
@@ -136,12 +206,28 @@ async function action(nextAction) {
     selected.value = updated
     updateQueueItem(updated)
     message.value = `Request ${nextAction.replaceAll('_', ' ')}.`
+    if (!requests.value.length && page.value > 1) page.value -= 1
+    await refresh()
   } catch (err) {
     error.value = requestError(err)
   }
 }
 
-onMounted(refresh)
+onMounted(async () => {
+  applyRouteQuery(route.query)
+  await refresh()
+  await revealFocusedRequest()
+})
+
+watch(
+  () => route.fullPath,
+  async () => {
+    applyRouteQuery(route.query)
+    await refresh()
+    await revealFocusedRequest()
+  },
+  { flush: 'post' },
+)
 </script>
 
 <template>
@@ -154,9 +240,23 @@ onMounted(refresh)
   <p v-if="message" class="notice success">{{ message }}</p>
   <p v-if="error" class="notice error">{{ error }}</p>
 
+  <RegistrarRecentActivity />
+
   <section class="dr-panel">
-    <form class="toolbar" @submit.prevent="refresh(true)">
-      <input v-model="search" placeholder="Student number, name, or document" />
+    <nav class="group-tabs time-filter-tabs" aria-label="Request activity period">
+      <button
+        v-for="option in TIME_FILTERS"
+        :key="option.value"
+        type="button"
+        :class="{ active: timeFilter === option.value }"
+        :aria-pressed="timeFilter === option.value"
+        @click="selectTimeFilter(option.value)"
+      >
+        {{ option.label }}
+      </button>
+    </nav>
+    <form class="toolbar" @submit.prevent="applyFilters">
+      <input v-model="search" placeholder="REQ-000001, student number, name, or document" />
       <select v-model="status">
         <option value="">All active statuses</option>
         <option v-for="value in activeStatuses" :key="value" :value="value">
@@ -167,14 +267,31 @@ onMounted(refresh)
     </form>
     <p v-if="loading && !requests.length" class="empty">Loading requests…</p>
     <p v-else-if="!requests.length" class="empty">No matching requests.</p>
-    <button v-for="item in requests" :key="item.id" class="queue-item" type="button" @click="selectRequest(item)">
+    <button
+      v-for="item in requests"
+      :id="`request-${item.id}`"
+      :key="item.id"
+      class="queue-item"
+      :class="{ 'focused-record': focusedRequestId === item.id || selected?.id === item.id }"
+      type="button"
+      @click="selectRequest(item)"
+    >
       <span>
-        <strong>#{{ item.id }} · {{ item.document_type.document_name }}</strong>
+        <strong>{{ referenceFor(item) }} · {{ item.document_type.document_name }}</strong>
         <small>
           {{ item.student.student_number }} ·
           {{ item.student.user.profile.first_name }}
           {{ item.student.user.profile.last_name }}
         </small>
+        <time
+          v-if="requestTimestamp(item)"
+          class="time-display"
+          :datetime="requestTimestamp(item)"
+          :title="formatExactDateTime(requestTimestamp(item))"
+        >
+          {{ formatRelativeTime(requestTimestamp(item)) }}
+          <small>{{ formatExactDateTime(requestTimestamp(item)) }}</small>
+        </time>
       </span>
       <span class="badge" :class="item.status">{{ item.status.replaceAll('_', ' ') }}</span>
     </button>
@@ -188,7 +305,16 @@ onMounted(refresh)
   </section>
 
   <section v-if="selected" class="dr-panel">
-    <h2>Request #{{ selected.id }}</h2>
+    <h2>Request {{ referenceFor(selected) }}</h2>
+    <time
+      v-if="requestTimestamp(selected)"
+      class="time-display detail-updated-time"
+      :datetime="requestTimestamp(selected)"
+      :title="formatExactDateTime(requestTimestamp(selected))"
+    >
+      Updated {{ formatRelativeTime(requestTimestamp(selected)) }}
+      <small>{{ formatExactDateTime(requestTimestamp(selected)) }}</small>
+    </time>
     <p>
       <strong>Student:</strong>
       {{ studentFullName }} ({{ selected.student.student_number }})

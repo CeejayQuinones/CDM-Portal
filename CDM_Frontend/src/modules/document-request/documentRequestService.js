@@ -9,6 +9,7 @@ export const documentRequestService = {
   slots: (date) => unwrap(apiClient.get('/appointment-slots', { params: { date } })),
   book: (requestId, payload) => unwrap(apiClient.post(`/document-requests/${requestId}/appointments`, payload)),
   appointmentOverview: () => unwrap(apiClient.get('/appointment-overview')),
+  registrarRecentActivity: (params) => unwrap(apiClient.get('/registrar/document-request-activity', { params })),
   registrarRequests: (params) => unwrap(apiClient.get('/registrar/document-requests', { params })),
   registrarHistory: (params) => unwrap(apiClient.get('/registrar/document-requests/history', { params })),
   registrarRequest: (id) => unwrap(apiClient.get(`/registrar/document-requests/${id}`)),

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class DocumentRequest extends Model
 {
     protected $fillable = ['student_id', 'document_type_id', 'registrar_staff_id', 'quantity', 'total_fee', 'purpose', 'status', 'request_date', 'release_date', 'remarks', 'approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at'];
+
+    protected $appends = ['request_reference'];
 
     protected function casts(): array
     {
@@ -39,5 +42,10 @@ class DocumentRequest extends Model
     public function latestAppointment(): HasOne
     {
         return $this->hasOne(Appointment::class)->latestOfMany();
+    }
+
+    protected function requestReference(): Attribute
+    {
+        return Attribute::get(fn (): string => sprintf('REQ-%06d', $this->getKey()));
     }
 }

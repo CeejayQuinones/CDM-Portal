@@ -12,7 +12,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class RegistrarDocumentRequestController extends Controller
 {
@@ -24,12 +26,29 @@ class RegistrarDocumentRequestController extends Controller
 
     private const HISTORY_APPOINTMENT_STATUSES = ['cancelled', 'completed', 'no_show'];
 
+    private const TIME_FILTERS = ['all', 'today', 'yesterday', 'last_7_days', 'this_month'];
+
+    private const ACTIVE_APPOINTMENT_GROUPS = ['active', 'upcoming', 'today', 'recent'];
+
+    private const BUSINESS_TIMEZONE = 'Asia/Manila';
+
     public function index(Request $request): JsonResponse
     {
-        $request->validate(['status' => ['nullable', 'in:pending,processing,ready_for_release,released,cancelled,rejected'], 'search' => ['nullable', 'string', 'max:100']]);
+        $request->validate([
+            'status' => ['nullable', Rule::in(self::ACTIVE_STATUSES)],
+            'search' => ['nullable', 'string', 'max:100'],
+            'time_filter' => ['nullable', Rule::in(self::TIME_FILTERS)],
+            'request_id' => ['nullable', 'integer', 'min:1'],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
         $query = $this->summaryQuery()
-            ->select(['id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'status', 'request_date', 'created_at'])
-            ->latest();
+            ->select([
+                'id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'status',
+                'request_date', 'release_date', 'remarks', 'approved_at', 'processed_at',
+                'ready_for_release_at', 'released_at', 'rejected_at', 'created_at', 'updated_at',
+            ])
+            ->latest('updated_at')
+            ->latest('id');
 
         if ($status = $request->input('status')) {
             $query->where('status', $status);
@@ -38,6 +57,8 @@ class RegistrarDocumentRequestController extends Controller
         }
 
         $this->applySearch($query, $request->input('search'));
+        $this->applyExactRequestId($query, $request->input('request_id'));
+        $this->applyTimeFilter($query, 'updated_at', $request->input('time_filter'));
 
         return $this->ok($query->paginate(20), 'Document request queue retrieved successfully.');
     }
@@ -48,14 +69,19 @@ class RegistrarDocumentRequestController extends Controller
             'request_status' => ['nullable', 'in:released,cancelled,rejected'],
             'appointment_status' => ['nullable', 'in:cancelled,completed,no_show'],
             'search' => ['nullable', 'string', 'max:100'],
+            'time_filter' => ['nullable', Rule::in(self::TIME_FILTERS)],
+            'request_id' => ['nullable', 'integer', 'min:1'],
+            'appointment_id' => ['nullable', 'integer', 'min:1'],
+            'section' => ['nullable', Rule::in(['requests', 'appointments'])],
             'request_page' => ['nullable', 'integer', 'min:1'],
             'appointment_page' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $query = $this->summaryQuery()
             ->select([
-                'id', 'student_id', 'document_type_id', 'status', 'request_date',
-                'release_date', 'released_at', 'rejected_at', 'remarks', 'updated_at',
+                'id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'status',
+                'request_date', 'release_date', 'remarks', 'approved_at', 'processed_at',
+                'ready_for_release_at', 'released_at', 'rejected_at', 'created_at', 'updated_at',
             ])
             ->with(['latestAppointment' => fn ($appointments) => $appointments->select([
                 'appointments.id',
@@ -64,7 +90,8 @@ class RegistrarDocumentRequestController extends Controller
                 'appointments.appointment_time',
                 'appointments.status',
             ])])
-            ->latest();
+            ->latest('updated_at')
+            ->latest('id');
 
         if ($status = $request->input('request_status')) {
             $query->where('status', $status);
@@ -73,18 +100,25 @@ class RegistrarDocumentRequestController extends Controller
         }
 
         $this->applySearch($query, $request->input('search'));
+        $this->applyExactRequestId($query, $request->input('request_id'));
+        $this->applyTimeFilter($query, 'updated_at', $request->input('time_filter'));
+
+        if ($request->filled('appointment_id')) {
+            $query->whereHas('appointments', fn (Builder $appointmentQuery) => $appointmentQuery->whereKey($request->integer('appointment_id')));
+        }
 
         $appointments = Appointment::query()
-            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'status', 'remarks', 'updated_at'])
+            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'status', 'remarks', 'created_at', 'updated_at'])
             ->whereNotNull('document_request_id')
             ->with([
                 'student:id,user_id,student_number',
                 'student.user:id',
                 'student.user.profile:id,user_id,first_name,last_name',
-                'documentRequest:id,document_type_id,status,remarks',
+                'documentRequest:id,document_type_id,status,request_date,remarks,created_at,updated_at,released_at,rejected_at',
                 'documentRequest.documentType:id,document_name',
             ])
-            ->latest('updated_at');
+            ->latest('updated_at')
+            ->latest('id');
 
         if ($appointmentStatus = $request->input('appointment_status')) {
             $appointments->where('status', $appointmentStatus);
@@ -93,10 +127,14 @@ class RegistrarDocumentRequestController extends Controller
         }
 
         $this->applyAppointmentSearch($appointments, $request->input('search'));
+        $this->applyExactAppointmentFilters($appointments, $request->input('request_id'), $request->input('appointment_id'));
+        $this->applyTimeFilter($appointments, 'updated_at', $request->input('time_filter'));
+
+        $section = $request->input('section');
 
         return $this->ok([
-            'requests' => $query->paginate(20, ['*'], 'request_page'),
-            'appointments' => $appointments->paginate(20, ['*'], 'appointment_page'),
+            'requests' => $section === 'appointments' ? null : $query->paginate(20, ['*'], 'request_page'),
+            'appointments' => $section === 'requests' ? null : $appointments->paginate(20, ['*'], 'appointment_page'),
         ], 'Document request history retrieved successfully.');
     }
 
@@ -160,30 +198,106 @@ class RegistrarDocumentRequestController extends Controller
         $request->validate([
             'date' => ['nullable', 'date'],
             'status' => ['nullable', 'in:pending,confirmed'],
+            'group' => ['nullable', Rule::in(self::ACTIVE_APPOINTMENT_GROUPS)],
+            'search' => ['nullable', 'string', 'max:100'],
+            'time_filter' => ['nullable', Rule::in(self::TIME_FILTERS)],
+            'request_id' => ['nullable', 'integer', 'min:1'],
+            'appointment_id' => ['nullable', 'integer', 'min:1'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
         $query = Appointment::query()
-            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'status', 'remarks'])
+            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'status', 'remarks', 'created_at', 'updated_at'])
             ->whereNotNull('document_request_id')
             ->whereIn('status', self::ACTIVE_APPOINTMENT_STATUSES)
             ->with([
                 'student:id,user_id,student_number',
                 'student.user:id',
                 'student.user.profile:id,user_id,first_name,last_name',
-                'documentRequest:id,document_type_id',
+                'documentRequest:id,document_type_id,status,request_date,created_at,updated_at',
                 'documentRequest.documentType:id,document_name',
             ])
-            ->orderBy('appointment_date')
-            ->orderBy('appointment_time');
+            ->latest('updated_at')
+            ->latest('id');
+
+        $businessToday = Carbon::now(self::BUSINESS_TIMEZONE)->startOfDay();
+        $businessTomorrow = $businessToday->copy()->addDay()->toDateString();
+        if ($request->input('group') === 'upcoming') {
+            $query->where('appointment_date', '>=', $businessTomorrow);
+        } elseif ($request->input('group') === 'today') {
+            $query->where('appointment_date', '>=', $businessToday->toDateString())
+                ->where('appointment_date', '<', $businessTomorrow);
+        } elseif ($request->input('group') === 'recent') {
+            $this->applyTimeFilter($query, 'updated_at', 'last_7_days');
+        }
+
         if ($request->filled('date')) {
-            $query->whereDate('appointment_date', $request->input('date'));
+            $date = Carbon::parse($request->input('date'), self::BUSINESS_TIMEZONE);
+            $query->where('appointment_date', '>=', $date->toDateString())
+                ->where('appointment_date', '<', $date->copy()->addDay()->toDateString());
         }
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
         }
-        $items = $request->has('page') ? $query->paginate(50) : $query->get();
+
+        $this->applyAppointmentSearch($query, $request->input('search'));
+        $this->applyExactAppointmentFilters($query, $request->input('request_id'), $request->input('appointment_id'));
+        $this->applyTimeFilter($query, 'appointment_date', $request->input('time_filter'), true);
+
+        $items = $request->has('page') ? $query->paginate(50) : $query->limit(50)->get();
 
         return $this->ok($items, 'Appointments retrieved successfully.');
+    }
+
+    public function activity(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'time_filter' => ['nullable', Rule::in(self::TIME_FILTERS)],
+        ]);
+        $limit = (int) ($validated['limit'] ?? 8);
+        $timeFilter = $validated['time_filter'] ?? 'all';
+        $candidateLimit = max($limit * 4, 40);
+
+        $requests = DocumentRequest::query()
+            ->select([
+                'id', 'student_id', 'document_type_id', 'status', 'created_at', 'updated_at',
+                'approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at',
+            ])
+            ->with([
+                ...$this->activityStudentRelations(),
+                'documentType:id,document_name',
+            ])
+            ->when($timeFilter !== 'all', fn (Builder $query) => $this->applyAnyTimestampFilter($query, [
+                'created_at', 'updated_at', 'approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at',
+            ], $timeFilter))
+            ->latest('updated_at')
+            ->latest('id')
+            ->limit($candidateLimit)
+            ->get();
+
+        $appointments = Appointment::query()
+            ->select(['id', 'student_id', 'document_request_id', 'status', 'created_at', 'updated_at'])
+            ->whereNotNull('document_request_id')
+            ->with([
+                ...$this->activityStudentRelations(),
+                'documentRequest:id,document_type_id,status',
+                'documentRequest.documentType:id,document_name',
+            ])
+            ->when($timeFilter !== 'all', fn (Builder $query) => $this->applyAnyTimestampFilter($query, ['created_at', 'updated_at'], $timeFilter))
+            ->latest('updated_at')
+            ->latest('id')
+            ->limit($candidateLimit)
+            ->get();
+
+        $items = collect()
+            ->concat($requests->flatMap(fn (DocumentRequest $documentRequest) => $this->requestActivities($documentRequest)))
+            ->concat($appointments->flatMap(fn (Appointment $appointment) => $this->appointmentActivities($appointment)))
+            ->filter(fn (array $item) => $this->timestampMatchesFilter($item['occurred_at'], $timeFilter))
+            ->sortByDesc('occurred_at')
+            ->take($limit)
+            ->values();
+
+        return $this->ok($items, 'Recent document request activity retrieved successfully.');
     }
 
     public function updateAppointment(UpdateAppointmentRequest $request, Appointment $appointment): JsonResponse
@@ -246,28 +360,233 @@ class RegistrarDocumentRequestController extends Controller
 
     private function applySearch(Builder $query, ?string $search): void
     {
-        if (! $search) {
+        $search = trim((string) $search);
+        if ($search === '') {
             return;
         }
+        $requestId = $this->requestIdFromSearch($search);
 
-        $query->where(function (Builder $builder) use ($search): void {
+        $query->where(function (Builder $builder) use ($requestId, $search): void {
             $builder->whereHas('student', fn (Builder $students) => $students->where('student_number', 'like', "%{$search}%"))
-                ->orWhereHas('student.user.profile', fn (Builder $profiles) => $profiles->where('first_name', 'like', "%{$search}%")->orWhere('last_name', 'like', "%{$search}%"))
+                ->orWhereHas('student.user.profile', fn (Builder $profiles) => $this->applyProfileNameSearch($profiles, $search))
                 ->orWhereHas('documentType', fn (Builder $types) => $types->where('document_name', 'like', "%{$search}%"));
+
+            if ($requestId !== null) {
+                $builder->orWhere($builder->getModel()->getQualifiedKeyName(), $requestId);
+            }
         });
     }
 
     private function applyAppointmentSearch(Builder $query, ?string $search): void
     {
-        if (! $search) {
+        $search = trim((string) $search);
+        if ($search === '') {
+            return;
+        }
+        $requestId = $this->requestIdFromSearch($search);
+
+        $query->where(function (Builder $builder) use ($requestId, $search): void {
+            $builder->whereHas('student', fn (Builder $students) => $students->where('student_number', 'like', "%{$search}%"))
+                ->orWhereHas('student.user.profile', fn (Builder $profiles) => $this->applyProfileNameSearch($profiles, $search))
+                ->orWhereHas('documentRequest.documentType', fn (Builder $types) => $types->where('document_name', 'like', "%{$search}%"));
+
+            if ($requestId !== null) {
+                $builder->orWhereHas('documentRequest', fn (Builder $requests) => $requests->whereKey($requestId));
+            }
+        });
+    }
+
+    private function applyProfileNameSearch(Builder $query, string $search): void
+    {
+        $terms = preg_split('/\s+/', trim($search)) ?: [];
+
+        foreach ($terms as $term) {
+            $query->where(function (Builder $names) use ($term): void {
+                $names->where('first_name', 'like', "%{$term}%")
+                    ->orWhere('middle_name', 'like', "%{$term}%")
+                    ->orWhere('last_name', 'like', "%{$term}%");
+            });
+        }
+    }
+
+    private function requestIdFromSearch(string $search): ?int
+    {
+        if (! preg_match('/^(?:REQ-)?0*([1-9][0-9]*)$/i', trim($search), $matches)) {
+            return null;
+        }
+
+        $requestId = filter_var($matches[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+        return $requestId === false ? null : $requestId;
+    }
+
+    private function applyExactRequestId(Builder $query, mixed $requestId): void
+    {
+        if ($requestId !== null && $requestId !== '') {
+            $query->whereKey((int) $requestId);
+        }
+    }
+
+    private function applyExactAppointmentFilters(Builder $query, mixed $requestId, mixed $appointmentId): void
+    {
+        if ($requestId !== null && $requestId !== '') {
+            $query->where('document_request_id', (int) $requestId);
+        }
+        if ($appointmentId !== null && $appointmentId !== '') {
+            $query->whereKey((int) $appointmentId);
+        }
+    }
+
+    private function applyTimeFilter(Builder $query, string $column, ?string $filter, bool $dateOnly = false): void
+    {
+        $bounds = $this->timeBounds($filter, $dateOnly);
+        if ($bounds === null) {
             return;
         }
 
-        $query->where(function (Builder $builder) use ($search): void {
-            $builder->whereHas('student', fn (Builder $students) => $students->where('student_number', 'like', "%{$search}%"))
-                ->orWhereHas('student.user.profile', fn (Builder $profiles) => $profiles->where('first_name', 'like', "%{$search}%")->orWhere('last_name', 'like', "%{$search}%"))
-                ->orWhereHas('documentRequest.documentType', fn (Builder $types) => $types->where('document_name', 'like', "%{$search}%"));
+        [$start, $end] = $bounds;
+        if ($dateOnly) {
+            $query->where($column, '>=', $start->toDateString())
+                ->where($column, '<', $end->copy()->addDay()->toDateString());
+
+            return;
+        }
+
+        $query->whereBetween($column, [$start, $end]);
+    }
+
+    private function applyAnyTimestampFilter(Builder $query, array $columns, string $filter): void
+    {
+        $bounds = $this->timeBounds($filter);
+        if ($bounds === null) {
+            return;
+        }
+
+        $query->where(function (Builder $timestamps) use ($bounds, $columns): void {
+            foreach ($columns as $column) {
+                $timestamps->orWhereBetween($column, $bounds);
+            }
         });
+    }
+
+    /** @return array{0: Carbon, 1: Carbon}|null */
+    private function timeBounds(?string $filter, bool $dateOnly = false): ?array
+    {
+        $now = Carbon::now(self::BUSINESS_TIMEZONE);
+
+        $bounds = match ($filter ?: 'all') {
+            'today' => [$now->copy()->startOfDay(), $now->copy()->endOfDay()],
+            'yesterday' => [$now->copy()->subDay()->startOfDay(), $now->copy()->subDay()->endOfDay()],
+            'last_7_days' => [$now->copy()->subDays(6)->startOfDay(), $now->copy()->endOfDay()],
+            'this_month' => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()],
+            default => null,
+        };
+
+        if ($bounds === null || $dateOnly) {
+            return $bounds;
+        }
+
+        $storageTimezone = (string) (DB::connection()->getConfig('timezone') ?: config('app.timezone', 'UTC'));
+
+        return [
+            $bounds[0]->setTimezone($storageTimezone),
+            $bounds[1]->setTimezone($storageTimezone),
+        ];
+    }
+
+    private function timestampMatchesFilter(string $timestamp, string $filter): bool
+    {
+        $bounds = $this->timeBounds($filter);
+        if ($bounds === null) {
+            return true;
+        }
+
+        $occurredAt = Carbon::parse($timestamp);
+
+        return $occurredAt->greaterThanOrEqualTo($bounds[0]) && $occurredAt->lessThanOrEqualTo($bounds[1]);
+    }
+
+    private function requestActivities(DocumentRequest $documentRequest): array
+    {
+        $events = [['submitted', $documentRequest->created_at]];
+        $workflowEvents = [
+            'approved' => $documentRequest->approved_at,
+            'processed' => $documentRequest->processed_at,
+            'ready_for_release' => $documentRequest->ready_for_release_at,
+            'released' => $documentRequest->released_at,
+            'rejected' => $documentRequest->rejected_at,
+        ];
+
+        foreach ($workflowEvents as $action => $occurredAt) {
+            if ($occurredAt !== null) {
+                $events[] = [$action, $occurredAt];
+            }
+        }
+        if ($documentRequest->status === 'cancelled') {
+            $events[] = ['cancelled', $documentRequest->updated_at];
+        }
+
+        return array_map(
+            fn (array $event) => $this->activityItem('request', $event[0], $event[1], $documentRequest),
+            $events,
+        );
+    }
+
+    private function appointmentActivities(Appointment $appointment): array
+    {
+        $events = [['scheduled', $appointment->created_at]];
+        if ($appointment->status !== 'pending' && $appointment->updated_at !== null) {
+            $events[] = [$appointment->status, $appointment->updated_at];
+        }
+
+        return array_map(
+            fn (array $event) => $this->activityItem('appointment', $event[0], $event[1], $appointment),
+            $events,
+        );
+    }
+
+    private function activityItem(string $type, string $action, mixed $occurredAt, DocumentRequest|Appointment $record): array
+    {
+        $documentRequest = $record instanceof DocumentRequest ? $record : $record->documentRequest;
+        $documentType = $record instanceof DocumentRequest ? $record->documentType : $record->documentRequest?->documentType;
+        $profile = $record->student?->user?->profile;
+        $historical = $record instanceof DocumentRequest
+            ? in_array($record->status, self::HISTORY_STATUSES, true)
+            : in_array($record->status, self::HISTORY_APPOINTMENT_STATUSES, true);
+
+        return [
+            'id' => "{$type}:{$record->getKey()}:{$action}",
+            'type' => $type,
+            'action' => $action,
+            'occurred_at' => Carbon::parse($occurredAt)->toISOString(),
+            'request_id' => $documentRequest?->id,
+            'request_reference' => $documentRequest === null ? null : sprintf('REQ-%06d', $documentRequest->id),
+            'appointment_id' => $record instanceof Appointment ? $record->id : null,
+            'destination' => $historical ? 'history' : ($record instanceof Appointment ? 'appointments' : 'requests'),
+            'student' => [
+                'id' => $record->student?->id,
+                'student_number' => $record->student?->student_number,
+                'user' => [
+                    'profile' => [
+                        'first_name' => $profile?->first_name,
+                        'last_name' => $profile?->last_name,
+                    ],
+                ],
+            ],
+            'document_type' => [
+                'id' => $documentType?->id,
+                'document_name' => $documentType?->document_name,
+            ],
+        ];
+    }
+
+    private function activityStudentRelations(): array
+    {
+        return [
+            'student:id,user_id,student_number',
+            'student.user:id',
+            'student.user.profile:id,user_id,first_name,last_name',
+        ];
     }
 
     private function detailRelations(): array

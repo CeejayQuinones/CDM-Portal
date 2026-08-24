@@ -45,6 +45,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::patch('/document-types/{documentType}', [RegistrarDocumentTypeController::class, 'update']);
         Route::get('/document-requests', [RegistrarDocumentRequestController::class, 'index']);
         Route::get('/document-requests/history', [RegistrarDocumentRequestController::class, 'history']);
+        Route::get('/document-request-activity', [RegistrarDocumentRequestController::class, 'activity']);
         Route::get('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'show']);
         Route::patch('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'update']);
         Route::get('/appointments', [RegistrarDocumentRequestController::class, 'appointments']);
