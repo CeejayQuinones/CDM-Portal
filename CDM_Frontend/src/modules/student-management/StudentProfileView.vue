@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { apiClient } from '../../services/apiClient'
 import { useAuthStore } from '../../stores/authStore'
 import { ROLES } from '../../config/accessControl'
+import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
 import { physicalRecordsService } from './physicalRecordsService'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const { runWithStepUp } = useStepUpAuth()
 const student = ref(null)
 const loading = ref(false)
 const error = ref('')
@@ -102,14 +104,17 @@ async function saveLocation() {
   locationError.value = ''
   success.value = ''
   try {
-    const location = await physicalRecordsService.assignStudentLocation(student.value.id, {
-      cabinet_slot_id: Number(locationForm.cabinet_slot_id),
-      remarks: locationForm.remarks.trim() || null,
-    })
+    const location = await runWithStepUp(() =>
+      physicalRecordsService.assignStudentLocation(student.value.id, {
+        cabinet_slot_id: Number(locationForm.cabinet_slot_id),
+        remarks: locationForm.remarks.trim() || null,
+      }),
+    )
     student.value = { ...student.value, physical_record_location: location }
     locationEditing.value = false
     success.value = 'Physical record location updated.'
   } catch (requestError) {
+    if (isStepUpCancelled(requestError)) return
     locationError.value =
       requestError.response?.data?.errors?.cabinet_slot_id?.[0] ||
       requestError.response?.data?.message ||
@@ -132,6 +137,7 @@ function viewCabinet() {
 
 function startEdit() {
   Object.assign(form, {
+    student_number: student.value.student_number || '',
     first_name: student.value.profile?.first_name || '',
     middle_name: student.value.profile?.middle_name || '',
     last_name: student.value.profile?.last_name || '',
@@ -162,11 +168,12 @@ async function saveChanges() {
   success.value = ''
   error.value = ''
   try {
-    const { data } = await apiClient.patch(`/students/${route.params.id}`, form)
+    const { data } = await runWithStepUp(() => apiClient.patch(`/students/${route.params.id}`, form))
     student.value = data.data
     editMode.value = false
     success.value = data.message
   } catch (requestError) {
+    if (isStepUpCancelled(requestError)) return
     validationErrors.value = requestError.response?.data?.errors || {}
     error.value = requestError.response?.data?.message || 'Unable to save the student record.'
   } finally {
@@ -237,6 +244,7 @@ onMounted(loadProfile)
 
     <p v-if="success" class="success" role="status">{{ success }}</p>
     <p v-if="editMode && error" class="save-error" role="alert">{{ error }}</p>
+    <p v-if="editMode" class="security-note">Saving official record changes may require password verification.</p>
 
     <nav class="action-bar" aria-label="Student profile actions">
       <button v-if="!editMode" class="back" type="button" @click="router.push({ name: 'student-management' })">
@@ -350,7 +358,11 @@ onMounted(loadProfile)
       <dl class="information-grid">
         <div>
           <dt>Student Number</dt>
-          <dd>{{ student.student_number }}</dd>
+          <dd>
+            <input v-if="editMode" v-model.trim="form.student_number" maxlength="20" />
+            <template v-else>{{ student.student_number }}</template>
+            <small v-if="validationErrors.student_number">{{ validationErrors.student_number[0] }}</small>
+          </dd>
         </div>
         <div>
           <dt>Course</dt>
@@ -489,6 +501,7 @@ onMounted(loadProfile)
       <p v-else-if="!locationEditing" class="empty-state">No physical record location assigned.</p>
 
       <form v-if="locationEditing" class="location-form" @submit.prevent="saveLocation">
+        <p class="security-note">Changing the physical record location may require password verification.</p>
         <p v-if="locationError" class="save-error" role="alert">
           {{ locationError }}
         </p>
@@ -516,7 +529,7 @@ onMounted(loadProfile)
           <div class="location-form-actions">
             <button type="button" :disabled="locationSaving" @click="cancelLocationEdit">Cancel</button>
             <button class="location-save" type="submit" :disabled="locationSaving || !cabinets.length">
-              {{ locationSaving ? 'Saving…' : 'Save Location' }}
+              {{ locationSaving ? 'Saving…' : 'Change Physical Record Location' }}
             </button>
           </div>
         </template>
@@ -870,6 +883,7 @@ onMounted(loadProfile)
 }
 .location-form .save-error,
 .location-form .empty-state,
+.location-form .security-note,
 .location-form-actions {
   grid-column: 1 / -1;
 }
@@ -914,6 +928,14 @@ onMounted(loadProfile)
 }
 .empty-state {
   color: var(--color-muted);
+  margin: 0;
+}
+.security-note {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  margin: -6px 0 14px;
+}
+.location-form .security-note {
   margin: 0;
 }
 .success,

@@ -61,6 +61,7 @@ class StudentService
             $student = Student::query()->with('userProfile')->findOrFail($studentId);
 
             $student->update([
+                'student_number' => $attributes['student_number'] ?? $student->student_number,
                 'course_id' => $attributes['course_id'],
                 'year_level' => $attributes['year_level'],
                 'student_status' => $attributes['student_status'],

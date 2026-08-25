@@ -40,10 +40,6 @@ const installApp = async () => {
   canInstall.value = false
 }
 
-const logout = async () => {
-  await authStore.logout()
-  router.replace({ name: 'login' })
-}
 </script>
 
 <template>
@@ -55,7 +51,7 @@ const logout = async () => {
     </button>
 
     <div>
-      <p class="navbar-label">CDM OneServe</p>
+      <p class="navbar-label">COLEGIO DE MONTALBAN</p>
       <h1>{{ title === 'CDM Portal' ? pageTitle : title }}</h1>
     </div>
 
@@ -68,7 +64,15 @@ const logout = async () => {
           <strong>{{ displayName }}</strong>
           <small>{{ authStore.currentRole }}</small>
         </span>
-        <button class="logout-button" type="button" @click="logout">Sign out</button>
+        <RouterLink class="settings-button" :to="{ name: 'settings' }" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path
+              d="M12 15.25A3.25 3.25 0 1 0 12 8.75a3.25 3.25 0 0 0 0 6.5ZM19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.4v-.1A1.7 1.7 0 0 0 9 19.8a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 3.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H1.8V9.4h.1A1.7 1.7 0 0 0 3 9a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06L6.06 3.2l.06.06A1.7 1.7 0 0 0 8 3.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1v-.1h4.2v.1A1.7 1.7 0 0 0 14 3a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8c.12.4.33.74.6 1 .3.27.7.4 1.1.4h.1v4.2h-.1c-.4 0-.8.13-1.1.4-.27.26-.48.6-.6 1Z"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </RouterLink>
       </div>
     </div>
   </header>
@@ -151,14 +155,30 @@ h1 {
   cursor: pointer;
 }
 
-.logout-button {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: #fff;
+.settings-button {
+  align-items: center;
+  background: rgba(13, 120, 86, 0.08);
+  border: 1px solid rgba(16, 106, 46, 0.18);
+  border-radius: 50%;
   color: var(--color-dartmouth-green);
-  font-weight: 700;
-  padding: 8px 11px;
-  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 38px;
+  height: 38px;
+  justify-content: center;
+  padding: 0;
+  width: 38px;
+}
+
+.settings-button:hover,
+.settings-button.router-link-active {
+  background: rgba(244, 211, 94, 0.34);
+  border-color: rgba(244, 211, 94, 0.75);
+  color: #0c5c2b;
+}
+
+.settings-button svg {
+  height: 18px;
+  width: 18px;
 }
 
 .install-button:hover {
@@ -205,4 +225,5 @@ h1 {
     padding: 0 10px;
   }
 }
+
 </style>

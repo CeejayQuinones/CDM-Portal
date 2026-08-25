@@ -80,6 +80,10 @@ class PhysicalRecordsTest extends TestCase
 
         Sanctum::actingAs($registrar);
 
+        $this->postJson('/api/step-up/verify', ['password' => 'password'])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
         $this->putJson("/api/registrar/students/{$student->id}/record-location", [
             'cabinet_slot_id' => $firstSlot->id,
             'remarks' => 'Original paper file.',
@@ -257,15 +261,18 @@ class PhysicalRecordsTest extends TestCase
     public function test_large_dataset_cleanup_preserves_normal_cabinet_student_and_location(): void
     {
         $johnDoe = $this->createStudent('26-00001', 'John', 'Doe');
-        $stressStudent = $this->createStudent('STRESS-00001', 'Stress', 'Student');
+        $generatedStudent = $this->createStudent('26-00002', 'Maria', 'Santos');
+        $generatedStudent->userProfile()->update([
+            'email' => 'maria.santos@cdm.edu.ph',
+        ]);
         $normalCabinet = $this->createCabinet('A', 2);
-        $stressCabinet = Cabinet::query()->create([
+        $generatedCabinet = Cabinet::query()->create([
             'cabinet_code' => 'B',
-            'description' => 'Student paper records storage. '.LargeDatasetSeeder::PHYSICAL_RECORD_CABINET_MARKER.'.',
+            'description' => 'Student paper records storage',
             'rows' => 1,
             'columns' => 1,
         ]);
-        $stressSlot = $stressCabinet->slots()->create([
+        $generatedSlot = $generatedCabinet->slots()->create([
             'slot_code' => 'B1',
             'capacity' => 20,
         ]);
@@ -277,10 +284,28 @@ class PhysicalRecordsTest extends TestCase
             'assigned_at' => now(),
         ]);
         StudentRecordLocation::query()->create([
-            'student_id' => $stressStudent->id,
-            'cabinet_slot_id' => $stressSlot->id,
+            'student_id' => $generatedStudent->id,
+            'cabinet_slot_id' => $generatedSlot->id,
             'assigned_at' => now(),
-            'remarks' => 'LargeDatasetSeeder physical record location.',
+            'remarks' => 'Assigned to registrar records storage.',
+        ]);
+        DB::table('generated_data_records')->insert([
+            [
+                'dataset_key' => LargeDatasetSeeder::DATASET_KEY,
+                'record_type' => LargeDatasetSeeder::GENERATED_USER_RECORD_TYPE,
+                'record_id' => $generatedStudent->user_id,
+                'record_created_at' => $generatedStudent->user->created_at,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'dataset_key' => LargeDatasetSeeder::DATASET_KEY,
+                'record_type' => LargeDatasetSeeder::GENERATED_CABINET_RECORD_TYPE,
+                'record_id' => $generatedCabinet->id,
+                'record_created_at' => $generatedCabinet->created_at,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
 
         $this->seed(LargeDatasetCleanupSeeder::class);
@@ -293,9 +318,10 @@ class PhysicalRecordsTest extends TestCase
             'student_id' => $johnDoe->id,
             'cabinet_slot_id' => $normalSlot->id,
         ]);
-        $this->assertDatabaseMissing('cabinets', ['id' => $stressCabinet->id]);
-        $this->assertDatabaseMissing('cabinet_slots', ['id' => $stressSlot->id]);
-        $this->assertDatabaseMissing('students', ['id' => $stressStudent->id]);
+        $this->assertDatabaseMissing('cabinets', ['id' => $generatedCabinet->id]);
+        $this->assertDatabaseMissing('cabinet_slots', ['id' => $generatedSlot->id]);
+        $this->assertDatabaseMissing('students', ['id' => $generatedStudent->id]);
+        $this->assertDatabaseMissing('generated_data_records', ['dataset_key' => LargeDatasetSeeder::DATASET_KEY]);
     }
 
     public function test_large_dataset_cleanup_detects_a_cabinet_only_partial_run(): void
@@ -317,6 +343,28 @@ class PhysicalRecordsTest extends TestCase
         $this->assertDatabaseHas('cabinets', ['id' => $normalCabinet->id, 'cabinet_code' => 'A']);
         $this->assertDatabaseMissing('cabinets', ['id' => $stressCabinet->id]);
         $this->assertDatabaseCount('cabinet_slots', 1);
+    }
+
+    public function test_large_dataset_cleanup_does_not_delete_a_record_when_the_registry_timestamp_does_not_match(): void
+    {
+        $student = $this->createStudent('26-00003', 'Paolo', 'Reyes');
+        DB::table('generated_data_records')->insert([
+            'dataset_key' => LargeDatasetSeeder::DATASET_KEY,
+            'record_type' => LargeDatasetSeeder::GENERATED_USER_RECORD_TYPE,
+            'record_id' => $student->user_id,
+            'record_created_at' => $student->user->created_at->subSecond(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->seed(LargeDatasetCleanupSeeder::class);
+
+        $this->assertDatabaseHas('users', ['id' => $student->user_id]);
+        $this->assertDatabaseHas('students', ['id' => $student->id]);
+        $this->assertDatabaseMissing('generated_data_records', [
+            'dataset_key' => LargeDatasetSeeder::DATASET_KEY,
+            'record_id' => $student->user_id,
+        ]);
     }
 
     public function test_large_dataset_cleanup_preserves_an_unmarked_normal_lettered_cabinet(): void

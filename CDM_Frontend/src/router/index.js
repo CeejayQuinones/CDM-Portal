@@ -9,6 +9,7 @@ import RegisterView from '../views/RegisterView.vue'
 import UnauthorizedView from '../views/UnauthorizedView.vue'
 import GuestDashboardView from '../views/GuestDashboardView.vue'
 import RoleDashboardView from '../views/RoleDashboardView.vue'
+import SettingsView from '../views/SettingsView.vue'
 import ComingSoonView from '../views/ComingSoonView.vue'
 import AdmissionView from '../modules/admission/AdmissionView.vue'
 import EnrollmentView from '../modules/enrollment/EnrollmentView.vue'
@@ -61,6 +62,12 @@ const routes = [
         name: 'home',
         component: DashboardView,
         meta: { title: 'Dashboard', roles: ROUTE_ROLES.home },
+      }),
+      protectedRoute({
+        path: 'settings',
+        name: 'settings',
+        component: SettingsView,
+        meta: { title: 'Settings', roles: ROUTE_ROLES.home },
       }),
       protectedRoute({
         path: 'guest-dashboard',

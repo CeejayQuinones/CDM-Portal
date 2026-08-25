@@ -39,7 +39,7 @@ class StudentDocumentsSeeder extends Seeder
                     'availability_status' => $record['availability_status'],
                     'verification_status' => $available ? 'verified' : 'pending',
                     'submitted_date' => $available ? $student->admission_date : null,
-                    'remarks' => $available ? 'Starter record: document is on file.' : 'Starter record: document is not yet on file.',
+                    'remarks' => $available ? 'Verified student record.' : 'Awaiting supporting document.',
                 ],
             );
         }

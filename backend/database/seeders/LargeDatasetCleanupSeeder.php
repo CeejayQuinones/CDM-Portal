@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,9 @@ class LargeDatasetCleanupSeeder extends Seeder
 
     private const STRESS_USERNAME_PATTERN = 'stress\\_student\\_%';
 
-    private const STRESS_EMAIL_PATTERN = 'stress%@example.test';
+    private const LEGACY_STRESS_EMAIL_PATTERN = 'stress%@example.test';
+
+    private const LEGACY_GENERATED_EMAIL_PATTERN = 'large-dataset+%@example.test';
 
     private const STRESS_STUDENT_NUMBER_PATTERN = 'STRESS-%';
 
@@ -32,11 +35,11 @@ class LargeDatasetCleanupSeeder extends Seeder
 
     public function run(): void
     {
-        $userIds = $this->stressUserIds();
-        $studentIds = $this->stressStudentIds($userIds);
-        $cabinetIds = $this->stressCabinetIds();
-        $slotIds = $this->stressCabinetSlotIds($cabinetIds);
-        $recordLocationIds = $this->stressRecordLocationIds($studentIds, $slotIds);
+        $userIds = $this->generatedUserIds();
+        $studentIds = $this->generatedStudentIds($userIds);
+        $cabinetIds = $this->generatedCabinetIds();
+        $slotIds = $this->generatedCabinetSlotIds($cabinetIds);
+        $recordLocationIds = $this->generatedRecordLocationIds($studentIds, $slotIds);
 
         $counts = [
             'appointments' => $this->countForStudents('appointments', $studentIds),
@@ -52,7 +55,7 @@ class LargeDatasetCleanupSeeder extends Seeder
         ];
 
         $this->command?->info('Found LargeDatasetSeeder records:');
-        $this->command?->line(sprintf('  %s stress users', number_format($counts['users'])));
+        $this->command?->line(sprintf('  %s generated users', number_format($counts['users'])));
         $this->command?->line(sprintf('  %s user profiles', number_format($counts['user_profiles'])));
         $this->command?->line(sprintf('  %s students', number_format($counts['students'])));
         $this->command?->line(sprintf('  %s student documents', number_format($counts['student_documents'])));
@@ -60,10 +63,11 @@ class LargeDatasetCleanupSeeder extends Seeder
         $this->command?->line(sprintf('  %s appointments', number_format($counts['appointments'])));
         $this->command?->line(sprintf('  %s personal access tokens', number_format($counts['personal_access_tokens'])));
         $this->command?->line(sprintf('  %s student record locations', number_format($counts['student_record_locations'])));
-        $this->command?->line(sprintf('  %s stress cabinet slots', number_format($counts['cabinet_slots'])));
-        $this->command?->line(sprintf('  %s stress cabinets', number_format($counts['cabinets'])));
+        $this->command?->line(sprintf('  %s generated cabinet slots', number_format($counts['cabinet_slots'])));
+        $this->command?->line(sprintf('  %s generated cabinets', number_format($counts['cabinets'])));
 
         if ($userIds === [] && $studentIds === [] && $cabinetIds === [] && $recordLocationIds === []) {
+            $this->purgeDatasetRegistry();
             $this->verifyCleanup();
             $this->command?->info('No LargeDatasetSeeder records were found.');
 
@@ -102,12 +106,14 @@ class LargeDatasetCleanupSeeder extends Seeder
             foreach (array_chunk($cabinetIds, self::DELETE_CHUNK_SIZE) as $cabinetIdChunk) {
                 DB::table('cabinets')->whereIn('id', $cabinetIdChunk)->delete();
             }
+
+            $this->purgeDatasetRegistry();
         });
 
         $this->verifyCleanup();
 
         $this->command?->info(sprintf(
-            'Removed stress data only: %d users, %d profiles, %d students, %d documents, %d requests, %d appointments, %d personal access tokens, %d record locations, %d cabinet slots, %d cabinets.',
+            'Removed generated data only: %d users, %d profiles, %d students, %d documents, %d requests, %d appointments, %d personal access tokens, %d record locations, %d cabinet slots, %d cabinets.',
             $counts['users'],
             $counts['user_profiles'],
             $counts['students'],
@@ -122,14 +128,19 @@ class LargeDatasetCleanupSeeder extends Seeder
     }
 
     /** @return array<int, int> */
-    private function stressUserIds(): array
+    private function generatedUserIds(): array
     {
-        $userIds = $this->stressUsernameQuery()->pluck('id');
+        $userIds = collect($this->registeredRecordIds('users', LargeDatasetSeeder::GENERATED_USER_RECORD_TYPE));
+        $userIds = $userIds->merge($this->legacyStressUsernameQuery()->pluck('id'));
 
         if (Schema::hasTable('user_profiles')) {
             $userIds = $userIds->merge(
                 DB::table('user_profiles')
-                    ->where('email', 'like', self::STRESS_EMAIL_PATTERN)
+                    ->where(function (Builder $query): void {
+                        $query
+                            ->where('email', 'like', self::LEGACY_GENERATED_EMAIL_PATTERN)
+                            ->orWhere('email', 'like', self::LEGACY_STRESS_EMAIL_PATTERN);
+                    })
                     ->pluck('user_id')
             );
         }
@@ -149,7 +160,7 @@ class LargeDatasetCleanupSeeder extends Seeder
      * @param  array<int, int>  $userIds
      * @return array<int, int>
      */
-    private function stressStudentIds(array $userIds): array
+    private function generatedStudentIds(array $userIds): array
     {
         if (! Schema::hasTable('students')) {
             return [];
@@ -168,37 +179,42 @@ class LargeDatasetCleanupSeeder extends Seeder
         return $this->normalizeIds($studentIds);
     }
 
-    private function stressUsernameQuery(): Builder
+    private function legacyStressUsernameQuery(): Builder
     {
         return DB::table('users')
             ->where('username', 'like', self::STRESS_USERNAME_PATTERN);
     }
 
     /** @return array<int, int> */
-    private function stressCabinetIds(): array
+    private function generatedCabinetIds(): array
     {
         if (! Schema::hasTable('cabinets')) {
             return [];
         }
 
-        return $this->normalizeIds(
-            $this->stressCabinetQuery()->pluck('id')
-        );
+        return $this->normalizeIds(collect([
+            ...$this->registeredRecordIds('cabinets', LargeDatasetSeeder::GENERATED_CABINET_RECORD_TYPE),
+            ...$this->legacyCabinetQuery()->pluck('id')->all(),
+        ]));
     }
 
-    private function stressCabinetQuery(): Builder
+    private function legacyCabinetQuery(): Builder
     {
         return DB::table('cabinets')
             ->where(function (Builder $query): void {
                 $query->where(function (Builder $generatedCabinets): void {
                     $generatedCabinets
                         ->whereIn('cabinet_code', LargeDatasetSeeder::PHYSICAL_RECORD_CABINET_CODES)
-                        ->where(
-                            'description',
-                            'like',
-                            '%'.LargeDatasetSeeder::PHYSICAL_RECORD_CABINET_MARKER.'%',
-                        );
-                })->orWhereIn('cabinet_code', self::LEGACY_STRESS_CABINET_CODES);
+                        ->where('description', 'like', '%[CDM:LARGE_DATASET_SEEDER:PHYSICAL_RECORDS:v1]%');
+                })->orWhere(function (Builder $legacyCabinets): void {
+                    $legacyCabinets
+                        ->whereIn('cabinet_code', self::LEGACY_STRESS_CABINET_CODES)
+                        ->where(function (Builder $descriptions): void {
+                            $descriptions
+                                ->where('description', 'like', '%LargeDatasetSeeder%')
+                                ->orWhere('description', 'like', '%stress%');
+                        });
+                });
             });
     }
 
@@ -206,7 +222,7 @@ class LargeDatasetCleanupSeeder extends Seeder
      * @param  array<int, int>  $cabinetIds
      * @return array<int, int>
      */
-    private function stressCabinetSlotIds(array $cabinetIds): array
+    private function generatedCabinetSlotIds(array $cabinetIds): array
     {
         if (! Schema::hasTable('cabinet_slots')) {
             return [];
@@ -228,7 +244,7 @@ class LargeDatasetCleanupSeeder extends Seeder
      * @param  array<int, int>  $slotIds
      * @return array<int, int>
      */
-    private function stressRecordLocationIds(array $studentIds, array $slotIds): array
+    private function generatedRecordLocationIds(array $studentIds, array $slotIds): array
     {
         if (! Schema::hasTable('student_record_locations')) {
             return [];
@@ -253,24 +269,51 @@ class LargeDatasetCleanupSeeder extends Seeder
 
     private function verifyCleanup(): void
     {
-        $remainingUsers = $this->stressUsernameQuery()->count();
-        $remainingStudents = Schema::hasTable('students')
-            ? DB::table('students')->where('student_number', 'like', self::STRESS_STUDENT_NUMBER_PATTERN)->count()
-            : 0;
-        $remainingCabinets = Schema::hasTable('cabinets')
-            ? $this->stressCabinetQuery()->count()
-            : 0;
+        $remainingUsers = count($this->generatedUserIds());
+        $remainingStudents = count($this->generatedStudentIds($this->generatedUserIds()));
+        $remainingCabinets = count($this->generatedCabinetIds());
 
         if ($remainingUsers !== 0 || $remainingStudents !== 0 || $remainingCabinets !== 0) {
             throw new LogicException(sprintf(
-                'Large dataset cleanup verification failed: %d stress usernames, %d STRESS-* students, and %d stress cabinets remain.',
+                'Large dataset cleanup verification failed: %d generated users, %d generated students, and %d generated cabinets remain.',
                 $remainingUsers,
                 $remainingStudents,
                 $remainingCabinets,
             ));
         }
 
-        $this->command?->info('Verified: 0 stress usernames, 0 STRESS-* student records, and 0 stress cabinets remain.');
+        $this->command?->info('Verified: 0 generated users, 0 generated student records, and 0 generated cabinets remain.');
+    }
+
+    /** @return array<int, int> */
+    private function registeredRecordIds(string $table, string $recordType): array
+    {
+        if (! Schema::hasTable('generated_data_records') || ! Schema::hasTable($table)) {
+            return [];
+        }
+
+        return $this->normalizeIds(
+            DB::table('generated_data_records as generated_records')
+                ->join($table, function (JoinClause $join) use ($table): void {
+                    $join
+                        ->on($table.'.id', '=', 'generated_records.record_id')
+                        ->on($table.'.created_at', '=', 'generated_records.record_created_at');
+                })
+                ->where('generated_records.dataset_key', LargeDatasetSeeder::DATASET_KEY)
+                ->where('generated_records.record_type', $recordType)
+                ->pluck($table.'.id')
+        );
+    }
+
+    private function purgeDatasetRegistry(): void
+    {
+        if (! Schema::hasTable('generated_data_records')) {
+            return;
+        }
+
+        DB::table('generated_data_records')
+            ->where('dataset_key', LargeDatasetSeeder::DATASET_KEY)
+            ->delete();
     }
 
     /** @param Collection<int, mixed> $ids */

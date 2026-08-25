@@ -46,9 +46,6 @@ const courseLabel = (student) => {
   return [code, name].filter(Boolean).join(' — ') || 'Not available'
 }
 const slotCount = (slot) => Number(slot.record_count ?? slot.student_record_locations_count ?? 0)
-const slotGridStyle = (cabinet) => ({
-  '--cabinet-columns': Math.max(1, Number(cabinet.columns) || 1),
-})
 const availableDocuments = (student) =>
   student.available_documents ||
   (student.documents || []).filter((document) => (document.availability_status || document.status) === 'available')
@@ -237,7 +234,7 @@ onMounted(async () => {
           <span>occupied slots</span>
         </div>
       </header>
-      <div class="cabinet-grid" :style="slotGridStyle(cabinet)">
+      <div class="cabinet-grid">
         <button
           v-for="slot in cabinet.slots"
           :key="slot.id"
@@ -461,6 +458,12 @@ button:disabled {
   display: grid;
   gap: 20px;
 }
+.cabinet-list,
+.cabinet-card,
+.cabinet-grid {
+  max-width: 100%;
+  min-width: 0;
+}
 .cabinet-heading {
   border-bottom: 1px solid var(--color-border);
   margin: -2px 0 18px;
@@ -493,8 +496,7 @@ button:disabled {
 .cabinet-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(var(--cabinet-columns), minmax(110px, 1fr));
-  overflow-x: auto;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   padding: 3px;
 }
 .slot-drawer {
@@ -508,7 +510,9 @@ button:disabled {
   cursor: pointer;
   display: grid;
   justify-items: center;
+  max-width: 100%;
   min-height: 104px;
+  min-width: 0;
   padding: 14px 10px 11px;
   position: relative;
 }
@@ -527,9 +531,14 @@ button:disabled {
   color: var(--color-dartmouth-green);
   font-size: 1.05rem;
   margin-top: 7px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .slot-drawer small {
   color: var(--color-muted);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 .drawer-handle {
   background: #809084;

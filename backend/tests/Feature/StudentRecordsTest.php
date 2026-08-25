@@ -58,6 +58,10 @@ class StudentRecordsTest extends TestCase
             ->assertJsonPath('data.recent_document_requests.0.document', 'Birth Certificate')
             ->assertJsonPath('data.recent_document_requests.0.status', 'pending');
 
+        $this->postJson('/api/step-up/verify', ['password' => 'password'])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
         $this->patchJson("/api/students/{$firstStudent->id}", [
             'first_name' => 'Alice',
             'last_name' => 'Reyes',

@@ -22,7 +22,7 @@ class PhysicalRecordsSeeder extends Seeder
             if (! $cabinetId) {
                 $cabinetId = DB::table('cabinets')->insertGetId([
                     'cabinet_code' => 'A',
-                    'description' => 'Starter cabinet for physical student records.',
+                    'description' => 'Registrar physical records cabinet.',
                     'rows' => 2,
                     'columns' => 3,
                     'created_at' => $now,
@@ -57,7 +57,7 @@ class PhysicalRecordsSeeder extends Seeder
                     'student_id' => $johnDoe->id,
                     'cabinet_slot_id' => $slotIds['A2'],
                     'assigned_at' => $now,
-                    'remarks' => 'Starter physical record location for manual testing.',
+                    'remarks' => 'Assigned to registrar records storage.',
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);

@@ -1,5 +1,12 @@
 # CDM Portal Setup Guide
 
+
+cd backend
+php artisan db:seed --class=LargeDatasetCleanupSeeder
+php artisan db:seed --class=LargeDatasetSeeder
+
+
+
 ## install these first
 
 - Git
