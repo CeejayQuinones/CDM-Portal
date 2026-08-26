@@ -36,5 +36,3 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   },
 )
-
-console.log("API URL:", import.meta.env.VITE_API_BASE_URL)

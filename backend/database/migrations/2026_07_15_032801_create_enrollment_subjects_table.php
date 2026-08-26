@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
@@ -36,7 +37,7 @@ return new class extends Migration {
             $table->enum('subject_status', [
                 'enrolled',
                 'dropped',
-                'completed'
+                'completed',
             ])->default('enrolled');
 
             // Final Grade
@@ -48,7 +49,7 @@ return new class extends Migration {
                 'Failed',
                 'Incomplete',
                 'Dropped',
-                'In Progress'
+                'In Progress',
             ])->default('In Progress');
 
             $table->timestamps();
@@ -56,7 +57,7 @@ return new class extends Migration {
             // Prevent duplicate subjects in one enrollment
             $table->unique([
                 'enrollment_id',
-                'subject_id'
+                'subject_id',
             ]);
 
         });

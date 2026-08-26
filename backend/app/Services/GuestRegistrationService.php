@@ -9,10 +9,14 @@ use Illuminate\Validation\ValidationException;
 
 class GuestRegistrationService
 {
+    public function __construct(
+        private readonly RegistrationEmailVerificationService $emailVerificationService,
+    ) {}
+
     /**
      * Create one active Guest account and its profile.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function register(array $data): User
     {
@@ -25,6 +29,11 @@ class GuestRegistrationService
         }
 
         return DB::transaction(function () use ($data, $guestRole): User {
+            $this->emailVerificationService->consume(
+                $data['email'],
+                $data['email_verification_token'],
+            );
+
             $user = User::query()->create([
                 'username' => $data['username'],
                 'password' => $data['password'],

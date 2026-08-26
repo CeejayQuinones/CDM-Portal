@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $last_name
  * @property string|null $suffix
  * @property string $gender
- * @property \Illuminate\Support\Carbon|null $birth_date
+ * @property Carbon|null $birth_date
  * @property string|null $civil_status
  * @property string|null $email
  * @property string|null $contact_number
