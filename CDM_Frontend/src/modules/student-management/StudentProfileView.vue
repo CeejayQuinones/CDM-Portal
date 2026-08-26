@@ -46,6 +46,14 @@ const initials = computed(
 )
 const physicalLocation = computed(() => student.value?.physical_record_location || null)
 const canManagePhysicalRecords = computed(() => authStore.currentRole === ROLES.REGISTRAR_STAFF)
+const activeCabinets = computed(() =>
+  cabinets.value
+    .map((cabinet) => ({
+      ...cabinet,
+      slots: (cabinet.slots || []).filter((slot) => (slot.status || 'active') === 'active'),
+    }))
+    .filter((cabinet) => cabinet.slots.length),
+)
 const slotOptionLabel = (slot) =>
   slot.capacity
     ? `${slot.slot_code} — ${slot.record_count} / ${slot.capacity} records`
@@ -511,7 +519,7 @@ onMounted(loadProfile)
             Cabinet Slot
             <select v-model="locationForm.cabinet_slot_id" required>
               <option value="" disabled>Select a cabinet slot</option>
-              <optgroup v-for="cabinet in cabinets" :key="cabinet.id" :label="`Cabinet ${cabinet.cabinet_code}`">
+              <optgroup v-for="cabinet in activeCabinets" :key="cabinet.id" :label="`Cabinet ${cabinet.cabinet_code}`">
                 <option v-for="slot in cabinet.slots" :key="slot.id" :value="slot.id">
                   {{ slotOptionLabel(slot) }}
                 </option>
@@ -523,12 +531,12 @@ onMounted(loadProfile)
             <span>(optional)</span>
             <textarea v-model.trim="locationForm.remarks" rows="2" maxlength="500"></textarea>
           </label>
-          <p v-if="!cabinets.length" class="empty-state">
+          <p v-if="!activeCabinets.length" class="empty-state">
             No cabinets are available. Create a cabinet from Physical Records first.
           </p>
           <div class="location-form-actions">
             <button type="button" :disabled="locationSaving" @click="cancelLocationEdit">Cancel</button>
-            <button class="location-save" type="submit" :disabled="locationSaving || !cabinets.length">
+            <button class="location-save" type="submit" :disabled="locationSaving || !activeCabinets.length">
               {{ locationSaving ? 'Saving…' : 'Change Physical Record Location' }}
             </button>
           </div>

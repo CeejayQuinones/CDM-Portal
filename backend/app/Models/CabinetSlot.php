@@ -15,6 +15,9 @@ class CabinetSlot extends Model
         'cabinet_id',
         'slot_code',
         'capacity',
+        'size',
+        'description',
+        'status',
     ];
 
     protected function casts(): array

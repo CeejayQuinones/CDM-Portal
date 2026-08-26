@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
+Route::post('/registration/email-verification/send', [AuthController::class, 'sendEmailVerification'])
+    ->middleware('throttle:3,1');
+Route::post('/registration/email-verification/verify', [AuthController::class, 'verifyEmail'])
+    ->middleware('throttle:5,1');
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -21,6 +25,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::middleware('role.registrar-or-admin')->group(function (): void {
         Route::get('/students', [StudentController::class, 'index']);
+        Route::get('/students/bulk-options', [StudentController::class, 'bulkOptions']);
+        Route::patch('/students/bulk', [StudentController::class, 'bulkUpdate'])->middleware('step-up');
         Route::get('/students/{student}', [StudentController::class, 'show']);
         Route::get('/students/{student}/documents', [StudentController::class, 'documents']);
         Route::patch('/students/{student}', [StudentController::class, 'update'])->middleware('step-up');
@@ -42,6 +48,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/cabinets', [RegistrarCabinetController::class, 'store']);
         Route::get('/cabinets/{cabinet}', [RegistrarCabinetController::class, 'show']);
         Route::get('/cabinet-slots/{cabinetSlot}', [RegistrarCabinetController::class, 'showSlot']);
+        Route::patch('/cabinet-slots/{cabinetSlot}', [RegistrarCabinetController::class, 'updateSlot'])
+            ->middleware('step-up');
         Route::match(['put', 'patch'], '/students/{student}/record-location', [RegistrarCabinetController::class, 'updateStudentLocation'])
             ->middleware('step-up');
         Route::get('/document-types', [RegistrarDocumentTypeController::class, 'index']);

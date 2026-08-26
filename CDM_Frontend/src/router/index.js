@@ -5,7 +5,7 @@ import AuthLayout from '../layouts/AuthLayout.vue'
 import DashboardLayout from '../layouts/DashboardLayout.vue'
 import DashboardView from '../views/DashboardView.vue'
 import LoginView from '../views/LoginView.vue'
-import RegisterView from '../views/RegisterView.vue'
+import PublicLegalView from '../views/PublicLegalView.vue'
 import UnauthorizedView from '../views/UnauthorizedView.vue'
 import GuestDashboardView from '../views/GuestDashboardView.vue'
 import RoleDashboardView from '../views/RoleDashboardView.vue'
@@ -47,10 +47,22 @@ const routes = [
       {
         path: '/register',
         name: 'register',
-        component: RegisterView,
+        redirect: { name: 'login', query: { signup: '1' } },
         meta: { title: 'Register', guestOnly: true },
       },
     ],
+  },
+  {
+    path: '/terms',
+    name: 'terms',
+    component: PublicLegalView,
+    meta: { title: 'Terms & Conditions' },
+  },
+  {
+    path: '/privacy',
+    name: 'privacy',
+    component: PublicLegalView,
+    meta: { title: 'Privacy Policy' },
   },
   {
     path: '/',

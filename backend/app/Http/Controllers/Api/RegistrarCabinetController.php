@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreCabinetRequest;
+use App\Http\Requests\UpdateCabinetSlotRequest;
 use App\Http\Requests\UpdateStudentRecordLocationRequest;
 use App\Http\Resources\CabinetResource;
 use App\Http\Resources\StudentDocumentResource;
@@ -153,6 +154,9 @@ class RegistrarCabinetController extends Controller
             'id' => $cabinetSlot->id,
             'slot_code' => $cabinetSlot->slot_code,
             'capacity' => $cabinetSlot->capacity,
+            'size' => $cabinetSlot->size,
+            'description' => $cabinetSlot->description,
+            'status' => $cabinetSlot->status,
             'record_count' => (int) $cabinetSlot->student_record_locations_count,
             'cabinet' => [
                 'id' => $cabinetSlot->cabinet->id,
@@ -165,6 +169,60 @@ class RegistrarCabinetController extends Controller
         ], 'Cabinet slot retrieved successfully.');
     }
 
+    public function updateSlot(
+        UpdateCabinetSlotRequest $request,
+        CabinetSlot $cabinetSlot,
+    ): JsonResponse {
+        $attributes = $request->validated();
+
+        $slot = DB::transaction(function () use ($cabinetSlot, $attributes): CabinetSlot {
+            $slot = CabinetSlot::query()->whereKey($cabinetSlot->id)->lockForUpdate()->firstOrFail();
+            $recordCount = StudentRecordLocation::query()
+                ->where('cabinet_slot_id', $slot->id)
+                ->count();
+
+            if ($attributes['capacity'] !== null && $attributes['capacity'] < $recordCount) {
+                throw ValidationException::withMessages([
+                    'capacity' => [sprintf(
+                        'This slot currently contains %d records. Capacity cannot be reduced below %d.',
+                        $recordCount,
+                        $recordCount,
+                    )],
+                ]);
+            }
+
+            if ($attributes['status'] === 'inactive' && $recordCount > 0) {
+                throw ValidationException::withMessages([
+                    'status' => ['Move the existing records before disabling this slot.'],
+                ]);
+            }
+
+            $slot->update($attributes);
+
+            return $slot;
+        });
+
+        $slot->load('cabinet:id,cabinet_code,description,rows,columns')
+            ->loadCount('studentRecordLocations');
+
+        return $this->ok([
+            'id' => $slot->id,
+            'slot_code' => $slot->slot_code,
+            'capacity' => $slot->capacity,
+            'size' => $slot->size,
+            'description' => $slot->description,
+            'status' => $slot->status,
+            'record_count' => (int) $slot->student_record_locations_count,
+            'cabinet' => [
+                'id' => $slot->cabinet->id,
+                'cabinet_code' => $slot->cabinet->cabinet_code,
+                'description' => $slot->cabinet->description,
+                'rows' => $slot->cabinet->rows,
+                'columns' => $slot->cabinet->columns,
+            ],
+        ], 'Cabinet slot updated successfully.');
+    }
+
     public function updateStudentLocation(
         UpdateStudentRecordLocationRequest $request,
         Student $student,
@@ -174,6 +232,12 @@ class RegistrarCabinetController extends Controller
         $location = DB::transaction(function () use ($student, $attributes): StudentRecordLocation {
             Student::query()->whereKey($student->id)->lockForUpdate()->firstOrFail();
             $slot = CabinetSlot::query()->whereKey($attributes['cabinet_slot_id'])->lockForUpdate()->firstOrFail();
+
+            if ($slot->status !== 'active') {
+                throw ValidationException::withMessages([
+                    'cabinet_slot_id' => ['The selected cabinet slot is inactive. Choose an active slot.'],
+                ]);
+            }
 
             if ($slot->capacity !== null) {
                 $currentRecords = StudentRecordLocation::query()
@@ -225,7 +289,7 @@ class RegistrarCabinetController extends Controller
             ->select(['id', 'cabinet_code', 'description', 'rows', 'columns', 'created_at', 'updated_at'])
             ->withCount('slots')
             ->with(['slots' => fn ($slots) => $slots
-                ->select(['id', 'cabinet_id', 'slot_code', 'capacity'])
+                ->select(['id', 'cabinet_id', 'slot_code', 'capacity', 'size', 'description', 'status'])
                 ->withCount('studentRecordLocations')
                 ->orderBy('id')])
             ->orderBy('cabinet_code');

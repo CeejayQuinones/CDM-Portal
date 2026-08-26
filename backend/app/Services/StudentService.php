@@ -2,9 +2,14 @@
 
 namespace App\Services;
 
+use App\Http\Requests\BulkUpdateStudentsRequest;
+use App\Models\CabinetSlot;
 use App\Models\Student;
+use App\Models\StudentDocument;
+use App\Models\StudentRecordLocation;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class StudentService
 {
@@ -82,5 +87,164 @@ class StudentService
 
             return $this->find($student->id);
         });
+    }
+
+    /**
+     * @param  list<int>  $studentIds
+     * @return array{updated_count: int, action: string}
+     */
+    public function bulkUpdate(array $studentIds, string $action, mixed $value): array
+    {
+        $studentIds = array_values(array_unique(array_map('intval', $studentIds)));
+
+        return DB::transaction(function () use ($studentIds, $action, $value): array {
+            $lockedStudentIds = Student::query()
+                ->whereKey($studentIds)
+                ->lockForUpdate()
+                ->pluck('id')
+                ->map(fn (int $id): int => $id)
+                ->all();
+
+            if (count($lockedStudentIds) !== count($studentIds)) {
+                throw ValidationException::withMessages([
+                    'student_ids' => ['One or more selected student records no longer exist. Refresh the list and try again.'],
+                ]);
+            }
+
+            $updatedCount = match ($action) {
+                BulkUpdateStudentsRequest::CHANGE_STATUS => $this->updateStudentColumn(
+                    $lockedStudentIds,
+                    'student_status',
+                    $value,
+                ),
+                BulkUpdateStudentsRequest::CHANGE_YEAR_LEVEL => $this->updateStudentColumn(
+                    $lockedStudentIds,
+                    'year_level',
+                    (int) $value,
+                ),
+                BulkUpdateStudentsRequest::CHANGE_COURSE => $this->updateStudentColumn(
+                    $lockedStudentIds,
+                    'course_id',
+                    (int) $value,
+                ),
+                BulkUpdateStudentsRequest::ASSIGN_RECORD_LOCATION => $this->assignRecordLocation(
+                    $lockedStudentIds,
+                    (int) $value['cabinet_slot_id'],
+                ),
+                BulkUpdateStudentsRequest::UPDATE_DOCUMENT_AVAILABILITY => $this->updateDocumentAvailability(
+                    $lockedStudentIds,
+                    (int) $value['document_type_id'],
+                    $value['availability_status'],
+                ),
+                default => throw new \LogicException('Unsupported student bulk action.'),
+            };
+
+            return [
+                'updated_count' => $updatedCount,
+                'action' => $action,
+            ];
+        });
+    }
+
+    /** @param list<int> $studentIds */
+    private function updateStudentColumn(array $studentIds, string $column, string|int $value): int
+    {
+        Student::query()->whereKey($studentIds)->update([
+            $column => $value,
+            'updated_at' => now(),
+        ]);
+
+        return count($studentIds);
+    }
+
+    /** @param list<int> $studentIds */
+    private function assignRecordLocation(array $studentIds, int $cabinetSlotId): int
+    {
+        $slot = CabinetSlot::query()->whereKey($cabinetSlotId)->lockForUpdate()->firstOrFail();
+
+        if ($slot->status !== 'active') {
+            throw ValidationException::withMessages([
+                'value.cabinet_slot_id' => ['The selected cabinet slot is inactive. Choose an active slot.'],
+            ]);
+        }
+
+        $existingLocations = StudentRecordLocation::query()
+            ->whereIn('student_id', $studentIds)
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('student_id');
+
+        if ($slot->capacity !== null) {
+            $currentRecordCount = StudentRecordLocation::query()
+                ->where('cabinet_slot_id', $slot->id)
+                ->count();
+            $newRecordCount = collect($studentIds)
+                ->reject(fn (int $studentId): bool => $existingLocations->get($studentId)?->cabinet_slot_id === $slot->id)
+                ->count();
+
+            if ($currentRecordCount + $newRecordCount > $slot->capacity) {
+                throw ValidationException::withMessages([
+                    'value.cabinet_slot_id' => [sprintf(
+                        'The selected cabinet slot has room for %d more record(s), but %d selected record(s) require space.',
+                        max(0, $slot->capacity - $currentRecordCount),
+                        $newRecordCount,
+                    )],
+                ]);
+            }
+        }
+
+        $now = now();
+        $rows = collect($studentIds)->map(function (int $studentId) use ($cabinetSlotId, $existingLocations, $now): array {
+            $existing = $existingLocations->get($studentId);
+
+            return [
+                'student_id' => $studentId,
+                'cabinet_slot_id' => $cabinetSlotId,
+                'assigned_at' => $now,
+                'remarks' => $existing?->remarks,
+                'created_at' => $existing?->created_at ?? $now,
+                'updated_at' => $now,
+            ];
+        });
+
+        $rows->chunk(100)->each(fn ($chunk) => StudentRecordLocation::query()->upsert(
+            $chunk->all(),
+            ['student_id'],
+            ['cabinet_slot_id', 'assigned_at', 'remarks', 'updated_at'],
+        ));
+
+        return count($studentIds);
+    }
+
+    /** @param list<int> $studentIds */
+    private function updateDocumentAvailability(array $studentIds, int $documentTypeId, string $availability): int
+    {
+        $documentStudentIds = StudentDocument::query()
+            ->whereIn('student_id', $studentIds)
+            ->where('document_type_id', $documentTypeId)
+            ->lockForUpdate()
+            ->pluck('student_id')
+            ->map(fn (int $id): int => $id)
+            ->all();
+        $missingStudentIds = array_values(array_diff($studentIds, $documentStudentIds));
+
+        if ($missingStudentIds !== []) {
+            throw ValidationException::withMessages([
+                'student_ids' => [sprintf(
+                    'No matching student document exists for student ID(s): %s. No records were changed.',
+                    implode(', ', array_slice($missingStudentIds, 0, 20)),
+                )],
+            ]);
+        }
+
+        StudentDocument::query()
+            ->whereIn('student_id', $studentIds)
+            ->where('document_type_id', $documentTypeId)
+            ->update([
+                'availability_status' => $availability,
+                'updated_at' => now(),
+            ]);
+
+        return count($studentIds);
     }
 }

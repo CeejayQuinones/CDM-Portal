@@ -20,6 +20,9 @@ class StudentRecordLocationResource extends JsonResource
                 'id' => $this->cabinetSlot->id,
                 'slot_code' => $this->cabinetSlot->slot_code,
                 'capacity' => $this->cabinetSlot->capacity,
+                'size' => $this->cabinetSlot->size,
+                'description' => $this->cabinetSlot->description,
+                'status' => $this->cabinetSlot->status,
                 'cabinet' => $this->cabinetSlot->relationLoaded('cabinet') ? [
                     'id' => $this->cabinetSlot->cabinet->id,
                     'cabinet_code' => $this->cabinetSlot->cabinet->cabinet_code,

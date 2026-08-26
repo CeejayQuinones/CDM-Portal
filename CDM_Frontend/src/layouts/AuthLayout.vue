@@ -6,12 +6,7 @@
 
 <style scoped>
 .auth-layout {
-  display: grid;
   min-height: 100vh;
-  place-items: center;
-  padding: 24px;
-  background:
-    radial-gradient(circle at 15% 15%, rgba(244, 211, 94, 0.28), transparent 28%),
-    linear-gradient(135deg, var(--color-dartmouth-green), var(--color-dark-spring-green));
+  background: #fff;
 }
 </style>

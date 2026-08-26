@@ -2,10 +2,12 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
+import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
 import { physicalRecordsService as api } from './physicalRecordsService'
 
 const route = useRoute()
 const router = useRouter()
+const { runWithStepUp } = useStepUpAuth()
 const cabinets = ref([])
 const loading = ref(false)
 const creating = ref(false)
@@ -17,12 +19,23 @@ const detailLoading = ref(false)
 const detailError = ref('')
 const detailPanel = ref(null)
 const formErrors = ref({})
+const showSlotEdit = ref(false)
+const slotSaving = ref(false)
+const slotFormErrors = ref({})
+const slotEditError = ref('')
 const form = reactive({
   cabinet_code: '',
   rows: 2,
   columns: 3,
   slot_capacity: '',
   description: '',
+})
+const slotForm = reactive({
+  slot_code: '',
+  capacity: '',
+  size: 'small',
+  description: '',
+  status: 'active',
 })
 
 const students = computed(() => selectedSlot.value?.students?.data || [])
@@ -143,6 +156,57 @@ function viewStudent(studentId) {
   router.push({ name: 'student-details', params: { id: studentId } })
 }
 
+function editSlot() {
+  if (!selectedSlot.value) return
+  Object.assign(slotForm, {
+    slot_code: selectedSlot.value.slot_code || '',
+    capacity: selectedSlot.value.capacity ?? '',
+    size: selectedSlot.value.size || 'small',
+    description: selectedSlot.value.description || '',
+    status: selectedSlot.value.status || 'active',
+  })
+  slotFormErrors.value = {}
+  slotEditError.value = ''
+  showSlotEdit.value = true
+}
+
+function closeSlotEdit() {
+  if (slotSaving.value) return
+  showSlotEdit.value = false
+  slotFormErrors.value = {}
+  slotEditError.value = ''
+}
+
+async function updateSlot() {
+  if (!selectedSlot.value) return
+  slotSaving.value = true
+  slotFormErrors.value = {}
+  slotEditError.value = ''
+  success.value = ''
+
+  try {
+    const updatedSlot = await runWithStepUp(() =>
+      api.updateCabinetSlot(selectedSlot.value.id, {
+        slot_code: slotForm.slot_code.trim(),
+        capacity: slotForm.capacity === '' ? null : Number(slotForm.capacity),
+        size: slotForm.size,
+        description: slotForm.description.trim() || null,
+        status: slotForm.status,
+      }),
+    )
+    selectedSlot.value = { ...selectedSlot.value, ...updatedSlot }
+    showSlotEdit.value = false
+    success.value = `Slot ${updatedSlot.slot_code} was updated successfully.`
+    await loadCabinets()
+  } catch (requestError) {
+    if (isStepUpCancelled(requestError)) return
+    slotFormErrors.value = requestError.response?.data?.errors || {}
+    slotEditError.value = errorMessage(requestError, 'Unable to update this cabinet slot.')
+  } finally {
+    slotSaving.value = false
+  }
+}
+
 onMounted(async () => {
   await loadCabinets()
   if (route.query.slot) await openSlot(route.query.slot, 1, false)
@@ -242,6 +306,8 @@ onMounted(async () => {
           :class="{
             occupied: slotCount(slot) > 0,
             selected: selectedSlot?.id === slot.id,
+            inactive: slot.status === 'inactive',
+            [`size-${slot.size || 'small'}`]: true,
           }"
           type="button"
           @click="openSlot(slot.id)"
@@ -250,6 +316,7 @@ onMounted(async () => {
           <strong>{{ slot.slot_code }}</strong>
           <small v-if="slot.capacity">{{ slotCount(slot) }} / {{ slot.capacity }} records</small>
           <small v-else>{{ slotCount(slot) }} {{ slotCount(slot) === 1 ? 'record' : 'records' }}</small>
+          <span v-if="slot.status === 'inactive'" class="slot-status">Inactive</span>
         </button>
       </div>
     </article>
@@ -269,8 +336,12 @@ onMounted(async () => {
           {{ selectedSlot.record_count }} stored
           {{ selectedSlot.record_count === 1 ? 'student record' : 'student records' }}
         </p>
+        <p v-if="selectedSlot?.description">{{ selectedSlot.description }}</p>
       </div>
-      <button class="secondary-button" type="button" @click="closeSlot">Close</button>
+      <div class="slot-detail-actions">
+        <button v-if="selectedSlot" class="primary-button" type="button" @click="editSlot">Edit Slot</button>
+        <button class="secondary-button" type="button" @click="closeSlot">Close</button>
+      </div>
     </div>
 
     <p v-if="detailLoading" class="state">Loading stored student records…</p>
@@ -345,6 +416,65 @@ onMounted(async () => {
       @page-change="(nextPage) => openSlot(selectedSlot.id, nextPage)"
     />
   </section>
+
+  <div v-if="showSlotEdit" class="modal-backdrop" role="presentation" @mousedown.self="closeSlotEdit">
+    <section
+      class="slot-edit-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="slot-edit-title"
+      aria-describedby="slot-edit-description"
+    >
+      <p class="eyebrow">Cabinet {{ cabinetName(selectedSlot?.cabinet) }}</p>
+      <h2 id="slot-edit-title">Edit Slot</h2>
+      <p id="slot-edit-description">Update this storage slot without changing its assigned student records.</p>
+
+      <p v-if="slotEditError" class="notice error" role="alert">{{ slotEditError }}</p>
+
+      <form class="slot-edit-form" @submit.prevent="updateSlot">
+        <label>
+          Slot Name / Code
+          <input v-model="slotForm.slot_code" required maxlength="100" autocomplete="off" />
+          <small v-if="slotFormErrors.slot_code">{{ slotFormErrors.slot_code[0] }}</small>
+        </label>
+        <label>
+          Capacity
+          <input v-model="slotForm.capacity" type="number" min="1" placeholder="No limit" />
+          <small v-if="slotFormErrors.capacity">{{ slotFormErrors.capacity[0] }}</small>
+        </label>
+        <label>
+          Visual Size
+          <select v-model="slotForm.size" required>
+            <option value="small">Small</option>
+            <option value="medium">Medium</option>
+            <option value="large">Large</option>
+            <option value="wide">Wide</option>
+          </select>
+          <small v-if="slotFormErrors.size">{{ slotFormErrors.size[0] }}</small>
+        </label>
+        <label>
+          Status
+          <select v-model="slotForm.status" required>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <small v-if="slotFormErrors.status">{{ slotFormErrors.status[0] }}</small>
+        </label>
+        <label class="slot-description-field">
+          Description <span>(optional)</span>
+          <textarea v-model="slotForm.description" rows="3" maxlength="1000"></textarea>
+          <small v-if="slotFormErrors.description">{{ slotFormErrors.description[0] }}</small>
+        </label>
+        <p class="security-message">Saving structural slot changes may require password verification.</p>
+        <div class="modal-actions">
+          <button class="secondary-button" type="button" :disabled="slotSaving" @click="closeSlotEdit">Cancel</button>
+          <button class="primary-button" type="submit" :disabled="slotSaving">
+            {{ slotSaving ? 'Saving…' : 'Save Slot' }}
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
 </template>
 
 <style scoped>
@@ -496,6 +626,8 @@ button:disabled {
 .cabinet-grid {
   display: grid;
   gap: 12px;
+  grid-auto-flow: dense;
+  grid-auto-rows: minmax(104px, auto);
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   padding: 3px;
 }
@@ -509,12 +641,26 @@ button:disabled {
   color: var(--color-eerie-black);
   cursor: pointer;
   display: grid;
+  height: 100%;
   justify-items: center;
   max-width: 100%;
   min-height: 104px;
   min-width: 0;
   padding: 14px 10px 11px;
   position: relative;
+}
+.slot-drawer.size-small {
+  grid-column: span 1;
+}
+.slot-drawer.size-medium {
+  grid-column: span 2;
+}
+.slot-drawer.size-large {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+.slot-drawer.size-wide {
+  grid-column: span 3;
 }
 .slot-drawer:hover,
 .slot-drawer.selected {
@@ -526,6 +672,11 @@ button:disabled {
 }
 .slot-drawer.occupied {
   background: linear-gradient(180deg, #f2faf4, #dbeadf);
+}
+.slot-drawer.inactive {
+  background: #f1f2f1;
+  border-style: dashed;
+  opacity: 0.72;
 }
 .slot-drawer strong {
   color: var(--color-dartmouth-green);
@@ -546,8 +697,21 @@ button:disabled {
   height: 5px;
   width: 34px;
 }
+.slot-status {
+  background: #e2e4e2;
+  border-radius: 999px;
+  color: #555f57;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 3px 7px;
+  text-transform: uppercase;
+}
 .slot-detail {
   scroll-margin-top: 16px;
+}
+.slot-detail-actions {
+  display: flex;
+  gap: 9px;
 }
 .slot-detail-heading {
   border-bottom: 1px solid var(--color-border);
@@ -634,6 +798,87 @@ button:disabled {
   color: var(--color-muted);
   margin: 0;
 }
+.modal-backdrop {
+  align-items: center;
+  background: rgb(7 24 13 / 58%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 20px;
+  position: fixed;
+  z-index: 1200;
+}
+.slot-edit-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 24%);
+  max-width: 620px;
+  padding: 26px;
+  width: 100%;
+}
+.slot-edit-modal h2 {
+  margin: 4px 0 5px;
+}
+.slot-edit-modal > p:not(.eyebrow, .notice) {
+  color: var(--color-muted);
+  margin: 0 0 18px;
+}
+.slot-edit-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.slot-edit-form label {
+  color: var(--color-muted);
+  display: grid;
+  font-size: 0.82rem;
+  font-weight: 700;
+  gap: 6px;
+}
+.slot-edit-form label > span {
+  font-weight: 400;
+}
+.slot-edit-form input,
+.slot-edit-form select,
+.slot-edit-form textarea {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-eerie-black);
+  min-height: 42px;
+  padding: 9px 11px;
+  width: 100%;
+}
+.slot-edit-form textarea {
+  resize: vertical;
+}
+.slot-edit-form small {
+  color: #b42318;
+}
+.slot-description-field,
+.security-message,
+.modal-actions {
+  grid-column: 1 / -1;
+}
+.security-message {
+  background: var(--color-green-tint);
+  border-radius: 8px;
+  color: var(--color-dartmouth-green);
+  font-size: 0.82rem;
+  margin: 0;
+  padding: 10px 12px;
+}
+.modal-actions {
+  display: flex;
+  gap: 9px;
+  justify-content: flex-end;
+}
+@media (max-width: 900px) {
+  .slot-drawer.size-wide {
+    grid-column: span 2;
+  }
+}
 @media (max-width: 700px) {
   .physical-records-header,
   .cabinet-heading,
@@ -645,6 +890,10 @@ button:disabled {
   .physical-records-header .primary-button,
   .student-summary .primary-button {
     width: 100%;
+  }
+  .slot-detail-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .cabinet-form,
   .document-columns {
@@ -659,6 +908,21 @@ button:disabled {
   .student-photo {
     height: 78px;
     width: 66px;
+  }
+  .slot-drawer.size-small,
+  .slot-drawer.size-medium,
+  .slot-drawer.size-large,
+  .slot-drawer.size-wide {
+    grid-column: span 1;
+    grid-row: span 1;
+  }
+  .slot-edit-form {
+    grid-template-columns: 1fr;
+  }
+  .slot-description-field,
+  .security-message,
+  .modal-actions {
+    grid-column: auto;
   }
 }
 </style>
