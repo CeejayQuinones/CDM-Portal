@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 
@@ -23,14 +23,17 @@ const displayName = computed(() => {
 })
 const initials = computed(() => displayName.value.slice(0, 1).toUpperCase())
 const pageTitle = computed(() => router.currentRoute.value.meta.title || 'CDM Portal')
+const handleInstallPrompt = (event) => {
+  event.preventDefault()
+  installPrompt.value = event
+  canInstall.value = true
+}
 
 onMounted(() => {
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault()
-    installPrompt.value = event
-    canInstall.value = true
-  })
+  window.addEventListener('beforeinstallprompt', handleInstallPrompt)
 })
+
+onBeforeUnmount(() => window.removeEventListener('beforeinstallprompt', handleInstallPrompt))
 
 const installApp = async () => {
   if (!installPrompt.value) return

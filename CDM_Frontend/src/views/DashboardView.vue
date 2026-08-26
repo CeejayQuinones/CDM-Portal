@@ -15,7 +15,7 @@ const moduleCards = computed(() =>
   <section class="page-header">
     <p class="page-kicker">Welcome</p>
     <h1 class="page-title">CDM Portal Dashboard</h1>
-    <p class="page-description">Welcome to OneServe, your centralized campus information workspace.</p>
+    <p class="page-description">Welcome to CDM Portal, your centralized campus information workspace.</p>
   </section>
 
   <section class="dashboard-grid" aria-label="Campus management modules">

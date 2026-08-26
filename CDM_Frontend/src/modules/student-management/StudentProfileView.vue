@@ -208,7 +208,7 @@ onMounted(loadProfile)
   <template v-else-if="student">
     <section class="student-id-card" aria-label="Student identification card">
       <div class="id-card-banner">
-        <span>CDM OneServe</span>
+        <span>CDM Portal</span>
         <strong>Student Record</strong>
       </div>
       <div class="id-card-body">

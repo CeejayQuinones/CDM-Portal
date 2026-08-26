@@ -42,6 +42,13 @@ export const ROUTE_ROLES = Object.freeze({
 
 export const NAVIGATION_ITEMS = Object.freeze([
   {
+    name: 'registrar-dashboard',
+    label: 'Registrar Dashboard',
+    path: '/registrar-dashboard',
+    icon: 'DB',
+    roles: ROUTE_ROLES['registrar-dashboard'],
+  },
+  {
     name: 'guest-dashboard',
     label: 'Dashboard',
     path: '/guest-dashboard',
@@ -120,13 +127,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
     path: '/professor-dashboard',
     icon: 'DB',
     roles: ROUTE_ROLES['professor-dashboard'],
-  },
-  {
-    name: 'registrar-dashboard',
-    label: 'Registrar Dashboard',
-    path: '/registrar-dashboard',
-    icon: 'DB',
-    roles: ROUTE_ROLES['registrar-dashboard'],
   },
   {
     name: 'admin-dashboard',

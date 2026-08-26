@@ -26,6 +26,7 @@ import StudentProfileView from '../modules/student-management/StudentProfileView
 import StudentDocumentsView from '../modules/student-management/StudentDocumentsView.vue'
 import PhysicalRecordsView from '../modules/student-management/PhysicalRecordsView.vue'
 import EventAttendanceView from '../modules/event-attendance/EventAttendanceView.vue'
+import RegistrarDashboardView from '../modules/registrar-dashboard/RegistrarDashboardView.vue'
 
 const protectedRoute = (route) => ({
   ...route,
@@ -113,8 +114,7 @@ const routes = [
       protectedRoute({
         path: 'registrar-dashboard',
         name: 'registrar-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.REGISTRAR_STAFF },
+        component: RegistrarDashboardView,
         meta: {
           title: 'Registrar Dashboard',
           roles: ROUTE_ROLES['registrar-dashboard'],

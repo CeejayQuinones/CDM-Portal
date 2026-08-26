@@ -301,7 +301,7 @@ onBeforeUnmount(() => clearInterval(cooldownTimer))
                   <label>Username <input v-model="form.username" autocomplete="username" @blur="touch('username')" /><small v-if="showFieldError('username')">{{ fieldError('username') }}</small></label>
                   <label>Password <div class="password-wrap"><input v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" @blur="touch('password')" /><button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Hide' : 'Show' }}</button></div><small v-if="showFieldError('password')">{{ fieldError('password') }}</small></label>
                   <label>Confirm password <input v-model="form.password_confirmation" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" @blur="touch('password_confirmation')" /><small v-if="showFieldError('password_confirmation')">{{ fieldError('password_confirmation') }}</small></label>
-                  <label class="consent"><input v-model="form.terms_accepted" type="checkbox" @change="touch('terms_accepted')" /><span>I agree to the <a href="#/terms" target="_blank">Terms & Conditions</a> and <a href="#/privacy" target="_blank">Privacy Policy</a>.</span></label>
+                  <label class="consent"><input v-model="form.terms_accepted" type="checkbox" @change="touch('terms_accepted')" /><span>I agree to the <a href="#/terms" target="_blank" rel="noopener">Terms & Conditions</a> and <a href="#/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
                   <small v-if="showFieldError('terms_accepted')" class="standalone-error">{{ fieldError('terms_accepted') }}</small>
                 </div>
               </section>

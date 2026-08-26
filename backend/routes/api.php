@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
+use App\Http\Controllers\Api\RegistrarDashboardController;
 use App\Http\Controllers\Api\RegistrarDocumentRequestController;
 use App\Http\Controllers\Api\RegistrarDocumentTypeController;
 use App\Http\Controllers\Api\StepUpAuthenticationController;
@@ -44,6 +45,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
     });
 
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
+        Route::get('/dashboard', RegistrarDashboardController::class);
         Route::get('/cabinets', [RegistrarCabinetController::class, 'index']);
         Route::post('/cabinets', [RegistrarCabinetController::class, 'store']);
         Route::get('/cabinets/{cabinet}', [RegistrarCabinetController::class, 'show']);
