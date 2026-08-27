@@ -39,20 +39,25 @@
     "appId": "edu.cdm.portal",
     "productName": "CDM Portal",
     "directories": {
+      "buildResources": "build",
       "output": "release"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "build/icon.png",
       "package.json"
     ],
     "win": {
+      "icon": "icon.ico",
       "target": "nsis"
     },
     "mac": {
+      "icon": "icon.png",
       "target": "dmg"
     },
     "linux": {
+      "icon": "icon.png",
       "target": "AppImage"
     }
   }
