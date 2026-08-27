@@ -8,6 +8,7 @@ const createWindow = () => {
     minWidth: 960,
     minHeight: 640,
     title: 'CDM Portal',
+    icon: path.join(__dirname, '../build/icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,

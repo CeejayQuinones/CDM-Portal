@@ -30,6 +30,121 @@
   color: var(--color-muted);
   margin: 4px 0;
 }
+
+.appointment-calendar {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  margin: 0;
+  padding: 14px;
+}
+
+.appointment-calendar legend {
+  font-weight: 700;
+  padding: 0 6px;
+}
+
+.calendar-toolbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.dr-panel .calendar-nav {
+  min-height: 34px;
+  padding: 4px 13px;
+}
+
+.calendar-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendar-weekday {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.dr-panel .calendar-day {
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  color: var(--color-eerie-black);
+  display: flex;
+  flex-direction: column;
+  font-weight: 700;
+  gap: 3px;
+  min-height: 66px;
+  padding: 7px;
+  text-align: left;
+}
+
+.dr-panel .calendar-day:hover:not(:disabled),
+.dr-panel .calendar-day.selected {
+  background: #e9f8ee;
+  border-color: var(--color-dartmouth-green);
+}
+
+.dr-panel .calendar-day.unavailable {
+  background: #fff0f0;
+  border-color: #f4b4b4;
+  color: #991b1b;
+  opacity: 1;
+}
+
+.calendar-day small {
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.calendar-selection {
+  color: var(--color-dark-spring-green);
+  font-size: 0.86rem;
+  font-weight: 700;
+  margin: 10px 0 0;
+}
+
+.availability-weekend-note {
+  border-left: 4px solid var(--color-naples-yellow);
+}
+
+.availability-weekend-note p {
+  color: var(--color-muted);
+  margin: 5px 0 0;
+}
+
+.availability-table {
+  overflow-x: auto;
+}
+
+.availability-row {
+  align-items: center;
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.1fr 1fr 1.8fr 0.7fr 2fr;
+  min-width: 900px;
+  padding: 13px 4px;
+}
+
+.availability-row .badge {
+  justify-self: start;
+}
+
+.availability-head {
+  border-top: 0;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
 .toolbar,
 .actions {
   display: flex;
@@ -465,6 +580,19 @@
   }
   .toolbar input {
     width: 100%;
+  }
+  .appointment-calendar {
+    padding: 10px;
+  }
+  .calendar-grid {
+    gap: 3px;
+  }
+  .dr-panel .calendar-day {
+    min-height: 52px;
+    padding: 5px;
+  }
+  .calendar-day small {
+    display: none;
   }
   .record-check-heading {
     grid-template-columns: auto 1fr;
