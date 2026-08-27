@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDashboardController;
 use App\Http\Controllers\Api\RegistrarDocumentRequestController;
@@ -34,6 +37,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
     });
 
     Route::middleware('role.student')->group(function (): void {
+        Route::get('/holidays', HolidayController::class);
+        Route::get('/appointment-availability', AppointmentAvailabilityController::class);
         Route::get('/document-types', [StudentDocumentRequestController::class, 'documentTypes']);
         Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);
         Route::post('/document-requests', [StudentDocumentRequestController::class, 'store']);
@@ -45,6 +50,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
     });
 
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
+        Route::apiResource('appointment-blocked-dates', RegistrarAppointmentBlockedDateController::class)
+            ->only(['index', 'store', 'update', 'destroy']);
         Route::get('/dashboard', RegistrarDashboardController::class);
         Route::get('/cabinets', [RegistrarCabinetController::class, 'index']);
         Route::post('/cabinets', [RegistrarCabinetController::class, 'store']);
