@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDashboardController;
@@ -42,6 +43,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/appointment-slots', [StudentDocumentRequestController::class, 'slots']);
         Route::get('/appointment-overview', [StudentDocumentRequestController::class, 'appointmentOverview']);
         Route::get('/appointments', [StudentDocumentRequestController::class, 'appointments']);
+        Route::get('/appointment-availability', [AppointmentAvailabilityController::class, 'show']);
     });
 
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
@@ -64,5 +66,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::patch('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'update']);
         Route::get('/appointments', [RegistrarDocumentRequestController::class, 'appointments']);
         Route::patch('/appointments/{appointment}', [RegistrarDocumentRequestController::class, 'updateAppointment']);
+        Route::get('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'settings']);
+        Route::patch('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'updateSettings']);
+        Route::get('/appointment-blocked-dates', [AppointmentAvailabilityController::class, 'blockedDates']);
+        Route::post('/appointment-blocked-dates', [AppointmentAvailabilityController::class, 'storeBlockedDate']);
+        Route::patch('/appointment-blocked-dates/{appointmentBlockedDate}', [AppointmentAvailabilityController::class, 'updateBlockedDate']);
+        Route::delete('/appointment-blocked-dates/{appointmentBlockedDate}', [AppointmentAvailabilityController::class, 'destroyBlockedDate']);
     });
 });

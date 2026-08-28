@@ -258,6 +258,10 @@ const logout = async () => {
   min-height: 42px;
   padding: 9px 11px;
   position: relative;
+  transition:
+    background-color 170ms ease,
+    box-shadow 170ms ease,
+    color 170ms ease;
 }
 
 .nav-parent {
@@ -270,8 +274,15 @@ const logout = async () => {
 }
 
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   color: #fff;
+}
+
+.nav-link:focus-visible,
+.sign-out-button:focus-visible {
+  outline: 2px solid #fff05a;
+  outline-offset: 2px;
 }
 
 .nav-parent.is-active,
@@ -399,8 +410,13 @@ const logout = async () => {
 }
 
 .sign-out-button:hover {
-  background: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   color: #fff;
+}
+
+.sign-out-button:active {
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .sign-out-button:disabled {

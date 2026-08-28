@@ -52,8 +52,21 @@ const moduleCards = computed(() =>
 
 .module-card:hover {
   border-color: var(--color-dark-spring-green);
-  transform: translateY(-4px);
-  box-shadow: 0 20px 44px rgba(13, 120, 86, 0.16);
+  background: #fbfefc;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(13, 120, 86, 0.14);
+}
+
+.module-card:active {
+  background: #f0f8f2;
+  box-shadow: 0 5px 12px rgba(13, 120, 86, 0.12);
+  transform: translateY(0);
+}
+
+.module-card:focus-visible {
+  border-color: var(--color-dark-spring-green);
+  outline: 2px solid var(--color-dark-spring-green);
+  outline-offset: 3px;
 }
 
 .module-icon {

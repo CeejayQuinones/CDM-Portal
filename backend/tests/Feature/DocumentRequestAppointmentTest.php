@@ -43,7 +43,11 @@ class DocumentRequestAppointmentTest extends TestCase
         $type = DocumentType::create(['document_name' => 'Certificate of Enrollment', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
         $firstRequest = DocumentRequest::create(['student_id' => $first->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'pending', 'request_date' => today()]);
         $secondRequest = DocumentRequest::create(['student_id' => $second->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'pending', 'request_date' => today()]);
-        $tomorrow = today()->addDay()->toDateString();
+        $nextAvailableWeekday = today()->addDay();
+        while ($nextAvailableWeekday->isWeekend()) {
+            $nextAvailableWeekday->addDay();
+        }
+        $tomorrow = $nextAvailableWeekday->toDateString();
 
         Sanctum::actingAs($first->user);
         $this->postJson("/api/document-requests/{$firstRequest->id}/appointments", ['appointment_date' => $tomorrow, 'appointment_time' => '09:00'])->assertCreated();
@@ -82,6 +86,51 @@ class DocumentRequestAppointmentTest extends TestCase
 
         Sanctum::actingAs($this->userWithRole(Role::ADMIN));
         $this->getJson('/api/registrar/document-requests')->assertForbidden();
+    }
+
+    public function test_registrar_appointment_list_does_not_query_availability_tables(): void
+    {
+        $student = $this->createStudent('26-01008');
+        $type = DocumentType::create([
+            'document_name' => 'Appointment List Query Test',
+            'processing_fee' => 0,
+            'processing_days' => 1,
+            'requires_appointment' => true,
+            'status' => 'active',
+        ]);
+        $documentRequest = DocumentRequest::create([
+            'student_id' => $student->id,
+            'document_type_id' => $type->id,
+            'quantity' => 1,
+            'total_fee' => 0,
+            'status' => 'pending',
+            'request_date' => today(),
+        ]);
+        Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $documentRequest->id,
+            'appointment_date' => today()->addDay(),
+            'appointment_time' => '09:00',
+            'purpose' => 'Document request',
+            'status' => 'pending',
+            'active_slot_key' => today()->addDay()->toDateString().' 09:00',
+        ]);
+        $registrar = $this->createRegistrar();
+        Sanctum::actingAs($registrar->user);
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+
+        $this->getJson('/api/registrar/appointments?page=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data');
+
+        $this->assertFalse(collect($queries)->contains(
+            fn (string $query): bool => str_contains($query, 'appointment_availability_settings')
+                || str_contains($query, 'appointment_blocked_dates'),
+        ));
     }
 
     public function test_registrar_releases_ready_document_directly_and_history_uses_existing_requests(): void

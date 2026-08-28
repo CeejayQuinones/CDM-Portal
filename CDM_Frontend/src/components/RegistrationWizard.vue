@@ -237,7 +237,7 @@ onBeforeUnmount(() => clearInterval(cooldownTimer))
           <h2 id="registration-title">Create your CDM Portal account</h2>
           <p>Step {{ currentStep }} of 5 · {{ steps[currentStep - 1].label }}</p>
         </div>
-        <button class="close-button" type="button" aria-label="Close registration" @click="requestClose">×</button>
+        <button class="close-button" type="button" aria-label="Close registration" title="Close" @click="requestClose">×</button>
       </header>
 
       <ol class="progress" aria-label="Registration progress">

@@ -9,6 +9,8 @@ use App\Models\Appointment;
 use App\Models\DocumentRequest;
 use App\Models\DocumentType;
 use App\Models\Student;
+use App\Services\AppointmentAvailabilityService;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +19,8 @@ use Illuminate\Support\Facades\DB;
 class StudentDocumentRequestController extends Controller
 {
     private const SLOT_TIMES = ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00'];
+
+    public function __construct(private readonly AppointmentAvailabilityService $availability) {}
 
     public function documentTypes(): JsonResponse
     {
@@ -67,7 +71,9 @@ class StudentDocumentRequestController extends Controller
     {
         $request->validate(['date' => ['required', 'date', 'after_or_equal:today']]);
         $date = $request->string('date')->toString();
-        $booked = Appointment::query()->whereDate('appointment_date', $date)->whereIn('status', ['pending', 'confirmed'])->pluck('appointment_time')->map(fn ($time) => substr((string) $time, 0, 5))->all();
+        $this->availability->ensureDateIsAvailable($date);
+        $nextDate = CarbonImmutable::createFromFormat('!Y-m-d', $date)->addDay()->toDateString();
+        $booked = Appointment::query()->where('appointment_date', '>=', $date)->where('appointment_date', '<', $nextDate)->whereIn('status', ['pending', 'confirmed'])->pluck('appointment_time')->map(fn ($time) => substr((string) $time, 0, 5))->all();
         $slots = collect(self::SLOT_TIMES)->map(fn ($time) => ['time' => $time, 'available' => ! in_array($time, $booked, true)])->values();
 
         return $this->ok($slots, 'Appointment slots retrieved successfully.');
@@ -84,6 +90,7 @@ class StudentDocumentRequestController extends Controller
         }
         $date = $request->string('appointment_date')->toString();
         $time = $request->string('appointment_time')->toString();
+        $this->availability->ensureDateIsAvailable($date);
         if (! in_array($time, self::SLOT_TIMES, true)) {
             return response()->json(['success' => false, 'message' => 'The selected appointment time is unavailable.'], 422);
         }
