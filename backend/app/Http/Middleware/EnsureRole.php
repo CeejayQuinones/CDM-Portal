@@ -17,7 +17,7 @@ abstract class EnsureRole
     /**
      * Ensure the authenticated user has the required database role.
      *
-     * @param Closure(Request): Response $next
+     * @param  Closure(Request): Response  $next
      */
     public function handle(Request $request, Closure $next): Response
     {

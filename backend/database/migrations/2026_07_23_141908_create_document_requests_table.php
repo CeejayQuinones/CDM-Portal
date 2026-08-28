@@ -10,59 +10,59 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-{
-    Schema::create('document_requests', function (Blueprint $table) {
+    {
+        Schema::create('document_requests', function (Blueprint $table) {
 
-        $table->id();
+            $table->id();
 
-        // Student Requesting
-        $table->foreignId('student_id')
-              ->constrained('students')
-              ->cascadeOnUpdate()
-              ->cascadeOnDelete();
+            // Student Requesting
+            $table->foreignId('student_id')
+                ->constrained('students')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
 
-        // Requested Document
-        $table->foreignId('document_type_id')
-              ->constrained('document_types')
-              ->cascadeOnUpdate()
-              ->restrictOnDelete();
+            // Requested Document
+            $table->foreignId('document_type_id')
+                ->constrained('document_types')
+                ->cascadeOnUpdate()
+                ->restrictOnDelete();
 
-        // Registrar Staff Handling the Request
-        $table->foreignId('registrar_staff_id')
-              ->nullable()
-              ->constrained('registrar_staff')
-              ->nullOnDelete()
-              ->cascadeOnUpdate();
+            // Registrar Staff Handling the Request
+            $table->foreignId('registrar_staff_id')
+                ->nullable()
+                ->constrained('registrar_staff')
+                ->nullOnDelete()
+                ->cascadeOnUpdate();
 
-        // Quantity Requested
-        $table->unsignedInteger('quantity')->default(1);
+            // Quantity Requested
+            $table->unsignedInteger('quantity')->default(1);
 
-        // Total Fee
-        $table->decimal('total_fee', 8, 2)->default(0);
+            // Total Fee
+            $table->decimal('total_fee', 8, 2)->default(0);
 
-        // Purpose
-        $table->string('purpose')->nullable();
+            // Purpose
+            $table->string('purpose')->nullable();
 
-        // Request Status
-        $table->enum('status', [
-            'pending',
-            'processing',
-            'ready_for_release',
-            'released',
-            'cancelled',
-            'rejected'
-        ])->default('pending');
+            // Request Status
+            $table->enum('status', [
+                'pending',
+                'processing',
+                'ready_for_release',
+                'released',
+                'cancelled',
+                'rejected',
+            ])->default('pending');
 
-        // Important Dates
-        $table->date('request_date');
-        $table->date('release_date')->nullable();
+            // Important Dates
+            $table->date('request_date');
+            $table->date('release_date')->nullable();
 
-        // Additional Notes
-        $table->text('remarks')->nullable();
+            // Additional Notes
+            $table->text('remarks')->nullable();
 
-        $table->timestamps();
-    });
-}
+            $table->timestamps();
+        });
+    }
 
     /**
      * Reverse the migrations.

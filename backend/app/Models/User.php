@@ -3,11 +3,12 @@
 namespace App\Models;
 
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
@@ -16,7 +17,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property string $password
  * @property int $role_id
  * @property string $status
- * @property \Illuminate\Support\Carbon|null $last_login
+ * @property Carbon|null $last_login
  * @property bool $is_first_login
  * @property-read Role $role
  * @property-read UserProfile|null $profile
@@ -25,6 +26,7 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens;
+
     use HasFactory;
     use Notifiable;
 
@@ -78,5 +80,15 @@ class User extends Authenticatable
     public function profile(): HasOne
     {
         return $this->hasOne(UserProfile::class);
+    }
+
+    public function student(): HasOne
+    {
+        return $this->hasOne(Student::class);
+    }
+
+    public function registrarStaff(): HasOne
+    {
+        return $this->hasOne(RegistrarStaff::class);
     }
 }

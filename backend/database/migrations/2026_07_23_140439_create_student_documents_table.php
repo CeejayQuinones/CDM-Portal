@@ -10,55 +10,55 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-{
-    Schema::create('student_documents', function (Blueprint $table) {
+    {
+        Schema::create('student_documents', function (Blueprint $table) {
 
-        $table->id();
+            $table->id();
 
-        // Student
-        $table->foreignId('student_id')
-              ->constrained('students')
-              ->cascadeOnUpdate()
-              ->cascadeOnDelete();
+            // Student
+            $table->foreignId('student_id')
+                ->constrained('students')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
 
-        // Document Type
-        $table->foreignId('document_type_id')
-              ->constrained('document_types')
-              ->cascadeOnUpdate()
-              ->restrictOnDelete();
+            // Document Type
+            $table->foreignId('document_type_id')
+                ->constrained('document_types')
+                ->cascadeOnUpdate()
+                ->restrictOnDelete();
 
-        // Physical Storage Location
-        $table->foreignId('document_storage_location_id')
-              ->nullable()
-              ->constrained('document_storage_locations')
-              ->nullOnDelete()
-              ->cascadeOnUpdate();
+            // Physical Storage Location
+            $table->foreignId('document_storage_location_id')
+                ->nullable()
+                ->constrained('document_storage_locations')
+                ->nullOnDelete()
+                ->cascadeOnUpdate();
 
-        // Digital Copy (Optional)
-        $table->string('file_path')->nullable();
+            // Digital Copy (Optional)
+            $table->string('file_path')->nullable();
 
-        // Verification Status
-        $table->enum('verification_status', [
-            'pending',
-            'verified',
-            'rejected'
-        ])->default('pending');
+            // Verification Status
+            $table->enum('verification_status', [
+                'pending',
+                'verified',
+                'rejected',
+            ])->default('pending');
 
-        // Registrar Notes
-        $table->text('remarks')->nullable();
+            // Registrar Notes
+            $table->text('remarks')->nullable();
 
-        // Date Submitted
-        $table->date('submitted_date')->nullable();
+            // Date Submitted
+            $table->date('submitted_date')->nullable();
 
-        $table->timestamps();
+            $table->timestamps();
 
-        // Prevent duplicate document types per student
-        $table->unique([
-            'student_id',
-            'document_type_id'
-        ]);
-    });
-}
+            // Prevent duplicate document types per student
+            $table->unique([
+                'student_id',
+                'document_type_id',
+            ]);
+        });
+    }
 
     /**
      * Reverse the migrations.

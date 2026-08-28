@@ -10,46 +10,46 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-{
-    Schema::create('section_subjects', function (Blueprint $table) {
+    {
+        Schema::create('section_subjects', function (Blueprint $table) {
 
-        $table->id();
+            $table->id();
 
-        // Section
-        $table->foreignId('section_id')
-              ->constrained('sections')
-              ->cascadeOnUpdate()
-              ->cascadeOnDelete();
+            // Section
+            $table->foreignId('section_id')
+                ->constrained('sections')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
 
-        // Subject
-        $table->foreignId('subject_id')
-              ->constrained('subjects')
-              ->cascadeOnUpdate()
-              ->restrictOnDelete();
+            // Subject
+            $table->foreignId('subject_id')
+                ->constrained('subjects')
+                ->cascadeOnUpdate()
+                ->restrictOnDelete();
 
-        // Professor handling the subject
-        $table->foreignId('professor_id')
-              ->nullable()
-              ->constrained('professors')
-              ->nullOnDelete();
+            // Professor handling the subject
+            $table->foreignId('professor_id')
+                ->nullable()
+                ->constrained('professors')
+                ->nullOnDelete();
 
-        // Schedule
-        $table->string('day', 20)->nullable();
+            // Schedule
+            $table->string('day', 20)->nullable();
 
-        $table->time('start_time')->nullable();
+            $table->time('start_time')->nullable();
 
-        $table->time('end_time')->nullable();
+            $table->time('end_time')->nullable();
 
-        $table->string('room', 50)->nullable();
+            $table->string('room', 50)->nullable();
 
-        $table->timestamps();
+            $table->timestamps();
 
-        $table->unique([
-            'section_id',
-            'subject_id'
-        ]);
-    });
-}
+            $table->unique([
+                'section_id',
+                'subject_id',
+            ]);
+        });
+    }
 
     /**
      * Reverse the migrations.

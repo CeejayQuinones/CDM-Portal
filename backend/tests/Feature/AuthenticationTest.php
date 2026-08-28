@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Mail\RegistrationVerificationCodeMail;
+use App\Models\RegistrationEmailVerification;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
@@ -87,15 +90,8 @@ class AuthenticationTest extends TestCase
 
     public function test_a_guest_can_register_and_log_in(): void
     {
-        $registration = $this->postJson('/api/register', [
-            'username' => 'guest-user',
-            'email' => 'guest@example.com',
-            'password' => 'Password123!',
-            'password_confirmation' => 'Password123!',
-            'first_name' => 'Guest',
-            'last_name' => 'User',
-            'gender' => 'Prefer not to say',
-        ]);
+        $payload = $this->verifiedGuestPayload();
+        $registration = $this->postJson('/api/register', $payload);
 
         $registration
             ->assertCreated()
@@ -103,12 +99,82 @@ class AuthenticationTest extends TestCase
             ->assertJsonPath('data.user.role.role_name', Role::GUEST)
             ->assertJsonPath('data.user.profile.email', 'guest@example.com');
 
+        $this->assertNotNull(
+            RegistrationEmailVerification::query()->where('email', 'guest@example.com')->value('consumed_at'),
+        );
+
         $this->postJson('/api/login', [
             'username' => 'guest-user',
             'password' => 'Password123!',
         ])
             ->assertOk()
             ->assertJsonPath('data.user.role.role_name', Role::GUEST);
+    }
+
+    public function test_registration_email_codes_are_hashed_expiring_and_single_use(): void
+    {
+        config(['mail.default' => 'smtp']);
+        Mail::fake();
+
+        $this->postJson('/api/registration/email-verification/send', [
+            'email' => 'verify@example.com',
+        ])
+            ->assertOk()
+            ->assertJsonMissingPath('data.code')
+            ->assertJsonMissingPath('code');
+
+        $code = null;
+        Mail::assertSent(RegistrationVerificationCodeMail::class, function ($mail) use (&$code): bool {
+            $code = $mail->code;
+
+            return true;
+        });
+
+        $record = RegistrationEmailVerification::query()->where('email', 'verify@example.com')->firstOrFail();
+        $this->assertNotSame($code, $record->code_hash);
+        $this->assertTrue(Hash::check($code, $record->code_hash));
+        $this->assertTrue($record->expires_at->isFuture());
+
+        $this->postJson('/api/registration/email-verification/verify', [
+            'email' => 'verify@example.com',
+            'code' => $code,
+        ])
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['verification_token']]);
+
+        $this->postJson('/api/registration/email-verification/verify', [
+            'email' => 'verify@example.com',
+            'code' => $code,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('code');
+    }
+
+    public function test_registration_requires_terms_acceptance_and_verified_email(): void
+    {
+        $payload = $this->verifiedGuestPayload(['terms_accepted' => false]);
+
+        $this->postJson('/api/register', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('terms_accepted');
+
+        $payload['terms_accepted'] = true;
+        unset($payload['email_verification_token']);
+
+        $this->postJson('/api/register', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('email_verification_token');
+    }
+
+    public function test_email_verification_reports_when_delivery_is_not_configured(): void
+    {
+        config(['mail.default' => 'log']);
+
+        $this->postJson('/api/registration/email-verification/send', [
+            'email' => 'guest@example.com',
+        ])
+            ->assertStatus(503)
+            ->assertJsonPath('success', false);
     }
 
     public function test_guest_registration_returns_validation_errors_for_duplicate_identity_fields(): void
@@ -146,5 +212,46 @@ class AuthenticationTest extends TestCase
             'status' => 'active',
             'is_first_login' => true,
         ]);
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function verifiedGuestPayload(array $overrides = []): array
+    {
+        config(['mail.default' => 'smtp']);
+        Mail::fake();
+
+        $email = $overrides['email'] ?? 'guest@example.com';
+        $this->postJson('/api/registration/email-verification/send', ['email' => $email])->assertOk();
+
+        $code = null;
+        Mail::assertSent(RegistrationVerificationCodeMail::class, function ($mail) use (&$code, $email): bool {
+            if (! $mail->hasTo($email)) {
+                return false;
+            }
+
+            $code = $mail->code;
+
+            return true;
+        });
+
+        $token = $this->postJson('/api/registration/email-verification/verify', [
+            'email' => $email,
+            'code' => $code,
+        ])->assertOk()->json('data.verification_token');
+
+        return array_merge([
+            'username' => 'guest-user',
+            'email' => $email,
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+            'first_name' => 'Guest',
+            'last_name' => 'User',
+            'gender' => 'Prefer not to say',
+            'birth_date' => '2000-01-15',
+            'contact_number' => '09171234567',
+            'address' => '1 Main Street, Barangay San Jose, Montalban, Rizal',
+            'terms_accepted' => true,
+            'email_verification_token' => $token,
+        ], $overrides);
     }
 }

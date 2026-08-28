@@ -3,15 +3,24 @@
 namespace App\Http\Requests;
 
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class RegisterGuestRequest extends ApiFormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'username' => trim((string) $this->input('username')),
+            'email' => mb_strtolower(trim((string) $this->input('email'))),
+        ]);
+    }
+
     public function authorize(): bool
     {
         return true;
     }
 
-    /** @return array<string, list<string|\Illuminate\Validation\Rules\Password>> */
+    /** @return array<string, list<string|Password>> */
     public function rules(): array
     {
         return [
@@ -23,10 +32,12 @@ class RegisterGuestRequest extends ApiFormRequest
             'last_name' => ['required', 'string', 'max:100'],
             'suffix' => ['nullable', 'string', 'max:20'],
             'gender' => ['required', Rule::in(['Male', 'Female', 'Prefer not to say'])],
-            'birth_date' => ['nullable', 'date', 'before_or_equal:today'],
-            'contact_number' => ['nullable', 'string', 'max:20'],
-            'address' => ['nullable', 'string'],
+            'birth_date' => ['required', 'date', 'before:today'],
+            'contact_number' => ['required', 'string', 'max:20'],
+            'address' => ['required', 'string', 'max:1000'],
             'nationality' => ['nullable', 'string', 'max:50'],
+            'terms_accepted' => ['required', 'accepted'],
+            'email_verification_token' => ['required', 'string', 'size:64'],
         ];
     }
 }

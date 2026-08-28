@@ -1,16 +1,17 @@
 <?php
 
+use App\Http\Middleware\EnsureAdminRole;
+use App\Http\Middleware\EnsureProfessorRole;
+use App\Http\Middleware\EnsureRegistrarOrAdminRole;
+use App\Http\Middleware\EnsureRegistrarStaffRole;
+use App\Http\Middleware\EnsureStudentRole;
+use App\Http\Middleware\RequireStepUpAuthentication;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
-use App\Http\Middleware\EnsureAdminRole;
-use App\Http\Middleware\EnsureProfessorRole;
-use App\Http\Middleware\EnsureRegistrarStaffRole;
-use App\Http\Middleware\EnsureStudentRole;
-use App\Http\Middleware\EnsureRegistrarOrAdminRole;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -26,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role.professor' => EnsureProfessorRole::class,
             'role.student' => EnsureStudentRole::class,
             'role.registrar-or-admin' => EnsureRegistrarOrAdminRole::class,
+            'step-up' => RequireStepUpAuthentication::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

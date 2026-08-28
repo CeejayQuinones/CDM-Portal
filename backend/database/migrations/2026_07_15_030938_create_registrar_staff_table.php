@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
@@ -38,13 +39,13 @@ return new class extends Migration {
             $table->enum('employment_status', [
                 'regular',
                 'contractual',
-                'part_time'
+                'part_time',
             ])->default('regular');
 
             // Account Status
             $table->enum('status', [
                 'active',
-                'inactive'
+                'inactive',
             ])->default('active');
 
             $table->timestamps();

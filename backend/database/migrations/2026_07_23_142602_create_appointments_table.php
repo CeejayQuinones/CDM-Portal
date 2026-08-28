@@ -10,53 +10,53 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-{
-    Schema::create('appointments', function (Blueprint $table) {
+    {
+        Schema::create('appointments', function (Blueprint $table) {
 
-        $table->id();
+            $table->id();
 
-        // Student
-        $table->foreignId('student_id')
-              ->constrained('students')
-              ->cascadeOnUpdate()
-              ->cascadeOnDelete();
+            // Student
+            $table->foreignId('student_id')
+                ->constrained('students')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
 
-        // Related Document Request (Optional)
-        $table->foreignId('document_request_id')
-              ->nullable()
-              ->constrained('document_requests')
-              ->nullOnDelete()
-              ->cascadeOnUpdate();
+            // Related Document Request (Optional)
+            $table->foreignId('document_request_id')
+                ->nullable()
+                ->constrained('document_requests')
+                ->nullOnDelete()
+                ->cascadeOnUpdate();
 
-        // Registrar Staff Assigned
-        $table->foreignId('registrar_staff_id')
-              ->nullable()
-              ->constrained('registrar_staff')
-              ->nullOnDelete()
-              ->cascadeOnUpdate();
+            // Registrar Staff Assigned
+            $table->foreignId('registrar_staff_id')
+                ->nullable()
+                ->constrained('registrar_staff')
+                ->nullOnDelete()
+                ->cascadeOnUpdate();
 
-        // Appointment Details
-        $table->date('appointment_date');
-        $table->time('appointment_time');
+            // Appointment Details
+            $table->date('appointment_date');
+            $table->time('appointment_time');
 
-        // Purpose
-        $table->string('purpose');
+            // Purpose
+            $table->string('purpose');
 
-        // Appointment Status
-        $table->enum('status', [
-            'pending',
-            'confirmed',
-            'completed',
-            'cancelled',
-            'no_show'
-        ])->default('pending');
+            // Appointment Status
+            $table->enum('status', [
+                'pending',
+                'confirmed',
+                'completed',
+                'cancelled',
+                'no_show',
+            ])->default('pending');
 
-        // Additional Notes
-        $table->text('remarks')->nullable();
+            // Additional Notes
+            $table->text('remarks')->nullable();
 
-        $table->timestamps();
-    });
-}
+            $table->timestamps();
+        });
+    }
 
     /**
      * Reverse the migrations.

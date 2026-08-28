@@ -1,7 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/authStore'
 
 defineProps({
   title: {
@@ -12,23 +11,20 @@ defineProps({
 
 const emit = defineEmits(['toggle-sidebar'])
 const router = useRouter()
-const authStore = useAuthStore()
 const installPrompt = ref(null)
 const canInstall = ref(false)
-const displayName = computed(() => {
-  const profile = authStore.currentUser?.profile
-  return [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || authStore.currentUser?.username || 'User'
-})
-const initials = computed(() => displayName.value.slice(0, 1).toUpperCase())
 const pageTitle = computed(() => router.currentRoute.value.meta.title || 'CDM Portal')
+const handleInstallPrompt = (event) => {
+  event.preventDefault()
+  installPrompt.value = event
+  canInstall.value = true
+}
 
 onMounted(() => {
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault()
-    installPrompt.value = event
-    canInstall.value = true
-  })
+  window.addEventListener('beforeinstallprompt', handleInstallPrompt)
 })
+
+onBeforeUnmount(() => window.removeEventListener('beforeinstallprompt', handleInstallPrompt))
 
 const installApp = async () => {
   if (!installPrompt.value) return
@@ -38,35 +34,29 @@ const installApp = async () => {
   canInstall.value = false
 }
 
-const logout = async () => {
-  await authStore.logout()
-  router.replace({ name: 'login' })
-}
 </script>
 
 <template>
   <header class="navbar">
-    <button class="menu-button" type="button" aria-label="Toggle sidebar" @click="emit('toggle-sidebar')">
+    <button
+      class="menu-button"
+      type="button"
+      aria-label="Toggle sidebar"
+      title="Toggle navigation"
+      @click="emit('toggle-sidebar')"
+    >
       <span></span>
       <span></span>
       <span></span>
     </button>
 
     <div>
-      <p class="navbar-label">CDM OneServe</p>
+      <p class="navbar-label">COLEGIO DE MONTALBAN</p>
       <h1>{{ title === 'CDM Portal' ? pageTitle : title }}</h1>
     </div>
 
     <div class="navbar-actions">
-      <button v-if="canInstall" class="install-button" type="button" @click="installApp">
-        Install App
-      </button>
-
-      <div class="navbar-user" aria-label="Signed in user">
-        <span class="user-avatar">{{ initials }}</span>
-        <span class="user-name"><strong>{{ displayName }}</strong><small>{{ authStore.currentRole }}</small></span>
-        <button class="logout-button" type="button" @click="logout">Sign out</button>
-      </div>
+      <button v-if="canInstall" class="install-button" type="button" @click="installApp">Install App</button>
     </div>
   </header>
 </template>
@@ -82,7 +72,7 @@ const logout = async () => {
   justify-content: space-between;
   gap: 18px;
   border-bottom: 1px solid var(--color-border);
-  background: rgba(255,255,255,.94);
+  background: rgba(255, 255, 255, 0.94);
   padding: 14px 28px;
   backdrop-filter: blur(12px);
 }
@@ -99,6 +89,17 @@ const logout = async () => {
   border-radius: 8px;
   background: var(--color-surface);
   cursor: pointer;
+}
+
+.menu-button:hover {
+  background: #eef7f1;
+  border-color: rgba(16, 106, 46, 0.38);
+  box-shadow: 0 4px 10px rgba(16, 106, 46, 0.1);
+}
+
+.menu-button:active {
+  background: #e3f0e7;
+  box-shadow: none;
 }
 
 .menu-button span {
@@ -121,20 +122,13 @@ h1 {
   line-height: 1.2;
 }
 
-.navbar-actions,
-.navbar-user {
+.navbar-actions {
   display: flex;
   align-items: center;
 }
 
 .navbar-actions {
   gap: 14px;
-}
-
-.navbar-user {
-  gap: 10px;
-  color: var(--color-eerie-black);
-  font-weight: 600;
 }
 
 .install-button {
@@ -148,22 +142,17 @@ h1 {
   cursor: pointer;
 }
 
-.logout-button { border: 1px solid var(--color-border); border-radius: 8px; background: #fff; color: var(--color-dartmouth-green); font-weight: 700; padding: 8px 11px; cursor: pointer; }
-
 .install-button:hover {
   background: var(--color-dark-spring-green);
+  border-color: #095d41;
+  box-shadow: 0 5px 12px rgba(13, 120, 86, 0.18);
 }
 
-.user-avatar {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--color-naples-yellow);
-  color: var(--color-eerie-black);
+.menu-button:focus-visible,
+.install-button:focus-visible {
+  outline: 2px solid var(--color-dartmouth-green);
+  outline-offset: 3px;
 }
-.user-name strong,.user-name small { display:block; }.user-name strong { font-size:.86rem; }.user-name small { color:var(--color-muted); font-size:.72rem; font-weight:500; margin-top:2px; }
 
 @media (max-width: 860px) {
   .navbar {
@@ -174,12 +163,9 @@ h1 {
     display: flex;
   }
 
-  .user-name {
-    display: none;
-  }
-
   .install-button {
     padding: 0 10px;
   }
 }
+
 </style>
