@@ -6,6 +6,7 @@ use App\Http\Middleware\EnsureRegistrarOrAdminRole;
 use App\Http\Middleware\EnsureRegistrarStaffRole;
 use App\Http\Middleware\EnsureStudentRole;
 use App\Http\Middleware\RequireStepUpAuthentication;
+use App\Http\Middleware\EnsureMonitoringAccess;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role.student' => EnsureStudentRole::class,
             'role.registrar-or-admin' => EnsureRegistrarOrAdminRole::class,
             'step-up' => RequireStepUpAuthentication::class,
+            'role.monitoring' => EnsureMonitoringAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -11,8 +11,8 @@ class ProfessorsSeeder extends Seeder
     {
         DB::table('professors')->insert([
             [
-                'user_id' => 3,
-                'user_profile_id' => 3,
+                'user_id' => 4,
+                'user_profile_id' => 4,
                 'department_id' => 1,
                 'employee_number' => 'FAC-2026-001',
                 'position' => 'Instructor I',

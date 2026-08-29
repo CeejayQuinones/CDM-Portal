@@ -1,13 +1,16 @@
 import axios from 'axios'
+import { resolveApiBaseUrl } from '../config/apiBaseUrl'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
+const apiBaseUrl = resolveApiBaseUrl()
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
+  baseURL: apiBaseUrl,
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
   },
+  timeout: 20000,
 })
 
 apiClient.interceptors.request.use((config) => {
@@ -36,3 +39,7 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   },
 )
+
+if (import.meta.env.DEV) {
+  console.info('[CDM Portal] API base URL:', apiBaseUrl)
+}

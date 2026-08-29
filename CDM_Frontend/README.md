@@ -16,8 +16,27 @@ Frontend scaffold for a Vue 3 campus management system.
 
 ```bash
 npm install
+copy .env.example .env
 npm run dev
 ```
+
+Backend (separate terminal):
+
+```bash
+cd ../backend
+php artisan serve --host=0.0.0.0 --port=8000
+```
+
+## AI Monitoring on every platform
+
+| Platform | Command | Who can use AI Monitoring |
+|----------|---------|---------------------------|
+| Web | `npm run dev` → http://127.0.0.1:5173 | Student, Professor, Registrar, Admin |
+| Desktop | `npm run desktop:dev` | Same as web |
+| Mobile (phone) | `npm run mobile:sync` then Android Studio Run | **Students only** |
+| Mobile (emulator) | `npm run mobile:sync:emulator` then Run | **Students only** |
+
+Demo logins: `student1` / `Student123!`, `admin` / `Admin123!`
 
 ## Available Scripts
 
@@ -26,6 +45,7 @@ npm run dev
 npm run build
 npm run preview
 npm run mobile:sync
+npm run mobile:sync:emulator
 npm run mobile:open:android
 npm run desktop:dev
 npm run desktop:build
@@ -43,29 +63,33 @@ The generated installable PWA files are in `dist/`, including `manifest.webmanif
 and `sw.js`. In supported browsers, the navbar shows an `Install App` button when
 the install prompt is available.
 
-## Mobile with Capacitor
+## Mobile with Capacitor (Student app)
 
-The Capacitor config uses `dist/` as the native web directory.
+Student-only. API host is set in `.env.mobile` (LAN IP) or `.env.emulator` (`10.0.2.2`).
 
 ```bash
+# Physical phone (same Wi-Fi as PC) — edit .env.mobile if your LAN IP changed
 npm run mobile:sync
+npm run mobile:open:android
+
+# Android emulator
+npm run mobile:sync:emulator
 npm run mobile:open:android
 ```
 
-The Android native project lives in `android/`. Build APK/AAB files from Android
-Studio after syncing. iOS support is scaffolded through scripts, but iOS builds
-must be done on macOS with Xcode.
+Then Run ▶ in Android Studio. Keep backend on `0.0.0.0:8000`.
 
 ## Desktop with Electron
 
-Build a Windows installer with:
-
 ```bash
+# Dev window (uses .env → 127.0.0.1 API)
+npm run desktop:dev
+
+# Windows installer
 npm run desktop:build
 ```
 
-The installer is generated in `release/`, for example
-`release/CDM Portal Setup 0.1.0.exe`.
+Installer output: `release/CDM Portal Setup 0.1.0.exe`.
 
 ## Module Folders
 

@@ -35,6 +35,9 @@ class DatabaseSeeder extends Seeder
             DocumentTypesSeeder::class,
             StudentDocumentsSeeder::class,
             PhysicalRecordsSeeder::class,
+
+            // AI Monitoring demo grades
+            MonitoringDemoSeeder::class,
         ]);
     }
 }

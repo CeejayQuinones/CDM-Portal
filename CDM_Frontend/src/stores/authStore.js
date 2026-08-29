@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { apiClient } from '../services/apiClient'
+import { ROLES } from '../config/accessControl'
+import { isStudentMobileApp, STUDENT_MOBILE_ONLY_MESSAGE } from '../utils/platform'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
 
@@ -60,9 +62,25 @@ export const useAuthStore = defineStore('auth', () => {
 
   const login = async (credentials) => {
     const { data } = await apiClient.post('/login', credentials)
+    const user = data.data.user
+    const roleName = user?.role?.role_name || user?.role || null
+
+    if (isStudentMobileApp() && roleName !== ROLES.STUDENT) {
+      try {
+        await apiClient.post('/logout', null, {
+          headers: { Authorization: `Bearer ${data.data.token}` },
+        })
+      } catch {
+        // Best-effort revoke; local session will not be kept either way.
+      }
+      const error = new Error(STUDENT_MOBILE_ONLY_MESSAGE)
+      error.code = 'STUDENT_MOBILE_ONLY'
+      throw error
+    }
+
     token.value = data.data.token
-    setUser(data.data.user)
-    return data.data.user
+    setUser(user)
+    return user
   }
 
   const register = async (payload) => {
@@ -90,6 +108,10 @@ export const useAuthStore = defineStore('auth', () => {
     if (!token.value) return false
     try {
       await fetchCurrentUser()
+      if (isStudentMobileApp() && currentRole.value && currentRole.value !== ROLES.STUDENT) {
+        clearAuth()
+        return false
+      }
     } catch {
       // The response interceptor and clearAuth handle expired or invalid tokens.
     }

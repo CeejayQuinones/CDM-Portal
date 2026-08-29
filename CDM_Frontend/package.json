@@ -9,14 +9,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:mobile": "vite build --mode mobile",
+    "build:emulator": "vite build --mode emulator",
     "preview": "vite preview",
-    "mobile:sync": "npm run build && npx cap sync",
+    "mobile:sync": "npm run build:mobile && npx cap sync",
+    "mobile:sync:emulator": "npm run build:emulator && npx cap sync",
     "mobile:add:android": "npx cap add android",
     "mobile:open:android": "npx cap open android",
     "mobile:add:ios": "npx cap add ios",
     "mobile:open:ios": "npx cap open ios",
-    "desktop:dev": "npm run build && electron .",
-    "desktop:build": "npm run build && electron-builder"
+    "desktop:dev": "vite build && electron .",
+    "desktop:build": "vite build && electron-builder"
   },
   "dependencies": {
     "@capacitor/core": "^7.4.4",
