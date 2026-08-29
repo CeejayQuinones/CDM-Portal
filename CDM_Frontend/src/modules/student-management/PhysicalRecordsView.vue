@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
@@ -15,9 +15,12 @@ const showCreateForm = ref(false)
 const error = ref('')
 const success = ref('')
 const selectedSlot = ref(null)
+const slotPreview = ref(null)
+const slotModalOpen = ref(false)
+const slotDialog = ref(null)
+const slotCloseButton = ref(null)
 const detailLoading = ref(false)
 const detailError = ref('')
-const detailPanel = ref(null)
 const formErrors = ref({})
 const showSlotEdit = ref(false)
 const slotSaving = ref(false)
@@ -37,6 +40,9 @@ const slotForm = reactive({
   description: '',
   status: 'active',
 })
+let slotRequestId = 0
+let slotTrigger = null
+let previousBodyOverflow = ''
 
 const students = computed(() => selectedSlot.value?.students?.data || [])
 const pagination = computed(() => ({
@@ -44,6 +50,7 @@ const pagination = computed(() => ({
   lastPage: selectedSlot.value?.students?.last_page || 1,
   total: selectedSlot.value?.students?.total || 0,
 }))
+const displayedSlot = computed(() => selectedSlot.value || slotPreview.value)
 
 const errorMessage = (requestError, fallback) => requestError.response?.data?.message || fallback
 const title = (value) =>
@@ -116,13 +123,30 @@ async function createCabinet() {
   }
 }
 
-async function openSlot(slotId, page = 1, updateUrl = true) {
+async function openSlot(slotId, page = 1, updateUrl = true, trigger = null) {
+  const requestId = ++slotRequestId
+  const containingCabinet = cabinets.value.find((cabinet) =>
+    cabinet.slots?.some((slot) => Number(slot.id) === Number(slotId)),
+  )
+  const slot = containingCabinet?.slots?.find((item) => Number(item.id) === Number(slotId))
+
+  if (trigger) slotTrigger = trigger
+  if (Number(selectedSlot.value?.id) !== Number(slotId)) selectedSlot.value = null
+  slotPreview.value = slot
+    ? {
+        ...slot,
+        record_count: slotCount(slot),
+        cabinet: containingCabinet,
+      }
+    : null
+  slotModalOpen.value = true
   detailLoading.value = true
   detailError.value = ''
+  await nextTick()
+  const focusTarget = slotCloseButton.value || slotDialog.value
+  focusTarget?.focus()
+
   if (updateUrl) {
-    const containingCabinet = cabinets.value.find((cabinet) =>
-      cabinet.slots?.some((slot) => Number(slot.id) === Number(slotId)),
-    )
     await router.replace({
       name: 'physical-records',
       query: {
@@ -131,25 +155,36 @@ async function openSlot(slotId, page = 1, updateUrl = true) {
       },
     })
   }
+  if (requestId !== slotRequestId) return
+
   try {
-    selectedSlot.value = await api.cabinetSlot(slotId, page)
-    await nextTick()
-    detailPanel.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const result = await api.cabinetSlot(slotId, page)
+    if (requestId !== slotRequestId) return
+    selectedSlot.value = result
+    slotPreview.value = result
   } catch (requestError) {
+    if (requestId !== slotRequestId) return
     selectedSlot.value = null
     detailError.value = errorMessage(requestError, 'Unable to load this cabinet slot.')
   } finally {
-    detailLoading.value = false
+    if (requestId === slotRequestId) detailLoading.value = false
   }
 }
 
 async function closeSlot() {
+  slotRequestId += 1
+  slotModalOpen.value = false
   selectedSlot.value = null
+  slotPreview.value = null
   detailError.value = ''
+  detailLoading.value = false
   const query = { ...route.query }
   delete query.cabinet
   delete query.slot
   await router.replace({ name: 'physical-records', query })
+  await nextTick()
+  slotTrigger?.focus()
+  slotTrigger = null
 }
 
 function viewStudent(studentId) {
@@ -175,6 +210,16 @@ function closeSlotEdit() {
   showSlotEdit.value = false
   slotFormErrors.value = {}
   slotEditError.value = ''
+}
+
+function handleEscape(event) {
+  if (event.key !== 'Escape') return
+
+  if (showSlotEdit.value) {
+    closeSlotEdit()
+  } else if (slotModalOpen.value) {
+    closeSlot()
+  }
 }
 
 async function updateSlot() {
@@ -207,9 +252,27 @@ async function updateSlot() {
   }
 }
 
+watch(
+  () => slotModalOpen.value || showSlotEdit.value,
+  (modalOpen) => {
+    if (modalOpen) {
+      if (document.body.style.overflow !== 'hidden') previousBodyOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = previousBodyOverflow
+    }
+  },
+)
+
 onMounted(async () => {
+  window.addEventListener('keydown', handleEscape)
   await loadCabinets()
   if (route.query.slot) await openSlot(route.query.slot, 1, false)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscape)
+  document.body.style.overflow = previousBodyOverflow
 })
 </script>
 
@@ -305,12 +368,12 @@ onMounted(async () => {
           class="slot-drawer"
           :class="{
             occupied: slotCount(slot) > 0,
-            selected: selectedSlot?.id === slot.id,
+            selected: displayedSlot?.id === slot.id,
             inactive: slot.status === 'inactive',
             [`size-${slot.size || 'small'}`]: true,
           }"
           type="button"
-          @click="openSlot(slot.id)"
+          @click="openSlot(slot.id, 1, true, $event.currentTarget)"
         >
           <span class="drawer-handle" aria-hidden="true"></span>
           <strong>{{ slot.slot_code }}</strong>
@@ -322,37 +385,69 @@ onMounted(async () => {
     </article>
   </div>
 
-  <section
-    v-if="detailLoading || detailError || selectedSlot"
-    ref="detailPanel"
-    class="records-panel slot-detail"
-    aria-live="polite"
-  >
-    <div class="slot-detail-heading">
+  <Teleport to="body">
+    <div
+      v-if="slotModalOpen"
+      class="modal-backdrop slot-detail-backdrop"
+      role="presentation"
+      @mousedown.self="closeSlot"
+    >
+      <section
+        ref="slotDialog"
+        class="slot-records-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="slot-records-title"
+        tabindex="-1"
+      >
+    <header class="slot-records-header">
       <div>
-        <p class="eyebrow">Cabinet {{ cabinetName(selectedSlot?.cabinet) }}</p>
-        <h2>Slot {{ selectedSlot?.slot_code || '' }}</h2>
-        <p v-if="selectedSlot">
-          {{ selectedSlot.record_count }} stored
-          {{ selectedSlot.record_count === 1 ? 'student record' : 'student records' }}
-        </p>
-        <p v-if="selectedSlot?.description">{{ selectedSlot.description }}</p>
+        <p class="eyebrow">Physical Records</p>
+        <h2 id="slot-records-title">
+          Cabinet {{ cabinetName(displayedSlot?.cabinet) }}
+          <span aria-hidden="true">&middot;</span>
+          Slot {{ displayedSlot?.slot_code || '' }}
+        </h2>
       </div>
       <div class="slot-detail-actions">
         <button v-if="selectedSlot" class="primary-button" type="button" @click="editSlot">Edit Slot</button>
-        <button class="secondary-button" type="button" @click="closeSlot">Close</button>
+        <button
+          ref="slotCloseButton"
+          class="slot-modal-close"
+          type="button"
+          aria-label="Close slot records"
+          title="Close"
+          @click="closeSlot"
+        >
+          &times;
+        </button>
       </div>
-    </div>
+    </header>
 
-    <p v-if="detailLoading" class="state">Loading stored student records…</p>
+    <div class="slot-records-body" aria-live="polite">
+      <dl v-if="displayedSlot" class="slot-metadata">
+        <div><dt>Cabinet</dt><dd>{{ cabinetName(displayedSlot.cabinet) }}</dd></div>
+        <div><dt>Slot</dt><dd>{{ displayedSlot.slot_code }}</dd></div>
+        <div><dt>Occupancy</dt><dd>{{ displayedSlot.record_count ?? slotCount(displayedSlot) }}</dd></div>
+        <div><dt>Capacity</dt><dd>{{ displayedSlot.capacity ?? 'No limit' }}</dd></div>
+        <div><dt>Status</dt><dd><span class="slot-status-badge">{{ title(displayedSlot.status) }}</span></dd></div>
+      </dl>
+      <p v-if="displayedSlot?.description" class="slot-description">{{ displayedSlot.description }}</p>
+
+    <p v-if="detailLoading" class="state">Loading slot records...</p>
     <p v-else-if="detailError" class="notice error" role="alert">
       {{ detailError }}
     </p>
     <p v-else-if="!students.length" class="empty-state">No student records are assigned to this slot.</p>
     <div v-else class="stored-students">
       <article v-for="student in students" :key="student.id" class="student-record-card">
-        <div class="student-summary">
-          <div class="student-photo">
+        <button
+          class="student-summary student-record-link"
+          type="button"
+          :aria-label="`Open ${student.full_name} student profile`"
+          @click="viewStudent(student.id)"
+        >
+          <span class="student-photo">
             <img v-if="student.profile_photo" :src="student.profile_photo" :alt="`${student.full_name} photo`" />
             <span v-else>
               {{
@@ -363,21 +458,18 @@ onMounted(async () => {
                   .join('') || 'ST'
               }}
             </span>
-          </div>
-          <div>
-            <h3>{{ student.full_name }}</h3>
-            <p>
+          </span>
+          <span class="student-record-copy">
+            <strong class="student-record-name">{{ student.full_name }}</strong>
+            <span>
               <strong>{{ student.student_number }}</strong>
-              ·
+              &middot;
               {{ courseLabel(student) }}
-            </p>
-            <p>
-              Year {{ student.year_level }} ·
-              {{ title(student.student_status) }}
-            </p>
-          </div>
-          <button class="primary-button" type="button" @click="viewStudent(student.id)">View Student Record</button>
-        </div>
+            </span>
+            <span>Year {{ student.year_level }} &middot; {{ title(student.student_status) }}</span>
+          </span>
+          <span class="student-record-action">View profile &rarr;</span>
+        </button>
         <p v-if="student.location_remarks" class="location-remarks">
           <strong>Location remarks:</strong>
           {{ student.location_remarks }}
@@ -388,6 +480,7 @@ onMounted(async () => {
             <p v-if="!availableDocuments(student).length" class="empty-list">None marked available.</p>
             <ul v-else>
               <li v-for="document in availableDocuments(student)" :key="document.id">
+                <span class="document-marker available" aria-hidden="true">&check;</span>
                 {{ documentName(document) }}
               </li>
             </ul>
@@ -397,6 +490,7 @@ onMounted(async () => {
             <p v-if="!missingDocuments(student).length" class="empty-list">None marked missing.</p>
             <ul v-else>
               <li v-for="document in missingDocuments(student)" :key="document.id">
+                <span class="document-marker missing" aria-hidden="true">&times;</span>
                 {{ documentName(document) }}
               </li>
             </ul>
@@ -413,11 +507,19 @@ onMounted(async () => {
       :busy="detailLoading"
       total-label="records"
       aria-label="Stored student pages"
-      @page-change="(nextPage) => openSlot(selectedSlot.id, nextPage)"
+      @page-change="(nextPage) => openSlot(selectedSlot.id, nextPage, false)"
     />
-  </section>
+        </div>
+      </section>
+    </div>
+  </Teleport>
 
-  <div v-if="showSlotEdit" class="modal-backdrop" role="presentation" @mousedown.self="closeSlotEdit">
+  <div
+    v-if="showSlotEdit"
+    class="modal-backdrop slot-edit-backdrop"
+    role="presentation"
+    @mousedown.self="closeSlotEdit"
+  >
     <section
       class="slot-edit-modal"
       role="dialog"
@@ -480,7 +582,6 @@ onMounted(async () => {
 <style scoped>
 .physical-records-header,
 .cabinet-heading,
-.slot-detail-heading,
 .student-summary,
 .section-heading {
   align-items: center;
@@ -532,8 +633,7 @@ button:disabled {
   color: #b42318;
 }
 .section-heading h2,
-.cabinet-heading h2,
-.slot-detail-heading h2 {
+.cabinet-heading h2 {
   margin: 2px 0;
 }
 .section-heading > span {
@@ -599,8 +699,7 @@ button:disabled {
   margin: -2px 0 18px;
   padding-bottom: 16px;
 }
-.cabinet-heading > div > p:last-child,
-.slot-detail-heading p {
+.cabinet-heading > div > p:last-child {
   color: var(--color-muted);
   margin: 5px 0 0;
 }
@@ -706,16 +805,10 @@ button:disabled {
   padding: 3px 7px;
   text-transform: uppercase;
 }
-.slot-detail {
-  scroll-margin-top: 16px;
-}
 .slot-detail-actions {
+  align-items: center;
   display: flex;
   gap: 9px;
-}
-.slot-detail-heading {
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 15px;
 }
 .state,
 .empty-state {
@@ -741,15 +834,19 @@ button:disabled {
   background: linear-gradient(110deg, #f4faf6, #fffdf4);
   padding: 15px;
 }
-.student-summary > div:nth-child(2) {
+.student-record-copy {
   flex: 1;
 }
-.student-summary h3 {
-  margin: 0 0 4px;
+.student-record-name {
+  color: var(--color-eerie-black);
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 4px;
 }
-.student-summary p {
+.student-record-copy > span {
   color: var(--color-muted);
-  margin: 3px 0;
+  display: block;
+  margin-top: 3px;
 }
 .student-photo {
   align-items: center;
@@ -792,6 +889,9 @@ button:disabled {
   padding-left: 20px;
 }
 .document-columns li {
+  align-items: center;
+  display: flex;
+  gap: 7px;
   margin: 5px 0;
 }
 .empty-list {
@@ -808,6 +908,149 @@ button:disabled {
   padding: 20px;
   position: fixed;
   z-index: 1200;
+}
+.slot-detail-backdrop {
+  overflow: hidden;
+}
+.slot-edit-backdrop {
+  z-index: 1300;
+}
+.slot-records-modal {
+  background: var(--color-surface);
+  border: 1px solid rgba(16, 106, 46, 0.28);
+  border-radius: 12px;
+  box-shadow: 0 28px 80px rgb(0 0 0 / 30%);
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+  max-width: 1050px;
+  overflow: hidden;
+  width: 100%;
+}
+.slot-records-header {
+  align-items: center;
+  background: linear-gradient(135deg, #063c26, #0a6332 70%, #568f1c);
+  color: #fff;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 18px 20px;
+}
+.slot-records-header .eyebrow {
+  color: #f4d35e;
+}
+.slot-records-header h2 {
+  font-size: 1.2rem;
+  margin: 4px 0 0;
+}
+.slot-records-header .primary-button {
+  background: #fff;
+  color: var(--color-dartmouth-green);
+}
+.slot-modal-close {
+  align-items: center;
+  background: rgb(255 255 255 / 14%);
+  border: 1px solid rgb(255 255 255 / 38%);
+  border-radius: 8px;
+  color: #fff;
+  display: inline-flex;
+  flex: 0 0 42px;
+  font-size: 1.65rem;
+  height: 42px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 42px;
+}
+.slot-modal-close:hover {
+  background: rgb(255 255 255 / 24%);
+}
+.slot-modal-close:focus-visible {
+  outline: 3px solid var(--color-naples-yellow);
+  outline-offset: 2px;
+}
+.slot-records-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px 22px;
+}
+.slot-metadata {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+}
+.slot-metadata > div {
+  background: #f3f8f4;
+  border: 1px solid #dce8df;
+  border-radius: 8px;
+  min-width: 0;
+  padding: 10px 11px;
+}
+.slot-metadata dt {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.slot-metadata dd {
+  color: #17452b;
+  font-weight: 750;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.slot-status-badge {
+  background: #dff1e3;
+  border-radius: 999px;
+  color: #166534;
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 3px 7px;
+}
+.slot-description {
+  border-left: 3px solid var(--color-naples-yellow);
+  color: var(--color-muted);
+  margin: 12px 0 0;
+  padding: 7px 10px;
+}
+.student-record-link {
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+.student-record-link:hover {
+  background: linear-gradient(110deg, #eaf5ed, #fff9df);
+}
+.student-record-link:focus-visible {
+  outline: 3px solid rgba(13, 120, 86, 0.32);
+  outline-offset: -3px;
+}
+.student-record-action {
+  color: var(--color-dartmouth-green);
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.document-marker {
+  align-items: center;
+  border-radius: 50%;
+  display: inline-flex;
+  flex: 0 0 18px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  height: 18px;
+  justify-content: center;
+}
+.document-marker.available {
+  background: #dcfce7;
+  color: #166534;
+}
+.document-marker.missing {
+  background: #fee2e2;
+  color: #991b1b;
 }
 .slot-edit-modal {
   background: var(--color-surface);
@@ -882,7 +1125,6 @@ button:disabled {
 @media (max-width: 700px) {
   .physical-records-header,
   .cabinet-heading,
-  .slot-detail-heading,
   .student-summary {
     align-items: stretch;
     flex-direction: column;
@@ -892,8 +1134,7 @@ button:disabled {
     width: 100%;
   }
   .slot-detail-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex: 0 0 auto;
   }
   .cabinet-form,
   .document-columns {
@@ -923,6 +1164,22 @@ button:disabled {
   .security-message,
   .modal-actions {
     grid-column: auto;
+  }
+  .slot-records-header {
+    align-items: flex-start;
+    padding: 15px 16px;
+  }
+  .slot-records-header h2 {
+    font-size: 1rem;
+  }
+  .slot-records-body {
+    padding: 14px;
+  }
+  .slot-metadata {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .student-record-action {
+    display: none;
   }
 }
 </style>

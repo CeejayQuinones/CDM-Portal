@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Appointment;
+use App\Models\AppointmentBlockedDate;
 use App\Models\Course;
 use App\Models\Curriculum;
 use App\Models\DocumentRequest;
@@ -243,6 +244,294 @@ class DocumentRequestAppointmentTest extends TestCase
 
         Sanctum::actingAs($this->userWithRole(Role::ADMIN));
         $this->getJson('/api/registrar/document-types')->assertForbidden();
+    }
+
+    public function test_student_cannot_book_on_saturday(): void
+    {
+        $student = $this->createStudent('26-01101');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $saturday = today()->next('Saturday')->toDateString();
+
+        Sanctum::actingAs($student->user);
+        $this->postJson("/api/document-requests/{$documentRequest->id}/appointments", [
+            'appointment_date' => $saturday,
+            'appointment_time' => '09:00',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.appointment_date.0', 'This date is unavailable because appointments are closed on weekends.');
+
+        $this->assertDatabaseCount('appointments', 0);
+    }
+
+    public function test_student_cannot_book_on_sunday(): void
+    {
+        $student = $this->createStudent('26-01102');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $sunday = today()->next('Sunday')->toDateString();
+
+        Sanctum::actingAs($student->user);
+        $this->postJson("/api/document-requests/{$documentRequest->id}/appointments", [
+            'appointment_date' => $sunday,
+            'appointment_time' => '10:00',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.appointment_date.0', 'This date is unavailable because appointments are closed on weekends.');
+
+        $this->assertDatabaseCount('appointments', 0);
+    }
+
+    public function test_student_can_book_on_a_normal_valid_weekday(): void
+    {
+        $student = $this->createStudent('26-01103');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $appointmentDate = $this->futureWeekday();
+
+        Sanctum::actingAs($student->user);
+        $this->postJson("/api/document-requests/{$documentRequest->id}/appointments", [
+            'appointment_date' => $appointmentDate,
+            'appointment_time' => '10:00',
+        ])->assertCreated();
+
+        $appointment = Appointment::query()->firstOrFail();
+        $this->assertSame($appointmentDate, $appointment->appointment_date->toDateString());
+        $this->assertDatabaseHas('appointments', [
+            'document_request_id' => $documentRequest->id,
+            'appointment_time' => '10:00',
+        ]);
+    }
+
+    public function test_manually_crafted_request_cannot_book_an_active_blocked_date(): void
+    {
+        $student = $this->createStudent('26-01104');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $blockedDate = $this->futureWeekday();
+        AppointmentBlockedDate::create([
+            'blocked_date' => $blockedDate,
+            'type' => 'maintenance',
+            'reason' => 'System Maintenance',
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($student->user);
+        $this->postJson("/api/document-requests/{$documentRequest->id}/appointments", [
+            'appointment_date' => $blockedDate,
+            'appointment_time' => '11:00',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.appointment_date.0', 'This date is unavailable due to System Maintenance.');
+
+        $this->assertDatabaseCount('appointments', 0);
+    }
+
+    public function test_inactive_block_does_not_prevent_student_booking(): void
+    {
+        $student = $this->createStudent('26-01105');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $blockedDate = $this->futureWeekday();
+        AppointmentBlockedDate::create([
+            'blocked_date' => $blockedDate,
+            'type' => 'office_closure',
+            'reason' => 'Former Closure',
+            'is_active' => false,
+        ]);
+
+        Sanctum::actingAs($student->user);
+        $this->postJson("/api/document-requests/{$documentRequest->id}/appointments", [
+            'appointment_date' => $blockedDate,
+            'appointment_time' => '11:00',
+        ])->assertCreated();
+    }
+
+    public function test_registrar_can_create_edit_deactivate_and_delete_a_blocked_date(): void
+    {
+        $registrar = $this->createRegistrar();
+        $blockedDate = $this->futureWeekday();
+        Sanctum::actingAs($registrar->user);
+
+        $created = $this->postJson('/api/registrar/appointment-blocked-dates', [
+            'blocked_date' => $blockedDate,
+            'type' => 'school_event',
+            'reason' => 'Foundation Day',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.blocked_date', $blockedDate)
+            ->assertJsonPath('data.is_active', true)
+            ->json('data');
+
+        $this->assertDatabaseHas('appointment_blocked_dates', [
+            'id' => $created['id'],
+            'created_by' => $registrar->user_id,
+        ]);
+        $this->getJson('/api/registrar/appointment-blocked-dates')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+        $this->postJson('/api/registrar/appointment-blocked-dates', [
+            'blocked_date' => $blockedDate,
+            'type' => 'school_event',
+            'reason' => 'Foundation Day',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.blocked_date.0', 'An identical active block already exists for this date.');
+
+        $this->patchJson("/api/registrar/appointment-blocked-dates/{$created['id']}", [
+            'reason' => 'Updated Foundation Day',
+            'is_active' => false,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.reason', 'Updated Foundation Day')
+            ->assertJsonPath('data.is_active', false);
+
+        $this->deleteJson("/api/registrar/appointment-blocked-dates/{$created['id']}")
+            ->assertOk();
+        $this->assertDatabaseMissing('appointment_blocked_dates', ['id' => $created['id']]);
+    }
+
+    public function test_student_and_admin_cannot_manage_blocked_dates(): void
+    {
+        $student = $this->createStudent('26-01106');
+        Sanctum::actingAs($student->user);
+        $this->getJson('/api/registrar/appointment-blocked-dates')->assertForbidden();
+        $this->postJson('/api/registrar/appointment-blocked-dates', [
+            'blocked_date' => $this->futureWeekday(),
+            'type' => 'other',
+            'reason' => 'Not allowed',
+        ])->assertForbidden();
+
+        Sanctum::actingAs($this->userWithRole(Role::ADMIN));
+        $this->getJson('/api/registrar/appointment-blocked-dates')->assertForbidden();
+    }
+
+    public function test_student_availability_endpoint_is_month_scoped_and_excludes_inactive_blocks(): void
+    {
+        $student = $this->createStudent('26-01107');
+        $activeDate = $this->futureWeekday();
+        $month = substr($activeDate, 0, 7);
+        AppointmentBlockedDate::create([
+            'blocked_date' => $activeDate,
+            'type' => 'holiday',
+            'reason' => 'Active Holiday',
+            'is_active' => true,
+        ]);
+        AppointmentBlockedDate::create([
+            'blocked_date' => $this->futureWeekday(1),
+            'type' => 'maintenance',
+            'reason' => 'Inactive Maintenance',
+            'is_active' => false,
+        ]);
+        AppointmentBlockedDate::create([
+            'blocked_date' => today()->addMonths(2)->startOfMonth()->next('Monday'),
+            'type' => 'other',
+            'reason' => 'Outside Month',
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($student->user);
+        $this->getJson("/api/appointment-availability?month={$month}")
+            ->assertOk()
+            ->assertJsonPath('data.weekends_blocked', true)
+            ->assertJsonCount(1, 'data.blocked_dates')
+            ->assertJsonPath('data.blocked_dates.0.date', $activeDate)
+            ->assertJsonPath('data.blocked_dates.0.type', 'holiday')
+            ->assertJsonPath('data.blocked_dates.0.reason', 'Active Holiday')
+            ->assertJsonMissing(['reason' => 'Inactive Maintenance'])
+            ->assertJsonMissing(['reason' => 'Outside Month']);
+
+        $this->getJson('/api/holidays')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.date', $activeDate)
+            ->assertJsonPath('data.0.name', 'Active Holiday');
+    }
+
+    public function test_blocking_a_date_warns_about_active_appointments_without_modifying_them(): void
+    {
+        $student = $this->createStudent('26-01108');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $blockedDate = $this->futureWeekday();
+        $appointment = Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $documentRequest->id,
+            'appointment_date' => $blockedDate,
+            'appointment_time' => '14:00',
+            'purpose' => 'Document request',
+            'status' => 'confirmed',
+            'active_slot_key' => $blockedDate.' 14:00',
+        ]);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->postJson('/api/registrar/appointment-blocked-dates', [
+            'blocked_date' => $blockedDate,
+            'type' => 'maintenance',
+            'reason' => 'Emergency Maintenance',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.active_appointments_count', 1)
+            ->assertJsonPath('message', 'Appointment date blocked successfully. This date currently has 1 active appointment.');
+
+        $appointment->refresh();
+        $this->assertSame($blockedDate, $appointment->appointment_date->toDateString());
+        $this->assertSame('confirmed', $appointment->status);
+        $this->assertSame($blockedDate.' 14:00', $appointment->active_slot_key);
+        $this->assertDatabaseCount('appointments', 1);
+    }
+
+    public function test_registrar_cannot_reschedule_an_appointment_onto_an_unavailable_date(): void
+    {
+        $student = $this->createStudent('26-01109');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $originalDate = $this->futureWeekday();
+        $blockedDate = $this->futureWeekday(1);
+        $appointment = Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $documentRequest->id,
+            'appointment_date' => $originalDate,
+            'appointment_time' => '13:00',
+            'purpose' => 'Document request',
+            'status' => 'pending',
+            'active_slot_key' => $originalDate.' 13:00',
+        ]);
+        AppointmentBlockedDate::create([
+            'blocked_date' => $blockedDate,
+            'type' => 'office_closure',
+            'reason' => 'Registrar Office Closure',
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->patchJson("/api/registrar/appointments/{$appointment->id}", [
+            'appointment_date' => $blockedDate,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.appointment_date.0', 'This date is unavailable due to Registrar Office Closure.');
+
+        $appointment->refresh();
+        $this->assertSame($originalDate, $appointment->appointment_date->toDateString());
+        $this->assertSame($originalDate.' 13:00', $appointment->active_slot_key);
+    }
+
+    private function futureWeekday(int $weeks = 0): string
+    {
+        return today()->next('Monday')->addWeeks($weeks)->toDateString();
+    }
+
+    private function createAppointmentRequest(Student $student): DocumentRequest
+    {
+        $type = DocumentType::create([
+            'document_name' => 'Appointment Document',
+            'processing_fee' => 50,
+            'processing_days' => 1,
+            'requires_appointment' => true,
+            'status' => 'active',
+        ]);
+
+        return DocumentRequest::create([
+            'student_id' => $student->id,
+            'document_type_id' => $type->id,
+            'quantity' => 1,
+            'total_fee' => 50,
+            'status' => 'pending',
+            'request_date' => today(),
+        ]);
     }
 
     private function createStudent(string $number): Student

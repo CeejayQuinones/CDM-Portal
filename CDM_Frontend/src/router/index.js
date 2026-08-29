@@ -1,6 +1,8 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
+
+const ALL_ROLES = Object.values(ROLES)
 import AuthLayout from '../layouts/AuthLayout.vue'
 import DashboardLayout from '../layouts/DashboardLayout.vue'
 import DashboardView from '../views/DashboardView.vue'
