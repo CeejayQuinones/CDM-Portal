@@ -34,7 +34,7 @@ export const ROUTE_ROLES = Object.freeze({
   admission: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   enrollment: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   grading: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.ADMIN],
-  monitoring: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
+  monitoring: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'student-management': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'physical-records': [ROLES.REGISTRAR_STAFF],
   'event-attendance': [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
@@ -158,7 +158,7 @@ export const NAVIGATION_ITEMS = Object.freeze([
   },
   {
     name: 'monitoring',
-    label: 'Monitoring',
+    label: 'AI Monitoring',
     path: '/monitoring',
     icon: 'MO',
     roles: ROUTE_ROLES.monitoring,

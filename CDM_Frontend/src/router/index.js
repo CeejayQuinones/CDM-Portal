@@ -178,7 +178,17 @@ const routes = [
         path: 'monitoring',
         name: 'monitoring',
         component: MonitoringView,
-        meta: { title: 'Monitoring', roles: ROUTE_ROLES.monitoring },
+        meta: { title: 'AI Monitoring', roles: ROUTE_ROLES.monitoring },
+      }),
+      protectedRoute({
+        path: 'study-plans',
+        redirect: { name: 'monitoring', query: { tab: 'study-plans' } },
+        meta: { requiresAuth: true, roles: ROUTE_ROLES.monitoring },
+      }),
+      protectedRoute({
+        path: 'adviser-alerts',
+        redirect: { name: 'monitoring', query: { tab: 'alerts' } },
+        meta: { requiresAuth: true, roles: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN] },
       }),
       protectedRoute({
         path: 'document-requests',

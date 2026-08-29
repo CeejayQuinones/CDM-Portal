@@ -3,6 +3,7 @@ import { nextTick, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import RegistrationWizard from '../components/RegistrationWizard.vue'
 import { useAuthStore } from '../stores/authStore'
+import { ROUTE_ROLES, canAccess } from '../config/accessControl'
 import { dashboardForRole } from '../utils/roleDashboard'
 import logoUrl from '../assets/styles/images/cdm_logo.png'
 
@@ -20,10 +21,43 @@ const mobileMenuOpen = ref(false)
 
 // Placeholder homepage content: replace these arrays when a CMS or announcements backend is introduced.
 const announcements = [
-  { tag: 'Enrollment', date: 'August 25, 2026', title: 'Enrollment Advisory', description: 'Please review the posted enrollment reminders and prepare the required documents before visiting the Registrar’s Office.' },
-  { tag: 'Registrar', date: 'August 22, 2026', title: 'Registrar Office Schedule', description: 'Updated service hours are available for students requesting records, certifications, and other registrar assistance.' },
-  { tag: 'Campus', date: 'August 18, 2026', title: 'Campus Activity', description: 'Students are invited to participate in upcoming campus programs designed to strengthen community and engagement.' },
-  { tag: 'Documents', date: 'August 15, 2026', title: 'Document Request Notice', description: 'Verify your request details and appointment schedule in the portal before proceeding to the campus office.' },
+  {
+    tag: 'AI Monitoring',
+    date: 'August 29, 2026',
+    title: 'AI Monitoring Early Warning',
+    description:
+      'Track grade risk early, open professional study plans, and review adviser alerts — now available inside the CDM Portal.',
+    routeName: 'monitoring',
+    featured: true,
+  },
+  {
+    tag: 'Enrollment',
+    date: 'August 25, 2026',
+    title: 'Enrollment Advisory',
+    description:
+      'Please review the posted enrollment reminders and prepare the required documents before visiting the Registrar’s Office.',
+  },
+  {
+    tag: 'Registrar',
+    date: 'August 22, 2026',
+    title: 'Registrar Office Schedule',
+    description:
+      'Updated service hours are available for students requesting records, certifications, and other registrar assistance.',
+  },
+  {
+    tag: 'Campus',
+    date: 'August 18, 2026',
+    title: 'Campus Activity',
+    description:
+      'Students are invited to participate in upcoming campus programs designed to strengthen community and engagement.',
+  },
+  {
+    tag: 'Documents',
+    date: 'August 15, 2026',
+    title: 'Document Request Notice',
+    description:
+      'Verify your request details and appointment schedule in the portal before proceeding to the campus office.',
+  },
 ]
 
 // Placeholder event content: replace when an events data source becomes available.
@@ -65,6 +99,17 @@ const registrationComplete = () => {
   showRegistration.value = false
   registrationSuccess.value = true
   scrollTo('login')
+}
+
+const announcementLink = (item) => {
+  if (!item.routeName) return null
+
+  const roles = ROUTE_ROLES[item.routeName] || []
+  if (authStore.isAuthenticated && canAccess(authStore.currentRole, roles)) {
+    return { name: item.routeName }
+  }
+  if (authStore.isAuthenticated) return dashboardForRole(authStore.currentRole)
+  return { name: 'login', query: { redirect: `/${item.routeName}` } }
 }
 </script>
 
@@ -146,9 +191,19 @@ const registrationComplete = () => {
         <div class="section-shell">
           <div class="section-heading"><div><p class="section-kicker">Stay informed</p><h2>Latest announcements</h2></div><p>Important notices and updates from offices across the Colegio de Montalban campus.</p></div>
           <div class="announcement-grid">
-            <article v-for="(item, index) in announcements" :key="item.title" class="announcement-card" :class="{ featured: index === 0 }">
-              <div class="announcement-meta"><span>{{ item.tag }}</span><time>{{ item.date }}</time></div><h3>{{ item.title }}</h3><p>{{ item.description }}</p><span class="card-arrow" aria-hidden="true">↗</span>
-            </article>
+            <component
+              :is="item.routeName ? RouterLink : 'article'"
+              v-for="item in announcements"
+              :key="item.title"
+              v-bind="item.routeName ? { to: announcementLink(item) } : {}"
+              class="announcement-card"
+              :class="{ featured: item.featured, linked: Boolean(item.routeName) }"
+            >
+              <div class="announcement-meta"><span>{{ item.tag }}</span><time>{{ item.date }}</time></div>
+              <h3>{{ item.title }}</h3>
+              <p>{{ item.description }}</p>
+              <span class="card-arrow" aria-hidden="true">↗</span>
+            </component>
           </div>
           <p class="demo-note">Homepage announcements shown are presentation placeholders and will be replaced with official content.</p>
         </div>
@@ -171,3 +226,17 @@ const registrationComplete = () => {
 </template>
 
 <style scoped src="../assets/styles/public-home.css"></style>
+
+<style scoped>
+.announcement-card.linked {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.announcement-card.linked:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px rgba(23, 74, 47, 0.12);
+}
+</style>

@@ -68,6 +68,12 @@ const quickActions = [
     to: { name: 'registrar-document-appointments' },
     icon: 'M5 5h14v16H5zM8 3v4M16 3v4M8 11h8M8 15h5',
   },
+  {
+    label: 'AI Monitoring',
+    description: 'Review early warnings and adviser alerts',
+    to: { name: 'monitoring' },
+    icon: 'M4 19V5M8 15v4M12 9v10M16 12v7M20 5v14',
+  },
 ]
 
 const alerts = computed(() => [

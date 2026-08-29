@@ -50,7 +50,6 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::middleware('role.student')->group(function (): void {
         Route::get('/holidays', HolidayController::class);
-        Route::get('/appointment-availability', AppointmentAvailabilityController::class);
         Route::get('/document-types', [StudentDocumentRequestController::class, 'documentTypes']);
         Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);
         Route::post('/document-requests', [StudentDocumentRequestController::class, 'store']);
@@ -86,9 +85,5 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::patch('/appointments/{appointment}', [RegistrarDocumentRequestController::class, 'updateAppointment']);
         Route::get('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'settings']);
         Route::patch('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'updateSettings']);
-        Route::get('/appointment-blocked-dates', [AppointmentAvailabilityController::class, 'blockedDates']);
-        Route::post('/appointment-blocked-dates', [AppointmentAvailabilityController::class, 'storeBlockedDate']);
-        Route::patch('/appointment-blocked-dates/{appointmentBlockedDate}', [AppointmentAvailabilityController::class, 'updateBlockedDate']);
-        Route::delete('/appointment-blocked-dates/{appointmentBlockedDate}', [AppointmentAvailabilityController::class, 'destroyBlockedDate']);
     });
 });
