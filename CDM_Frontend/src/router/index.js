@@ -20,7 +20,6 @@ import StudentDocumentRequestView from '../modules/document-request/StudentDocum
 import StudentAppointmentsView from '../modules/document-request/StudentAppointmentsView.vue'
 import RegistrarDocumentRequestView from '../modules/document-request/RegistrarDocumentRequestView.vue'
 import RegistrarAppointmentsView from '../modules/document-request/RegistrarAppointmentsView.vue'
-import RegistrarAppointmentAvailabilityView from '../modules/document-request/RegistrarAppointmentAvailabilityView.vue'
 import RegistrarDocumentRequestHistoryView from '../modules/document-request/RegistrarDocumentRequestHistoryView.vue'
 import StudentRecordsView from '../modules/student-management/StudentRecordsView.vue'
 import StudentProfileView from '../modules/student-management/StudentProfileView.vue'
@@ -222,15 +221,6 @@ const routes = [
         meta: {
           title: 'Appointments',
           roles: ROUTE_ROLES['registrar-document-appointments'],
-        },
-      }),
-      protectedRoute({
-        path: 'registrar/appointment-availability',
-        name: 'registrar-appointment-availability',
-        component: RegistrarAppointmentAvailabilityView,
-        meta: {
-          title: 'Appointment Availability',
-          roles: ROUTE_ROLES['registrar-appointment-availability'],
         },
       }),
       protectedRoute({

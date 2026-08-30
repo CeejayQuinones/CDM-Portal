@@ -172,12 +172,25 @@ function submitPage() {
 
 .page-button:not(:disabled):hover {
   background: var(--color-dartmouth-green);
+  border-color: #0b5927;
+  box-shadow: 0 4px 10px rgba(16, 106, 46, 0.16);
   color: #fff;
 }
 
 .go-button {
   background: var(--color-naples-yellow);
   color: var(--color-dartmouth-green);
+}
+
+.go-button:not(:disabled):hover {
+  background: #e9c43f;
+  border-color: #caa52e;
+  box-shadow: 0 4px 10px rgba(151, 115, 0, 0.14);
+}
+
+.page-button:not(:disabled):active,
+.go-button:not(:disabled):active {
+  box-shadow: inset 0 2px 4px rgba(18, 50, 31, 0.18);
 }
 
 .page-button:focus-visible,

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
 import RegistrarRecentActivity from './RegistrarRecentActivity.vue'
@@ -21,6 +21,7 @@ const timeFilter = ref('all')
 const loading = ref(false)
 const message = ref('')
 const error = ref('')
+const statusEditorOpen = ref(false)
 const page = ref(1)
 const lastPage = ref(1)
 const requestIdFilter = ref(null)
@@ -30,6 +31,11 @@ const requestError = (err) => err.response?.data?.message || 'The request could 
 const formatMoney = (value) => Number(value).toFixed(2)
 const studentProfile = computed(() => selected.value?.student?.user_profile || null)
 const physicalLocation = computed(() => selected.value?.student?.physical_record_location || null)
+const currentAppointment = computed(() => {
+  const appointments = selected.value?.appointments || []
+
+  return appointments.find((appointment) => ['pending', 'confirmed'].includes(appointment.status)) || appointments[0] || null
+})
 const studentFullName = computed(() =>
   [
     studentProfile.value?.first_name,
@@ -49,30 +55,6 @@ const studentInitials = computed(
       .join('')
       .toUpperCase() || 'ST',
 )
-const availableDocuments = computed(() =>
-  (selected.value?.student?.documents || []).filter((document) => document.availability_status === 'available'),
-)
-const missingDocuments = computed(() => {
-  if (!selected.value) return []
-  const documents = selected.value.student?.documents || []
-  const missing = documents.filter((document) => document.availability_status !== 'available')
-  const requestedTypeId = selected.value.document_type?.id
-  const requestedRecord = documents.find((document) => document.document_type_id === requestedTypeId)
-
-  if (!requestedRecord) {
-    missing.push({
-      id: `requested-${requestedTypeId}`,
-      document_type: {
-        document_name: selected.value.document_type.document_name,
-      },
-      availability_status: 'missing',
-      remarks: 'No student document record exists.',
-      is_requested_document: true,
-    })
-  }
-
-  return missing
-})
 const requestedDocumentAvailable = computed(() =>
   (selected.value?.student?.documents || []).some(
     (document) =>
@@ -81,6 +63,28 @@ const requestedDocumentAvailable = computed(() =>
 )
 const formatStatus = (value) =>
   value ? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Missing'
+const formatDate = (value) => {
+  if (!value) return 'Not available'
+
+  return new Intl.DateTimeFormat('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'Asia/Manila',
+  }).format(new Date(`${String(value).slice(0, 10)}T00:00:00+08:00`))
+}
+const formatAppointment = (appointment) => {
+  if (!appointment) return 'No appointment booked'
+
+  const date = formatDate(appointment.appointment_date)
+  const time = new Intl.DateTimeFormat('en-PH', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(`2000-01-01T${String(appointment.appointment_time).slice(0, 8)}`))
+
+  return `${date} · ${time}`
+}
 const referenceFor = (item) => item?.request_reference || requestReference(item?.id)
 const requestTimestamp = (item) => item?.updated_at || item?.created_at || item?.request_date || null
 const queryValue = (value) => (Array.isArray(value) ? value[0] : value)
@@ -117,6 +121,24 @@ function viewCabinet() {
       slot: physicalLocation.value.cabinet_slot.id,
     },
   })
+}
+
+function viewStudentProfile() {
+  if (!selected.value) return
+
+  router.push({
+    name: 'student-details',
+    params: { id: selected.value.student.id },
+  })
+}
+
+function closeDetails() {
+  selected.value = null
+  statusEditorOpen.value = false
+}
+
+function handleEscape(event) {
+  if (event.key === 'Escape' && selected.value) closeDetails()
 }
 
 async function refresh(resetPage = false) {
@@ -170,6 +192,7 @@ async function changePage(nextPage) {
 
 async function selectRequest(item) {
   error.value = ''
+  statusEditorOpen.value = false
   try {
     selected.value = await api.registrarRequest(item.id)
   } catch (err) {
@@ -204,6 +227,7 @@ async function action(nextAction) {
       remarks: selected.value.remarks || null,
     })
     selected.value = updated
+    statusEditorOpen.value = false
     updateQueueItem(updated)
     message.value = `Request ${nextAction.replaceAll('_', ' ')}.`
     if (!requests.value.length && page.value > 1) page.value -= 1
@@ -214,10 +238,13 @@ async function action(nextAction) {
 }
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleEscape)
   applyRouteQuery(route.query)
   await refresh()
   await revealFocusedRequest()
 })
+
+onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
 
 watch(
   () => route.fullPath,
@@ -304,132 +331,101 @@ watch(
     />
   </section>
 
-  <section v-if="selected" class="dr-panel">
-    <h2>Request {{ referenceFor(selected) }}</h2>
-    <time
-      v-if="requestTimestamp(selected)"
-      class="time-display detail-updated-time"
-      :datetime="requestTimestamp(selected)"
-      :title="formatExactDateTime(requestTimestamp(selected))"
-    >
-      Updated {{ formatRelativeTime(requestTimestamp(selected)) }}
-      <small>{{ formatExactDateTime(requestTimestamp(selected)) }}</small>
-    </time>
-    <p>
-      <strong>Student:</strong>
-      {{ studentFullName }} ({{ selected.student.student_number }})
-    </p>
-    <p>
-      <strong>Document:</strong>
-      {{ selected.document_type.document_name }} · {{ selected.quantity }} copy/copies
-      <template v-if="Number(selected.total_fee) > 0">· ₱{{ formatMoney(selected.total_fee) }}</template>
-    </p>
+  <Teleport to="body">
+    <div v-if="selected" class="request-detail-backdrop" @click.self="closeDetails">
+      <section class="request-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="request-detail-title">
+        <header class="request-detail-header">
+          <div>
+            <p>Registrar document queue</p>
+            <h2 id="request-detail-title">Request Details</h2>
+          </div>
+          <button type="button" class="request-detail-close" aria-label="Close request details" @click="closeDetails">
+            ×
+          </button>
+        </header>
 
-    <section class="record-check" aria-labelledby="student-record-check-heading">
-      <div class="record-check-heading">
-        <div class="record-student-photo">
-          <img
-            v-if="studentProfile?.profile_photo"
-            :src="studentProfile.profile_photo"
-            :alt="`${studentFullName} photo`"
-          />
-          <span v-else>{{ studentInitials }}</span>
-        </div>
-        <div>
-          <p class="record-eyebrow">Student Management</p>
-          <h3 id="student-record-check-heading">Student Record Check</h3>
-          <strong>{{ studentFullName }}</strong>
-          <p>
-            {{ selected.student.student_number }} · {{ selected.student.course?.course_code }} —
-            {{ selected.student.course?.course_name }}
+        <div class="request-detail-scroll">
+          <section class="request-identity">
+            <div class="request-student-avatar">
+              <img
+                v-if="studentProfile?.profile_photo"
+                :src="studentProfile.profile_photo"
+                :alt="`${studentFullName} photo`"
+              />
+              <span v-else>{{ studentInitials }}</span>
+            </div>
+            <div>
+              <strong class="request-reference">{{ referenceFor(selected) }}</strong>
+              <h3>{{ studentFullName }}</h3>
+              <p>{{ selected.document_type.document_name }}</p>
+            </div>
+            <span class="badge request-detail-status" :class="selected.status">{{ formatStatus(selected.status) }}</span>
+          </section>
+
+          <dl class="request-facts">
+            <div><dt>Requested</dt><dd>{{ formatDate(selected.request_date) }}</dd></div>
+            <div><dt>Appointment</dt><dd>{{ formatAppointment(currentAppointment) }}</dd></div>
+            <div><dt>Fee</dt><dd>₱{{ formatMoney(selected.total_fee || 0) }}</dd></div>
+            <div class="physical-record-fact">
+              <dt>Physical Record Location</dt>
+              <dd v-if="physicalLocation">
+                Cabinet {{ physicalLocation.cabinet_slot.cabinet.cabinet_code }} · Slot
+                {{ physicalLocation.cabinet_slot.slot_code }}
+              </dd>
+              <dd v-else>Not assigned</dd>
+            </div>
+          </dl>
+
+          <section class="request-detail-section" aria-labelledby="request-student-heading">
+            <div class="request-section-heading"><span>01</span><h3 id="request-student-heading">Student Details</h3></div>
+            <dl class="student-facts">
+              <div><dt>Student No.</dt><dd>{{ selected.student.student_number }}</dd></div>
+              <div>
+                <dt>Course</dt>
+                <dd>{{ selected.student.course?.course_code || selected.student.course?.course_name || 'Not available' }}</dd>
+              </div>
+              <div><dt>Year Level</dt><dd>Year {{ selected.student.year_level || 'Not available' }}</dd></div>
+            </dl>
+          </section>
+
+          <section class="request-detail-section" aria-labelledby="request-notes-heading">
+            <div class="request-section-heading"><span>02</span><h3 id="request-notes-heading">Request Notes / Purpose</h3></div>
+            <p class="request-purpose">{{ selected.purpose || selected.remarks || 'No notes or purpose provided.' }}</p>
+          </section>
+
+          <p v-if="!requestedDocumentAvailable" class="record-warning request-detail-warning">
+            The requested document is not marked available in this student's document record. Registrar Staff may still
+            continue processing the request.
           </p>
-          <p>
-            Year {{ selected.student.year_level }} ·
-            {{ formatStatus(selected.student.student_status) }}
-          </p>
-        </div>
-        <button
-          type="button"
-          class="record-link"
-          @click="
-            router.push({
-              name: 'student-details',
-              params: { id: selected.student.id },
-            })
-          "
-        >
-          View Student Record
-        </button>
-      </div>
 
-      <div class="physical-location-check">
-        <div>
-          <span>Physical Record Location</span>
-          <strong v-if="physicalLocation">
-            Cabinet {{ physicalLocation.cabinet_slot.cabinet.cabinet_code }} / Slot
-            {{ physicalLocation.cabinet_slot.slot_code }}
-          </strong>
-          <strong v-else class="not-assigned">Not assigned</strong>
-          <small v-if="physicalLocation?.remarks">{{ physicalLocation.remarks }}</small>
+          <section v-if="statusEditorOpen" class="request-status-editor" aria-labelledby="request-status-heading">
+            <div class="request-section-heading"><span>03</span><h3 id="request-status-heading">Update Status</h3></div>
+            <label>
+              Registrar remarks
+              <textarea v-model="selected.remarks" rows="3" placeholder="Optional internal remarks"></textarea>
+            </label>
+            <div class="request-status-actions">
+              <button v-if="selected.status === 'pending'" type="button" @click="action('approve')">Approve & process</button>
+              <button v-if="['pending', 'processing'].includes(selected.status)" type="button" class="danger" @click="action('reject')">Reject</button>
+              <button v-if="selected.status === 'processing'" type="button" @click="action('process')">Mark processed</button>
+              <button v-if="selected.status === 'processing'" type="button" @click="action('ready_for_release')">Ready for release</button>
+              <button v-if="selected.status === 'ready_for_release'" type="button" @click="action('release')">Release document</button>
+              <button v-if="activeStatuses.includes(selected.status)" type="button" class="secondary" @click="action('cancel')">Cancel request</button>
+            </div>
+          </section>
         </div>
-        <button v-if="physicalLocation" type="button" class="record-link" @click="viewCabinet">View Cabinet</button>
-      </div>
 
-      <p v-if="!requestedDocumentAvailable" class="record-warning">
-        The requested document is not currently marked available in this student's document record. Registrar Staff may
-        still continue processing the request.
-      </p>
-
-      <div class="record-document-columns">
-        <div>
-          <h4>Available Documents</h4>
-          <p v-if="!availableDocuments.length" class="empty">No documents are marked available.</p>
-          <ul v-else>
-            <li v-for="document in availableDocuments" :key="document.id">
-              <span>{{ document.document_type.document_name }}</span>
-              <strong class="available-label">Available</strong>
-            </li>
-          </ul>
-        </div>
-        <div>
-          <h4>Missing Documents</h4>
-          <p v-if="!missingDocuments.length" class="empty">No documents are marked missing.</p>
-          <ul v-else>
-            <li v-for="document in missingDocuments" :key="document.id">
-              <span>{{ document.document_type.document_name }}</span>
-              <strong class="missing-label">Missing</strong>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <label>
-      Registrar remarks
-      <textarea v-model="selected.remarks" rows="3"></textarea>
-    </label>
-    <div class="actions">
-      <button v-if="selected.status === 'pending'" @click="action('approve')">Approve & process</button>
-      <button v-if="['pending', 'processing'].includes(selected.status)" class="danger" @click="action('reject')">
-        Reject
-      </button>
-      <button v-if="selected.status === 'processing'" @click="action('process')">Mark processed</button>
-      <button v-if="selected.status === 'processing'" @click="action('ready_for_release')">Ready for release</button>
-      <button v-if="selected.status === 'ready_for_release'" @click="action('release')">Release document</button>
-      <button v-if="activeStatuses.includes(selected.status)" class="secondary" @click="action('cancel')">
-        Cancel
-      </button>
+        <footer class="request-detail-footer">
+          <button type="button" class="secondary-action" @click="viewStudentProfile">View Student Profile</button>
+          <button type="button" class="secondary-action" :disabled="!physicalLocation" @click="viewCabinet">View Physical Record</button>
+          <button type="button" class="primary-action" @click="statusEditorOpen = !statusEditorOpen">
+            {{ statusEditorOpen ? 'Hide Status Update' : 'Update Status' }}
+          </button>
+          <button type="button" class="close-action" @click="closeDetails">Close</button>
+        </footer>
+      </section>
     </div>
-
-    <h3>Appointments</h3>
-    <p v-if="!selected.appointments.length" class="empty">No appointment booked.</p>
-    <div v-for="appointment in selected.appointments" :key="appointment.id" class="appointment">
-      <span>
-        {{ appointment.appointment_date }} at {{ String(appointment.appointment_time).slice(0, 5) }} —
-        {{ appointment.status }}
-      </span>
-    </div>
-  </section>
+  </Teleport>
 </template>
 
 <style scoped src="./documentRequest.css"></style>

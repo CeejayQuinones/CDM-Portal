@@ -5,7 +5,10 @@ import { documentRequestService as api } from './documentRequestService'
 const appointmentNeededRequests = ref([])
 const appointments = ref([])
 const availabilityByMonth = ref({})
-const weekendsBlocked = ref(true)
+const weekendSettings = ref({
+  block_saturday: true,
+  block_sunday: true,
+})
 const bookingRequest = ref(null)
 const appointmentDate = ref('')
 const appointmentTime = ref('')
@@ -47,9 +50,8 @@ const selectedUnavailable = computed(() => {
   if (blockedDate) return blockedDate
 
   const [year, month, day] = appointmentDate.value.split('-').map(Number)
-  if (weekendsBlocked.value && [0, 6].includes(new Date(year, month - 1, day).getDay())) {
-    return { reason: 'Weekend', type: 'weekend' }
-  }
+  const weekend = blockedWeekend(new Date(year, month - 1, day))
+  if (weekend) return weekend
 
   return null
 })
@@ -71,8 +73,8 @@ const calendarDays = computed(() => {
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = dateKey(year, month, day)
     const blockedDate = blockedByDate.value.get(date) || null
-    const weekend = weekendsBlocked.value && [0, 6].includes(new Date(year, month, day).getDay())
-    const unavailable = blockedDate || (weekend ? { reason: 'Weekend', type: 'weekend' } : null)
+    const weekend = blockedWeekend(new Date(year, month, day))
+    const unavailable = blockedDate || weekend
 
     days.push({
       key: date,
@@ -89,6 +91,18 @@ const calendarDays = computed(() => {
 
 function dateKey(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function blockedWeekend(date) {
+  if (date.getDay() === 6 && weekendSettings.value.block_saturday) {
+    return { reason: 'Saturday', type: 'weekend' }
+  }
+
+  if (date.getDay() === 0 && weekendSettings.value.block_sunday) {
+    return { reason: 'Sunday', type: 'weekend' }
+  }
+
+  return null
 }
 
 async function changeMonth(offset) {
@@ -135,7 +149,10 @@ async function loadAvailability() {
       ...availabilityByMonth.value,
       [month]: availability.blocked_dates,
     }
-    weekendsBlocked.value = availability.weekends_blocked
+    weekendSettings.value = {
+      block_saturday: availability.settings?.block_saturday ?? true,
+      block_sunday: availability.settings?.block_sunday ?? true,
+    }
   } catch (err) {
     error.value = requestError(err)
   }

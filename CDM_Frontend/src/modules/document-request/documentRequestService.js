@@ -18,6 +18,9 @@ export const documentRequestService = {
   updateRequest: (id, payload) => unwrap(apiClient.patch(`/registrar/document-requests/${id}`, payload)),
   registrarAppointments: (params) => unwrap(apiClient.get('/registrar/appointments', { params })),
   updateAppointment: (id, payload) => unwrap(apiClient.patch(`/registrar/appointments/${id}`, payload)),
+  appointmentAvailabilitySettings: () => unwrap(apiClient.get('/registrar/appointment-availability/settings')),
+  updateAppointmentAvailabilitySettings: async (payload) =>
+    (await apiClient.patch('/registrar/appointment-availability/settings', payload)).data,
   appointmentBlockedDates: () => unwrap(apiClient.get('/registrar/appointment-blocked-dates')),
   createAppointmentBlockedDate: async (payload) =>
     (await apiClient.post('/registrar/appointment-blocked-dates', payload)).data,

@@ -44,10 +44,10 @@ class DocumentRequestAppointmentTest extends TestCase
         $type = DocumentType::create(['document_name' => 'Certificate of Enrollment', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
         $firstRequest = DocumentRequest::create(['student_id' => $first->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'pending', 'request_date' => today()]);
         $secondRequest = DocumentRequest::create(['student_id' => $second->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'pending', 'request_date' => today()]);
-        $tomorrow = today()->addDay()->toDateString();
+        $availableDate = $this->futureWeekday();
 
         Sanctum::actingAs($first->user);
-        $this->postJson("/api/document-requests/{$firstRequest->id}/appointments", ['appointment_date' => $tomorrow, 'appointment_time' => '09:00'])->assertCreated();
+        $this->postJson("/api/document-requests/{$firstRequest->id}/appointments", ['appointment_date' => $availableDate, 'appointment_time' => '09:00'])->assertCreated();
         $this->getJson('/api/appointment-overview')
             ->assertOk()
             ->assertJsonCount(0, 'data.requests_needing_appointment')
@@ -55,7 +55,7 @@ class DocumentRequestAppointmentTest extends TestCase
 
         Sanctum::actingAs($second->user);
         $this->getJson("/api/document-requests/{$firstRequest->id}")->assertForbidden();
-        $this->postJson("/api/document-requests/{$secondRequest->id}/appointments", ['appointment_date' => $tomorrow, 'appointment_time' => '09:00'])->assertStatus(409);
+        $this->postJson("/api/document-requests/{$secondRequest->id}/appointments", ['appointment_date' => $availableDate, 'appointment_time' => '09:00'])->assertStatus(409);
     }
 
     public function test_registrar_can_process_but_admin_cannot_access_registrar_endpoints(): void
@@ -335,6 +335,32 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->deleteJson("/api/registrar/appointment-blocked-dates/{$created['id']}")
             ->assertOk();
         $this->assertDatabaseMissing('appointment_blocked_dates', ['id' => $created['id']]);
+    }
+
+    public function test_registrar_can_load_and_update_weekend_availability_settings(): void
+    {
+        $registrar = $this->createRegistrar();
+        Sanctum::actingAs($registrar->user);
+
+        $this->getJson('/api/registrar/appointment-availability/settings')
+            ->assertOk()
+            ->assertJsonPath('data.block_saturday', true)
+            ->assertJsonPath('data.block_sunday', true);
+
+        $this->patchJson('/api/registrar/appointment-availability/settings', [
+            'block_saturday' => false,
+            'block_sunday' => true,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.block_saturday', false)
+            ->assertJsonPath('data.block_sunday', true);
+
+        $this->assertDatabaseHas('appointment_availability_settings', [
+            'id' => 1,
+            'block_saturday' => false,
+            'block_sunday' => true,
+            'updated_by' => $registrar->user_id,
+        ]);
     }
 
     public function test_student_and_admin_cannot_manage_blocked_dates(): void

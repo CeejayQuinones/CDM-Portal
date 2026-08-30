@@ -7,7 +7,7 @@ import { physicalRecordsService as api } from './physicalRecordsService'
 
 const route = useRoute()
 const router = useRouter()
-const { runWithStepUp } = useStepUpAuth()
+const { isOpen: stepUpOpen, runWithStepUp } = useStepUpAuth()
 const cabinets = ref([])
 const loading = ref(false)
 const creating = ref(false)
@@ -571,7 +571,7 @@ onBeforeUnmount(() => {
         <div class="modal-actions">
           <button class="secondary-button" type="button" :disabled="slotSaving" @click="closeSlotEdit">Cancel</button>
           <button class="primary-button" type="submit" :disabled="slotSaving">
-            {{ slotSaving ? 'Saving…' : 'Save Slot' }}
+            {{ slotSaving && !stepUpOpen ? 'Saving…' : 'Save Slot' }}
           </button>
         </div>
       </form>
