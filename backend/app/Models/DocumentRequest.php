@@ -44,6 +44,11 @@ class DocumentRequest extends Model
         return $this->hasOne(Appointment::class)->latestOfMany();
     }
 
+    public function statusChanges(): HasMany
+    {
+        return $this->hasMany(DocumentRequestStatusChange::class)->latest('created_at')->latest('id');
+    }
+
     protected function requestReference(): Attribute
     {
         return Attribute::get(fn (): string => sprintf('REQ-%06d', $this->getKey()));

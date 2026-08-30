@@ -5,6 +5,7 @@ import { apiClient } from '../../services/apiClient'
 import { useAuthStore } from '../../stores/authStore'
 import { ROLES } from '../../config/accessControl'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
+import { documentRequestReturnContext } from '../document-request/documentRequestNavigation'
 import { physicalRecordsService } from './physicalRecordsService'
 
 const route = useRoute()
@@ -45,6 +46,7 @@ const initials = computed(
       .toUpperCase() || 'ST',
 )
 const physicalLocation = computed(() => student.value?.physical_record_location || null)
+const returnContext = computed(() => documentRequestReturnContext(route.query))
 const canManagePhysicalRecords = computed(() => authStore.currentRole === ROLES.REGISTRAR_STAFF)
 const activeCabinets = computed(() =>
   cabinets.value
@@ -143,6 +145,10 @@ function viewCabinet() {
   })
 }
 
+function returnToSource() {
+  if (returnContext.value) router.push(returnContext.value.to)
+}
+
 function startEdit() {
   Object.assign(form, {
     student_number: student.value.student_number || '',
@@ -195,6 +201,9 @@ onMounted(loadProfile)
 
 <template>
   <section class="page-header">
+    <button v-if="returnContext" class="contextual-back" type="button" @click="returnToSource">
+      {{ returnContext.label }}
+    </button>
     <p class="page-kicker">Registrar / Student Management</p>
     <h1 class="page-title">Student Profile</h1>
     <p class="page-description">Official Student Management record and registrar activity.</p>
@@ -255,7 +264,7 @@ onMounted(loadProfile)
     <p v-if="editMode" class="security-note">Saving official record changes may require password verification.</p>
 
     <nav class="action-bar" aria-label="Student profile actions">
-      <button v-if="!editMode" class="back" type="button" @click="router.push({ name: 'student-management' })">
+      <button v-if="!editMode && !returnContext" class="back" type="button" @click="router.push({ name: 'student-management' })">
         ← Back to Student List
       </button>
       <button v-if="!editMode" type="button" @click="startEdit">✏ Edit Student</button>
@@ -606,6 +615,21 @@ onMounted(loadProfile)
 </template>
 
 <style scoped>
+.contextual-back {
+  align-items: center;
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  color: var(--color-dartmouth-green);
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 800;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.contextual-back:hover {
+  text-decoration: underline;
+}
 .record-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);

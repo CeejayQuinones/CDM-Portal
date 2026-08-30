@@ -3,7 +3,7 @@ import axios from 'axios'
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',

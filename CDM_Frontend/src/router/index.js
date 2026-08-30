@@ -219,7 +219,7 @@ const routes = [
         name: 'registrar-document-appointments',
         component: RegistrarAppointmentsView,
         meta: {
-          title: 'Appointments',
+          title: 'Appointments & Release',
           roles: ROUTE_ROLES['registrar-document-appointments'],
         },
       }),

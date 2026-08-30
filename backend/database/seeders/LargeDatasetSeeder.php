@@ -32,6 +32,8 @@ class LargeDatasetSeeder extends Seeder
 
     private const DOCUMENT_REQUEST_COUNT = 25_000;
 
+    public const PROCESSING_REQUEST_COUNT = 8;
+
     private const APPOINTMENT_COUNT = 10_000;
 
     private const BATCH_SIZE = 500;
@@ -848,9 +850,12 @@ class LargeDatasetSeeder extends Seeder
 
     private function requestStatus(int $sequence): string
     {
+        if ($sequence < self::PROCESSING_REQUEST_COUNT) {
+            return 'processing';
+        }
+
         return match (true) {
-            $sequence % 100 < 15 => 'pending',
-            $sequence % 100 < 35 => 'processing',
+            $sequence % 100 < 35 => 'pending',
             $sequence % 100 < 50 => 'ready_for_release',
             $sequence % 100 < 75 => 'released',
             $sequence % 100 < 90 => 'rejected',

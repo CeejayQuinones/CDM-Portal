@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { documentTypeAccentClass, requestStatusAccentClass } from './documentRequestPresentation'
 import { documentRequestService as api } from './documentRequestService'
 
 const documentTypes = ref([])
@@ -100,9 +101,16 @@ onMounted(refresh)
     <h2>Your request status and history</h2>
     <p v-if="loading && !requests.length" class="empty">Loading requests…</p>
     <p v-else-if="!requests.length" class="empty">No document requests yet.</p>
-    <div v-for="item in requests" :key="item.id" class="request-card">
+    <div
+      v-for="item in requests"
+      :key="item.id"
+      class="request-card"
+      :class="requestStatusAccentClass(item.status)"
+    >
       <div>
-        <strong>{{ item.document_type.document_name }}</strong>
+        <strong class="document-type-chip" :class="documentTypeAccentClass(item.document_type.document_name)">
+          {{ item.document_type.document_name }}
+        </strong>
         <p>
           Requested {{ item.request_date }} · {{ item.quantity }} copy/copies
           <template v-if="Number(item.total_fee) > 0">· ₱{{ formatMoney(item.total_fee) }}</template>

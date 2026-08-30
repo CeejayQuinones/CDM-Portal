@@ -6,6 +6,8 @@ export const TIME_FILTERS = Object.freeze([
   { value: 'all', label: 'All' },
 ])
 
+const STATUS_ACCENTS = new Set(['pending', 'processing', 'ready_for_release', 'released', 'rejected', 'cancelled'])
+
 const exactDateTimeFormatter = new Intl.DateTimeFormat('en-PH', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -39,6 +41,37 @@ export function studentName(student) {
   const profile = student?.user?.profile || student?.user_profile || student?.userProfile
 
   return [profile?.first_name, profile?.middle_name, profile?.last_name, profile?.suffix].filter(Boolean).join(' ')
+}
+
+export function documentTypeAccentClass(documentName) {
+  const normalizedName = String(documentName || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
+  if (normalizedName.includes('birth certificate')) return 'document-type-yellow'
+  if (normalizedName.includes('certificate of enrollment')) return 'document-type-green'
+  if (normalizedName.includes('registration form')) return 'document-type-blue'
+  if (normalizedName.includes('form 137')) return 'document-type-purple'
+  if (normalizedName.includes('school card') || normalizedName.includes('report card')) return 'document-type-orange'
+
+  return 'document-type-gray'
+}
+
+export function requestStatusAccentClass(status) {
+  const normalizedStatus = String(status || '').toLowerCase()
+  const accent = STATUS_ACCENTS.has(normalizedStatus) ? normalizedStatus.replaceAll('_', '-') : 'gray'
+
+  return `status-accent-${accent}`
+}
+
+export function requestStatusFromActivity(activity) {
+  if (activity?.type !== 'request') return null
+
+  if (activity.action === 'submitted') return 'pending'
+  if (['approved', 'processed', 'returned_to_processing'].includes(activity.action)) return 'processing'
+
+  return activity.action
 }
 
 export function formatExactDateTime(value) {

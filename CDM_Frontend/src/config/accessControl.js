@@ -94,7 +94,7 @@ export const NAVIGATION_ITEMS = Object.freeze([
       },
       {
         name: 'registrar-document-appointments',
-        label: 'Appointments',
+        label: 'Appointments & Release',
         path: '/registrar/appointments',
         roles: ROUTE_ROLES['registrar-document-appointments'],
       },

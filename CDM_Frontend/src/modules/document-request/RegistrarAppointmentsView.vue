@@ -3,19 +3,25 @@ import { nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
 import RegistrarRecentActivity from './RegistrarRecentActivity.vue'
+import RequestWorkflowReasonModal from './RequestWorkflowReasonModal.vue'
+import { rememberDocumentRequestFocus } from './documentRequestFocus'
 import {
   appointmentDateTime,
+  documentTypeAccentClass,
   formatExactDateTime,
   formatRelativeTime,
   requestReference,
+  requestStatusAccentClass,
   studentName,
   TIME_FILTERS,
 } from './documentRequestPresentation'
+import { requestDocumentName, requestStudentNumber } from './documentRequestRow'
 import { documentRequestService as api } from './documentRequestService'
 
 const route = useRoute()
 const router = useRouter()
 const appointments = ref([])
+const readyRequests = ref([])
 const search = ref('')
 const date = ref('')
 const status = ref('')
@@ -26,6 +32,13 @@ const message = ref('')
 const error = ref('')
 const page = ref(1)
 const lastPage = ref(1)
+const releasePage = ref(1)
+const releaseLastPage = ref(1)
+const releaseTotal = ref(0)
+const releasingId = ref(null)
+const returningId = ref(null)
+const returnTarget = ref(null)
+const returnDialogOpen = ref(false)
 const requestIdFilter = ref(null)
 const appointmentIdFilter = ref(null)
 const focusedAppointmentId = ref(null)
@@ -65,6 +78,13 @@ const activeGroups = [
   { value: 'upcoming', label: 'Upcoming' },
   { value: 'today', label: 'Today' },
 ]
+const RETURN_REASONS = [
+  'Wrong request selected',
+  'Document preparation error',
+  'Incorrect document',
+  'Needs correction',
+  'Other',
+]
 const requestError = (err) => err.response?.data?.message || 'The appointment could not be completed.'
 const availabilityRequestError = (err) =>
   Object.values(err.response?.data?.errors || {})[0]?.[0] ||
@@ -89,6 +109,7 @@ const appointmentTimestamp = (appointment) => {
 
   return `${String(appointment.appointment_date).slice(0, 10)}T${String(appointment.appointment_time || '00:00').slice(0, 8)}`
 }
+const releaseTimestamp = (request) => request?.ready_for_release_at || request?.updated_at || null
 
 function blockedDateLabel(value) {
   return new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium' }).format(new Date(`${value}T00:00:00`))
@@ -238,27 +259,44 @@ function applyRouteQuery(query) {
   requestIdFilter.value = positiveId(query.request_id)
   appointmentIdFilter.value = positiveId(query.appointment_id)
   focusedAppointmentId.value = focusedId(query.focus) || appointmentIdFilter.value
-  page.value = 1
+  page.value = positiveId(query.page) || 1
+  releasePage.value = positiveId(query.release_page) || 1
 }
 
 async function refresh(resetPage = false) {
-  if (resetPage) page.value = 1
+  if (resetPage) {
+    page.value = 1
+    releasePage.value = 1
+  }
   loading.value = true
   error.value = ''
   try {
-    const result = await api.registrarAppointments({
-      search: search.value || undefined,
-      date: date.value || undefined,
-      status: status.value || undefined,
-      group: group.value,
-      time_filter: timeFilter.value,
-      request_id: requestIdFilter.value || undefined,
-      appointment_id: appointmentIdFilter.value || undefined,
-      page: page.value,
-    })
-    appointments.value = result.data
-    page.value = result.current_page || page.value
-    lastPage.value = result.last_page
+    const [appointmentResult, releaseResult] = await Promise.all([
+      api.registrarAppointments({
+        search: search.value || undefined,
+        date: date.value || undefined,
+        status: status.value || undefined,
+        group: group.value,
+        time_filter: timeFilter.value,
+        request_id: requestIdFilter.value || undefined,
+        appointment_id: appointmentIdFilter.value || undefined,
+        page: page.value,
+      }),
+      api.registrarRequests({
+        status: 'ready_for_release',
+        search: search.value || undefined,
+        time_filter: timeFilter.value,
+        request_id: requestIdFilter.value || undefined,
+        page: releasePage.value,
+      }),
+    ])
+    appointments.value = appointmentResult.data
+    page.value = appointmentResult.current_page || page.value
+    lastPage.value = appointmentResult.last_page
+    readyRequests.value = releaseResult.data
+    releasePage.value = releaseResult.current_page || releasePage.value
+    releaseLastPage.value = releaseResult.last_page
+    releaseTotal.value = releaseResult.total
   } catch (err) {
     error.value = requestError(err)
   } finally {
@@ -309,6 +347,83 @@ async function changePage(nextPage) {
   await refresh()
 }
 
+async function changeReleasePage(nextPage) {
+  releasePage.value = nextPage
+  await refresh()
+}
+
+function viewRequest(request) {
+  router.push({
+    name: 'registrar-document-requests',
+    query: { request_id: request.id },
+  })
+}
+
+function openReturnToProcessing(request) {
+  returnTarget.value = request
+  returnDialogOpen.value = true
+}
+
+function closeReturnDialog() {
+  if (returningId.value) return
+  returnDialogOpen.value = false
+  returnTarget.value = null
+}
+
+async function confirmReturnToProcessing({ reason }) {
+  if (!returnTarget.value) return
+
+  error.value = ''
+  message.value = ''
+  returningId.value = returnTarget.value.id
+  try {
+    const request = returnTarget.value
+    await api.updateRequest(request.id, {
+      action: 'return_to_processing',
+      reason,
+    })
+    readyRequests.value = readyRequests.value.filter((item) => item.id !== request.id)
+    releaseTotal.value = Math.max(0, releaseTotal.value - 1)
+    rememberDocumentRequestFocus(request.id)
+    message.value = `${request.request_reference || requestReference(request.id)} returned to Processing.`
+    returnDialogOpen.value = false
+    returnTarget.value = null
+
+    if (!readyRequests.value.length && releasePage.value > 1) {
+      releasePage.value -= 1
+      await refresh()
+    }
+  } catch (err) {
+    error.value = requestError(err)
+  } finally {
+    returningId.value = null
+  }
+}
+
+async function releaseDocument(request) {
+  error.value = ''
+  message.value = ''
+  releasingId.value = request.id
+  try {
+    await api.updateRequest(request.id, {
+      action: 'release',
+      remarks: request.remarks || null,
+    })
+    readyRequests.value = readyRequests.value.filter((item) => item.id !== request.id)
+    releaseTotal.value = Math.max(0, releaseTotal.value - 1)
+    message.value = `${request.request_reference || requestReference(request.id)} released and moved to History.`
+
+    if (!readyRequests.value.length && releasePage.value > 1) {
+      releasePage.value -= 1
+      await refresh()
+    }
+  } catch (err) {
+    error.value = requestError(err)
+  } finally {
+    releasingId.value = null
+  }
+}
+
 async function updateStatus(appointment, nextStatus) {
   error.value = ''
   message.value = ''
@@ -339,6 +454,8 @@ watch(
     () => queryValue(route.query.request_id),
     () => queryValue(route.query.appointment_id),
     () => queryValue(route.query.focus),
+    () => queryValue(route.query.page),
+    () => queryValue(route.query.release_page),
   ],
   async () => {
     applyRouteQuery(route.query)
@@ -353,9 +470,9 @@ watch(
   <section class="page-header registrar-appointments-header">
     <p class="page-kicker">Registrar Staff</p>
     <div class="appointments-title-row">
-      <h1 class="page-title">Document Request Appointments</h1>
+      <h1 class="page-title">Appointments &amp; Release</h1>
     </div>
-    <p class="page-description">Review and update appointments associated with document requests.</p>
+    <p class="page-description">Manage scheduled pickups and release documents that are ready for students.</p>
   </section>
 
   <Teleport to="body">
@@ -378,7 +495,82 @@ watch(
   <p v-if="message" class="notice success">{{ message }}</p>
   <p v-if="error" class="notice error">{{ error }}</p>
 
-  <RegistrarRecentActivity />
+  <section class="dr-panel release-queue-panel" aria-labelledby="release-queue-title">
+    <header class="release-queue-header">
+      <div>
+        <p class="record-eyebrow">Document handoff</p>
+        <h2 id="release-queue-title">Ready for Release</h2>
+        <p>Prepared requests remain here until the document is handed to the student.</p>
+      </div>
+      <strong class="work-queue-count" :aria-label="`${releaseTotal} requests ready for release`">
+        {{ releaseTotal }}
+      </strong>
+    </header>
+    <p v-if="loading && !readyRequests.length" class="empty">Loading ready requests&hellip;</p>
+    <p v-else-if="!readyRequests.length" class="empty">No documents are currently ready for release.</p>
+    <article
+      v-for="request in readyRequests"
+      :key="request.id"
+      class="release-request-row"
+      :class="requestStatusAccentClass(request.status)"
+    >
+      <div class="release-request-summary">
+        <span class="compact-request-heading">
+          <strong>{{ request.request_reference || requestReference(request.id) }}</strong>
+          <time
+            v-if="releaseTimestamp(request)"
+            :datetime="releaseTimestamp(request)"
+            :title="formatExactDateTime(releaseTimestamp(request))"
+          >
+            {{ formatRelativeTime(releaseTimestamp(request)) }}
+          </time>
+        </span>
+        <strong>{{ studentName(request.student) }}</strong>
+        <span class="compact-request-meta">
+          <span class="document-type-chip" :class="documentTypeAccentClass(requestDocumentName(request))">
+            {{ requestDocumentName(request) }}
+          </span>
+          <span>{{ requestStudentNumber(request) }}</span>
+        </span>
+      </div>
+      <span class="release-request-actions">
+        <button type="button" class="secondary" @click="viewRequest(request)">View Details</button>
+        <button
+          type="button"
+          class="secondary"
+          :disabled="releasingId === request.id || returningId === request.id"
+          @click="openReturnToProcessing(request)"
+        >
+          Return to Processing
+        </button>
+        <button
+          type="button"
+          :disabled="releasingId === request.id || returningId === request.id"
+          @click="releaseDocument(request)"
+        >
+          {{ releasingId === request.id ? 'Releasing…' : 'Release Document' }}
+        </button>
+      </span>
+    </article>
+    <PaginationControls
+      :current-page="releasePage"
+      :last-page="releaseLastPage"
+      :busy="loading"
+      aria-label="Ready for release request pages"
+      @page-change="changeReleasePage"
+    />
+  </section>
+
+  <RequestWorkflowReasonModal
+    :open="returnDialogOpen"
+    title="Return to Processing"
+    description="Confirm why this prepared request needs more work. The reason and your identity are recorded."
+    confirm-label="Return to Processing"
+    :reason-options="RETURN_REASONS"
+    :busy="Boolean(returningId)"
+    @close="closeReturnDialog"
+    @confirm="confirmReturnToProcessing"
+  />
 
   <section class="dr-panel">
     <nav class="group-tabs" aria-label="Active appointment groups">
@@ -470,6 +662,8 @@ watch(
       @page-change="changePage"
     />
   </section>
+
+  <RegistrarRecentActivity />
 
   <Teleport to="body">
     <div

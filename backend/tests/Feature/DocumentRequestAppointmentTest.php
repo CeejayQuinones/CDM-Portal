@@ -85,6 +85,167 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->getJson('/api/registrar/document-requests')->assertForbidden();
     }
 
+    public function test_work_queues_have_independent_counts_and_pagination(): void
+    {
+        $student = $this->createStudent('26-01040');
+        $type = DocumentType::create(['document_name' => 'Certificate of Enrollment', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
+
+        foreach (range(1, 23) as $offset) {
+            DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'pending', 'request_date' => today()->subDays($offset)]);
+        }
+        foreach (range(1, 12) as $offset) {
+            DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'processing', 'request_date' => today()->subDays($offset), 'approved_at' => now()->subDays($offset)]);
+        }
+        DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'ready_for_release', 'request_date' => today()]);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+
+        $this->getJson('/api/registrar/document-requests?view=work_queues&pending_page=2&processing_page=2')
+            ->assertOk()
+            ->assertJsonPath('data.pending.total', 23)
+            ->assertJsonPath('data.pending.current_page', 2)
+            ->assertJsonCount(3, 'data.pending.data')
+            ->assertJsonPath('data.processing.total', 12)
+            ->assertJsonPath('data.processing.current_page', 2)
+            ->assertJsonCount(2, 'data.processing.data')
+            ->assertJsonMissing(['status' => 'ready_for_release']);
+    }
+
+    public function test_request_moves_through_work_queues_release_area_and_history_with_invalid_transitions_rejected(): void
+    {
+        $student = $this->createStudent('26-01041');
+        $type = DocumentType::create(['document_name' => 'Certificate of Enrollment', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
+
+        Sanctum::actingAs($student->user);
+        $documentRequestId = $this->postJson('/api/document-requests', [
+            'document_type_id' => $type->id,
+            'quantity' => 1,
+            'purpose' => 'Employment',
+        ])->assertCreated()->assertJsonPath('data.status', 'pending')->json('data.id');
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $reference = sprintf('REQ-%06d', $documentRequestId);
+
+        $this->getJson("/api/registrar/document-requests?view=work_queues&search={$reference}")
+            ->assertOk()
+            ->assertJsonPath('data.pending.total', 1)
+            ->assertJsonPath('data.processing.total', 0);
+
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", ['action' => 'ready_for_release'])
+            ->assertUnprocessable();
+
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", ['action' => 'approve'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'processing');
+
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", ['action' => 'release'])
+            ->assertUnprocessable();
+
+        $this->getJson("/api/registrar/document-requests?view=work_queues&search={$reference}")
+            ->assertOk()
+            ->assertJsonPath('data.pending.total', 0)
+            ->assertJsonPath('data.processing.total', 1);
+
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", ['action' => 'ready_for_release'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ready_for_release');
+
+        $this->getJson("/api/registrar/document-requests?view=work_queues&search={$reference}")
+            ->assertOk()
+            ->assertJsonPath('data.pending.total', 0)
+            ->assertJsonPath('data.processing.total', 0);
+        $this->getJson("/api/registrar/document-requests?status=ready_for_release&request_id={$documentRequestId}")
+            ->assertOk()
+            ->assertJsonPath('data.total', 1);
+
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", ['action' => 'return_to_processing'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('reason');
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", [
+            'action' => 'return_to_processing',
+            'reason' => 'Document preparation error: name needs correction.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'processing')
+            ->assertJsonPath('data.status_changes.0.action', 'returned_to_processing')
+            ->assertJsonPath('data.status_changes.0.reason', 'Document preparation error: name needs correction.')
+            ->assertJsonPath('data.status_changes.0.registrar_staff.user.profile.first_name', 'Registrar');
+        $this->assertDatabaseHas('document_request_status_changes', [
+            'document_request_id' => $documentRequestId,
+            'from_status' => 'ready_for_release',
+            'to_status' => 'processing',
+            'action' => 'returned_to_processing',
+            'reason' => 'Document preparation error: name needs correction.',
+        ]);
+        $this->getJson('/api/registrar/document-request-activity?limit=20')
+            ->assertOk()
+            ->assertJsonFragment([
+                'action' => 'returned_to_processing',
+                'reason' => 'Document preparation error: name needs correction.',
+            ]);
+
+        $this->getJson("/api/registrar/document-requests?view=work_queues&search={$reference}")
+            ->assertOk()
+            ->assertJsonPath('data.pending.total', 0)
+            ->assertJsonPath('data.processing.total', 1);
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", ['action' => 'ready_for_release'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ready_for_release');
+
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", ['action' => 'release'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'released');
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", [
+            'action' => 'return_to_processing',
+            'reason' => 'Attempted correction after release.',
+        ])
+            ->assertUnprocessable();
+
+        $this->getJson("/api/registrar/document-requests/history?request_status=released&request_id={$documentRequestId}")
+            ->assertOk()
+            ->assertJsonPath('data.requests.total', 1)
+            ->assertJsonPath('data.requests.data.0.status', 'released');
+    }
+
+    public function test_processing_rejection_and_cancellation_require_and_audit_a_reason(): void
+    {
+        $student = $this->createStudent('26-01042');
+        $type = DocumentType::create(['document_name' => 'Form 137', 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false, 'status' => 'active']);
+        $rejectedRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 0, 'status' => 'processing', 'request_date' => today()]);
+        $cancelledRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 0, 'status' => 'processing', 'request_date' => today()]);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+
+        $this->patchJson("/api/registrar/document-requests/{$rejectedRequest->id}", ['action' => 'reject'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('reason');
+        $this->patchJson("/api/registrar/document-requests/{$rejectedRequest->id}", [
+            'action' => 'reject',
+            'reason' => 'Incorrect document requested.',
+        ])->assertOk()->assertJsonPath('data.status', 'rejected');
+
+        $this->patchJson("/api/registrar/document-requests/{$cancelledRequest->id}", ['action' => 'cancel'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('reason');
+        $this->patchJson("/api/registrar/document-requests/{$cancelledRequest->id}", [
+            'action' => 'cancel',
+            'reason' => 'Student requested that processing stop.',
+        ])->assertOk()->assertJsonPath('data.status', 'cancelled');
+
+        $this->assertDatabaseHas('document_request_status_changes', [
+            'document_request_id' => $rejectedRequest->id,
+            'from_status' => 'processing',
+            'to_status' => 'rejected',
+            'reason' => 'Incorrect document requested.',
+        ]);
+        $this->assertDatabaseHas('document_request_status_changes', [
+            'document_request_id' => $cancelledRequest->id,
+            'from_status' => 'processing',
+            'to_status' => 'cancelled',
+            'reason' => 'Student requested that processing stop.',
+        ]);
+    }
+
     public function test_registrar_releases_ready_document_directly_and_history_uses_existing_requests(): void
     {
         $this->assertFalse(Schema::hasColumn('document_requests', 'verification_code'));

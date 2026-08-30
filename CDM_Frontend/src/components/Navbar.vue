@@ -50,13 +50,12 @@ const installApp = async () => {
       <span></span>
     </button>
 
-    <div>
-      <p class="navbar-label">COLEGIO DE MONTALBAN</p>
-      <h1>{{ title === 'CDM Portal' ? pageTitle : title }}</h1>
-    </div>
-
     <div class="navbar-actions">
       <button v-if="canInstall" class="install-button" type="button" @click="installApp">Install App</button>
+      <div class="navbar-title">
+        <p class="navbar-label">COLEGIO DE MONTALBAN</p>
+        <h1>{{ title === 'CDM Portal' ? pageTitle : title }}</h1>
+      </div>
     </div>
   </header>
 </template>
@@ -125,10 +124,14 @@ h1 {
 .navbar-actions {
   display: flex;
   align-items: center;
+  gap: 14px;
+  margin-left: auto;
+  min-width: 0;
 }
 
-.navbar-actions {
-  gap: 14px;
+.navbar-title {
+  min-width: 0;
+  text-align: right;
 }
 
 .install-button {
@@ -165,6 +168,14 @@ h1 {
 
   .install-button {
     padding: 0 10px;
+  }
+
+  .navbar-actions {
+    gap: 10px;
+  }
+
+  .navbar-title h1 {
+    font-size: 1.1rem;
   }
 }
 

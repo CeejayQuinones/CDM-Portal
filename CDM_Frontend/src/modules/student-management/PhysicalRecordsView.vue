@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute, useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
+import { documentRequestReturnContext } from '../document-request/documentRequestNavigation'
 import { physicalRecordsService as api } from './physicalRecordsService'
 
 const route = useRoute()
@@ -51,6 +52,7 @@ const pagination = computed(() => ({
   total: selectedSlot.value?.students?.total || 0,
 }))
 const displayedSlot = computed(() => selectedSlot.value || slotPreview.value)
+const returnContext = computed(() => documentRequestReturnContext(route.query))
 
 const errorMessage = (requestError, fallback) => requestError.response?.data?.message || fallback
 const title = (value) =>
@@ -150,6 +152,7 @@ async function openSlot(slotId, page = 1, updateUrl = true, trigger = null) {
     await router.replace({
       name: 'physical-records',
       query: {
+        ...route.query,
         cabinet: containingCabinet?.id || route.query.cabinet,
         slot: slotId,
       },
@@ -169,6 +172,10 @@ async function openSlot(slotId, page = 1, updateUrl = true, trigger = null) {
   } finally {
     if (requestId === slotRequestId) detailLoading.value = false
   }
+}
+
+function returnToSource() {
+  if (returnContext.value) router.push(returnContext.value.to)
 }
 
 async function closeSlot() {
@@ -279,6 +286,9 @@ onBeforeUnmount(() => {
 <template>
   <section class="page-header physical-records-header">
     <div>
+      <button v-if="returnContext" class="contextual-back" type="button" @click="returnToSource">
+        {{ returnContext.label }}
+      </button>
       <p class="page-kicker">Registrar / Student Management</p>
       <h1 class="page-title">Physical Records</h1>
       <p class="page-description">Locate and manage student paper records by cabinet and storage slot.</p>
@@ -588,6 +598,18 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 18px;
   justify-content: space-between;
+}
+.contextual-back {
+  background: transparent;
+  border: 0;
+  color: var(--color-dartmouth-green);
+  cursor: pointer;
+  font-weight: 800;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.contextual-back:hover {
+  text-decoration: underline;
 }
 .primary-button,
 .secondary-button {

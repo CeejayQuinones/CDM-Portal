@@ -1,6 +1,14 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { formatExactDateTime, formatRelativeTime, requestReference, studentName } from './documentRequestPresentation'
+import {
+  documentTypeAccentClass,
+  formatExactDateTime,
+  formatRelativeTime,
+  requestReference,
+  requestStatusAccentClass,
+  requestStatusFromActivity,
+  studentName,
+} from './documentRequestPresentation'
 import { documentRequestService as api } from './documentRequestService'
 
 const activities = ref([])
@@ -76,6 +84,8 @@ async function loadActivity() {
   }
 }
 
+defineExpose({ refresh: loadActivity })
+
 onMounted(() => {
   loadActivity()
   clock = window.setInterval(() => {
@@ -105,17 +115,22 @@ onBeforeUnmount(() => window.clearInterval(clock))
         v-for="activity in activities"
         :key="`${activity.type}-${activity.id}`"
         class="recent-activity-item"
+        :class="requestStatusAccentClass(requestStatusFromActivity(activity))"
         :to="activityRoute(activity)"
       >
         <span class="activity-marker" aria-hidden="true"></span>
         <span class="activity-summary">
           <strong>{{ activityHeadline(activity) }}</strong>
-          <small>
-            {{ activityReference(activity) }}
-            <template v-if="activity.document_type?.document_name">
-              &middot; {{ activity.document_type.document_name }}
-            </template>
-          </small>
+          <span class="activity-meta">
+            <small>{{ activityReference(activity) }}</small>
+            <span
+              v-if="activity.document_type?.document_name"
+              class="document-type-chip"
+              :class="documentTypeAccentClass(activity.document_type.document_name)"
+            >
+              {{ activity.document_type.document_name }}
+            </span>
+          </span>
         </span>
         <time :datetime="activity.occurred_at" :title="formatExactDateTime(activity.occurred_at)">
           {{ formatRelativeTime(activity.occurred_at, currentTime) }}

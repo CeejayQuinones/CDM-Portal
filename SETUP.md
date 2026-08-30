@@ -123,7 +123,7 @@ first setup lang ito after gumawa ng bagong .env.
 
 9. clear old config
 
-php artisan config:clear
+php artisan optimize:clear
 
 useful ito especially kapag may binago sa .env.
 
@@ -228,9 +228,21 @@ hanapin yung:
 
 IPv4 Address
 
-example:
+use the IPv4 address reported by `ipconfig`; it may change when you join a different network.
 
-192.168.100.34
+backend CORS origins are configured in `backend/.env` as a comma-separated allowlist:
+
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost,capacitor://localhost
+
+the first two origins support same-PC Vite development. the last two support the bundled Capacitor app. for browser testing from another device, append the exact Vite origin:
+
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost,capacitor://localhost,http://YOUR_PC_IP:5173
+
+do not set `CORS_ALLOWED_ORIGINS=*`. production must set this variable to the exact deployed frontend origin or origins.
+
+after changing backend `.env`, clear Laravel's cached configuration and restart the server:
+
+php artisan optimize:clear
 
 frontend setup
 
@@ -266,13 +278,13 @@ same PC browser testing
 
 VITE_API_BASE_URL=http://127.0.0.1:8000/api
 
-phone / LAN testing
+Capacitor phone / LAN API testing
 
 VITE_API_BASE_URL=http://YOUR_PC_IP:8000/api
 
-example:
+for browser testing from another device, also expose Vite on the LAN:
 
-VITE_API_BASE_URL=http://192.168.100.34:8000/api
+npm run dev -- --host=0.0.0.0
 
 palitan ang IP depende sa PC/network mo.
 
@@ -320,7 +332,7 @@ then backend:
 
 cd backend
 composer install
-php artisan config:clear
+php artisan optimize:clear
 php artisan migrate
 
 then frontend:
@@ -515,7 +527,7 @@ after changing .env
 
 backend:
 
-php artisan config:clear
+php artisan optimize:clear
 
 frontend:
 
