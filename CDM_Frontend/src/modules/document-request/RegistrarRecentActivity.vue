@@ -1,5 +1,6 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import {
   documentTypeAccentClass,
   formatExactDateTime,
@@ -10,6 +11,13 @@ import {
   studentName,
 } from './documentRequestPresentation'
 import { documentRequestService as api } from './documentRequestService'
+
+defineProps({
+  readOnly: {
+    type: Boolean,
+    default: false,
+  },
+})
 
 const activities = ref([])
 const loading = ref(false)
@@ -107,16 +115,19 @@ onBeforeUnmount(() => window.clearInterval(clock))
     </div>
 
     <p v-if="error" class="notice error">{{ error }}</p>
-    <p v-if="loading && !activities.length" class="empty">Loading recent activity&hellip;</p>
+    <div v-if="loading && !activities.length" class="recent-activity-skeleton" aria-label="Loading recent activity" aria-busy="true">
+      <span v-for="index in 5" :key="index" class="skeleton-shimmer"></span>
+    </div>
     <p v-else-if="!activities.length && !error" class="empty">No recent document request activity.</p>
 
     <div v-if="activities.length" class="recent-activity-list">
-      <RouterLink
+      <component
+        :is="readOnly ? 'article' : RouterLink"
         v-for="activity in activities"
         :key="`${activity.type}-${activity.id}`"
         class="recent-activity-item"
         :class="requestStatusAccentClass(requestStatusFromActivity(activity))"
-        :to="activityRoute(activity)"
+        :to="readOnly ? undefined : activityRoute(activity)"
       >
         <span class="activity-marker" aria-hidden="true"></span>
         <span class="activity-summary">
@@ -136,7 +147,7 @@ onBeforeUnmount(() => window.clearInterval(clock))
           {{ formatRelativeTime(activity.occurred_at, currentTime) }}
           <small>{{ formatExactDateTime(activity.occurred_at) }}</small>
         </time>
-      </RouterLink>
+      </component>
     </div>
   </section>
 </template>

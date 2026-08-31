@@ -1,0 +1,429 @@
+/* Authenticated Student theme. Every shell rule is role-scoped to avoid changing staff views. */
+.student-portal-shell .shell-content {
+  --student-cdm-green: #106a2e;
+  --student-cdm-spring: #0d7856;
+  --student-cdm-yellow: #f4d35e;
+  --student-cdm-ink: #1f1f1f;
+  --student-cdm-white: #f1f1f1;
+  --student-surface: #fff;
+  --student-surface-soft: #f7faf7;
+  --student-border: #d5e1d8;
+  --student-muted: #607067;
+  --student-card-shadow: 0 10px 30px rgb(20 53 33 / 7%);
+  --student-card-shadow-hover: 0 18px 34px rgb(20 53 33 / 12%);
+
+  --color-dartmouth-green: var(--student-cdm-green);
+  --color-dark-spring-green: var(--student-cdm-spring);
+  --color-naples-yellow: var(--student-cdm-yellow);
+  --color-eerie-black: var(--student-cdm-ink);
+  --color-anti-flash-white: var(--student-cdm-white);
+  --color-surface: var(--student-surface);
+  --color-muted: var(--student-muted);
+  --color-border: var(--student-border);
+  --color-green-tint: rgb(13 120 86 / 10%);
+  --shadow-soft: var(--student-card-shadow);
+
+  background:
+    linear-gradient(rgb(16 106 46 / 2.5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(16 106 46 / 2.5%) 1px, transparent 1px),
+    linear-gradient(135deg, #f5f8f4 0%, #edf4ef 100%);
+  background-size: 44px 44px, 44px 44px, auto;
+}
+
+.student-portal-shell .navbar {
+  border-bottom-color: rgb(16 106 46 / 16%);
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 8px 24px rgb(5 39 21 / 6%);
+}
+
+.student-portal-shell .navbar::after {
+  position: absolute;
+  right: 28px;
+  bottom: -1px;
+  width: 58px;
+  height: 3px;
+  background: var(--student-cdm-yellow);
+  content: '';
+}
+
+.student-portal-shell .navbar-label {
+  color: var(--student-cdm-spring);
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.student-portal-shell .navbar-title h1 {
+  color: #133c24;
+  font-weight: 900;
+}
+
+.student-portal-shell .main-content {
+  color: var(--student-cdm-ink);
+}
+
+.student-portal-shell .main-content .page-header {
+  position: relative;
+  margin-bottom: 26px;
+  padding-bottom: 17px;
+}
+
+.student-portal-shell .main-content .page-header::after {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 58px;
+  height: 4px;
+  background: var(--student-cdm-yellow);
+  content: '';
+}
+
+.student-portal-shell .main-content .page-kicker {
+  color: var(--student-cdm-spring);
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+.student-portal-shell .main-content .page-title {
+  color: #133c24;
+  font-weight: 950;
+  letter-spacing: -0.035em;
+}
+
+.student-portal-shell .main-content .page-description {
+  color: var(--student-muted);
+}
+
+.student-portal-shell .main-content .module-card,
+.student-portal-shell .main-content .placeholder-panel,
+.student-portal-shell .main-content .dr-panel,
+.student-portal-shell .main-content .student-history-panel {
+  border-color: var(--student-border);
+  border-radius: 11px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: var(--student-card-shadow);
+}
+
+.student-portal-shell .main-content .module-card {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease,
+    border-color 200ms ease,
+    background-color 200ms ease;
+}
+
+.student-portal-shell .main-content .module-card::after {
+  position: absolute;
+  right: 20px;
+  bottom: 0;
+  left: 20px;
+  height: 3px;
+  background: var(--student-cdm-yellow);
+  content: '';
+  opacity: 0;
+  transform: scaleX(0.55);
+  transform-origin: left;
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease;
+}
+
+.student-portal-shell .main-content .module-card:hover,
+.student-portal-shell .main-content .module-card:focus-visible {
+  border-color: var(--student-cdm-spring);
+  box-shadow: var(--student-card-shadow-hover);
+  outline: none;
+  transform: translateY(-3px);
+}
+
+.student-portal-shell .main-content .module-card:hover::after,
+.student-portal-shell .main-content .module-card:focus-visible::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.student-portal-shell .main-content .module-icon {
+  border: 1px solid rgb(244 211 94 / 38%);
+  border-radius: 8px;
+  background: linear-gradient(145deg, var(--student-cdm-green), var(--student-cdm-spring));
+  color: #fff;
+  box-shadow: 0 8px 18px rgb(16 106 46 / 14%);
+}
+
+.student-portal-shell .main-content .module-icon::after {
+  color: var(--student-cdm-yellow);
+}
+
+.student-portal-shell .main-content .module-card h2,
+.student-portal-shell .main-content .student-detail-heading h2,
+.student-portal-shell .main-content .student-history-heading h2 {
+  color: #133c24;
+  font-weight: 900;
+}
+
+/* Unified request workspace: presentation only; grid and content structure stay unchanged. */
+.student-portal-shell .main-content .student-summary-card {
+  border-color: var(--student-border);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 97%);
+  box-shadow: var(--student-card-shadow);
+}
+
+.student-portal-shell .main-content .student-summary-card:hover {
+  border-color: var(--student-cdm-spring);
+  box-shadow: var(--student-card-shadow-hover);
+}
+
+.student-portal-shell .main-content .student-summary-card.is-active {
+  border-color: var(--student-cdm-green);
+  background: linear-gradient(135deg, #f5faf6, #eaf5ed);
+  box-shadow: 0 12px 28px rgb(16 106 46 / 13%);
+}
+
+.student-portal-shell .main-content .student-summary-icon {
+  border-color: rgb(244 211 94 / 42%);
+  border-radius: 7px;
+  background: linear-gradient(145deg, var(--student-cdm-green), var(--student-cdm-spring));
+  color: var(--student-cdm-yellow);
+  box-shadow: 0 7px 16px rgb(16 106 46 / 14%);
+}
+
+.student-portal-shell .main-content .student-detail-panel {
+  border-top: 3px solid var(--student-cdm-green);
+}
+
+.student-portal-shell .main-content .student-detail-heading,
+.student-portal-shell .main-content .student-history-heading {
+  border-bottom-color: rgb(13 120 86 / 20%);
+}
+
+.student-portal-shell .main-content .student-detail-grid > div {
+  border-left-color: var(--student-cdm-spring);
+  background: var(--student-surface-soft);
+}
+
+.student-portal-shell .main-content .student-detail-grid > div:hover {
+  border-left-color: var(--student-cdm-yellow);
+  background: #f0f7f2;
+}
+
+.student-portal-shell .main-content .student-detail-note,
+.student-portal-shell .main-content .student-request-summary {
+  border-left-color: var(--student-cdm-yellow);
+  background: #fff9df;
+}
+
+.student-portal-shell .main-content .student-history-panel {
+  border-top: 3px solid var(--student-cdm-spring);
+}
+
+.student-portal-shell .main-content .student-history-row {
+  border-bottom-color: #e4ece6;
+}
+
+.student-portal-shell .main-content .student-history-row:hover,
+.student-portal-shell .main-content .student-history-row:focus-visible {
+  background: linear-gradient(90deg, #eff7f1, #fffdf4);
+}
+
+.student-portal-shell .main-content .student-panel-state,
+.student-portal-shell .main-content .empty,
+.student-portal-shell .main-content .empty-state {
+  border-color: #bfd2c4;
+  background: #f4f8f5;
+  color: var(--student-muted);
+}
+
+.student-portal-shell .main-content input,
+.student-portal-shell .main-content select,
+.student-portal-shell .main-content textarea {
+  border-color: #cbd9cf;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--student-cdm-ink);
+}
+
+.student-portal-shell .main-content input:focus,
+.student-portal-shell .main-content select:focus,
+.student-portal-shell .main-content textarea:focus {
+  border-color: var(--student-cdm-spring);
+  box-shadow: 0 0 0 4px rgb(13 120 86 / 12%);
+}
+
+.student-portal-shell .main-content .student-primary-action,
+.student-portal-shell .main-content button[type='submit']:not(.student-danger-action) {
+  border-color: var(--student-cdm-green);
+  background: var(--student-cdm-green);
+  color: #fff;
+}
+
+.student-portal-shell .main-content .student-primary-action:hover:not(:disabled),
+.student-portal-shell .main-content button[type='submit']:not(.student-danger-action):hover:not(:disabled) {
+  border-color: #0a5426;
+  background: #0a5426;
+  box-shadow: 0 7px 16px rgb(16 106 46 / 18%);
+}
+
+.student-portal-shell .main-content .student-secondary-action,
+.student-portal-shell .main-content .student-history-more {
+  border-color: var(--student-cdm-green);
+  background: #fff;
+  color: var(--student-cdm-green);
+}
+
+.student-portal-shell .main-content .badge.pending {
+  border-color: #e5c34d;
+  background: #fff4bf;
+  color: #705c0b;
+}
+
+.student-portal-shell .main-content .badge.processing {
+  border-color: #a9c9df;
+  background: #eaf5fb;
+  color: #245f80;
+}
+
+.student-portal-shell .main-content .badge.confirmed,
+.student-portal-shell .main-content .badge.ready_for_release {
+  border-color: #9bcdb0;
+  background: #e6f5eb;
+  color: #0b6432;
+}
+
+.student-portal-shell .main-content .badge.completed,
+.student-portal-shell .main-content .badge.released {
+  border-color: var(--student-cdm-green);
+  background: #dff0e4;
+  color: #084e24;
+}
+
+.student-portal-shell .main-content .badge.cancelled,
+.student-portal-shell .main-content .badge.no_show {
+  border-color: #d8b1ab;
+  background: #f8e9e7;
+  color: #8a4038;
+}
+
+.student-portal-shell .main-content .badge.rejected {
+  border-color: #e2a9a3;
+  background: #fbe8e6;
+  color: #963d34;
+}
+
+/* Student workflow dialogs are teleported to body, so target only their unique classes. */
+.student-workflow-backdrop {
+  background: rgb(6 50 29 / 56%);
+  backdrop-filter: blur(3px);
+}
+
+.appointment-details-modal.student-request-modal,
+.appointment-details-modal.student-booking-modal,
+.appointment-details-modal.student-request-cancellation-modal,
+.appointment-details-modal.student-cancellation-modal {
+  border: 1px solid rgb(16 106 46 / 22%);
+  border-top: 4px solid #106a2e;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 26px 68px rgb(5 34 20 / 30%);
+}
+
+.student-request-modal .student-modal-header,
+.student-booking-modal .student-modal-header,
+.student-request-cancellation-modal .student-modal-header,
+.student-cancellation-modal .appointment-details-header {
+  position: relative;
+  border-bottom-color: rgb(13 120 86 / 18%);
+  background:
+    radial-gradient(circle at 100% 0, rgb(244 211 94 / 18%), transparent 36%),
+    linear-gradient(135deg, #f7faf7, #edf5ef);
+}
+
+.student-request-modal .student-modal-header h2,
+.student-booking-modal .student-modal-header h2,
+.student-request-cancellation-modal .student-modal-header h2,
+.student-cancellation-modal .appointment-details-header h2 {
+  color: #133c24;
+}
+
+.student-request-modal .student-modal-header::after,
+.student-booking-modal .student-modal-header::after,
+.student-request-cancellation-modal .student-modal-header::after,
+.student-cancellation-modal .appointment-details-header::after {
+  position: absolute;
+  bottom: -1px;
+  left: 24px;
+  width: 54px;
+  height: 3px;
+  background: #f4d35e;
+  content: '';
+}
+
+.student-request-modal input,
+.student-request-modal select,
+.student-request-modal textarea,
+.student-request-cancellation-modal textarea,
+.student-cancellation-modal textarea {
+  border-color: #cbd9cf;
+  border-radius: 7px;
+  background: #fbfdfb;
+}
+
+.student-request-modal input:focus,
+.student-request-modal select:focus,
+.student-request-modal textarea:focus,
+.student-request-cancellation-modal textarea:focus,
+.student-cancellation-modal textarea:focus {
+  border-color: #0d7856;
+  box-shadow: 0 0 0 4px rgb(13 120 86 / 12%);
+  outline: none;
+}
+
+.student-request-modal .appointment-details-footer button[type='submit'],
+.student-booking-modal .appointment-details-footer button[type='submit'] {
+  border-color: #106a2e;
+  background: #106a2e;
+  color: #fff;
+}
+
+.student-request-modal .appointment-close-action,
+.student-booking-modal .appointment-close-action,
+.student-request-cancellation-modal .appointment-close-action,
+.student-cancellation-modal .appointment-close-action {
+  border-color: #b9cdc0;
+  background: #f4f8f5;
+  color: #405047;
+}
+
+.student-booking-modal .appointment-calendar,
+.student-booking-modal .appointment-times {
+  border-color: #cfddd3;
+  background: #fbfdfb;
+}
+
+.student-booking-modal .calendar-day.selected,
+.student-booking-modal .appointment-time-option.selected {
+  border-color: #106a2e;
+  background: #eaf6ed;
+  box-shadow: inset 0 -3px #f4d35e;
+}
+
+@media (max-width: 860px) {
+  .student-portal-shell .navbar::after {
+    right: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .student-portal-shell .main-content .module-card,
+  .student-portal-shell .main-content .module-card::after {
+    transition-duration: 1ms !important;
+  }
+
+  .student-portal-shell .main-content .module-card:hover,
+  .student-portal-shell .main-content .module-card:focus-visible {
+    transform: none;
+  }
+}

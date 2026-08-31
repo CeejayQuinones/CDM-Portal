@@ -3,9 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import RegistrarRecentActivity from './RegistrarRecentActivity.vue'
 import RegistrarRequestQueue from './RegistrarRequestQueue.vue'
+import RegistrarWorkspaceSelector from './RegistrarWorkspaceSelector.vue'
 import RequestWorkflowReasonModal from './RequestWorkflowReasonModal.vue'
 import { formatExactDateTime, requestReference, TIME_FILTERS } from './documentRequestPresentation'
 import {
+  appointmentReturnContext,
   documentRequestIdFromQuery,
   documentRequestProfileQuery,
   documentRequestSourceQuery,
@@ -39,6 +41,7 @@ const processingPage = ref(1)
 const processingLastPage = ref(1)
 const processingTotal = ref(0)
 const focusedRequestId = ref(null)
+const selectedQueueKey = ref('pending')
 let appliedListQuery = ''
 let highlightTimer = null
 const PROCESSING_PAGE_SIZE = 10
@@ -52,6 +55,50 @@ const currentAppointment = computed(() => {
 
   return appointments.find((appointment) => ['pending', 'confirmed'].includes(appointment.status)) || appointments[0] || null
 })
+const appointmentContext = computed(() => appointmentReturnContext(route.query))
+const requestWorkspaceSelectors = computed(() => [
+  {
+    key: 'pending',
+    eyebrow: 'Active queue',
+    title: 'Pending Requests',
+    count: pendingTotal.value,
+    countLabel: 'waiting',
+    description: 'New submissions awaiting review.',
+  },
+  {
+    key: 'processing',
+    eyebrow: 'Active work',
+    title: 'Processing Requests',
+    count: processingTotal.value,
+    countLabel: 'active',
+    description: 'Approved documents currently being prepared.',
+  },
+])
+const selectedQueue = computed(() =>
+  selectedQueueKey.value === 'processing'
+    ? {
+        key: 'processing',
+        title: 'Processing Requests',
+        description: 'Approved documents currently being prepared.',
+        items: processingRequests.value,
+        total: processingTotal.value,
+        currentPage: processingPage.value,
+        lastPage: processingLastPage.value,
+        emptyMessage: 'No document requests are currently being processed.',
+        actionLabel: 'Ready for Release',
+      }
+    : {
+        key: 'pending',
+        title: 'Pending Requests',
+        description: 'New submissions awaiting review.',
+        items: pendingRequests.value,
+        total: pendingTotal.value,
+        currentPage: pendingPage.value,
+        lastPage: pendingLastPage.value,
+        emptyMessage: 'No pending document requests.',
+        actionLabel: '',
+      },
+)
 const studentFullName = computed(() =>
   [
     studentProfile.value?.first_name,
@@ -202,6 +249,10 @@ function viewStudentProfile() {
   })
 }
 
+function returnToAppointment() {
+  if (appointmentContext.value) router.push(appointmentContext.value.to)
+}
+
 function closeDetails() {
   const requestId = selected.value?.id
   selected.value = null
@@ -263,6 +314,9 @@ async function revealFocusedRequest() {
     }
     return
   }
+
+  if (processingRequests.value.some(({ id }) => id === focusedRequestId.value)) selectedQueueKey.value = 'processing'
+  else if (pendingRequests.value.some(({ id }) => id === focusedRequestId.value)) selectedQueueKey.value = 'pending'
 
   const opened = await selectRequest({ id: focusedRequestId.value })
   if (!opened) {
@@ -340,6 +394,8 @@ function updateWorkQueues(updated, previousStatus) {
     if (processingPage.value === 1) {
       processingRequests.value = [updated, ...processingRequests.value].slice(0, PROCESSING_PAGE_SIZE)
     }
+
+    if (previousStatus === 'pending') selectedQueueKey.value = 'processing'
   }
 
   selectedSummary.value = updated
@@ -429,7 +485,10 @@ onMounted(async () => {
   applyRouteQuery(route.query)
   await refresh()
   const rememberedRequestId = consumeDocumentRequestFocus()
-  if (rememberedRequestId) highlightRequest(rememberedRequestId, true)
+  if (rememberedRequestId) {
+    if (processingRequests.value.some(({ id }) => id === rememberedRequestId)) selectedQueueKey.value = 'processing'
+    highlightRequest(rememberedRequestId, true)
+  }
   await revealFocusedRequest()
 })
 
@@ -454,6 +513,14 @@ watch(
 
 <template>
   <section class="page-header">
+    <button
+      v-if="appointmentContext"
+      class="appointment-context-back"
+      type="button"
+      @click="returnToAppointment"
+    >
+      {{ appointmentContext.label }}
+    </button>
     <p class="page-kicker">Registrar Staff</p>
     <h1 class="page-title">Document Request Work Queues</h1>
     <p class="page-description">Review new submissions, then move approved requests through document processing.</p>
@@ -462,58 +529,70 @@ watch(
   <p v-if="message" class="notice success">{{ message }}</p>
   <p v-if="error" class="notice error">{{ error }}</p>
 
-  <section class="dr-panel queue-filter-panel">
-    <nav class="group-tabs time-filter-tabs" aria-label="Request activity period">
-      <button
-        v-for="option in TIME_FILTERS"
-        :key="option.value"
-        type="button"
-        :class="{ active: timeFilter === option.value }"
-        :aria-pressed="timeFilter === option.value"
-        @click="selectTimeFilter(option.value)"
-      >
-        {{ option.label }}
-      </button>
-    </nav>
-    <form class="toolbar" @submit.prevent="applyFilters">
-      <input v-model="search" placeholder="REQ-000001, student number, name, or document" />
-      <button :disabled="loading">Search</button>
-    </form>
-  </section>
+  <div v-if="loading && !pendingRequests.length && !processingRequests.length" class="appointment-workspace-skeleton request-workspace-skeleton" aria-label="Loading document request queues" aria-busy="true">
+    <div class="appointment-filter-skeleton skeleton-shimmer"></div>
+    <div class="appointment-workspace-skeleton-grid">
+      <aside class="appointment-selector-skeletons">
+        <span v-for="index in 2" :key="index" class="appointment-selector-skeleton skeleton-shimmer"></span>
+      </aside>
+      <section class="appointment-table-skeleton">
+        <span class="appointment-heading-skeleton skeleton-shimmer"></span>
+        <span v-for="index in 6" :key="index" class="appointment-row-skeleton skeleton-shimmer"></span>
+      </section>
+    </div>
+  </div>
 
-  <section class="work-queue-grid" aria-label="Active document request work queues">
-    <RegistrarRequestQueue
-      title="Pending Requests"
-      description="New submissions awaiting review."
-      :items="pendingRequests"
-      :total="pendingTotal"
-      :current-page="pendingPage"
-      :last-page="pendingLastPage"
-      :loading="loading"
-      :selected-id="selected?.id"
-      :highlighted-id="highlightedRequestId"
-      @select="selectRequest"
-      @page-change="changePage('pending', $event)"
-    />
-    <RegistrarRequestQueue
-      title="Processing Requests"
-      description="Approved documents currently being prepared."
-      :items="processingRequests"
-      :total="processingTotal"
-      :current-page="processingPage"
-      :last-page="processingLastPage"
-      :loading="loading"
-      :selected-id="selected?.id"
-      :highlighted-id="highlightedRequestId"
-      action-label="Ready for Release"
-      :action-busy-id="rowActionBusyId"
-      @select="selectRequest"
-      @page-change="changePage('processing', $event)"
-      @action="markReadyForRelease"
-    />
-  </section>
+  <template v-else>
+    <section class="dr-panel queue-filter-panel appointment-filter-panel request-workspace-filter">
+      <nav class="group-tabs time-filter-tabs" aria-label="Request activity period">
+        <button
+          v-for="option in TIME_FILTERS"
+          :key="option.value"
+          type="button"
+          :class="{ active: timeFilter === option.value }"
+          :aria-pressed="timeFilter === option.value"
+          @click="selectTimeFilter(option.value)"
+        >{{ option.label }}</button>
+      </nav>
+      <form class="toolbar" @submit.prevent="applyFilters">
+        <input v-model="search" aria-label="Search document requests" placeholder="REQ-000001, student number, name, or document" />
+        <button :disabled="loading">{{ loading ? 'Loading…' : 'Search' }}</button>
+      </form>
+    </section>
 
-  <RegistrarRecentActivity ref="recentActivity" />
+    <section class="registrar-workspace-grid" aria-label="Active document request work queues">
+      <RegistrarWorkspaceSelector
+        v-model="selectedQueueKey"
+        :items="requestWorkspaceSelectors"
+        aria-label="Select document request queue"
+      />
+
+      <Transition name="appointment-workspace-swap" mode="out-in">
+        <RegistrarRequestQueue
+          :key="selectedQueue.key"
+          :title="selectedQueue.title"
+          :description="selectedQueue.description"
+          :items="selectedQueue.items"
+          :total="selectedQueue.total"
+          :current-page="selectedQueue.currentPage"
+          :last-page="selectedQueue.lastPage"
+          :loading="loading"
+          :empty-message="selectedQueue.emptyMessage"
+          :selected-id="selected?.id"
+          :highlighted-id="highlightedRequestId"
+          :action-label="selectedQueue.actionLabel"
+          :action-busy-id="rowActionBusyId"
+          @select="selectRequest"
+          @page-change="changePage(selectedQueue.key, $event)"
+          @action="markReadyForRelease"
+        />
+      </Transition>
+    </section>
+  </template>
+
+  <section class="request-recent-activity-section" aria-label="Recent document request activity">
+    <RegistrarRecentActivity ref="recentActivity" />
+  </section>
 
   <Teleport to="body">
     <div v-if="selected" class="request-detail-backdrop" @click.self="closeDetails">
@@ -602,6 +681,14 @@ watch(
         </div>
 
         <footer class="request-detail-footer">
+          <button
+            v-if="appointmentContext"
+            type="button"
+            class="secondary-action"
+            @click="returnToAppointment"
+          >
+            {{ appointmentContext.label }}
+          </button>
           <button type="button" class="secondary-action" @click="viewStudentProfile">View Student Profile</button>
           <button type="button" class="secondary-action" :disabled="!physicalLocation" @click="viewCabinet">View Physical Record</button>
           <button

@@ -38,6 +38,32 @@ export const documentRequestSourceQuery = ({
 
 export const documentRequestProfileQuery = documentRequestSourceQuery
 
+export const appointmentDocumentRequestQuery = ({ requestId, appointmentId }) => ({
+  from: 'appointment',
+  request_id: positiveId(requestId) || undefined,
+  appointment_id: positiveId(appointmentId) || undefined,
+})
+
+export const appointmentReturnContext = (query) => {
+  const requestId = positiveId(query.request_id)
+  const appointmentId = positiveId(query.appointment_id)
+
+  if (queryValue(query.from) !== 'appointment' || !appointmentId) return null
+
+  return {
+    label: '← Back to Appointment',
+    to: {
+      name: 'registrar-document-appointments',
+      query: {
+        request_id: requestId || undefined,
+        appointment_id: appointmentId,
+        focus: `appointment-${appointmentId}`,
+        open: 'completion',
+      },
+    },
+  }
+}
+
 export const documentRequestReturnContext = (query) => {
   const requestId = positiveId(query.request_id)
 

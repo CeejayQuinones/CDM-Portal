@@ -18,6 +18,7 @@ defineProps({
   currentPage: { type: Number, required: true },
   lastPage: { type: Number, required: true },
   loading: { type: Boolean, default: false },
+  emptyMessage: { type: String, default: 'No matching requests.' },
   selectedId: { type: Number, default: null },
   highlightedId: { type: Number, default: null },
   actionLabel: { type: String, default: '' },
@@ -44,7 +45,7 @@ const requestStudentName = (item) => studentName(item?.student) || 'Student'
 
     <div class="work-queue-list">
       <p v-if="loading && !items.length" class="empty work-queue-empty">Loading requests&hellip;</p>
-      <p v-else-if="!items.length" class="empty work-queue-empty">No matching requests.</p>
+      <p v-else-if="!items.length" class="empty work-queue-empty">{{ emptyMessage }}</p>
       <article
         v-for="item in items"
         :id="`request-${item.id}`"

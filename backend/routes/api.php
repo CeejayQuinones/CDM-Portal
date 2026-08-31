@@ -44,10 +44,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);
         Route::post('/document-requests', [StudentDocumentRequestController::class, 'store']);
         Route::get('/document-requests/{documentRequest}', [StudentDocumentRequestController::class, 'show']);
+        Route::patch('/document-requests/{documentRequest}/cancel', [StudentDocumentRequestController::class, 'cancelDocumentRequest']);
         Route::post('/document-requests/{documentRequest}/appointments', [StudentDocumentRequestController::class, 'book']);
         Route::get('/appointment-slots', [StudentDocumentRequestController::class, 'slots']);
         Route::get('/appointment-overview', [StudentDocumentRequestController::class, 'appointmentOverview']);
         Route::get('/appointments', [StudentDocumentRequestController::class, 'appointments']);
+        Route::patch('/appointments/{appointment}/cancel', [StudentDocumentRequestController::class, 'cancelAppointment']);
     });
 
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {

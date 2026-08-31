@@ -75,12 +75,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
         roles: ROUTE_ROLES['student-document-requests'],
       },
       {
-        name: 'student-document-appointments',
-        label: 'Appointments',
-        path: '/document-requests/appointments',
-        roles: ROUTE_ROLES['student-document-appointments'],
-      },
-      {
         name: 'registrar-document-types',
         label: 'Document Types',
         path: '/registrar/document-types',

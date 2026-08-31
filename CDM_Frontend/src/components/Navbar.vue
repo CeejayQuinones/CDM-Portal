@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { navbarContextForRoute } from '../config/navbarContexts'
+import { useAppointmentAvailabilityState } from '../modules/document-request/appointmentAvailabilityState'
 
 defineProps({
   title: {
@@ -10,10 +12,15 @@ defineProps({
 })
 
 const emit = defineEmits(['toggle-sidebar'])
+const route = useRoute()
 const router = useRouter()
+const { isOpen: appointmentAvailabilityOpen, open: openAppointmentAvailability } = useAppointmentAvailabilityState()
 const installPrompt = ref(null)
 const canInstall = ref(false)
 const pageTitle = computed(() => router.currentRoute.value.meta.title || 'CDM Portal')
+const navbarContext = computed(() =>
+  navbarContextForRoute(route, { appointmentAvailabilityOpen: appointmentAvailabilityOpen.value }),
+)
 const handleInstallPrompt = (event) => {
   event.preventDefault()
   installPrompt.value = event
@@ -34,6 +41,10 @@ const installApp = async () => {
   canInstall.value = false
 }
 
+const handleContextAction = (action) => {
+  if (action === 'open-appointment-availability') openAppointmentAvailability()
+}
+
 </script>
 
 <template>
@@ -49,6 +60,30 @@ const installApp = async () => {
       <span></span>
       <span></span>
     </button>
+
+    <nav v-if="navbarContext" class="contextual-nav" aria-label="Module navigation">
+      <template v-for="item in navbarContext.items" :key="item.key">
+        <RouterLink
+          v-if="item.to"
+          :to="item.to"
+          class="contextual-nav-item"
+          :class="{ active: item.active }"
+          :aria-current="item.active ? 'page' : undefined"
+        >
+          {{ item.label }}
+        </RouterLink>
+        <button
+          v-else
+          type="button"
+          class="contextual-nav-item"
+          :class="{ active: item.active }"
+          :aria-pressed="item.active"
+          @click="handleContextAction(item.action)"
+        >
+          {{ item.label }}
+        </button>
+      </template>
+    </nav>
 
     <div class="navbar-actions">
       <button v-if="canInstall" class="install-button" type="button" @click="installApp">Install App</button>
@@ -108,6 +143,47 @@ const installApp = async () => {
   background: var(--color-eerie-black);
 }
 
+.contextual-nav {
+  align-self: stretch;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 20px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.contextual-nav-item {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  padding: 0 1px;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    background-color 160ms ease;
+  white-space: nowrap;
+}
+
+.contextual-nav-item:hover {
+  color: var(--color-dark-spring-green);
+  background: rgba(13, 120, 86, 0.045);
+}
+
+.contextual-nav-item.active {
+  border-bottom-color: var(--color-naples-yellow);
+  color: var(--color-dartmouth-green);
+}
+
 .navbar-label {
   margin: 0 0 2px;
   color: var(--color-dark-spring-green);
@@ -123,6 +199,7 @@ h1 {
 
 .navbar-actions {
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 14px;
   margin-left: auto;
@@ -132,6 +209,13 @@ h1 {
 .navbar-title {
   min-width: 0;
   text-align: right;
+}
+
+.navbar-title p,
+.navbar-title h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .install-button {
@@ -152,7 +236,8 @@ h1 {
 }
 
 .menu-button:focus-visible,
-.install-button:focus-visible {
+.install-button:focus-visible,
+.contextual-nav-item:focus-visible {
   outline: 2px solid var(--color-dartmouth-green);
   outline-offset: 3px;
 }
@@ -172,10 +257,38 @@ h1 {
 
   .navbar-actions {
     gap: 10px;
+    max-width: 42%;
+  }
+
+  .contextual-nav {
+    gap: 14px;
+  }
+
+  .contextual-nav-item {
+    font-size: 0.84rem;
   }
 
   .navbar-title h1 {
     font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .navbar {
+    gap: 10px;
+    padding-inline: 12px;
+  }
+
+  .navbar-actions {
+    max-width: 36%;
+  }
+
+  .navbar-label {
+    font-size: 0.65rem;
+  }
+
+  .navbar-title h1 {
+    font-size: 0.96rem;
   }
 }
 

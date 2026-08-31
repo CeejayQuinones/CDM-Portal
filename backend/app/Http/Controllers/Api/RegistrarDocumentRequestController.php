@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateRegistrarRequest;
 use App\Models\Appointment;
 use App\Models\DocumentRequest;
 use App\Models\RegistrarStaff;
+use App\Services\DocumentReleaseService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +32,8 @@ class RegistrarDocumentRequestController extends Controller
     private const ACTIVE_APPOINTMENT_GROUPS = ['active', 'upcoming', 'today', 'recent'];
 
     private const BUSINESS_TIMEZONE = 'Asia/Manila';
+
+    public function __construct(private readonly DocumentReleaseService $documentReleaseService) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -161,6 +164,22 @@ class RegistrarDocumentRequestController extends Controller
     {
         $staff = $this->staffFor($request);
         $action = $request->string('action')->toString();
+
+        if ($action === 'release') {
+            $releasedRequest = $this->documentReleaseService->release(
+                $documentRequest,
+                $staff,
+                $request->filled('appointment_id') ? $request->integer('appointment_id') : null,
+                $request->has('remarks'),
+                $request->input('remarks'),
+            );
+
+            return $this->ok(
+                $releasedRequest->fresh()->load($this->detailRelations()),
+                'Document release completed successfully.',
+            );
+        }
+
         $fromStatus = $documentRequest->status;
         $reason = $request->filled('reason') ? trim($request->string('reason')->toString()) : null;
         $updates = ['registrar_staff_id' => $staff->id];
@@ -195,16 +214,6 @@ class RegistrarDocumentRequestController extends Controller
                 $auditAction = 'returned_to_processing';
                 break;
 
-            case 'release':
-                $this->requireStatus($documentRequest, ['ready_for_release']);
-
-                $updates += [
-                    'status' => 'released',
-                    'released_at' => now(),
-                    'release_date' => today(),
-                ];
-                $auditAction = 'released';
-                break;
             case 'cancel':
                 $this->requireStatus($documentRequest, ['pending', 'processing', 'ready_for_release']);
                 $updates['status'] = 'cancelled';
@@ -340,12 +349,31 @@ class RegistrarDocumentRequestController extends Controller
         $updates = $request->validated();
         $updates['registrar_staff_id'] = $staff->id;
         $status = $updates['status'] ?? $appointment->status;
+        if ($request->filled('status') && $status !== $appointment->status) {
+            $allowedTransitions = [
+                'pending' => ['confirmed', 'cancelled'],
+                'confirmed' => ['completed', 'cancelled', 'no_show'],
+                'completed' => [],
+                'cancelled' => [],
+                'no_show' => [],
+            ];
+            abort_unless(
+                in_array($status, $allowedTransitions[$appointment->status] ?? [], true),
+                422,
+                'This action is not valid for the appointment status.',
+            );
+        }
         $date = $updates['appointment_date'] ?? $appointment->appointment_date->toDateString();
         $time = $updates['appointment_time'] ?? substr((string) $appointment->appointment_time, 0, 5);
         if (in_array($status, ['pending', 'confirmed'], true)) {
             $updates['active_slot_key'] = $date.' '.$time;
         } else {
             $updates['active_slot_key'] = null;
+        }
+        if ($status === 'completed') {
+            $updates['completed_at'] = now();
+        } elseif ($status === 'cancelled') {
+            $updates['cancelled_at'] = now();
         }
         try {
             DB::transaction(function () use ($appointment, $updates) {
@@ -359,7 +387,7 @@ class RegistrarDocumentRequestController extends Controller
             'student:id,user_id,student_number',
             'student.user:id',
             'student.user.profile:id,user_id,first_name,last_name',
-            'documentRequest:id,document_type_id',
+            'documentRequest:id,document_type_id,status',
             'documentRequest.documentType:id,document_name',
         ]), 'Appointment updated successfully.');
     }
@@ -664,7 +692,7 @@ class RegistrarDocumentRequestController extends Controller
             'student.documents.documentType:id,document_name',
             'student.physicalRecordLocation.cabinetSlot.cabinet:id,cabinet_code,description,rows,columns',
             'documentType:id,document_name,requires_appointment',
-            'appointments:id,document_request_id,appointment_date,appointment_time,status,remarks',
+            'appointments:id,document_request_id,registrar_staff_id,appointment_date,appointment_time,status,remarks,completed_at,cancelled_at,updated_at',
             'statusChanges:id,document_request_id,registrar_staff_id,from_status,to_status,action,reason,created_at',
             'statusChanges.registrarStaff:id,user_id,employee_number',
             'statusChanges.registrarStaff.user:id',

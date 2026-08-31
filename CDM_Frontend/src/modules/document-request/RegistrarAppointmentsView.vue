@@ -1,10 +1,14 @@
 <script setup>
-import { nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
+import { READY_FOR_RELEASE_GROUP } from '../../config/navbarContexts'
 import RegistrarRecentActivity from './RegistrarRecentActivity.vue'
+import RegistrarWorkspaceSelector from './RegistrarWorkspaceSelector.vue'
 import RequestWorkflowReasonModal from './RequestWorkflowReasonModal.vue'
+import { useAppointmentAvailabilityState } from './appointmentAvailabilityState'
 import { rememberDocumentRequestFocus } from './documentRequestFocus'
+import { appointmentDocumentRequestQuery } from './documentRequestNavigation'
 import {
   appointmentDateTime,
   documentTypeAccentClass,
@@ -24,8 +28,6 @@ const appointments = ref([])
 const readyRequests = ref([])
 const search = ref('')
 const date = ref('')
-const status = ref('')
-const group = ref('active')
 const timeFilter = ref('all')
 const loading = ref(false)
 const message = ref('')
@@ -37,12 +39,33 @@ const releaseLastPage = ref(1)
 const releaseTotal = ref(0)
 const releasingId = ref(null)
 const returningId = ref(null)
+const cancellingAppointmentId = ref(null)
+const cancellationTarget = ref(null)
+const cancellationRequest = ref(null)
+const cancellationDialogOpen = ref(false)
 const returnTarget = ref(null)
 const returnDialogOpen = ref(false)
 const requestIdFilter = ref(null)
 const appointmentIdFilter = ref(null)
 const focusedAppointmentId = ref(null)
-const availabilityOpen = ref(false)
+const updatingAppointmentId = ref(null)
+const detailsOpen = ref(false)
+const detailsLoading = ref(false)
+const detailsError = ref('')
+const detailsAppointment = ref(null)
+const detailsRequest = ref(null)
+const detailsConfirmed = ref(false)
+const detailsEntryPoint = ref('view')
+const detailsDialog = ref(null)
+const recentActivityKey = ref(0)
+const scheduleViewRef = ref(null)
+const selectedScheduleSection = ref('awaiting')
+const recentActivityOpen = ref(false)
+const recentActivityDialog = ref(null)
+let detailsTrigger = null
+let previousRouteGroup = null
+let appointmentHighlightTimer = null
+const { isOpen: availabilityOpen, close: hideAvailabilitySettings } = useAppointmentAvailabilityState()
 const availabilityDialog = ref(null)
 const blockedDateForm = ref(null)
 const blockedDates = ref([])
@@ -70,14 +93,7 @@ const blockedDate = reactive({
   reason: '',
   is_active: true,
 })
-const statuses = ['pending', 'confirmed']
 const activeStatuses = ['pending', 'confirmed']
-const activeGroups = [
-  { value: 'active', label: 'All Active' },
-  { value: 'recent', label: 'Recent' },
-  { value: 'upcoming', label: 'Upcoming' },
-  { value: 'today', label: 'Today' },
-]
 const RETURN_REASONS = [
   'Wrong request selected',
   'Document preparation error',
@@ -85,12 +101,22 @@ const RETURN_REASONS = [
   'Needs correction',
   'Other',
 ]
+const CANCELLATION_REASONS = [
+  'Student requested cancellation',
+  'Student is unavailable',
+  'Scheduling conflict',
+  'Duplicate appointment',
+  'Other',
+]
 const requestError = (err) => err.response?.data?.message || 'The appointment could not be completed.'
+const appointmentDetailsError = (err) =>
+  err.response?.data?.message || 'The appointment details could not be loaded.'
 const availabilityRequestError = (err) =>
   Object.values(err.response?.data?.errors || {})[0]?.[0] ||
   err.response?.data?.message ||
   'The appointment availability settings could not be saved.'
 const queryValue = (value) => (Array.isArray(value) ? value[0] : value)
+const isReadyForReleaseView = computed(() => queryValue(route.query.group) === READY_FOR_RELEASE_GROUP)
 const positiveId = (value) => {
   const id = Number(queryValue(value))
 
@@ -110,6 +136,204 @@ const appointmentTimestamp = (appointment) => {
   return `${String(appointment.appointment_date).slice(0, 10)}T${String(appointment.appointment_time || '00:00').slice(0, 8)}`
 }
 const releaseTimestamp = (request) => request?.ready_for_release_at || request?.updated_at || null
+const manilaToday = () =>
+  new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'Asia/Manila',
+  }).format(new Date())
+const appointmentDateKey = (appointment) => String(appointment?.appointment_date || '').slice(0, 10)
+const appointmentSortValue = (appointment) =>
+  `${appointmentDateKey(appointment)}T${String(appointment?.appointment_time || '00:00').slice(0, 8)}`
+const sortedAppointments = computed(() =>
+  [...appointments.value].sort((left, right) => appointmentSortValue(left).localeCompare(appointmentSortValue(right))),
+)
+const awaitingConfirmation = computed(() => sortedAppointments.value.filter((item) => item.status === 'pending'))
+const todaysAppointments = computed(() => {
+  const today = manilaToday()
+
+  return sortedAppointments.value.filter((item) => item.status !== 'pending' && appointmentDateKey(item) === today)
+})
+const upcomingAppointments = computed(() => {
+  const today = manilaToday()
+
+  return sortedAppointments.value.filter(
+    (item) => item.status === 'confirmed' && appointmentDateKey(item) > today,
+  )
+})
+const appointmentSelectors = computed(() => [
+  {
+    key: 'awaiting',
+    eyebrow: 'Action needed',
+    title: 'Awaiting Confirmation',
+    count: awaitingConfirmation.value.length,
+    countLabel: 'waiting',
+    description: 'Pending appointments that still need confirmation.',
+    items: awaitingConfirmation.value,
+  },
+  {
+    key: 'upcoming',
+    eyebrow: 'Scheduled',
+    title: 'Upcoming Appointments',
+    count: upcomingAppointments.value.length,
+    countLabel: 'upcoming',
+    description: 'Confirmed appointments scheduled after today.',
+    items: upcomingAppointments.value,
+  },
+])
+const selectedAppointmentSection = computed(
+  () => appointmentSelectors.value.find(({ key }) => key === selectedScheduleSection.value) || appointmentSelectors.value[0],
+)
+const selectedAppointmentEmptyMessage = computed(() =>
+  selectedScheduleSection.value === 'upcoming'
+    ? 'No upcoming appointments.'
+    : 'No appointments awaiting confirmation.',
+)
+
+async function activateScheduleView() {
+  await nextTick()
+  scheduleViewRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+async function selectScheduleSection(key) {
+  selectedScheduleSection.value = key
+  await nextTick()
+}
+
+async function openRecentActivity() {
+  recentActivityOpen.value = true
+  await nextTick()
+  recentActivityDialog.value?.focus()
+}
+
+function closeRecentActivity() {
+  recentActivityOpen.value = false
+}
+
+function highlightAppointment(appointmentId) {
+  window.clearTimeout(appointmentHighlightTimer)
+  focusedAppointmentId.value = appointmentId
+  appointmentHighlightTimer = window.setTimeout(() => {
+    if (focusedAppointmentId.value === appointmentId) focusedAppointmentId.value = null
+  }, 3_000)
+}
+const detailStudent = computed(() => detailsRequest.value?.student || detailsAppointment.value?.student || null)
+const detailAppointmentRecord = computed(
+  () =>
+    detailsRequest.value?.appointments?.find(({ id }) => id === detailsAppointment.value?.id) || detailsAppointment.value,
+)
+const detailAppointmentStatus = computed(() => detailAppointmentRecord.value?.status || null)
+const terminalAppointmentStatuses = ['completed', 'cancelled', 'no_show']
+const detailsAreReadOnly = computed(() => terminalAppointmentStatuses.includes(detailAppointmentStatus.value))
+const isReleaseCompletionFlow = computed(() =>
+  ['ready-release', 'appointment-complete'].includes(detailsEntryPoint.value),
+)
+const canCancelAppointment = computed(
+  () =>
+    !detailsLoading.value &&
+    detailsEntryPoint.value === 'view' &&
+    ['pending', 'confirmed'].includes(detailAppointmentStatus.value),
+)
+const showCompletionAction = computed(
+  () =>
+    !detailsLoading.value &&
+    isReleaseCompletionFlow.value &&
+    detailsRequest.value?.status === 'ready_for_release',
+)
+const showGoToRequestAction = computed(
+  () =>
+    !detailsLoading.value &&
+    detailsEntryPoint.value === 'appointment-complete' &&
+    ['pending', 'processing'].includes(detailsRequest.value?.status),
+)
+const canCompleteRelease = computed(
+  () =>
+    showCompletionAction.value &&
+    Boolean(detailsRequest.value) &&
+    detailsRequest.value?.status === 'ready_for_release' &&
+    detailAppointmentStatus.value === 'confirmed',
+)
+const releaseRequirementMessage = computed(() => {
+  if (detailsLoading.value || !isReleaseCompletionFlow.value) return ''
+  if (!detailsRequest.value) return 'The document request details could not be loaded. Completion is unavailable.'
+  if (detailsRequest.value.status === 'pending') return 'This document request is still awaiting approval.'
+  if (detailsRequest.value.status === 'processing') return 'This document is still being prepared.'
+  if (detailsRequest.value.status === 'released') {
+    return 'This document has already been released. No further completion action is available.'
+  }
+  if (!detailAppointmentRecord.value) {
+    return 'A confirmed appointment is required before this document can be released.'
+  }
+  if (detailAppointmentStatus.value !== 'confirmed') {
+    return `This appointment is ${formatStatus(detailAppointmentStatus.value)}. Only confirmed appointments can be completed.`
+  }
+  if (detailsRequest.value.status !== 'ready_for_release') {
+    return `This document request is ${formatStatus(detailsRequest.value.status)} and cannot be released from the appointment.`
+  }
+
+  return 'Document is ready for release.'
+})
+const releaseMessageTone = computed(() => {
+  if (detailsRequest.value?.status === 'released') return 'neutral'
+  if (canCompleteRelease.value) return 'success'
+
+  return 'warning'
+})
+const detailDocumentName = computed(
+  () =>
+    detailsRequest.value?.document_type?.document_name ||
+    detailsAppointment.value?.document_request?.document_type?.document_name ||
+    'Not available',
+)
+const detailTitle = computed(() => {
+  if (detailsEntryPoint.value === 'ready-release') return 'Release Document'
+  if (detailsEntryPoint.value === 'appointment-complete') return 'Complete Appointment'
+  if (detailsConfirmed.value) return 'Appointment Confirmed'
+  if (detailsAreReadOnly.value) return 'Appointment Details'
+  if (detailsRequest.value?.status === 'ready_for_release') return 'Release Document'
+
+  return 'Appointment Details'
+})
+const completionActionLabel = computed(() =>
+  detailsEntryPoint.value === 'ready-release' ? 'Complete Appointment' : 'Release Document',
+)
+
+function formatAppointmentTime(value) {
+  const time = String(value || '').slice(0, 5)
+  if (!time) return 'Time not available'
+
+  const [hours, minutes] = time.split(':').map(Number)
+
+  return new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit' }).format(
+    new Date(2000, 0, 1, hours, minutes),
+  )
+}
+
+function formatDate(value) {
+  if (!value) return 'Not available'
+
+  return new Intl.DateTimeFormat('en-PH', {
+    dateStyle: 'medium',
+    timeZone: 'Asia/Manila',
+  }).format(new Date(`${String(value).slice(0, 10)}T00:00:00+08:00`))
+}
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function formatStatus(value) {
+  return value ? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Not available'
+}
+
+function physicalRecordLabel(student) {
+  const location = student?.physical_record_location
+  const slot = location?.cabinet_slot
+  const cabinet = slot?.cabinet
+
+  return location ? `Cabinet ${cabinet?.cabinet_code || '—'} · Slot ${slot?.slot_code || '—'}` : 'Not assigned'
+}
 
 function blockedDateLabel(value) {
   return new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium' }).format(new Date(`${value}T00:00:00`))
@@ -155,18 +379,20 @@ async function loadAvailabilitySettings() {
   }
 }
 
-async function openAvailabilitySettings() {
+async function prepareAvailabilitySettings() {
   resetBlockedDateForm()
   availabilityMessage.value = ''
   availabilityError.value = ''
-  availabilityOpen.value = true
   await nextTick()
   availabilityDialog.value?.focus()
   await loadAvailabilitySettings()
 }
 
 function closeAvailabilitySettings() {
-  availabilityOpen.value = false
+  hideAvailabilitySettings()
+}
+
+function resetAvailabilitySettings() {
   availabilityMessage.value = ''
   availabilityError.value = ''
   resetBlockedDateForm()
@@ -247,20 +473,33 @@ async function deleteBlockedDate(item) {
 }
 
 function applyRouteQuery(query) {
-  const nextStatus = String(queryValue(query.status) || '')
   const nextGroup = String(queryValue(query.group) || 'active')
   const nextTimeFilter = String(queryValue(query.time_filter) || 'all')
 
   search.value = String(queryValue(query.search) || '')
   date.value = String(queryValue(query.date) || '')
-  status.value = statuses.includes(nextStatus) ? nextStatus : ''
-  group.value = activeGroups.some((option) => option.value === nextGroup) ? nextGroup : 'active'
   timeFilter.value = TIME_FILTERS.some((option) => option.value === nextTimeFilter) ? nextTimeFilter : 'all'
   requestIdFilter.value = positiveId(query.request_id)
   appointmentIdFilter.value = positiveId(query.appointment_id)
   focusedAppointmentId.value = focusedId(query.focus) || appointmentIdFilter.value
   page.value = positiveId(query.page) || 1
   releasePage.value = positiveId(query.release_page) || 1
+
+  if (nextGroup === 'upcoming') selectedScheduleSection.value = 'upcoming'
+  else if (previousRouteGroup === READY_FOR_RELEASE_GROUP || previousRouteGroup === null)
+    selectedScheduleSection.value = 'awaiting'
+
+  previousRouteGroup = nextGroup
+}
+
+function shouldLoadTodayHistory() {
+  const today = manilaToday()
+
+  return (
+    page.value === 1 &&
+    (!date.value || date.value === today) &&
+    ['all', 'today', 'last_7_days', 'this_month'].includes(timeFilter.value)
+  )
 }
 
 async function refresh(resetPage = false) {
@@ -271,32 +510,53 @@ async function refresh(resetPage = false) {
   loading.value = true
   error.value = ''
   try {
-    const [appointmentResult, releaseResult] = await Promise.all([
-      api.registrarAppointments({
-        search: search.value || undefined,
-        date: date.value || undefined,
-        status: status.value || undefined,
-        group: group.value,
-        time_filter: timeFilter.value,
-        request_id: requestIdFilter.value || undefined,
-        appointment_id: appointmentIdFilter.value || undefined,
-        page: page.value,
-      }),
-      api.registrarRequests({
+    if (isReadyForReleaseView.value) {
+      const releaseResult = await api.registrarRequests({
         status: 'ready_for_release',
         search: search.value || undefined,
         time_filter: timeFilter.value,
         request_id: requestIdFilter.value || undefined,
         page: releasePage.value,
+      })
+      readyRequests.value = releaseResult.data
+      releasePage.value = releaseResult.current_page || releasePage.value
+      releaseLastPage.value = releaseResult.last_page
+      releaseTotal.value = releaseResult.total
+
+      return
+    }
+
+    const [appointmentResult, todayHistoryResult] = await Promise.all([
+      api.registrarAppointments({
+        search: search.value || undefined,
+        date: date.value || undefined,
+        time_filter: timeFilter.value,
+        request_id: requestIdFilter.value || undefined,
+        appointment_id: appointmentIdFilter.value || undefined,
+        page: page.value,
       }),
+      shouldLoadTodayHistory()
+        ? api.registrarHistory({
+            section: 'appointments',
+            search: search.value || undefined,
+            time_filter: 'today',
+            request_id: requestIdFilter.value || undefined,
+            appointment_id: appointmentIdFilter.value || undefined,
+            appointment_page: 1,
+          })
+        : Promise.resolve(null),
     ])
-    appointments.value = appointmentResult.data
+
+    const historicalToday = (todayHistoryResult?.appointments?.data || []).filter(
+      (appointment) => appointmentDateKey(appointment) === manilaToday(),
+    )
+    const appointmentsById = new Map(
+      [...appointmentResult.data, ...historicalToday].map((appointment) => [appointment.id, appointment]),
+    )
+
+    appointments.value = [...appointmentsById.values()]
     page.value = appointmentResult.current_page || page.value
     lastPage.value = appointmentResult.last_page
-    readyRequests.value = releaseResult.data
-    releasePage.value = releaseResult.current_page || releasePage.value
-    releaseLastPage.value = releaseResult.last_page
-    releaseTotal.value = releaseResult.total
   } catch (err) {
     error.value = requestError(err)
   } finally {
@@ -313,32 +573,19 @@ async function revealFocusedAppointment() {
     ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
+async function reopenAppointmentFromRoute() {
+  if (queryValue(route.query.open) !== 'completion' || detailsOpen.value) return
+
+  const appointmentId = positiveId(route.query.appointment_id)
+  const appointment = appointments.value.find(({ id }) => id === appointmentId)
+  if (appointment) await openAppointmentDetails(appointment, { completion: true })
+}
+
 async function applyFilters() {
   requestIdFilter.value = null
   appointmentIdFilter.value = null
   focusedAppointmentId.value = null
   await refresh(true)
-}
-
-async function selectGroup(nextGroup) {
-  group.value = nextGroup
-  date.value = ''
-  timeFilter.value = 'all'
-  requestIdFilter.value = null
-  appointmentIdFilter.value = null
-  focusedAppointmentId.value = null
-  await refresh(true)
-}
-
-function showHistory(appointmentStatus) {
-  router.push({
-    name: 'registrar-document-request-history',
-    query: {
-      section: 'appointments',
-      appointment_status: appointmentStatus,
-      time_filter: timeFilter.value,
-    },
-  })
 }
 
 async function changePage(nextPage) {
@@ -357,6 +604,149 @@ function viewRequest(request) {
     name: 'registrar-document-requests',
     query: { request_id: request.id },
   })
+}
+
+function goToRequestFromAppointment() {
+  const requestId = detailsRequest.value?.id || detailsAppointment.value?.document_request_id
+  const appointmentId = detailAppointmentRecord.value?.id
+  if (!requestId || !appointmentId) return
+
+  router.push({
+    name: 'registrar-document-requests',
+    query: appointmentDocumentRequestQuery({ requestId, appointmentId }),
+  })
+}
+
+async function openAppointmentDetails(appointment, { confirmed = false, completion = false } = {}) {
+  detailsTrigger = document.activeElement
+  detailsAppointment.value = appointment
+  detailsRequest.value = null
+  detailsConfirmed.value = confirmed
+  detailsEntryPoint.value = completion ? 'appointment-complete' : confirmed ? 'confirmation' : 'view'
+  detailsError.value = ''
+  detailsLoading.value = true
+  detailsOpen.value = true
+  await nextTick()
+  detailsDialog.value?.focus()
+
+  try {
+    detailsRequest.value = await api.registrarRequest(
+      appointment.document_request_id || appointment.document_request?.id,
+    )
+  } catch (err) {
+    detailsError.value = appointmentDetailsError(err)
+  } finally {
+    detailsLoading.value = false
+  }
+}
+
+async function openRequestReleaseDetails(request) {
+  detailsTrigger = document.activeElement
+  detailsAppointment.value = null
+  detailsRequest.value = request
+  detailsConfirmed.value = false
+  detailsEntryPoint.value = 'ready-release'
+  detailsError.value = ''
+  detailsLoading.value = true
+  detailsOpen.value = true
+  await nextTick()
+  detailsDialog.value?.focus()
+
+  try {
+    const detailedRequest = await api.registrarRequest(request.id)
+    const relatedAppointments = [...(detailedRequest.appointments || [])].sort((left, right) => right.id - left.id)
+    const relatedAppointment =
+      relatedAppointments.find(({ status }) => status === 'confirmed') ||
+      relatedAppointments.find(({ status }) => status === 'pending') ||
+      relatedAppointments[0] ||
+      null
+
+    detailsRequest.value = detailedRequest
+    detailsAppointment.value = relatedAppointment
+      ? {
+          ...relatedAppointment,
+          student: detailedRequest.student,
+          document_request: {
+            id: detailedRequest.id,
+            request_reference: detailedRequest.request_reference,
+            status: detailedRequest.status,
+            document_type: detailedRequest.document_type,
+          },
+        }
+      : null
+  } catch (err) {
+    detailsError.value = appointmentDetailsError(err)
+  } finally {
+    detailsLoading.value = false
+  }
+}
+
+function closeAppointmentDetails() {
+  const confirmedAppointment = detailsEntryPoint.value === 'confirmation' ? detailsAppointment.value : null
+  detailsOpen.value = false
+  detailsLoading.value = false
+  detailsError.value = ''
+  detailsRequest.value = null
+  detailsConfirmed.value = false
+  detailsEntryPoint.value = 'view'
+  if (confirmedAppointment) {
+    if (appointmentDateKey(confirmedAppointment) > manilaToday()) selectedScheduleSection.value = 'upcoming'
+    nextTick(() => highlightAppointment(confirmedAppointment.id))
+  }
+  nextTick(() => detailsTrigger?.focus?.())
+}
+
+function applyLocalAppointmentUpdate(updated) {
+  const current = appointments.value.find(({ id }) => id === updated.id)
+  const merged = current ? { ...current, ...updated } : updated
+  const remainsInSchedule =
+    activeStatuses.includes(merged.status) ||
+    (appointmentDateKey(merged) === manilaToday() && terminalAppointmentStatuses.includes(merged.status))
+
+  appointments.value = remainsInSchedule
+    ? appointments.value.map((item) => (item.id === merged.id ? merged : item))
+    : appointments.value.filter((item) => item.id !== merged.id)
+}
+
+function openCancelAppointment() {
+  if (!canCancelAppointment.value) return
+
+  cancellationTarget.value = { ...detailAppointmentRecord.value }
+  cancellationRequest.value = detailsRequest.value
+  detailsOpen.value = false
+  cancellationDialogOpen.value = true
+}
+
+function closeCancellationDialog() {
+  if (cancellingAppointmentId.value) return
+  cancellationDialogOpen.value = false
+  cancellationTarget.value = null
+  cancellationRequest.value = null
+  nextTick(() => detailsTrigger?.focus?.())
+}
+
+async function confirmAppointmentCancellation({ reason }) {
+  if (!cancellationTarget.value) return
+
+  error.value = ''
+  message.value = ''
+  cancellingAppointmentId.value = cancellationTarget.value.id
+  try {
+    const updated = await api.updateAppointment(cancellationTarget.value.id, {
+      status: 'cancelled',
+      remarks: reason,
+    })
+    applyLocalAppointmentUpdate(updated)
+    message.value = 'Appointment cancelled. The document request remains in its current workflow state.'
+    recentActivityKey.value += 1
+    cancellationDialogOpen.value = false
+    cancellationTarget.value = null
+    cancellationRequest.value = null
+  } catch (err) {
+    error.value = requestError(err)
+  } finally {
+    cancellingAppointmentId.value = null
+  }
 }
 
 function openReturnToProcessing(request) {
@@ -400,25 +790,36 @@ async function confirmReturnToProcessing({ reason }) {
   }
 }
 
-async function releaseDocument(request) {
+async function completeReleaseWorkflow() {
+  const request = detailsRequest.value
+  if (!request || !canCompleteRelease.value) return
+
   error.value = ''
+  detailsError.value = ''
   message.value = ''
   releasingId.value = request.id
   try {
-    await api.updateRequest(request.id, {
+    const releasedRequest = await api.updateRequest(request.id, {
       action: 'release',
+      appointment_id: detailAppointmentRecord.value?.id || undefined,
       remarks: request.remarks || null,
     })
+    const completedAppointment = releasedRequest.appointments?.find(
+      ({ id }) => id === detailAppointmentRecord.value?.id,
+    )
+    if (completedAppointment) applyLocalAppointmentUpdate(completedAppointment)
     readyRequests.value = readyRequests.value.filter((item) => item.id !== request.id)
     releaseTotal.value = Math.max(0, releaseTotal.value - 1)
-    message.value = `${request.request_reference || requestReference(request.id)} released and moved to History.`
+    message.value = `${request.request_reference || requestReference(request.id)} released${completedAppointment ? ' and its appointment completed' : ''}.`
+    recentActivityKey.value += 1
+    closeAppointmentDetails()
 
     if (!readyRequests.value.length && releasePage.value > 1) {
       releasePage.value -= 1
       await refresh()
     }
   } catch (err) {
-    error.value = requestError(err)
+    detailsError.value = requestError(err)
   } finally {
     releasingId.value = null
   }
@@ -427,20 +828,20 @@ async function releaseDocument(request) {
 async function updateStatus(appointment, nextStatus) {
   error.value = ''
   message.value = ''
+  updatingAppointmentId.value = appointment.id
   try {
     const updated = await api.updateAppointment(appointment.id, {
       status: nextStatus,
     })
-    if (!activeStatuses.includes(updated.status) || (status.value && status.value !== updated.status)) {
-      appointments.value = appointments.value.filter((item) => item.id !== updated.id)
-    } else {
-      appointments.value = appointments.value.map((item) => (item.id === updated.id ? updated : item))
-    }
-    message.value = 'Appointment updated.'
+    applyLocalAppointmentUpdate(updated)
+    message.value = nextStatus === 'confirmed' ? 'Appointment confirmed.' : 'Appointment updated.'
+    recentActivityKey.value += 1
     if (!appointments.value.length && page.value > 1) page.value -= 1
-    await refresh()
+    if (nextStatus === 'confirmed') await openAppointmentDetails(updated, { confirmed: true })
   } catch (err) {
     error.value = requestError(err)
+  } finally {
+    updatingAppointmentId.value = null
   }
 }
 
@@ -448,7 +849,6 @@ watch(
   [
     () => queryValue(route.query.search),
     () => queryValue(route.query.date),
-    () => queryValue(route.query.status),
     () => queryValue(route.query.group),
     () => queryValue(route.query.time_filter),
     () => queryValue(route.query.request_id),
@@ -456,46 +856,52 @@ watch(
     () => queryValue(route.query.focus),
     () => queryValue(route.query.page),
     () => queryValue(route.query.release_page),
+    () => queryValue(route.query.open),
   ],
   async () => {
     applyRouteQuery(route.query)
     await refresh()
     await revealFocusedAppointment()
+    await reopenAppointmentFromRoute()
   },
   { flush: 'post', immediate: true },
 )
+
+watch(availabilityOpen, (isOpen) => (isOpen ? prepareAvailabilitySettings() : resetAvailabilitySettings()), {
+  flush: 'post',
+})
+
+onBeforeUnmount(() => {
+  window.clearTimeout(appointmentHighlightTimer)
+  hideAvailabilitySettings()
+  detailsOpen.value = false
+  recentActivityOpen.value = false
+})
 </script>
 
 <template>
   <section class="page-header registrar-appointments-header">
     <p class="page-kicker">Registrar Staff</p>
     <div class="appointments-title-row">
-      <h1 class="page-title">Appointments &amp; Release</h1>
+      <h1 class="page-title">{{ isReadyForReleaseView ? 'Ready to Release' : 'Appointments' }}</h1>
     </div>
-    <p class="page-description">Manage scheduled pickups and release documents that are ready for students.</p>
+    <p class="page-description">
+      {{
+        isReadyForReleaseView
+          ? 'Release prepared documents through the dedicated handoff queue.'
+          : 'Review pending requests and scan today’s and upcoming appointment schedule.'
+      }}
+    </p>
   </section>
-
-  <Teleport to="body">
-    <button
-      type="button"
-      class="availability-settings-button"
-      title="Appointment Availability Settings"
-      aria-label="Appointment Availability Settings"
-      @click="openAvailabilitySettings"
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path
-          d="M19.4 13a7.9 7.9 0 0 0 .05-1 7.9 7.9 0 0 0-.05-1l2.1-1.65-2-3.46-2.54 1.03a8.2 8.2 0 0 0-1.73-1L14.85 3h-4l-.38 2.92a8.2 8.2 0 0 0-1.73 1L6.2 5.89l-2 3.46L6.3 11a7.9 7.9 0 0 0-.05 1 7.9 7.9 0 0 0 .05 1l-2.1 1.65 2 3.46 2.54-1.03a8.2 8.2 0 0 0 1.73 1l.38 2.92h4l.38-2.92a8.2 8.2 0 0 0 1.73-1l2.54 1.03 2-3.46L19.4 13Zm-6.55 2.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"
-        />
-      </svg>
-      <span class="availability-settings-label">Availability</span>
-    </button>
-  </Teleport>
 
   <p v-if="message" class="notice success">{{ message }}</p>
   <p v-if="error" class="notice error">{{ error }}</p>
 
-  <section class="dr-panel release-queue-panel" aria-labelledby="release-queue-title">
+  <section
+    v-if="isReadyForReleaseView"
+    class="dr-panel release-queue-panel"
+    aria-labelledby="release-queue-title"
+  >
     <header class="release-queue-header">
       <div>
         <p class="record-eyebrow">Document handoff</p>
@@ -546,9 +952,9 @@ watch(
         <button
           type="button"
           :disabled="releasingId === request.id || returningId === request.id"
-          @click="releaseDocument(request)"
+          @click="openRequestReleaseDetails(request)"
         >
-          {{ releasingId === request.id ? 'Releasing…' : 'Release Document' }}
+          Release Document
         </button>
       </span>
     </article>
@@ -572,98 +978,359 @@ watch(
     @confirm="confirmReturnToProcessing"
   />
 
-  <section class="dr-panel">
-    <nav class="group-tabs" aria-label="Active appointment groups">
-      <button
-        v-for="option in activeGroups"
-        :key="option.value"
-        type="button"
-        :class="{ active: group === option.value }"
-        :aria-pressed="group === option.value"
-        @click="selectGroup(option.value)"
-      >
-        {{ option.label }}
-      </button>
-      <button type="button" class="history-shortcut" @click="showHistory('completed')">Completed</button>
-      <button type="button" class="history-shortcut" @click="showHistory('cancelled')">Cancelled</button>
-    </nav>
+  <RequestWorkflowReasonModal
+    :open="cancellationDialogOpen"
+    title="Cancel Appointment"
+    description="Provide the reason for cancelling this appointment. The document request will remain in its current workflow state."
+    confirm-label="Cancel Appointment"
+    :reason-options="CANCELLATION_REASONS"
+    :request="cancellationRequest"
+    :busy="Boolean(cancellingAppointmentId)"
+    @close="closeCancellationDialog"
+    @confirm="confirmAppointmentCancellation"
+  />
 
-    <form class="toolbar" @submit.prevent="applyFilters">
-      <input v-model="search" placeholder="REQ-000001, student number, name, or document" />
-      <input v-model="date" type="date" />
-      <select v-model="status">
-        <option value="">All active statuses</option>
-        <option v-for="value in statuses" :key="value" :value="value">
-          {{ value.replaceAll('_', ' ') }}
-        </option>
-      </select>
-      <select v-model="timeFilter" aria-label="Appointment time period">
-        <option v-for="option in TIME_FILTERS" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
-      <button :disabled="loading">Filter</button>
-    </form>
-    <p v-if="loading && !appointments.length" class="empty">Loading appointments…</p>
-    <p v-else-if="!appointments.length" class="empty">No matching appointments.</p>
-    <div
-      v-for="appointment in appointments"
-      :id="`appointment-${appointment.id}`"
-      :key="appointment.id"
-      class="appointment appointment-row"
-      :class="{ 'focused-record': focusedAppointmentId === appointment.id }"
-    >
-      <span>
-        <strong>
-          {{ appointment.document_request.document_type.document_name }} · {{ referenceFor(appointment) }}
-        </strong>
-        <small>{{ studentName(appointment.student) }} ({{ appointment.student.student_number }})</small>
-        <time
-          v-if="appointmentTimestamp(appointment)"
-          class="time-display"
-          :datetime="appointmentTimestamp(appointment)"
-          :title="appointmentDateTime(appointment.appointment_date, appointment.appointment_time)"
-        >
-          {{ appointmentDateTime(appointment.appointment_date, appointment.appointment_time) }}
-        </time>
-        <time
-          v-if="appointment.updated_at"
-          class="time-display"
-          :datetime="appointment.updated_at"
-          :title="formatExactDateTime(appointment.updated_at)"
-        >
-          Updated {{ formatRelativeTime(appointment.updated_at) }}
-          <small>{{ formatExactDateTime(appointment.updated_at) }}</small>
-        </time>
-      </span>
-      <span class="badge" :class="appointment.status">{{ appointment.status.replaceAll('_', ' ') }}</span>
-      <span class="actions">
-        <button v-if="appointment.status === 'pending'" @click="updateStatus(appointment, 'confirmed')">Confirm</button>
-        <button v-if="appointment.status === 'confirmed'" @click="updateStatus(appointment, 'completed')">
-          Complete
-        </button>
-        <button
-          v-if="['pending', 'confirmed'].includes(appointment.status)"
-          class="secondary"
-          @click="updateStatus(appointment, 'cancelled')"
-        >
-          Cancel
-        </button>
-        <button v-if="appointment.status === 'confirmed'" class="danger" @click="updateStatus(appointment, 'no_show')">
-          No show
-        </button>
-      </span>
+  <nav v-if="!isReadyForReleaseView" class="appointment-view-nav" aria-label="Appointment page view">
+    <button type="button" class="active" aria-current="page" @click="activateScheduleView">Schedule View</button>
+  </nav>
+
+  <div v-if="!isReadyForReleaseView" ref="scheduleViewRef" class="schedule-view-container">
+    <div v-if="loading && !appointments.length" class="appointment-workspace-skeleton" aria-label="Loading appointment schedule" aria-busy="true">
+      <div class="appointment-filter-skeleton skeleton-shimmer"></div>
+      <div class="appointment-workspace-skeleton-grid">
+        <aside class="appointment-selector-skeletons">
+          <span v-for="index in 2" :key="index" class="appointment-selector-skeleton skeleton-shimmer"></span>
+        </aside>
+        <section class="appointment-table-skeleton">
+          <span class="appointment-heading-skeleton skeleton-shimmer"></span>
+          <span v-for="index in 6" :key="index" class="appointment-row-skeleton skeleton-shimmer"></span>
+        </section>
+      </div>
+      <section class="appointment-today-skeleton">
+        <span class="appointment-heading-skeleton skeleton-shimmer"></span>
+        <span v-for="index in 3" :key="index" class="appointment-row-skeleton skeleton-shimmer"></span>
+      </section>
     </div>
-    <PaginationControls
-      :current-page="page"
-      :last-page="lastPage"
-      :busy="loading"
-      aria-label="Registrar appointment pages"
-      @page-change="changePage"
-    />
-  </section>
 
-  <RegistrarRecentActivity />
+    <template v-else>
+      <section class="dr-panel appointment-filter-panel" aria-labelledby="appointment-filters-title">
+        <div class="appointment-filter-heading">
+          <div>
+            <p class="record-eyebrow">Schedule view</p>
+            <h2 id="appointment-filters-title">Appointment Schedule</h2>
+          </div>
+        </div>
+        <form class="toolbar appointment-search-toolbar" @submit.prevent="applyFilters">
+          <input v-model="search" aria-label="Search appointments" placeholder="Reference, student, or document" />
+          <input v-model="date" aria-label="Appointment date" type="date" />
+          <select v-model="timeFilter" aria-label="Appointment time period">
+            <option v-for="option in TIME_FILTERS" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
+          <button :disabled="loading">{{ loading ? 'Loading…' : 'Apply filters' }}</button>
+        </form>
+      </section>
+
+      <section class="registrar-workspace-grid" aria-label="Appointment schedule workspace">
+        <RegistrarWorkspaceSelector
+          :model-value="selectedScheduleSection"
+          :items="appointmentSelectors"
+          aria-label="Select appointment section"
+          @update:model-value="selectScheduleSection"
+        />
+
+        <section class="dr-panel appointment-main-panel" aria-live="polite">
+          <header class="appointment-main-heading">
+            <div>
+              <p class="record-eyebrow">Selected schedule</p>
+              <h2>{{ selectedAppointmentSection.title }}</h2>
+              <p>{{ selectedAppointmentSection.description }}</p>
+            </div>
+            <strong class="appointment-section-count">{{ selectedAppointmentSection.items.length }}</strong>
+          </header>
+
+          <Transition name="appointment-workspace-swap" mode="out-in">
+            <div :key="selectedAppointmentSection.key" class="appointment-main-table">
+              <p v-if="!selectedAppointmentSection.items.length" class="appointment-section-empty">{{ selectedAppointmentEmptyMessage }}</p>
+              <article
+                v-for="appointment in selectedAppointmentSection.items"
+                :id="`appointment-${appointment.id}`"
+                :key="appointment.id"
+                class="compact-appointment-row"
+                :class="[`appointment-status-${appointment.status}`, { 'focused-record': focusedAppointmentId === appointment.id }]"
+                role="button"
+                tabindex="0"
+                :aria-label="`View appointment details for ${studentName(appointment.student)}`"
+                @click="openAppointmentDetails(appointment)"
+                @keydown.enter.self.prevent="openAppointmentDetails(appointment)"
+                @keydown.space.self.prevent="openAppointmentDetails(appointment)"
+              >
+                <time class="appointment-row-time" :datetime="appointmentTimestamp(appointment)" :title="appointmentDateTime(appointment.appointment_date, appointment.appointment_time)">
+                  <strong>{{ formatAppointmentTime(appointment.appointment_time) }}</strong>
+                  <small>{{ formatDate(appointment.appointment_date) }}</small>
+                </time>
+                <span class="appointment-row-student"><strong>{{ studentName(appointment.student) }}</strong><small>{{ appointment.student.student_number }}</small></span>
+                <span class="appointment-row-request"><strong>{{ appointment.document_request.document_type.document_name }}</strong><small>{{ referenceFor(appointment) }}<template v-if="appointment.remarks"> · {{ appointment.remarks }}</template></small></span>
+                <span class="badge appointment-row-status" :class="appointment.status">{{ formatStatus(appointment.status) }}</span>
+                <span class="actions appointment-row-actions">
+                  <button
+                    v-if="appointment.status === 'pending'"
+                    type="button"
+                    class="confirm-appointment-button"
+                    :disabled="updatingAppointmentId === appointment.id"
+                    @click.stop="updateStatus(appointment, 'confirmed')"
+                  >{{ updatingAppointmentId === appointment.id ? 'Confirming…' : 'Confirm' }}</button>
+                  <button
+                    v-if="appointment.status === 'confirmed'"
+                    type="button"
+                    class="completion-appointment-button"
+                    :disabled="Boolean(releasingId)"
+                    @click.stop="openAppointmentDetails(appointment, { completion: true })"
+                  >Complete</button>
+                </span>
+              </article>
+            </div>
+          </Transition>
+
+          <footer class="appointment-main-footer">
+            <PaginationControls
+              :current-page="page"
+              :last-page="lastPage"
+              :busy="loading"
+              aria-label="Registrar appointment pages"
+              @page-change="changePage"
+            />
+            <button type="button" class="secondary appointment-recent-button" @click="openRecentActivity">Recent Activity</button>
+          </footer>
+        </section>
+      </section>
+
+      <section class="dr-panel appointment-today-panel" aria-labelledby="today-appointments-title">
+        <header class="appointment-main-heading">
+          <div><p class="record-eyebrow">Today</p><h2 id="today-appointments-title">Today's Appointments</h2><p>Confirmed and finalized appointments scheduled for today.</p></div>
+          <strong class="appointment-section-count">{{ todaysAppointments.length }}</strong>
+        </header>
+        <p v-if="!todaysAppointments.length" class="appointment-section-empty">No appointments scheduled for today.</p>
+        <article
+          v-for="appointment in todaysAppointments"
+          :id="`appointment-${appointment.id}`"
+          :key="appointment.id"
+          class="compact-appointment-row"
+          :class="[`appointment-status-${appointment.status}`, { 'focused-record': focusedAppointmentId === appointment.id }]"
+          role="button"
+          tabindex="0"
+          :aria-label="`View appointment details for ${studentName(appointment.student)}`"
+          @click="openAppointmentDetails(appointment)"
+          @keydown.enter.self.prevent="openAppointmentDetails(appointment)"
+          @keydown.space.self.prevent="openAppointmentDetails(appointment)"
+        >
+          <time class="appointment-row-time" :datetime="appointmentTimestamp(appointment)" :title="appointmentDateTime(appointment.appointment_date, appointment.appointment_time)">
+            <strong>{{ formatAppointmentTime(appointment.appointment_time) }}</strong><small>{{ formatDate(appointment.appointment_date) }}</small>
+          </time>
+          <span class="appointment-row-student"><strong>{{ studentName(appointment.student) }}</strong><small>{{ appointment.student.student_number }}</small></span>
+          <span class="appointment-row-request"><strong>{{ appointment.document_request.document_type.document_name }}</strong><small>{{ referenceFor(appointment) }}</small></span>
+          <span class="badge appointment-row-status" :class="appointment.status">{{ formatStatus(appointment.status) }}</span>
+          <span v-if="appointment.status === 'confirmed'" class="actions appointment-row-actions">
+            <button type="button" class="completion-appointment-button" :disabled="Boolean(releasingId)" @click.stop="openAppointmentDetails(appointment, { completion: true })">Complete</button>
+          </span>
+        </article>
+      </section>
+    </template>
+  </div>
+
+  <Teleport to="body">
+    <Transition name="student-modal" appear>
+      <div v-if="recentActivityOpen" class="appointment-details-backdrop" role="presentation" @mousedown.self="closeRecentActivity" @keydown.esc="closeRecentActivity">
+        <section ref="recentActivityDialog" class="appointment-details-modal appointment-recent-modal" role="dialog" aria-modal="true" aria-labelledby="appointment-recent-title" tabindex="-1">
+          <header class="appointment-details-header student-modal-header">
+            <div><p class="page-kicker">Registrar appointments</p><h2 id="appointment-recent-title">Recent Activity</h2><p>Latest document request and appointment updates.</p></div>
+            <button type="button" class="student-modal-close" aria-label="Close recent activity" @click="closeRecentActivity">×</button>
+          </header>
+          <div class="appointment-details-body appointment-recent-modal-body">
+            <RegistrarRecentActivity :key="recentActivityKey" read-only />
+          </div>
+          <footer class="appointment-details-footer"><button type="button" class="appointment-close-action" @click="closeRecentActivity">Close</button></footer>
+        </section>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <Teleport to="body">
+    <div
+      v-if="detailsOpen"
+      class="appointment-details-backdrop"
+      role="presentation"
+      @mousedown.self="closeAppointmentDetails"
+      @keydown.esc="closeAppointmentDetails"
+    >
+      <section
+        ref="detailsDialog"
+        class="appointment-details-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="appointment-details-title"
+        tabindex="-1"
+      >
+        <header class="appointment-details-header">
+          <div>
+            <p class="page-kicker">Registrar appointment</p>
+            <h2 id="appointment-details-title">{{ detailTitle }}</h2>
+            <p>
+              {{
+                detailsAreReadOnly
+                  ? 'This finalized appointment is read-only.'
+                  : 'Review the appointment and document request before taking action.'
+              }}
+            </p>
+          </div>
+          <span v-if="detailsConfirmed" class="appointment-confirmed-mark" aria-hidden="true">✓</span>
+        </header>
+
+        <div class="appointment-details-body">
+          <p v-if="detailsLoading" class="appointment-details-state">Loading appointment details…</p>
+          <p v-if="detailsError" class="notice error" role="alert">{{ detailsError }}</p>
+
+          <template v-if="detailsRequest || detailsAppointment">
+            <section class="appointment-detail-section" aria-labelledby="appointment-student-title">
+              <h3 id="appointment-student-title">Student</h3>
+              <dl class="appointment-detail-grid">
+                <div>
+                  <dt>Name</dt>
+                  <dd>{{ studentName(detailStudent) || 'Not available' }}</dd>
+                </div>
+                <div>
+                  <dt>Student number</dt>
+                  <dd>{{ detailStudent?.student_number || 'Not available' }}</dd>
+                </div>
+                <div v-if="detailStudent?.course">
+                  <dt>Course</dt>
+                  <dd>{{ detailStudent.course.course_code || detailStudent.course.course_name }}</dd>
+                </div>
+                <div v-if="detailStudent?.year_level">
+                  <dt>Year level</dt>
+                  <dd>Year {{ detailStudent.year_level }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="appointment-detail-section" aria-labelledby="appointment-request-title">
+              <h3 id="appointment-request-title">Document Request</h3>
+              <dl class="appointment-detail-grid">
+                <div>
+                  <dt>Request reference</dt>
+                  <dd>{{ detailsRequest?.request_reference || referenceFor(detailsAppointment) }}</dd>
+                </div>
+                <div>
+                  <dt>Requested document</dt>
+                  <dd>{{ detailDocumentName }}</dd>
+                </div>
+                <div v-if="detailsRequest?.request_date">
+                  <dt>Request date</dt>
+                  <dd>{{ formatDate(detailsRequest.request_date) }}</dd>
+                </div>
+                <div v-if="detailsRequest?.status">
+                  <dt>Request status</dt>
+                  <dd>
+                    <span class="badge" :class="detailsRequest.status">
+                      {{ formatStatus(detailsRequest.status) }}
+                    </span>
+                  </dd>
+                </div>
+                <div v-if="detailsRequest?.total_fee !== undefined">
+                  <dt>Fee</dt>
+                  <dd>₱{{ formatMoney(detailsRequest.total_fee) }}</dd>
+                </div>
+                <div v-if="detailsRequest">
+                  <dt>Physical record location</dt>
+                  <dd>{{ physicalRecordLabel(detailStudent) }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section
+              v-if="detailAppointmentRecord"
+              class="appointment-detail-section"
+              aria-labelledby="appointment-schedule-title"
+            >
+              <h3 id="appointment-schedule-title">Appointment</h3>
+              <dl class="appointment-detail-grid">
+                <div>
+                  <dt>Date</dt>
+                  <dd>{{ formatDate(detailAppointmentRecord?.appointment_date) }}</dd>
+                </div>
+                <div>
+                  <dt>Time</dt>
+                  <dd>{{ formatAppointmentTime(detailAppointmentRecord?.appointment_time) }}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>
+                    <span class="badge" :class="detailAppointmentRecord?.status">
+                      {{ formatStatus(detailAppointmentRecord?.status) }}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section v-else class="appointment-detail-section" aria-labelledby="appointment-schedule-title">
+              <h3 id="appointment-schedule-title">Appointment</h3>
+              <p class="appointment-details-state">No appointment is linked to this document request.</p>
+            </section>
+
+            <section
+              v-if="detailAppointmentRecord?.remarks || detailsRequest?.purpose || detailsRequest?.remarks"
+              class="appointment-detail-section appointment-detail-notes"
+              aria-labelledby="appointment-notes-title"
+            >
+              <h3 id="appointment-notes-title">Notes / Purpose</h3>
+              <p>{{ detailAppointmentRecord?.remarks || detailsRequest?.purpose || detailsRequest?.remarks }}</p>
+            </section>
+
+            <p
+              v-if="releaseRequirementMessage"
+              class="appointment-release-requirement"
+              :class="`is-${releaseMessageTone}`"
+              role="status"
+            >
+              {{ releaseRequirementMessage }}
+            </p>
+          </template>
+        </div>
+
+        <footer class="appointment-details-footer">
+          <button
+            v-if="showGoToRequestAction"
+            type="button"
+            class="appointment-request-action"
+            @click="goToRequestFromAppointment"
+          >
+            Go to Request
+          </button>
+          <button
+            v-if="showCompletionAction"
+            type="button"
+            class="appointment-release-action"
+            :disabled="!canCompleteRelease || Boolean(releasingId)"
+            @click="completeReleaseWorkflow"
+          >
+            {{ releasingId ? 'Completing…' : completionActionLabel }}
+          </button>
+          <button
+            v-if="canCancelAppointment"
+            type="button"
+            class="appointment-cancel-action"
+            :disabled="Boolean(releasingId)"
+            @click="openCancelAppointment"
+          >
+            Cancel Appointment
+          </button>
+          <button type="button" class="appointment-close-action" :disabled="Boolean(releasingId)" @click="closeAppointmentDetails">
+            Close
+          </button>
+        </footer>
+      </section>
+    </div>
+  </Teleport>
 
   <Teleport to="body">
     <div

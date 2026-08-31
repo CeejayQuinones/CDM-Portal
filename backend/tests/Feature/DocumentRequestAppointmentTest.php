@@ -55,7 +55,89 @@ class DocumentRequestAppointmentTest extends TestCase
 
         Sanctum::actingAs($second->user);
         $this->getJson("/api/document-requests/{$firstRequest->id}")->assertForbidden();
-        $this->postJson("/api/document-requests/{$secondRequest->id}/appointments", ['appointment_date' => $availableDate, 'appointment_time' => '09:00'])->assertStatus(409);
+        $this->postJson("/api/document-requests/{$secondRequest->id}/appointments", ['appointment_date' => $availableDate, 'appointment_time' => '09:00'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'The selected appointment time is no longer available.');
+    }
+
+    public function test_available_weekday_slots_have_a_clean_response_and_reflect_active_bookings(): void
+    {
+        $student = $this->createStudent('26-01021');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $date = $this->futureWeekday();
+
+        Sanctum::actingAs($student->user);
+        $this->getJson("/api/appointment-slots?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('data.date', $date)
+            ->assertJsonCount(6, 'data.slots')
+            ->assertJsonPath('data.slots.0.time', '09:00')
+            ->assertJsonPath('data.slots.0.label', '9:00 AM')
+            ->assertJsonPath('data.slots.0.available', true);
+
+        $this->postJson("/api/document-requests/{$documentRequest->id}/appointments", [
+            'appointment_date' => $date,
+            'appointment_time' => '09:00',
+        ])->assertCreated();
+
+        $this->getJson("/api/appointment-slots?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('data.slots.0.available', false)
+            ->assertJsonPath('data.slots.0.reason', 'Full')
+            ->assertJsonPath('data.slots.1.reason', null)
+            ->assertJsonPath('data.slots.1.available', true);
+    }
+
+    public function test_slot_endpoint_and_booking_reject_blocked_dates_and_invalid_times(): void
+    {
+        $student = $this->createStudent('26-01022');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $blockedDate = $this->futureWeekday();
+        AppointmentBlockedDate::create([
+            'blocked_date' => $blockedDate,
+            'type' => 'office_closure',
+            'reason' => 'Registrar Office Closure',
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($student->user);
+        $this->getJson("/api/appointment-slots?date={$blockedDate}")
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.date.0', 'This date is unavailable due to Registrar Office Closure.');
+        $this->postJson("/api/document-requests/{$documentRequest->id}/appointments", [
+            'appointment_date' => $this->futureWeekday(1),
+            'appointment_time' => '12:00',
+        ])->assertUnprocessable()->assertJsonPath('message', 'The selected appointment time is no longer available.');
+    }
+
+    public function test_all_occupied_slots_are_returned_as_unavailable(): void
+    {
+        $student = $this->createStudent('26-01023');
+        $date = $this->futureWeekday();
+
+        foreach (['09:00', '10:00', '11:00', '13:00', '14:00', '15:00'] as $time) {
+            Appointment::create([
+                'student_id' => $student->id,
+                'appointment_date' => $date,
+                'appointment_time' => $time,
+                'purpose' => 'Capacity test',
+                'status' => 'confirmed',
+                'active_slot_key' => "{$date} {$time}",
+            ]);
+        }
+
+        Sanctum::actingAs($student->user);
+        $slots = $this->getJson("/api/appointment-slots?date={$date}")
+            ->assertOk()
+            ->assertJsonCount(6, 'data.slots')
+            ->json('data.slots');
+
+        $this->assertCount(0, array_filter($slots, fn (array $slot): bool => $slot['available']));
+        $this->assertSame(['Full'], array_values(array_unique(array_column($slots, 'reason'))));
+
+        $this->getJson("/api/appointment-slots?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('data.unavailable_reason', 'All appointment times are full for this date.');
     }
 
     public function test_registrar_can_process_but_admin_cannot_access_registrar_endpoints(): void
@@ -192,9 +274,23 @@ class DocumentRequestAppointmentTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'ready_for_release');
 
-        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", ['action' => 'release'])
+        $claimAppointment = Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $documentRequestId,
+            'appointment_date' => today()->addDay(),
+            'appointment_time' => '15:00',
+            'purpose' => 'Document claim',
+            'status' => 'confirmed',
+            'active_slot_key' => today()->addDay()->toDateString().' 15:00',
+        ]);
+
+        $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", [
+            'action' => 'release',
+            'appointment_id' => $claimAppointment->id,
+        ])
             ->assertOk()
             ->assertJsonPath('data.status', 'released');
+        $this->assertDatabaseHas('appointments', ['id' => $claimAppointment->id, 'status' => 'completed']);
         $this->patchJson("/api/registrar/document-requests/{$documentRequestId}", [
             'action' => 'return_to_processing',
             'reason' => 'Attempted correction after release.',
@@ -255,7 +351,7 @@ class DocumentRequestAppointmentTest extends TestCase
         $type = DocumentType::create(['document_name' => 'Transcript of Records', 'processing_fee' => 150, 'processing_days' => 3, 'requires_appointment' => true, 'status' => 'active']);
         $documentRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 150, 'status' => 'pending', 'request_date' => today(), 'remarks' => 'Release to the student only.']);
         $cancelledRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 150, 'status' => 'cancelled', 'request_date' => today()->subDay()]);
-        Appointment::create(['student_id' => $student->id, 'document_request_id' => $documentRequest->id, 'appointment_date' => today()->addDay(), 'appointment_time' => '10:00', 'purpose' => 'Document request', 'status' => 'confirmed', 'active_slot_key' => today()->addDay()->toDateString().' 10:00']);
+        $appointment = Appointment::create(['student_id' => $student->id, 'document_request_id' => $documentRequest->id, 'appointment_date' => today()->addDay(), 'appointment_time' => '10:00', 'purpose' => 'Document request', 'status' => 'confirmed', 'active_slot_key' => today()->addDay()->toDateString().' 10:00']);
         $registrar = $this->createRegistrar();
 
         Sanctum::actingAs($registrar->user);
@@ -265,11 +361,20 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->patchJson("/api/registrar/document-requests/{$documentRequest->id}", ['action' => 'ready_for_release'])
             ->assertOk()
             ->assertJsonPath('data.status', 'ready_for_release');
-        $this->patchJson("/api/registrar/document-requests/{$documentRequest->id}", ['action' => 'release'])
+        $this->patchJson("/api/registrar/document-requests/{$documentRequest->id}", [
+            'action' => 'release',
+            'appointment_id' => $appointment->id,
+        ])
             ->assertOk()
             ->assertJsonPath('data.status', 'released')
+            ->assertJsonPath('data.appointments.0.status', 'completed')
             ->assertJsonMissingPath('data.verification_code')
             ->assertJsonMissingPath('data.code_verified');
+        $appointment->refresh();
+        $this->assertSame('completed', $appointment->status);
+        $this->assertSame($registrar->id, $appointment->registrar_staff_id);
+        $this->assertNotNull($appointment->completed_at);
+        $this->assertNull($appointment->active_slot_key);
 
         $this->getJson('/api/registrar/document-requests')
             ->assertOk()
@@ -282,7 +387,145 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->getJson('/api/registrar/document-requests/history?request_status=released')
             ->assertOk()
             ->assertJsonCount(1, 'data.requests.data')
-            ->assertJsonPath('data.requests.data.0.latest_appointment.status', 'confirmed');
+            ->assertJsonPath('data.requests.data.0.latest_appointment.status', 'completed');
+    }
+
+    public function test_release_rejects_processing_request_and_non_confirmed_appointments(): void
+    {
+        $student = $this->createStudent('26-01061');
+        $type = DocumentType::create(['document_name' => 'Release Validation', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
+        $processingRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'processing', 'request_date' => today()]);
+        $processingAppointment = Appointment::create(['student_id' => $student->id, 'document_request_id' => $processingRequest->id, 'appointment_date' => today(), 'appointment_time' => '09:00', 'purpose' => 'Document request', 'status' => 'confirmed', 'active_slot_key' => today()->toDateString().' 09:00']);
+        $cancelledRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'ready_for_release', 'request_date' => today(), 'ready_for_release_at' => now()]);
+        $cancelledAppointment = Appointment::create(['student_id' => $student->id, 'document_request_id' => $cancelledRequest->id, 'appointment_date' => today(), 'appointment_time' => '10:00', 'purpose' => 'Document request', 'status' => 'cancelled', 'remarks' => 'Student unavailable.', 'cancelled_at' => now()]);
+        $noShowRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'ready_for_release', 'request_date' => today(), 'ready_for_release_at' => now()]);
+        $noShowAppointment = Appointment::create(['student_id' => $student->id, 'document_request_id' => $noShowRequest->id, 'appointment_date' => today(), 'appointment_time' => '10:30', 'purpose' => 'Document request', 'status' => 'no_show']);
+        $completedRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'ready_for_release', 'request_date' => today(), 'ready_for_release_at' => now()]);
+        $completedAppointment = Appointment::create(['student_id' => $student->id, 'document_request_id' => $completedRequest->id, 'appointment_date' => today(), 'appointment_time' => '10:45', 'purpose' => 'Document request', 'status' => 'completed', 'completed_at' => now()]);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->patchJson("/api/registrar/document-requests/{$processingRequest->id}", [
+            'action' => 'release',
+            'appointment_id' => $processingAppointment->id,
+        ])->assertUnprocessable()->assertJsonPath('message', 'Only a request that is ready for release can be released.');
+        $this->patchJson("/api/registrar/document-requests/{$cancelledRequest->id}", [
+            'action' => 'release',
+            'appointment_id' => $cancelledAppointment->id,
+        ])->assertUnprocessable()->assertJsonPath('message', 'The related appointment must be confirmed before the document can be released.');
+        $this->patchJson("/api/registrar/document-requests/{$noShowRequest->id}", [
+            'action' => 'release',
+            'appointment_id' => $noShowAppointment->id,
+        ])->assertUnprocessable()->assertJsonPath('message', 'The related appointment must be confirmed before the document can be released.');
+        $this->patchJson("/api/registrar/document-requests/{$completedRequest->id}", [
+            'action' => 'release',
+            'appointment_id' => $completedAppointment->id,
+        ])->assertUnprocessable()->assertJsonPath('message', 'The related appointment must be confirmed before the document can be released.');
+
+        $this->assertDatabaseHas('document_requests', ['id' => $processingRequest->id, 'status' => 'processing']);
+        $this->assertDatabaseHas('document_requests', ['id' => $cancelledRequest->id, 'status' => 'ready_for_release']);
+        $this->assertDatabaseHas('appointments', ['id' => $cancelledAppointment->id, 'status' => 'cancelled']);
+        $this->assertDatabaseHas('appointments', ['id' => $noShowAppointment->id, 'status' => 'no_show']);
+        $this->assertDatabaseHas('appointments', ['id' => $completedAppointment->id, 'status' => 'completed']);
+    }
+
+    public function test_release_requires_a_related_confirmed_appointment(): void
+    {
+        $student = $this->createStudent('26-01066');
+        $type = DocumentType::create(['document_name' => 'Appointment Required', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
+        $documentRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'ready_for_release', 'request_date' => today(), 'ready_for_release_at' => now()]);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->patchJson("/api/registrar/document-requests/{$documentRequest->id}", ['action' => 'release'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'A confirmed appointment is required before the document can be released.');
+
+        $this->assertDatabaseHas('document_requests', ['id' => $documentRequest->id, 'status' => 'ready_for_release']);
+        $this->assertDatabaseCount('document_request_status_changes', 0);
+    }
+
+    public function test_double_release_is_safe_and_does_not_duplicate_audit_records(): void
+    {
+        $student = $this->createStudent('26-01062');
+        $type = DocumentType::create(['document_name' => 'Release Audit', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
+        $documentRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'ready_for_release', 'request_date' => today(), 'ready_for_release_at' => now()]);
+        $appointment = Appointment::create(['student_id' => $student->id, 'document_request_id' => $documentRequest->id, 'appointment_date' => today(), 'appointment_time' => '11:00', 'purpose' => 'Document request', 'status' => 'confirmed', 'active_slot_key' => today()->toDateString().' 11:00']);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $payload = ['action' => 'release', 'appointment_id' => $appointment->id];
+        $this->patchJson("/api/registrar/document-requests/{$documentRequest->id}", $payload)->assertOk();
+        $this->patchJson("/api/registrar/document-requests/{$documentRequest->id}", $payload)->assertUnprocessable();
+
+        $this->assertDatabaseCount('document_request_status_changes', 1);
+        $this->assertDatabaseHas('document_request_status_changes', [
+            'document_request_id' => $documentRequest->id,
+            'action' => 'released',
+        ]);
+    }
+
+    public function test_release_transaction_rolls_back_request_when_appointment_completion_fails(): void
+    {
+        $student = $this->createStudent('26-01063');
+        $type = DocumentType::create(['document_name' => 'Transactional Release', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
+        $documentRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'ready_for_release', 'request_date' => today(), 'ready_for_release_at' => now()]);
+        $appointment = Appointment::create(['student_id' => $student->id, 'document_request_id' => $documentRequest->id, 'appointment_date' => today(), 'appointment_time' => '12:00', 'purpose' => 'Document request', 'status' => 'confirmed', 'active_slot_key' => today()->toDateString().' 12:00']);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        Appointment::updated(static function (): void {
+            throw new \RuntimeException('Simulated appointment completion failure.');
+        });
+
+        try {
+            $this->patchJson("/api/registrar/document-requests/{$documentRequest->id}", [
+                'action' => 'release',
+                'appointment_id' => $appointment->id,
+            ])->assertServerError();
+        } finally {
+            Appointment::flushEventListeners();
+        }
+
+        $this->assertDatabaseHas('document_requests', ['id' => $documentRequest->id, 'status' => 'ready_for_release']);
+        $this->assertDatabaseHas('appointments', ['id' => $appointment->id, 'status' => 'confirmed']);
+        $this->assertDatabaseCount('document_request_status_changes', 0);
+    }
+
+    public function test_release_endpoint_derives_the_same_confirmed_appointment_when_id_is_omitted(): void
+    {
+        $student = $this->createStudent('26-01064');
+        $type = DocumentType::create(['document_name' => 'Shared Release', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
+        $documentRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'ready_for_release', 'request_date' => today(), 'ready_for_release_at' => now()]);
+        $appointment = Appointment::create(['student_id' => $student->id, 'document_request_id' => $documentRequest->id, 'appointment_date' => today(), 'appointment_time' => '13:00', 'purpose' => 'Document request', 'status' => 'confirmed', 'active_slot_key' => today()->toDateString().' 13:00']);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->patchJson("/api/registrar/document-requests/{$documentRequest->id}", ['action' => 'release'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'released');
+
+        $this->assertDatabaseHas('appointments', ['id' => $appointment->id, 'status' => 'completed']);
+    }
+
+    public function test_appointment_cancellation_requires_reason_and_records_actor_and_timestamp(): void
+    {
+        $student = $this->createStudent('26-01065');
+        $type = DocumentType::create(['document_name' => 'Cancellation Audit', 'processing_fee' => 50, 'processing_days' => 1, 'requires_appointment' => true, 'status' => 'active']);
+        $documentRequest = DocumentRequest::create(['student_id' => $student->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 50, 'status' => 'processing', 'request_date' => today()]);
+        $appointment = Appointment::create(['student_id' => $student->id, 'document_request_id' => $documentRequest->id, 'appointment_date' => today(), 'appointment_time' => '14:00', 'purpose' => 'Document request', 'status' => 'confirmed', 'active_slot_key' => today()->toDateString().' 14:00']);
+        $registrar = $this->createRegistrar();
+
+        Sanctum::actingAs($registrar->user);
+        $this->patchJson("/api/registrar/appointments/{$appointment->id}", ['status' => 'cancelled'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('remarks');
+        $this->patchJson("/api/registrar/appointments/{$appointment->id}", [
+            'status' => 'cancelled',
+            'remarks' => 'Student requested cancellation: schedule changed.',
+        ])->assertOk()->assertJsonPath('data.status', 'cancelled');
+
+        $appointment->refresh();
+        $this->assertSame($registrar->id, $appointment->registrar_staff_id);
+        $this->assertSame('Student requested cancellation: schedule changed.', $appointment->remarks);
+        $this->assertNotNull($appointment->cancelled_at);
+        $this->assertNull($appointment->active_slot_key);
+        $this->assertSame('processing', $documentRequest->fresh()->status);
     }
 
     public function test_cancelled_and_completed_appointments_leave_active_list_and_remain_in_history(): void
@@ -365,6 +608,9 @@ class DocumentRequestAppointmentTest extends TestCase
         $saturday = today()->next('Saturday')->toDateString();
 
         Sanctum::actingAs($student->user);
+        $this->getJson("/api/appointment-slots?date={$saturday}")
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.date.0', 'This date is unavailable because appointments are closed on weekends.');
         $this->postJson("/api/document-requests/{$documentRequest->id}/appointments", [
             'appointment_date' => $saturday,
             'appointment_time' => '09:00',
@@ -410,6 +656,25 @@ class DocumentRequestAppointmentTest extends TestCase
             'document_request_id' => $documentRequest->id,
             'appointment_time' => '10:00',
         ]);
+    }
+
+    public function test_student_sees_slots_on_saturday_when_registrar_allows_saturday_booking(): void
+    {
+        $student = $this->createStudent('26-01110');
+        $saturday = today()->next('Saturday')->toDateString();
+        $registrar = $this->createRegistrar();
+
+        Sanctum::actingAs($registrar->user);
+        $this->patchJson('/api/registrar/appointment-availability/settings', [
+            'block_saturday' => false,
+            'block_sunday' => true,
+        ])->assertOk();
+
+        Sanctum::actingAs($student->user);
+        $this->getJson("/api/appointment-slots?date={$saturday}")
+            ->assertOk()
+            ->assertJsonPath('data.date', $saturday)
+            ->assertJsonPath('data.slots.0.available', true);
     }
 
     public function test_manually_crafted_request_cannot_book_an_active_blocked_date(): void
@@ -647,6 +912,262 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->assertSame($originalDate.' 13:00', $appointment->active_slot_key);
     }
 
+    public function test_student_can_cancel_own_pending_or_confirmed_appointment_and_reopen_the_slot(): void
+    {
+        $student = $this->createStudent('26-01110');
+        $pendingRequest = $this->createAppointmentRequest($student);
+        $confirmedRequest = $this->createAppointmentRequest($student);
+        $date = $this->futureWeekday();
+        $pendingAppointment = Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $pendingRequest->id,
+            'appointment_date' => $date,
+            'appointment_time' => '09:00',
+            'purpose' => 'Document request',
+            'status' => 'pending',
+            'active_slot_key' => $date.' 09:00',
+        ]);
+        $confirmedAppointment = Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $confirmedRequest->id,
+            'appointment_date' => $date,
+            'appointment_time' => '10:00',
+            'purpose' => 'Document request',
+            'status' => 'confirmed',
+            'active_slot_key' => $date.' 10:00',
+        ]);
+
+        Sanctum::actingAs($student->user);
+        $this->getJson("/api/appointment-slots?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('data.slots.0.reason', 'Full')
+            ->assertJsonPath('data.slots.1.reason', 'Full');
+
+        $this->patchJson("/api/appointments/{$pendingAppointment->id}/cancel", [
+            'reason' => 'I need to attend a required class.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'cancelled')
+            ->assertJsonPath('data.remarks', 'I need to attend a required class.');
+        $this->patchJson("/api/appointments/{$confirmedAppointment->id}/cancel", [
+            'reason' => 'My schedule changed.',
+        ])->assertOk()->assertJsonPath('data.status', 'cancelled');
+
+        $pendingAppointment->refresh();
+        $this->assertSame('cancelled', $pendingAppointment->status);
+        $this->assertSame('I need to attend a required class.', $pendingAppointment->remarks);
+        $this->assertNotNull($pendingAppointment->cancelled_at);
+        $this->assertNull($pendingAppointment->active_slot_key);
+        $this->assertSame('pending', $pendingRequest->fresh()->status);
+
+        $this->getJson("/api/appointment-slots?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('data.slots.0.available', true)
+            ->assertJsonPath('data.slots.0.reason', null)
+            ->assertJsonPath('data.slots.1.available', true);
+
+        $this->patchJson("/api/appointments/{$pendingAppointment->id}/cancel", [
+            'reason' => 'Duplicate cancellation attempt.',
+        ])->assertUnprocessable()->assertJsonPath('message', 'This appointment can no longer be cancelled.');
+    }
+
+    public function test_student_cannot_cancel_another_students_appointment(): void
+    {
+        $owner = $this->createStudent('26-01111');
+        $otherStudent = $this->createStudent('26-01112');
+        $documentRequest = $this->createAppointmentRequest($owner);
+        $date = $this->futureWeekday();
+        $appointment = Appointment::create([
+            'student_id' => $owner->id,
+            'document_request_id' => $documentRequest->id,
+            'appointment_date' => $date,
+            'appointment_time' => '11:00',
+            'purpose' => 'Document request',
+            'status' => 'confirmed',
+            'active_slot_key' => $date.' 11:00',
+        ]);
+
+        Sanctum::actingAs($otherStudent->user);
+        $this->patchJson("/api/appointments/{$appointment->id}/cancel", [
+            'reason' => 'This appointment is not mine.',
+        ])->assertForbidden()->assertJsonPath('message', 'You can only cancel your own appointment.');
+
+        $this->assertSame('confirmed', $appointment->fresh()->status);
+    }
+
+    public function test_student_cannot_cancel_terminal_appointments_or_an_appointment_for_a_finalized_request(): void
+    {
+        $student = $this->createStudent('26-01113');
+        $date = $this->futureWeekday();
+
+        foreach (['completed', 'no_show', 'cancelled'] as $index => $status) {
+            $documentRequest = $this->createAppointmentRequest($student);
+            $appointment = Appointment::create([
+                'student_id' => $student->id,
+                'document_request_id' => $documentRequest->id,
+                'appointment_date' => $date,
+                'appointment_time' => ['09:00', '10:00', '11:00'][$index],
+                'purpose' => 'Document request',
+                'status' => $status,
+                'active_slot_key' => null,
+            ]);
+
+            Sanctum::actingAs($student->user);
+            $this->patchJson("/api/appointments/{$appointment->id}/cancel", [
+                'reason' => 'Attempting an invalid terminal transition.',
+            ])->assertUnprocessable()->assertJsonPath('message', 'This appointment can no longer be cancelled.');
+        }
+
+        $releasedRequest = $this->createAppointmentRequest($student);
+        $releasedRequest->update(['status' => 'released', 'released_at' => now()]);
+        $activeAppointment = Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $releasedRequest->id,
+            'appointment_date' => $date,
+            'appointment_time' => '13:00',
+            'purpose' => 'Document request',
+            'status' => 'confirmed',
+            'active_slot_key' => $date.' 13:00',
+        ]);
+
+        $this->patchJson("/api/appointments/{$activeAppointment->id}/cancel", [
+            'reason' => 'The request has already been released.',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This appointment cannot be cancelled because its document request is already finalized.');
+        $this->assertSame('confirmed', $activeAppointment->fresh()->status);
+    }
+
+    public function test_student_appointment_cancellation_requires_a_reason(): void
+    {
+        $student = $this->createStudent('26-01114');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $date = $this->futureWeekday();
+        $appointment = Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $documentRequest->id,
+            'appointment_date' => $date,
+            'appointment_time' => '15:00',
+            'purpose' => 'Document request',
+            'status' => 'pending',
+            'active_slot_key' => $date.' 15:00',
+        ]);
+
+        Sanctum::actingAs($student->user);
+        $this->patchJson("/api/appointments/{$appointment->id}/cancel", ['reason' => ''])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('reason');
+        $this->assertSame('pending', $appointment->fresh()->status);
+    }
+
+    public function test_student_can_cancel_own_pending_request_and_related_active_appointments_transactionally(): void
+    {
+        $student = $this->createStudent('26-01115');
+        $documentRequest = $this->createAppointmentRequest($student);
+        $date = $this->futureWeekday();
+        $pendingAppointment = Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $documentRequest->id,
+            'appointment_date' => $date,
+            'appointment_time' => '09:00',
+            'purpose' => 'Document request',
+            'status' => 'pending',
+            'active_slot_key' => $date.' 09:00',
+        ]);
+        $confirmedAppointment = Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $documentRequest->id,
+            'appointment_date' => $date,
+            'appointment_time' => '10:00',
+            'purpose' => 'Document request',
+            'status' => 'confirmed',
+            'active_slot_key' => $date.' 10:00',
+        ]);
+
+        Sanctum::actingAs($student->user);
+        $this->patchJson("/api/document-requests/{$documentRequest->id}/cancel", [
+            'reason' => 'I no longer need this document.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'cancelled')
+            ->assertJsonPath('data.cancellation_reason', 'I no longer need this document.')
+            ->assertJsonPath('data.appointments.0.status', 'cancelled')
+            ->assertJsonPath('data.appointments.1.status', 'cancelled');
+
+        $documentRequest->refresh();
+        $this->assertSame('cancelled', $documentRequest->status);
+        $this->assertSame('I no longer need this document.', $documentRequest->cancellation_reason);
+        $this->assertNotNull($documentRequest->cancelled_at);
+        $this->assertDatabaseHas('appointments', [
+            'id' => $pendingAppointment->id,
+            'status' => 'cancelled',
+            'active_slot_key' => null,
+        ]);
+        $this->assertDatabaseHas('appointments', [
+            'id' => $confirmedAppointment->id,
+            'status' => 'cancelled',
+            'active_slot_key' => null,
+        ]);
+
+        $this->getJson("/api/appointment-slots?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('data.slots.0.available', true)
+            ->assertJsonPath('data.slots.1.available', true);
+        $this->getJson('/api/document-requests')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $documentRequest->id)
+            ->assertJsonPath('data.0.status', 'cancelled')
+            ->assertJsonPath('data.0.cancellation_reason', 'I no longer need this document.');
+
+        $this->patchJson("/api/document-requests/{$documentRequest->id}/cancel", [
+            'reason' => 'Duplicate cancellation.',
+        ])->assertUnprocessable()->assertJsonPath('message', 'This document request can no longer be cancelled.');
+    }
+
+    public function test_student_cannot_cancel_another_students_document_request(): void
+    {
+        $owner = $this->createStudent('26-01116');
+        $otherStudent = $this->createStudent('26-01117');
+        $documentRequest = $this->createAppointmentRequest($owner);
+
+        Sanctum::actingAs($otherStudent->user);
+        $this->patchJson("/api/document-requests/{$documentRequest->id}/cancel", [
+            'reason' => 'This request is not mine.',
+        ])->assertForbidden()->assertJsonPath('message', 'You can only cancel your own document request.');
+
+        $this->assertSame('pending', $documentRequest->fresh()->status);
+    }
+
+    public function test_student_cannot_cancel_processing_or_finalized_document_requests(): void
+    {
+        $student = $this->createStudent('26-01118');
+
+        Sanctum::actingAs($student->user);
+        foreach (['processing', 'ready_for_release', 'released', 'rejected', 'cancelled'] as $status) {
+            $documentRequest = $this->createAppointmentRequest($student);
+            $documentRequest->update(['status' => $status]);
+
+            $this->patchJson("/api/document-requests/{$documentRequest->id}/cancel", [
+                'reason' => "Attempting to cancel a {$status} request.",
+            ])->assertUnprocessable()->assertJsonPath('message', 'This document request can no longer be cancelled.');
+
+            $this->assertSame($status, $documentRequest->fresh()->status);
+        }
+    }
+
+    public function test_student_document_request_cancellation_requires_a_reason(): void
+    {
+        $student = $this->createStudent('26-01119');
+        $documentRequest = $this->createAppointmentRequest($student);
+
+        Sanctum::actingAs($student->user);
+        $this->patchJson("/api/document-requests/{$documentRequest->id}/cancel", ['reason' => ''])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('reason');
+
+        $this->assertSame('pending', $documentRequest->fresh()->status);
+    }
+
     private function futureWeekday(int $weeks = 0): string
     {
         return today()->next('Monday')->addWeeks($weeks)->toDateString();
@@ -654,8 +1175,9 @@ class DocumentRequestAppointmentTest extends TestCase
 
     private function createAppointmentRequest(Student $student): DocumentRequest
     {
-        $type = DocumentType::create([
+        $type = DocumentType::firstOrCreate([
             'document_name' => 'Appointment Document',
+        ], [
             'processing_fee' => 50,
             'processing_days' => 1,
             'requires_appointment' => true,

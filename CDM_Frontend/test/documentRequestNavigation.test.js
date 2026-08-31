@@ -1,12 +1,42 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  appointmentDocumentRequestQuery,
+  appointmentReturnContext,
   documentRequestIdFromQuery,
   documentRequestProfileQuery,
   documentRequestReturnContext,
   documentRequestSourceQuery,
   withoutDocumentRequestFocus,
 } from '../src/modules/document-request/documentRequestNavigation.js'
+
+test('appointment context opens the exact request and returns to the same appointment', () => {
+  const requestQuery = appointmentDocumentRequestQuery({ requestId: 91, appointmentId: 27 })
+
+  assert.deepEqual(requestQuery, {
+    from: 'appointment',
+    request_id: 91,
+    appointment_id: 27,
+  })
+  assert.equal(documentRequestIdFromQuery(requestQuery), 91)
+  assert.deepEqual(appointmentReturnContext(requestQuery), {
+    label: '← Back to Appointment',
+    to: {
+      name: 'registrar-document-appointments',
+      query: {
+        request_id: 91,
+        appointment_id: 27,
+        focus: 'appointment-27',
+        open: 'completion',
+      },
+    },
+  })
+})
+
+test('appointment return context rejects missing or invalid appointment identifiers', () => {
+  assert.equal(appointmentReturnContext({ from: 'appointment', request_id: 91 }), null)
+  assert.equal(appointmentReturnContext({ from: 'document-request', request_id: 91, appointment_id: 27 }), null)
+})
 
 test('document request context returns to and reopens the same request', () => {
   const profileQuery = documentRequestProfileQuery({

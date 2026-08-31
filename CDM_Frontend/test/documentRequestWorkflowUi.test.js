@@ -24,15 +24,20 @@ const physicalRecordsView = readFileSync(
 )
 const styles = readFileSync(new URL('../src/modules/document-request/documentRequest.css', import.meta.url), 'utf8')
 
-test('active request queues precede recent activity and retain request modal selection', () => {
-  assert.ok(activeView.indexOf('title="Pending Requests"') < activeView.indexOf('title="Processing Requests"'))
-  assert.ok(activeView.indexOf('title="Processing Requests"') < activeView.indexOf('<RegistrarRecentActivity'))
+test('active request queues use one selected workspace before recent activity', () => {
+  assert.match(activeView, /const selectedQueueKey = ref\('pending'\)/)
+  assert.match(activeView, /class="registrar-workspace-grid"/)
+  assert.match(activeView, /<RegistrarWorkspaceSelector[\s\S]*?v-model="selectedQueueKey"/)
+  assert.match(activeView, /<Transition name="appointment-workspace-swap" mode="out-in">/)
+  assert.equal((activeView.match(/<RegistrarRequestQueue/g) || []).length, 1)
+  assert.ok(activeView.indexOf('class="registrar-workspace-grid"') < activeView.indexOf('<RegistrarRecentActivity'))
   assert.match(activeView, /@select="selectRequest"/)
   assert.match(queueComponent, /@click="\$emit\('select', item\)"/)
 })
 
 test('ready for release is a processing row action and not a processing modal action', () => {
-  assert.match(activeView, /action-label="Ready for Release"/)
+  assert.match(activeView, /actionLabel: 'Ready for Release'/)
+  assert.match(activeView, /:action-label="selectedQueue\.actionLabel"/)
   assert.match(activeView, /@action="markReadyForRelease"/)
 
   const modalFooter = activeView.slice(
@@ -46,7 +51,21 @@ test('queues are height constrained with internal vertical scrolling', () => {
   assert.match(styles, /\.work-queue-panel\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*height:\s*540px/s)
   assert.match(styles, /\.work-queue-list\s*\{[^}]*flex:\s*1 1 auto[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/s)
   assert.match(styles, /\.work-queue-footer\s*\{[^}]*flex:\s*0 0 auto/s)
-  assert.match(styles, /@media \(max-width: 820px\)[^{]*\{[\s\S]*?\.work-queue-grid\s*\{[^}]*grid-template-columns:\s*1fr/s)
+  assert.match(styles, /@media \(max-width: 900px\)[^{]*\{[\s\S]*?\.registrar-workspace-grid[\s\S]*?grid-template-columns:\s*1fr/s)
+})
+
+test('pending approval switches to Processing and preserves the focused request feedback', () => {
+  assert.match(activeView, /if \(previousStatus === 'pending'\) selectedQueueKey\.value = 'processing'/)
+  assert.match(activeView, /highlightRequest\(updated\.id, previousStatus !== updated\.status\)/)
+  assert.match(activeView, /emptyMessage: 'No pending document requests\.'/)
+  assert.match(activeView, /emptyMessage: 'No document requests are currently being processed\.'/)
+})
+
+test('document request workspace and recent activity load with independent skeletons', () => {
+  assert.match(activeView, /class="appointment-workspace-skeleton request-workspace-skeleton"/)
+  assert.match(activeView, /v-for="index in 6"[\s\S]*?appointment-row-skeleton/)
+  assert.match(activeView, /class="request-recent-activity-section"/)
+  assert.match(styles, /\.recent-activity-skeleton[\s\S]*?height: 58px/)
 })
 
 test('release workflow exposes a reasoned return-to-processing action', () => {

@@ -17,7 +17,6 @@ import GradingView from '../modules/grading/GradingView.vue'
 import MonitoringView from '../modules/monitoring/MonitoringView.vue'
 import DocumentTypesManagementView from '../modules/document-request/DocumentTypesManagementView.vue'
 import StudentDocumentRequestView from '../modules/document-request/StudentDocumentRequestView.vue'
-import StudentAppointmentsView from '../modules/document-request/StudentAppointmentsView.vue'
 import RegistrarDocumentRequestView from '../modules/document-request/RegistrarDocumentRequestView.vue'
 import RegistrarAppointmentsView from '../modules/document-request/RegistrarAppointmentsView.vue'
 import RegistrarDocumentRequestHistoryView from '../modules/document-request/RegistrarDocumentRequestHistoryView.vue'
@@ -190,9 +189,12 @@ const routes = [
       protectedRoute({
         path: 'document-requests/appointments',
         name: 'student-document-appointments',
-        component: StudentAppointmentsView,
+        redirect: (to) => ({
+          name: 'student-document-requests',
+          query: { ...to.query, panel: 'appointment' },
+        }),
         meta: {
-          title: 'Appointments',
+          title: 'Document Requests',
           roles: ROUTE_ROLES['student-document-appointments'],
         },
       }),
