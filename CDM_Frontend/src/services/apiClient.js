@@ -1,8 +1,10 @@
 import axios from 'axios'
+import { isOfflineDemo } from '../config/demoMode'
+import { createOfflineApiClient } from './offline/offlineApi'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
 
-export const apiClient = axios.create({
+const onlineApiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
   headers: {
     Accept: 'application/json',
@@ -10,7 +12,7 @@ export const apiClient = axios.create({
   },
 })
 
-apiClient.interceptors.request.use((config) => {
+onlineApiClient.interceptors.request.use((config) => {
   const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY)
 
   if (savedAuth) {
@@ -25,7 +27,7 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
-apiClient.interceptors.response.use(
+onlineApiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && !error.config?.url?.includes('/login')) {
@@ -36,3 +38,5 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   },
 )
+
+export const apiClient = isOfflineDemo ? createOfflineApiClient() : onlineApiClient

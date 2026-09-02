@@ -3,6 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { navbarContextForRoute } from '../config/navbarContexts'
 import { useAppointmentAvailabilityState } from '../modules/document-request/appointmentAvailabilityState'
+import { isOfflineDemo } from '../config/demoMode'
+import { resetOfflineDemoData } from '../services/offline/offlineSeeder'
+import { useAuthStore } from '../stores/authStore'
 
 defineProps({
   title: {
@@ -14,6 +17,8 @@ defineProps({
 const emit = defineEmits(['toggle-sidebar'])
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
+const resettingDemo = ref(false)
 const { isOpen: appointmentAvailabilityOpen, open: openAppointmentAvailability } = useAppointmentAvailabilityState()
 const installPrompt = ref(null)
 const canInstall = ref(false)
@@ -43,6 +48,18 @@ const installApp = async () => {
 
 const handleContextAction = (action) => {
   if (action === 'open-appointment-availability') openAppointmentAvailability()
+}
+
+const resetDemo = async () => {
+  if (!window.confirm('Reset all offline demo data to its original classroom sample?')) return
+  resettingDemo.value = true
+  try {
+    await resetOfflineDemoData()
+    authStore.clearAuth()
+    await router.replace('/login')
+  } finally {
+    resettingDemo.value = false
+  }
 }
 
 </script>
@@ -86,6 +103,12 @@ const handleContextAction = (action) => {
     </nav>
 
     <div class="navbar-actions">
+      <div v-if="isOfflineDemo" class="demo-controls" aria-label="Offline demo controls">
+        <span class="demo-badge">Offline demo</span>
+        <button type="button" class="demo-reset" :disabled="resettingDemo" @click="resetDemo">
+          {{ resettingDemo ? 'Resetting…' : 'Reset data' }}
+        </button>
+      </div>
       <button v-if="canInstall" class="install-button" type="button" @click="installApp">Install App</button>
       <div class="navbar-title">
         <p class="navbar-label">COLEGIO DE MONTALBAN</p>
@@ -211,6 +234,12 @@ h1 {
   text-align: right;
 }
 
+.demo-controls { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.demo-badge { border-left: 3px solid var(--color-naples-yellow); color: var(--color-dartmouth-green); font-size: .7rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding-left: 7px; }
+.demo-reset { border: 1px solid rgba(16,106,46,.3); border-radius: 6px; background: #fff; color: var(--color-dark-spring-green); cursor: pointer; font: inherit; font-size: .72rem; font-weight: 700; padding: 5px 8px; }
+.demo-reset:hover { background: #eef7f1; border-color: var(--color-dartmouth-green); }
+.demo-reset:disabled { cursor: wait; opacity: .6; }
+
 .navbar-title p,
 .navbar-title h1 {
   overflow: hidden;
@@ -282,6 +311,10 @@ h1 {
   .navbar-actions {
     max-width: 36%;
   }
+
+  .demo-badge { display: none; }
+  .demo-reset { font-size: 0; padding: 6px; }
+  .demo-reset::after { content: 'Reset'; font-size: .68rem; }
 
   .navbar-label {
     font-size: 0.65rem;
