@@ -2,10 +2,17 @@ import { offlineDb } from './offlineDb.js'
 
 const date = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return d.toISOString().slice(0, 10) }
 const now = () => new Date().toISOString()
+const SEED_VERSION = 2
 let seeding
 
 export async function ensureOfflineSeeded() {
-  if (await offlineDb.get('meta', 'seed')) return
+  const seedMarker = await offlineDb.get('meta', 'seed')
+  if (seedMarker) {
+    if (seedMarker.version !== SEED_VERSION) {
+      await offlineDb.put('meta', { ...seedMarker, version: SEED_VERSION })
+    }
+    return
+  }
   if (seeding) return seeding
   seeding = (async () => {
     const users = [
@@ -33,7 +40,7 @@ export async function ensureOfflineSeeded() {
     await offlineDb.put('grades', { id:1, student_id:1, subject:'Web Development', grade:'1.50', term:'1st Semester' })
     await offlineDb.put('events', { id:1, name:'CDM Foundation Day', event_date:date(7), attended:false })
     await offlineDb.put('settings', { id:'availability', block_saturday:true, block_sunday:true })
-    await offlineDb.put('meta', { id:'seed', version:1 })
+    await offlineDb.put('meta', { id:'seed', version:SEED_VERSION })
   })().finally(() => { seeding = null })
   return seeding
 }

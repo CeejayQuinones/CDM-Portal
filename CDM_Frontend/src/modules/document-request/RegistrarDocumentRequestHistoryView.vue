@@ -159,7 +159,16 @@ onMounted(async () => {
 })
 
 watch(
-  () => route.fullPath,
+  [
+    () => queryValue(route.query.search),
+    () => queryValue(route.query.request_status),
+    () => queryValue(route.query.appointment_status),
+    () => queryValue(route.query.time_filter),
+    () => queryValue(route.query.request_id),
+    () => queryValue(route.query.appointment_id),
+    () => queryValue(route.query.focus),
+    () => queryValue(route.query.section),
+  ],
   async () => {
     applyRouteQuery(route.query)
     await refresh()

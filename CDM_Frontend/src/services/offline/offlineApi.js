@@ -1,12 +1,24 @@
 import { offlineDb } from './offlineDb.js'
 import { currentOfflineUser, loginOffline } from './offlineAuth.js'
 import { ensureOfflineSeeded } from './offlineSeeder.js'
+import { performanceMonitor } from '../performance/performanceMonitor.js'
 const wrap = (data, status=200) => ({ data:{ data }, status, headers:{}, config:{} })
 const fail = (message, status=422) => { throw Object.assign(new Error(message), { response:{ status, data:{ message } }, config:{} }) }
 const today = () => new Date().toISOString().slice(0,10)
 const paginator = (data) => ({ data, current_page:1, last_page:1, per_page:data.length || 15, total:data.length })
-async function hydrate() {
-  const [requests, appointments, types, students, users, records] = await Promise.all(['document_requests','appointments','document_types','students','users','physical_records'].map((s) => offlineDb.all(s)))
+async function hydrate(studentId = null) {
+  const [requests, appointments, types, students] = await Promise.all([
+    studentId ? offlineDb.allByIndex('document_requests', 'student_id', studentId) : offlineDb.all('document_requests'),
+    studentId ? offlineDb.allByIndex('appointments', 'student_id', studentId) : offlineDb.all('appointments'),
+    offlineDb.all('document_types'),
+    studentId ? offlineDb.get('students', studentId).then((student) => student ? [student] : []) : offlineDb.all('students'),
+  ])
+  const [users, records] = studentId && students[0]
+    ? await Promise.all([
+        offlineDb.get('users', students[0].user_id).then((user) => user ? [user] : []),
+        offlineDb.allByIndex('physical_records', 'student_id', studentId),
+      ])
+    : await Promise.all([offlineDb.all('users'), offlineDb.all('physical_records')])
   const studentOf = (id) => { const s=students.find(x=>x.id===id), u=users.find(x=>x.id===s?.user_id), r=records.find(x=>x.student_id===id); return s && {...s,user:{...u,profile:u.profile},user_profile:u.profile,physical_record_location:r && {cabinet_slot:{slot_code:r.slot_code,cabinet:{cabinet_code:r.cabinet_code}}}} }
   const hydratedRequests = requests.map((r) => ({...r,document_type:types.find(t=>t.id===r.document_type_id),student:studentOf(r.student_id),appointments:appointments.filter(a=>a.document_request_id===r.id)}))
   const hydratedAppointments = appointments.map((a) => ({...a,student:studentOf(a.student_id),document_request:hydratedRequests.find(r=>r.id===a.document_request_id)}))
@@ -17,8 +29,11 @@ async function dispatch(method, rawUrl, body={}, config={}) {
   await ensureOfflineSeeded(); const parsed=new URL(rawUrl,'https://demo.local'); const path=parsed.pathname; const params={...Object.fromEntries(parsed.searchParams),...(config.params||{})}
   if (method==='post' && path==='/login') return wrap(await loginOffline(body))
   if (method==='post' && path==='/logout') { localStorage.removeItem('cdm_portal_auth'); return wrap({ message:'Logged out.' }) }
-  const user=await currentOfflineUser(); const data=await hydrate(); const student=(await offlineDb.all('students')).find(s=>s.user_id===user.id)
+  const user=await currentOfflineUser()
   if (method==='get' && path==='/me') return wrap(user)
+  const student=await offlineDb.firstByIndex('students','user_id',user.id)
+  const registrar=user.role.role_name==='Registrar Staff'
+  const data=await hydrate(registrar ? null : student?.id)
   if (method==='get' && path==='/document-types') return wrap(data.types.filter(t=>t.is_active))
   if (method==='get' && path==='/document-requests') return wrap(data.hydratedRequests.filter(r=>r.student_id===student?.id))
   if (method==='post' && path==='/document-requests') { const type=data.types.find(t=>t.id===Number(body.document_type_id)); if(!type) fail('Document type is required.'); const id=await offlineDb.nextId('document_requests'); const row={id,request_reference:`REQ-${String(id).padStart(6,'0')}`,student_id:student.id,document_type_id:type.id,status:'pending',purpose:body.purpose||body.remarks,quantity:Number(body.quantity||1),total_fee:type.processing_fee*Number(body.quantity||1),created_at:new Date().toISOString()}; await offlineDb.put('document_requests',row); return wrap(row,201) }
@@ -30,7 +45,6 @@ async function dispatch(method, rawUrl, body={}, config={}) {
   if(method==='post'&&match){ const request=await offlineDb.get('document_requests',Number(match[1])); if(!request||request.student_id!==student?.id) fail('Request not found.',404); if(['cancelled','rejected','released'].includes(request.status)) fail('This request is not eligible for booking.'); if(data.appointments.some(a=>a.document_request_id===request.id&&activeStatuses.includes(a.status))) fail('This request already has an active appointment.'); const id=await offlineDb.nextId('appointments'); const row={id,document_request_id:request.id,student_id:student.id,appointment_date:body.appointment_date||body.date,appointment_time:body.appointment_time||body.time,status:'pending',created_at:new Date().toISOString()}; await offlineDb.put('appointments',row); return wrap(row,201) }
   match=path.match(/^\/appointments\/(\d+)\/cancel$/)
   if(method==='patch'&&match){const a=await offlineDb.get('appointments',Number(match[1]));if(!a||a.student_id!==student?.id)fail('Appointment not found.',404);if(!activeStatuses.includes(a.status))fail('This appointment cannot be cancelled.');const r=await offlineDb.get('document_requests',a.document_request_id);if(r?.status==='released')fail('A finalized appointment cannot be cancelled.');a.status='cancelled';a.cancellation_reason=body.reason||body.cancellation_reason;await offlineDb.put('appointments',a);return wrap(a)}
-  const registrar=user.role.role_name==='Registrar Staff'
   if(!registrar) fail('Forbidden.',403)
   if(method==='get'&&path==='/registrar/document-requests'){let rows=data.hydratedRequests;if(params.status)rows=rows.filter(r=>r.status===params.status);if(params.view==='work_queues')return wrap({pending:paginator(rows.filter(r=>r.status==='pending')),processing:paginator(rows.filter(r=>r.status==='processing'))});return wrap(paginator(rows))}
   if(method==='get'&&path==='/registrar/document-requests/history')return wrap({requests:paginator(data.hydratedRequests.filter(r=>['released','rejected','cancelled'].includes(r.status))),appointments:paginator(data.hydratedAppointments.filter(a=>['completed','cancelled','no_show'].includes(a.status)))})
@@ -55,4 +69,16 @@ async function dispatch(method, rawUrl, body={}, config={}) {
   if(method==='get'&&path==='/registrar/dashboard')return wrap({summary:{pending_requests:data.requests.filter(r=>r.status==='pending').length,processing_requests:data.requests.filter(r=>r.status==='processing').length,todays_appointments:data.appointments.filter(a=>a.appointment_date===today()).length},recent_requests:data.hydratedRequests.slice(-5),todays_appointments:data.hydratedAppointments.filter(a=>a.appointment_date===today())})
   fail(`Offline demo does not support ${method.toUpperCase()} ${path}.`,501)
 }
-export function createOfflineApiClient(){return {get:(u,c)=>dispatch('get',u,{},c),delete:(u,c)=>dispatch('delete',u,{},c),post:(u,b,c)=>dispatch('post',u,b,c),put:(u,b,c)=>dispatch('put',u,b,c),patch:(u,b,c)=>dispatch('patch',u,b,c)}}
+async function monitoredDispatch(method, url, body, config) {
+  const request = performanceMonitor.beginApiRequest(method, url, '', config?.params)
+  try {
+    const response = await dispatch(method, url, body, config)
+    performanceMonitor.endApiRequest(request, response.status, response.data)
+    return response
+  } catch (error) {
+    performanceMonitor.endApiRequest(request, error.response?.status, error.response?.data)
+    throw error
+  }
+}
+
+export function createOfflineApiClient(){return {get:(u,c)=>monitoredDispatch('get',u,{},c),delete:(u,c)=>monitoredDispatch('delete',u,{},c),post:(u,b,c)=>monitoredDispatch('post',u,b,c),put:(u,b,c)=>monitoredDispatch('put',u,b,c),patch:(u,b,c)=>monitoredDispatch('patch',u,b,c)}}
