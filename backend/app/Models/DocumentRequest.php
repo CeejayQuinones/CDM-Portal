@@ -10,13 +10,13 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DocumentRequest extends Model
 {
-    protected $fillable = ['student_id', 'document_type_id', 'registrar_staff_id', 'quantity', 'total_fee', 'purpose', 'status', 'request_date', 'release_date', 'remarks', 'approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at'];
+    protected $fillable = ['student_id', 'document_type_id', 'registrar_staff_id', 'quantity', 'total_fee', 'purpose', 'status', 'request_date', 'release_date', 'remarks', 'cancellation_reason', 'cancelled_at', 'approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at'];
 
     protected $appends = ['request_reference'];
 
     protected function casts(): array
     {
-        return ['request_date' => 'date', 'release_date' => 'date', 'approved_at' => 'datetime', 'processed_at' => 'datetime', 'ready_for_release_at' => 'datetime', 'released_at' => 'datetime', 'rejected_at' => 'datetime'];
+        return ['request_date' => 'date', 'release_date' => 'date', 'cancelled_at' => 'datetime', 'approved_at' => 'datetime', 'processed_at' => 'datetime', 'ready_for_release_at' => 'datetime', 'released_at' => 'datetime', 'rejected_at' => 'datetime'];
     }
 
     public function student(): BelongsTo
@@ -42,6 +42,11 @@ class DocumentRequest extends Model
     public function latestAppointment(): HasOne
     {
         return $this->hasOne(Appointment::class)->latestOfMany();
+    }
+
+    public function statusChanges(): HasMany
+    {
+        return $this->hasMany(DocumentRequestStatusChange::class)->latest('created_at')->latest('id');
     }
 
     protected function requestReference(): Attribute

@@ -75,6 +75,10 @@ class LargeDatasetSeederTest extends TestCase
         $this->assertTrue($allStudentNumbersAreRealistic);
         $this->assertTrue($allUsernamesMatchNames);
         $this->assertTrue($allEmailsAreSchoolAddresses);
+        $this->assertSame(
+            LargeDatasetSeeder::PROCESSING_REQUEST_COUNT,
+            DB::table('document_requests')->where('status', 'processing')->count(),
+        );
 
         foreach ($this->visibleTextColumns() as $table => $columns) {
             foreach ($columns as $column) {

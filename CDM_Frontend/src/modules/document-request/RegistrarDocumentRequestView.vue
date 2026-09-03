@@ -1,35 +1,104 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import PaginationControls from '../../components/PaginationControls.vue'
 import RegistrarRecentActivity from './RegistrarRecentActivity.vue'
+import RegistrarRequestQueue from './RegistrarRequestQueue.vue'
+import RegistrarWorkspaceSelector from './RegistrarWorkspaceSelector.vue'
+import RequestWorkflowReasonModal from './RequestWorkflowReasonModal.vue'
+import { formatExactDateTime, requestReference, TIME_FILTERS } from './documentRequestPresentation'
 import {
-  formatExactDateTime,
-  formatRelativeTime,
-  requestReference,
-  TIME_FILTERS,
-} from './documentRequestPresentation'
+  appointmentReturnContext,
+  documentRequestIdFromQuery,
+  documentRequestProfileQuery,
+  documentRequestSourceQuery,
+  withoutDocumentRequestFocus,
+} from './documentRequestNavigation'
+import { consumeDocumentRequestFocus } from './documentRequestFocus'
+import { mergeDocumentRequestRow, requestDocumentName, requestStudentNumber } from './documentRequestRow'
 import { documentRequestService as api } from './documentRequestService'
 
 const route = useRoute()
 const router = useRouter()
-const requests = ref([])
+const pendingRequests = ref([])
+const processingRequests = ref([])
 const selected = ref(null)
-const status = ref('')
+const selectedSummary = ref(null)
 const search = ref('')
 const timeFilter = ref('all')
 const loading = ref(false)
 const message = ref('')
 const error = ref('')
-const page = ref(1)
-const lastPage = ref(1)
-const requestIdFilter = ref(null)
+const reasonDialogOpen = ref(false)
+const reasonDialogBusy = ref(false)
+const modalActionBusy = ref(false)
+const rowActionBusyId = ref(null)
+const recentActivity = ref(null)
+const highlightedRequestId = ref(null)
+const pendingPage = ref(1)
+const pendingLastPage = ref(1)
+const pendingTotal = ref(0)
+const processingPage = ref(1)
+const processingLastPage = ref(1)
+const processingTotal = ref(0)
 const focusedRequestId = ref(null)
-const activeStatuses = ['pending', 'processing', 'ready_for_release']
+const selectedQueueKey = ref('pending')
+let appliedListQuery = ''
+let highlightTimer = null
+const PROCESSING_PAGE_SIZE = 10
+const HIGHLIGHT_DURATION_MS = 3_000
 const requestError = (err) => err.response?.data?.message || 'The request could not be completed.'
 const formatMoney = (value) => Number(value).toFixed(2)
 const studentProfile = computed(() => selected.value?.student?.user_profile || null)
 const physicalLocation = computed(() => selected.value?.student?.physical_record_location || null)
+const currentAppointment = computed(() => {
+  const appointments = selected.value?.appointments || []
+
+  return appointments.find((appointment) => ['pending', 'confirmed'].includes(appointment.status)) || appointments[0] || null
+})
+const appointmentContext = computed(() => appointmentReturnContext(route.query))
+const requestWorkspaceSelectors = computed(() => [
+  {
+    key: 'pending',
+    eyebrow: 'Active queue',
+    title: 'Pending Requests',
+    count: pendingTotal.value,
+    countLabel: 'waiting',
+    description: 'New submissions awaiting review.',
+  },
+  {
+    key: 'processing',
+    eyebrow: 'Active work',
+    title: 'Processing Requests',
+    count: processingTotal.value,
+    countLabel: 'active',
+    description: 'Approved documents currently being prepared.',
+  },
+])
+const selectedQueue = computed(() =>
+  selectedQueueKey.value === 'processing'
+    ? {
+        key: 'processing',
+        title: 'Processing Requests',
+        description: 'Approved documents currently being prepared.',
+        items: processingRequests.value,
+        total: processingTotal.value,
+        currentPage: processingPage.value,
+        lastPage: processingLastPage.value,
+        emptyMessage: 'No document requests are currently being processed.',
+        actionLabel: 'Ready for Release',
+      }
+    : {
+        key: 'pending',
+        title: 'Pending Requests',
+        description: 'New submissions awaiting review.',
+        items: pendingRequests.value,
+        total: pendingTotal.value,
+        currentPage: pendingPage.value,
+        lastPage: pendingLastPage.value,
+        emptyMessage: 'No pending document requests.',
+        actionLabel: '',
+      },
+)
 const studentFullName = computed(() =>
   [
     studentProfile.value?.first_name,
@@ -49,30 +118,6 @@ const studentInitials = computed(
       .join('')
       .toUpperCase() || 'ST',
 )
-const availableDocuments = computed(() =>
-  (selected.value?.student?.documents || []).filter((document) => document.availability_status === 'available'),
-)
-const missingDocuments = computed(() => {
-  if (!selected.value) return []
-  const documents = selected.value.student?.documents || []
-  const missing = documents.filter((document) => document.availability_status !== 'available')
-  const requestedTypeId = selected.value.document_type?.id
-  const requestedRecord = documents.find((document) => document.document_type_id === requestedTypeId)
-
-  if (!requestedRecord) {
-    missing.push({
-      id: `requested-${requestedTypeId}`,
-      document_type: {
-        document_name: selected.value.document_type.document_name,
-      },
-      availability_status: 'missing',
-      remarks: 'No student document record exists.',
-      is_requested_document: true,
-    })
-  }
-
-  return missing
-})
 const requestedDocumentAvailable = computed(() =>
   (selected.value?.student?.documents || []).some(
     (document) =>
@@ -81,31 +126,92 @@ const requestedDocumentAvailable = computed(() =>
 )
 const formatStatus = (value) =>
   value ? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Missing'
+const formatDate = (value) => {
+  if (!value) return 'Not available'
+
+  return new Intl.DateTimeFormat('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'Asia/Manila',
+  }).format(new Date(`${String(value).slice(0, 10)}T00:00:00+08:00`))
+}
+const formatAppointment = (appointment) => {
+  if (!appointment) return 'No appointment booked'
+
+  const date = formatDate(appointment.appointment_date)
+  const time = new Intl.DateTimeFormat('en-PH', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(`2000-01-01T${String(appointment.appointment_time).slice(0, 8)}`))
+
+  return `${date} · ${time}`
+}
 const referenceFor = (item) => item?.request_reference || requestReference(item?.id)
-const requestTimestamp = (item) => item?.updated_at || item?.created_at || item?.request_date || null
+const auditActor = (change) => {
+  const profile = change?.registrar_staff?.user?.profile
+
+  return [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'Registrar Staff'
+}
 const queryValue = (value) => (Array.isArray(value) ? value[0] : value)
 const positiveId = (value) => {
   const id = Number(queryValue(value))
 
   return Number.isInteger(id) && id > 0 ? id : null
 }
-const focusedId = (value) => {
-  const match = String(queryValue(value) || '').match(/^request-(\d+)$/)
+const listQuerySignature = (query) =>
+  JSON.stringify([
+    queryValue(query.search) || '',
+    queryValue(query.time_filter) || 'all',
+    positiveId(query.pending_page) || 1,
+    positiveId(query.processing_page) || 1,
+  ])
 
-  return match ? positiveId(match[1]) : null
+function highlightRequest(requestId, scrollIfNeeded = false) {
+  const id = positiveId(requestId)
+  if (!id) return
+
+  window.clearTimeout(highlightTimer)
+
+  const applyHighlight = () => {
+    highlightedRequestId.value = id
+
+    nextTick(() => {
+      const row = document.getElementById(`request-${id}`)
+      const list = row?.closest('.work-queue-list')
+      if (scrollIfNeeded && row && list) {
+        const rowBounds = row.getBoundingClientRect()
+        const listBounds = list.getBoundingClientRect()
+        const outsideView = rowBounds.top < listBounds.top || rowBounds.bottom > listBounds.bottom
+
+        if (outsideView) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }
+    })
+
+    highlightTimer = window.setTimeout(() => {
+      if (highlightedRequestId.value === id) highlightedRequestId.value = null
+    }, HIGHLIGHT_DURATION_MS)
+  }
+
+  if (highlightedRequestId.value === id) {
+    highlightedRequestId.value = null
+    nextTick(applyHighlight)
+  } else {
+    applyHighlight()
+  }
 }
 
 function applyRouteQuery(query) {
-  const nextStatus = String(queryValue(query.status) || '')
   const nextTimeFilter = String(queryValue(query.time_filter) || 'all')
 
   search.value = String(queryValue(query.search) || '')
-  status.value = activeStatuses.includes(nextStatus) ? nextStatus : ''
   timeFilter.value = TIME_FILTERS.some((option) => option.value === nextTimeFilter) ? nextTimeFilter : 'all'
-  requestIdFilter.value = positiveId(query.request_id)
-  focusedRequestId.value = focusedId(query.focus) || requestIdFilter.value
-  page.value = 1
+  focusedRequestId.value = documentRequestIdFromQuery(query)
+  pendingPage.value = positiveId(query.pending_page) || 1
+  processingPage.value = positiveId(query.processing_page) || 1
   selected.value = null
+  selectedSummary.value = null
 }
 
 function viewCabinet() {
@@ -113,27 +219,83 @@ function viewCabinet() {
   router.push({
     name: 'physical-records',
     query: {
+      ...documentRequestSourceQuery({
+        requestId: selected.value.id,
+        studentId: selected.value.student.id,
+        search: search.value,
+        timeFilter: timeFilter.value,
+        pendingPage: pendingPage.value,
+        processingPage: processingPage.value,
+      }),
       cabinet: physicalLocation.value.cabinet_slot.cabinet.id,
       slot: physicalLocation.value.cabinet_slot.id,
     },
   })
 }
 
-async function refresh(resetPage = false) {
-  if (resetPage) page.value = 1
+function viewStudentProfile() {
+  if (!selected.value) return
+
+  router.push({
+    name: 'student-details',
+    params: { id: selected.value.student.id },
+    query: documentRequestProfileQuery({
+      requestId: selected.value.id,
+      search: search.value,
+      timeFilter: timeFilter.value,
+      pendingPage: pendingPage.value,
+      processingPage: processingPage.value,
+    }),
+  })
+}
+
+function returnToAppointment() {
+  if (appointmentContext.value) router.push(appointmentContext.value.to)
+}
+
+function closeDetails() {
+  const requestId = selected.value?.id
+  selected.value = null
+  selectedSummary.value = null
+  reasonDialogOpen.value = false
+  highlightRequest(requestId)
+
+  if (route.query.request_id || route.query.focus) {
+    focusedRequestId.value = null
+    router.replace({
+      name: 'registrar-document-requests',
+      query: withoutDocumentRequestFocus(route.query),
+    })
+  }
+}
+
+function handleEscape(event) {
+  if (event.key === 'Escape' && selected.value) closeDetails()
+}
+
+async function refresh(resetPages = false) {
+  if (resetPages) {
+    pendingPage.value = 1
+    processingPage.value = 1
+  }
   loading.value = true
   error.value = ''
   try {
-    const queue = await api.registrarRequests({
-      status: status.value || undefined,
+    const queues = await api.registrarRequests({
+      view: 'work_queues',
       search: search.value || undefined,
       time_filter: timeFilter.value,
-      request_id: requestIdFilter.value || undefined,
-      page: page.value,
+      pending_page: pendingPage.value,
+      processing_page: processingPage.value,
     })
-    requests.value = queue.data
-    page.value = queue.current_page || page.value
-    lastPage.value = queue.last_page
+    pendingRequests.value = queues.pending.data
+    pendingPage.value = queues.pending.current_page || pendingPage.value
+    pendingLastPage.value = queues.pending.last_page
+    pendingTotal.value = queues.pending.total
+    processingRequests.value = queues.processing.data
+    processingPage.value = queues.processing.current_page || processingPage.value
+    processingLastPage.value = queues.processing.last_page
+    processingTotal.value = queues.processing.total
   } catch (err) {
     error.value = requestError(err)
   } finally {
@@ -142,15 +304,34 @@ async function refresh(resetPage = false) {
 }
 
 async function revealFocusedRequest() {
-  if (!focusedRequestId.value) return
+  if (!focusedRequestId.value) {
+    if (route.query.request_id || route.query.focus) {
+      error.value = 'The requested document request could not be opened.'
+      router.replace({
+        name: 'registrar-document-requests',
+        query: withoutDocumentRequestFocus(route.query),
+      })
+    }
+    return
+  }
 
-  await selectRequest({ id: focusedRequestId.value })
+  if (processingRequests.value.some(({ id }) => id === focusedRequestId.value)) selectedQueueKey.value = 'processing'
+  else if (pendingRequests.value.some(({ id }) => id === focusedRequestId.value)) selectedQueueKey.value = 'pending'
+
+  const opened = await selectRequest({ id: focusedRequestId.value })
+  if (!opened) {
+    router.replace({
+      name: 'registrar-document-requests',
+      query: withoutDocumentRequestFocus(route.query),
+    })
+    return
+  }
+
   await nextTick()
   document.getElementById(`request-${focusedRequestId.value}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 async function applyFilters() {
-  requestIdFilter.value = null
   focusedRequestId.value = null
   selected.value = null
   await refresh(true)
@@ -161,69 +342,169 @@ async function selectTimeFilter(value) {
   await applyFilters()
 }
 
-async function changePage(nextPage) {
-  page.value = nextPage
+async function changePage(queue, nextPage) {
+  if (queue === 'pending') pendingPage.value = nextPage
+  else processingPage.value = nextPage
   selected.value = null
+  selectedSummary.value = null
   focusedRequestId.value = null
   await refresh()
 }
 
 async function selectRequest(item) {
   error.value = ''
+  selectedSummary.value = item
+  highlightRequest(item.id)
   try {
-    selected.value = await api.registrarRequest(item.id)
+    const detail = await api.registrarRequest(item.id)
+    const existingQueueItem =
+      pendingRequests.value.find((request) => request.id === item.id) ||
+      processingRequests.value.find((request) => request.id === item.id)
+
+    selected.value = mergeDocumentRequestRow(existingQueueItem, item, detail)
+    selectedSummary.value = selected.value
+    return true
   } catch (err) {
+    selectedSummary.value = null
     error.value = requestError(err)
+    return false
   }
 }
 
-function updateQueueItem(updated) {
-  const remainsInQueue = activeStatuses.includes(updated.status) && (!status.value || updated.status === status.value)
+function openReject() {
+  if (!selected.value || !['pending', 'processing'].includes(selected.value.status)) return
 
-  requests.value = remainsInQueue
-    ? requests.value.map((item) =>
-        item.id === updated.id
-          ? {
-              ...item,
-              status: updated.status,
-              updated_at: updated.updated_at,
-              request_reference: updated.request_reference || item.request_reference,
-            }
-          : item,
-      )
-    : requests.value.filter((item) => item.id !== updated.id)
+  reasonDialogOpen.value = true
 }
 
-async function action(nextAction) {
-  if (!selected.value) return
+function updateWorkQueues(updated, previousStatus) {
+  if (!updated?.id) return
+
+  const wasPendingVisible = pendingRequests.value.some((item) => item.id === updated.id)
+  const wasProcessingVisible = processingRequests.value.some((item) => item.id === updated.id)
+
+  pendingRequests.value = pendingRequests.value.filter((item) => item.id !== updated.id)
+  processingRequests.value = processingRequests.value.filter((item) => item.id !== updated.id)
+
+  if (wasPendingVisible) pendingTotal.value = Math.max(0, pendingTotal.value - 1)
+  if (wasProcessingVisible) processingTotal.value = Math.max(0, processingTotal.value - 1)
+
+  if (updated.status === 'processing') {
+    processingTotal.value += previousStatus === 'pending' && wasPendingVisible ? 1 : 0
+    if (processingPage.value === 1) {
+      processingRequests.value = [updated, ...processingRequests.value].slice(0, PROCESSING_PAGE_SIZE)
+    }
+
+    if (previousStatus === 'pending') selectedQueueKey.value = 'processing'
+  }
+
+  selectedSummary.value = updated
+}
+
+async function updateRequestStatus(item, nextAction, reason = null) {
+  if (!item) return false
   error.value = ''
   message.value = ''
   try {
-    const updated = await api.updateRequest(selected.value.id, {
+    const previousStatus = item.status
+    const existingQueueItem =
+      pendingRequests.value.find((request) => request.id === item.id) ||
+      processingRequests.value.find((request) => request.id === item.id)
+    const requestBeforeUpdate = mergeDocumentRequestRow(
+      existingQueueItem,
+      selectedSummary.value?.id === item.id ? selectedSummary.value : null,
+      selected.value?.id === item.id ? selected.value : null,
+      item,
+    )
+    const payload = {
       action: nextAction,
-      remarks: selected.value.remarks || null,
-    })
-    selected.value = updated
-    updateQueueItem(updated)
-    message.value = `Request ${nextAction.replaceAll('_', ' ')}.`
-    if (!requests.value.length && page.value > 1) page.value -= 1
-    await refresh()
+      reason,
+    }
+    if (Object.hasOwn(item, 'remarks')) payload.remarks = item.remarks || null
+
+    const updateResponse = await api.updateRequest(item.id, payload)
+    const updated = mergeDocumentRequestRow(requestBeforeUpdate, updateResponse)
+    if (selected.value?.id === updated.id) selected.value = updated
+    updateWorkQueues(updated, previousStatus)
+    if (['pending', 'processing'].includes(updated.status)) {
+      highlightRequest(updated.id, previousStatus !== updated.status)
+    }
+    recentActivity.value?.refresh()
+    message.value = {
+      approve: 'Request approved and moved to Processing.',
+      reject: 'Request rejected and moved to History.',
+      cancel: 'Request cancelled and moved to History.',
+      ready_for_release: 'Request moved to Appointments & Release.',
+    }[nextAction]
+
+    if (!pendingRequests.value.length && pendingPage.value > 1) {
+      pendingPage.value -= 1
+      await refresh()
+    } else if (!processingRequests.value.length && processingPage.value > 1) {
+      processingPage.value -= 1
+      await refresh()
+    }
+    return true
   } catch (err) {
     error.value = requestError(err)
+    return false
+  }
+}
+
+async function approveSelected() {
+  modalActionBusy.value = true
+  try {
+    await updateRequestStatus(selected.value, 'approve')
+  } finally {
+    modalActionBusy.value = false
+  }
+}
+
+async function markReadyForRelease(item) {
+  rowActionBusyId.value = item.id
+  try {
+    await updateRequestStatus(item, 'ready_for_release')
+  } finally {
+    rowActionBusyId.value = null
+  }
+}
+
+async function confirmReject({ reason }) {
+  reasonDialogBusy.value = true
+  try {
+    const updated = await updateRequestStatus(selected.value, 'reject', reason)
+    if (updated) closeDetails()
+  } finally {
+    reasonDialogBusy.value = false
   }
 }
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleEscape)
+  appliedListQuery = listQuerySignature(route.query)
   applyRouteQuery(route.query)
   await refresh()
+  const rememberedRequestId = consumeDocumentRequestFocus()
+  if (rememberedRequestId) {
+    if (processingRequests.value.some(({ id }) => id === rememberedRequestId)) selectedQueueKey.value = 'processing'
+    highlightRequest(rememberedRequestId, true)
+  }
   await revealFocusedRequest()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscape)
+  window.clearTimeout(highlightTimer)
 })
 
 watch(
   () => route.fullPath,
   async () => {
+    const nextListQuery = listQuerySignature(route.query)
+    const listChanged = nextListQuery !== appliedListQuery
+    appliedListQuery = nextListQuery
     applyRouteQuery(route.query)
-    await refresh()
+    if (listChanged) await refresh()
     await revealFocusedRequest()
   },
   { flush: 'post' },
@@ -232,204 +513,219 @@ watch(
 
 <template>
   <section class="page-header">
+    <button
+      v-if="appointmentContext"
+      class="appointment-context-back"
+      type="button"
+      @click="returnToAppointment"
+    >
+      {{ appointmentContext.label }}
+    </button>
     <p class="page-kicker">Registrar Staff</p>
-    <h1 class="page-title">Document Request Queue</h1>
-    <p class="page-description">Review requests and move documents through processing to direct release.</p>
+    <h1 class="page-title">Document Request Work Queues</h1>
+    <p class="page-description">Review new submissions, then move approved requests through document processing.</p>
   </section>
 
   <p v-if="message" class="notice success">{{ message }}</p>
   <p v-if="error" class="notice error">{{ error }}</p>
 
-  <RegistrarRecentActivity />
+  <div v-if="loading && !pendingRequests.length && !processingRequests.length" class="appointment-workspace-skeleton request-workspace-skeleton" aria-label="Loading document request queues" aria-busy="true">
+    <div class="appointment-filter-skeleton skeleton-shimmer"></div>
+    <div class="appointment-workspace-skeleton-grid">
+      <aside class="appointment-selector-skeletons">
+        <span v-for="index in 2" :key="index" class="appointment-selector-skeleton skeleton-shimmer"></span>
+      </aside>
+      <section class="appointment-table-skeleton">
+        <span class="appointment-heading-skeleton skeleton-shimmer"></span>
+        <span v-for="index in 6" :key="index" class="appointment-row-skeleton skeleton-shimmer"></span>
+      </section>
+    </div>
+  </div>
 
-  <section class="dr-panel">
-    <nav class="group-tabs time-filter-tabs" aria-label="Request activity period">
-      <button
-        v-for="option in TIME_FILTERS"
-        :key="option.value"
-        type="button"
-        :class="{ active: timeFilter === option.value }"
-        :aria-pressed="timeFilter === option.value"
-        @click="selectTimeFilter(option.value)"
-      >
-        {{ option.label }}
-      </button>
-    </nav>
-    <form class="toolbar" @submit.prevent="applyFilters">
-      <input v-model="search" placeholder="REQ-000001, student number, name, or document" />
-      <select v-model="status">
-        <option value="">All active statuses</option>
-        <option v-for="value in activeStatuses" :key="value" :value="value">
-          {{ value.replaceAll('_', ' ') }}
-        </option>
-      </select>
-      <button :disabled="loading">Search</button>
-    </form>
-    <p v-if="loading && !requests.length" class="empty">Loading requests…</p>
-    <p v-else-if="!requests.length" class="empty">No matching requests.</p>
-    <button
-      v-for="item in requests"
-      :id="`request-${item.id}`"
-      :key="item.id"
-      class="queue-item"
-      :class="{ 'focused-record': focusedRequestId === item.id || selected?.id === item.id }"
-      type="button"
-      @click="selectRequest(item)"
-    >
-      <span>
-        <strong>{{ referenceFor(item) }} · {{ item.document_type.document_name }}</strong>
-        <small>
-          {{ item.student.student_number }} ·
-          {{ item.student.user.profile.first_name }}
-          {{ item.student.user.profile.last_name }}
-        </small>
-        <time
-          v-if="requestTimestamp(item)"
-          class="time-display"
-          :datetime="requestTimestamp(item)"
-          :title="formatExactDateTime(requestTimestamp(item))"
-        >
-          {{ formatRelativeTime(requestTimestamp(item)) }}
-          <small>{{ formatExactDateTime(requestTimestamp(item)) }}</small>
-        </time>
-      </span>
-      <span class="badge" :class="item.status">{{ item.status.replaceAll('_', ' ') }}</span>
-    </button>
-    <PaginationControls
-      :current-page="page"
-      :last-page="lastPage"
-      :busy="loading"
-      aria-label="Document request queue pages"
-      @page-change="changePage"
-    />
-  </section>
-
-  <section v-if="selected" class="dr-panel">
-    <h2>Request {{ referenceFor(selected) }}</h2>
-    <time
-      v-if="requestTimestamp(selected)"
-      class="time-display detail-updated-time"
-      :datetime="requestTimestamp(selected)"
-      :title="formatExactDateTime(requestTimestamp(selected))"
-    >
-      Updated {{ formatRelativeTime(requestTimestamp(selected)) }}
-      <small>{{ formatExactDateTime(requestTimestamp(selected)) }}</small>
-    </time>
-    <p>
-      <strong>Student:</strong>
-      {{ studentFullName }} ({{ selected.student.student_number }})
-    </p>
-    <p>
-      <strong>Document:</strong>
-      {{ selected.document_type.document_name }} · {{ selected.quantity }} copy/copies
-      <template v-if="Number(selected.total_fee) > 0">· ₱{{ formatMoney(selected.total_fee) }}</template>
-    </p>
-
-    <section class="record-check" aria-labelledby="student-record-check-heading">
-      <div class="record-check-heading">
-        <div class="record-student-photo">
-          <img
-            v-if="studentProfile?.profile_photo"
-            :src="studentProfile.profile_photo"
-            :alt="`${studentFullName} photo`"
-          />
-          <span v-else>{{ studentInitials }}</span>
-        </div>
-        <div>
-          <p class="record-eyebrow">Student Management</p>
-          <h3 id="student-record-check-heading">Student Record Check</h3>
-          <strong>{{ studentFullName }}</strong>
-          <p>
-            {{ selected.student.student_number }} · {{ selected.student.course?.course_code }} —
-            {{ selected.student.course?.course_name }}
-          </p>
-          <p>
-            Year {{ selected.student.year_level }} ·
-            {{ formatStatus(selected.student.student_status) }}
-          </p>
-        </div>
+  <template v-else>
+    <section class="dr-panel queue-filter-panel appointment-filter-panel request-workspace-filter">
+      <nav class="group-tabs time-filter-tabs" aria-label="Request activity period">
         <button
+          v-for="option in TIME_FILTERS"
+          :key="option.value"
           type="button"
-          class="record-link"
-          @click="
-            router.push({
-              name: 'student-details',
-              params: { id: selected.student.id },
-            })
-          "
-        >
-          View Student Record
-        </button>
-      </div>
-
-      <div class="physical-location-check">
-        <div>
-          <span>Physical Record Location</span>
-          <strong v-if="physicalLocation">
-            Cabinet {{ physicalLocation.cabinet_slot.cabinet.cabinet_code }} / Slot
-            {{ physicalLocation.cabinet_slot.slot_code }}
-          </strong>
-          <strong v-else class="not-assigned">Not assigned</strong>
-          <small v-if="physicalLocation?.remarks">{{ physicalLocation.remarks }}</small>
-        </div>
-        <button v-if="physicalLocation" type="button" class="record-link" @click="viewCabinet">View Cabinet</button>
-      </div>
-
-      <p v-if="!requestedDocumentAvailable" class="record-warning">
-        The requested document is not currently marked available in this student's document record. Registrar Staff may
-        still continue processing the request.
-      </p>
-
-      <div class="record-document-columns">
-        <div>
-          <h4>Available Documents</h4>
-          <p v-if="!availableDocuments.length" class="empty">No documents are marked available.</p>
-          <ul v-else>
-            <li v-for="document in availableDocuments" :key="document.id">
-              <span>{{ document.document_type.document_name }}</span>
-              <strong class="available-label">Available</strong>
-            </li>
-          </ul>
-        </div>
-        <div>
-          <h4>Missing Documents</h4>
-          <p v-if="!missingDocuments.length" class="empty">No documents are marked missing.</p>
-          <ul v-else>
-            <li v-for="document in missingDocuments" :key="document.id">
-              <span>{{ document.document_type.document_name }}</span>
-              <strong class="missing-label">Missing</strong>
-            </li>
-          </ul>
-        </div>
-      </div>
+          :class="{ active: timeFilter === option.value }"
+          :aria-pressed="timeFilter === option.value"
+          @click="selectTimeFilter(option.value)"
+        >{{ option.label }}</button>
+      </nav>
+      <form class="toolbar" @submit.prevent="applyFilters">
+        <input v-model="search" aria-label="Search document requests" placeholder="REQ-000001, student number, name, or document" />
+        <button :disabled="loading">{{ loading ? 'Loading…' : 'Search' }}</button>
+      </form>
     </section>
 
-    <label>
-      Registrar remarks
-      <textarea v-model="selected.remarks" rows="3"></textarea>
-    </label>
-    <div class="actions">
-      <button v-if="selected.status === 'pending'" @click="action('approve')">Approve & process</button>
-      <button v-if="['pending', 'processing'].includes(selected.status)" class="danger" @click="action('reject')">
-        Reject
-      </button>
-      <button v-if="selected.status === 'processing'" @click="action('process')">Mark processed</button>
-      <button v-if="selected.status === 'processing'" @click="action('ready_for_release')">Ready for release</button>
-      <button v-if="selected.status === 'ready_for_release'" @click="action('release')">Release document</button>
-      <button v-if="activeStatuses.includes(selected.status)" class="secondary" @click="action('cancel')">
-        Cancel
-      </button>
-    </div>
+    <section class="registrar-workspace-grid" aria-label="Active document request work queues">
+      <RegistrarWorkspaceSelector
+        v-model="selectedQueueKey"
+        :items="requestWorkspaceSelectors"
+        aria-label="Select document request queue"
+      />
 
-    <h3>Appointments</h3>
-    <p v-if="!selected.appointments.length" class="empty">No appointment booked.</p>
-    <div v-for="appointment in selected.appointments" :key="appointment.id" class="appointment">
-      <span>
-        {{ appointment.appointment_date }} at {{ String(appointment.appointment_time).slice(0, 5) }} —
-        {{ appointment.status }}
-      </span>
-    </div>
+      <Transition name="appointment-workspace-swap" mode="out-in">
+        <RegistrarRequestQueue
+          :key="selectedQueue.key"
+          :title="selectedQueue.title"
+          :description="selectedQueue.description"
+          :items="selectedQueue.items"
+          :total="selectedQueue.total"
+          :current-page="selectedQueue.currentPage"
+          :last-page="selectedQueue.lastPage"
+          :loading="loading"
+          :empty-message="selectedQueue.emptyMessage"
+          :selected-id="selected?.id"
+          :highlighted-id="highlightedRequestId"
+          :action-label="selectedQueue.actionLabel"
+          :action-busy-id="rowActionBusyId"
+          @select="selectRequest"
+          @page-change="changePage(selectedQueue.key, $event)"
+          @action="markReadyForRelease"
+        />
+      </Transition>
+    </section>
+  </template>
+
+  <section class="request-recent-activity-section" aria-label="Recent document request activity">
+    <RegistrarRecentActivity ref="recentActivity" />
   </section>
+
+  <Teleport to="body">
+    <div v-if="selected" class="request-detail-backdrop" @click.self="closeDetails">
+      <section class="request-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="request-detail-title">
+        <header class="request-detail-header">
+          <div>
+            <p>Registrar document queue</p>
+            <h2 id="request-detail-title">Request Details</h2>
+          </div>
+          <button type="button" class="request-detail-close" aria-label="Close request details" @click="closeDetails">
+            ×
+          </button>
+        </header>
+
+        <div class="request-detail-scroll">
+          <section class="request-identity">
+            <div class="request-student-avatar">
+              <img
+                v-if="studentProfile?.profile_photo"
+                :src="studentProfile.profile_photo"
+                :alt="`${studentFullName} photo`"
+              />
+              <span v-else>{{ studentInitials }}</span>
+            </div>
+            <div>
+              <strong class="request-reference">{{ referenceFor(selected) }}</strong>
+              <h3>{{ studentFullName }}</h3>
+              <p>{{ requestDocumentName(selected) }}</p>
+            </div>
+            <span class="badge request-detail-status" :class="selected.status">{{ formatStatus(selected.status) }}</span>
+          </section>
+
+          <dl class="request-facts">
+            <div><dt>Requested</dt><dd>{{ formatDate(selected.request_date) }}</dd></div>
+            <div><dt>Appointment</dt><dd>{{ formatAppointment(currentAppointment) }}</dd></div>
+            <div><dt>Fee</dt><dd>₱{{ formatMoney(selected.total_fee || 0) }}</dd></div>
+            <div class="physical-record-fact">
+              <dt>Physical Record Location</dt>
+              <dd v-if="physicalLocation">
+                Cabinet {{ physicalLocation.cabinet_slot.cabinet.cabinet_code }} · Slot
+                {{ physicalLocation.cabinet_slot.slot_code }}
+              </dd>
+              <dd v-else>Not assigned</dd>
+            </div>
+          </dl>
+
+          <section class="request-detail-section" aria-labelledby="request-student-heading">
+            <div class="request-section-heading"><span>01</span><h3 id="request-student-heading">Student Details</h3></div>
+            <dl class="student-facts">
+              <div><dt>Student No.</dt><dd>{{ requestStudentNumber(selected) }}</dd></div>
+              <div>
+                <dt>Course</dt>
+                <dd>{{ selected.student.course?.course_code || selected.student.course?.course_name || 'Not available' }}</dd>
+              </div>
+              <div><dt>Year Level</dt><dd>Year {{ selected.student.year_level || 'Not available' }}</dd></div>
+            </dl>
+          </section>
+
+          <section class="request-detail-section" aria-labelledby="request-notes-heading">
+            <div class="request-section-heading"><span>02</span><h3 id="request-notes-heading">Request Notes / Purpose</h3></div>
+            <p class="request-purpose">{{ selected.purpose || selected.remarks || 'No notes or purpose provided.' }}</p>
+          </section>
+
+          <section class="request-detail-section" aria-labelledby="request-audit-heading">
+            <div class="request-section-heading"><span>03</span><h3 id="request-audit-heading">Workflow Audit</h3></div>
+            <p v-if="!selected.status_changes?.length" class="request-purpose">No recorded workflow changes yet.</p>
+            <ol v-else class="workflow-audit-list">
+              <li v-for="change in selected.status_changes" :key="change.id">
+                <span>
+                  <strong>{{ formatStatus(change.action) }}</strong>
+                  <small>{{ formatStatus(change.from_status) }} → {{ formatStatus(change.to_status) }}</small>
+                </span>
+                <span>
+                  <small>{{ auditActor(change) }} · {{ formatExactDateTime(change.created_at) }}</small>
+                  <p v-if="change.reason">{{ change.reason }}</p>
+                </span>
+              </li>
+            </ol>
+          </section>
+
+          <p v-if="!requestedDocumentAvailable" class="record-warning request-detail-warning">
+            The requested document is not marked available in this student's document record. Registrar Staff may still
+            continue processing the request.
+          </p>
+
+        </div>
+
+        <footer class="request-detail-footer">
+          <button
+            v-if="appointmentContext"
+            type="button"
+            class="secondary-action"
+            @click="returnToAppointment"
+          >
+            {{ appointmentContext.label }}
+          </button>
+          <button type="button" class="secondary-action" @click="viewStudentProfile">View Student Profile</button>
+          <button type="button" class="secondary-action" :disabled="!physicalLocation" @click="viewCabinet">View Physical Record</button>
+          <button
+            v-if="selected.status === 'pending'"
+            type="button"
+            class="primary-action"
+            :disabled="modalActionBusy"
+            @click="approveSelected"
+          >
+            {{ modalActionBusy ? 'Approving…' : 'Approve' }}
+          </button>
+          <button
+            v-if="['pending', 'processing'].includes(selected.status)"
+            type="button"
+            class="danger-action"
+            :disabled="modalActionBusy"
+            @click="openReject"
+          >
+            Reject
+          </button>
+          <button type="button" class="close-action" @click="closeDetails">Close</button>
+        </footer>
+      </section>
+    </div>
+  </Teleport>
+
+  <RequestWorkflowReasonModal
+    :open="reasonDialogOpen"
+    title="Reject Request"
+    description="Confirm the request and provide a reason for rejection. This action is recorded in the workflow audit."
+    confirm-label="Reject Request"
+    reason-label="Reason for rejection"
+    :request="selected"
+    :busy="reasonDialogBusy"
+    @close="reasonDialogOpen = false"
+    @confirm="confirmReject"
+  />
 </template>
 
 <style scoped src="./documentRequest.css"></style>

@@ -1,10 +1,14 @@
 <?php
 
+use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDashboardController;
 use App\Http\Controllers\Api\RegistrarDocumentRequestController;
 use App\Http\Controllers\Api\RegistrarDocumentTypeController;
+use App\Http\Controllers\Api\RegistrarStudentDocumentController;
 use App\Http\Controllers\Api\StepUpAuthenticationController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentDocumentRequestController;
@@ -34,17 +38,25 @@ Route::middleware('auth:sanctum')->group(function (): void {
     });
 
     Route::middleware('role.student')->group(function (): void {
+        Route::get('/holidays', HolidayController::class);
+        Route::get('/appointment-availability', AppointmentAvailabilityController::class);
         Route::get('/document-types', [StudentDocumentRequestController::class, 'documentTypes']);
         Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);
         Route::post('/document-requests', [StudentDocumentRequestController::class, 'store']);
         Route::get('/document-requests/{documentRequest}', [StudentDocumentRequestController::class, 'show']);
+        Route::patch('/document-requests/{documentRequest}/cancel', [StudentDocumentRequestController::class, 'cancelDocumentRequest']);
         Route::post('/document-requests/{documentRequest}/appointments', [StudentDocumentRequestController::class, 'book']);
         Route::get('/appointment-slots', [StudentDocumentRequestController::class, 'slots']);
         Route::get('/appointment-overview', [StudentDocumentRequestController::class, 'appointmentOverview']);
         Route::get('/appointments', [StudentDocumentRequestController::class, 'appointments']);
+        Route::patch('/appointments/{appointment}/cancel', [StudentDocumentRequestController::class, 'cancelAppointment']);
     });
 
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
+        Route::get('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'settings']);
+        Route::patch('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'updateSettings']);
+        Route::apiResource('appointment-blocked-dates', RegistrarAppointmentBlockedDateController::class)
+            ->only(['index', 'store', 'update', 'destroy']);
         Route::get('/dashboard', RegistrarDashboardController::class);
         Route::get('/cabinets', [RegistrarCabinetController::class, 'index']);
         Route::post('/cabinets', [RegistrarCabinetController::class, 'store']);
@@ -57,6 +69,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/document-types', [RegistrarDocumentTypeController::class, 'index']);
         Route::post('/document-types', [RegistrarDocumentTypeController::class, 'store']);
         Route::patch('/document-types/{documentType}', [RegistrarDocumentTypeController::class, 'update']);
+        Route::post('/students/{student}/documents/analyze-all', [RegistrarStudentDocumentController::class, 'analyzeAll']);
+        Route::post('/student-documents/{studentDocument}/upload', [RegistrarStudentDocumentController::class, 'upload']);
+        Route::get('/student-documents/{studentDocument}/view', [RegistrarStudentDocumentController::class, 'view']);
+        Route::get('/student-documents/{studentDocument}/download', [RegistrarStudentDocumentController::class, 'download']);
+        Route::delete('/student-documents/{studentDocument}/file', [RegistrarStudentDocumentController::class, 'destroy'])
+            ->middleware('step-up');
         Route::get('/document-requests', [RegistrarDocumentRequestController::class, 'index']);
         Route::get('/document-requests/history', [RegistrarDocumentRequestController::class, 'history']);
         Route::get('/document-request-activity', [RegistrarDocumentRequestController::class, 'activity']);

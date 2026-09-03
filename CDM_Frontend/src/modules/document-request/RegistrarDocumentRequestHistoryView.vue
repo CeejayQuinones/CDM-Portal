@@ -5,9 +5,11 @@ import PaginationControls from '../../components/PaginationControls.vue'
 import RegistrarRecentActivity from './RegistrarRecentActivity.vue'
 import {
   appointmentDateTime,
+  documentTypeAccentClass,
   formatExactDateTime,
   formatRelativeTime,
   requestReference,
+  requestStatusAccentClass,
   studentName,
   TIME_FILTERS,
 } from './documentRequestPresentation'
@@ -157,7 +159,16 @@ onMounted(async () => {
 })
 
 watch(
-  () => route.fullPath,
+  [
+    () => queryValue(route.query.search),
+    () => queryValue(route.query.request_status),
+    () => queryValue(route.query.appointment_status),
+    () => queryValue(route.query.time_filter),
+    () => queryValue(route.query.request_id),
+    () => queryValue(route.query.appointment_id),
+    () => queryValue(route.query.focus),
+    () => queryValue(route.query.section),
+  ],
   async () => {
     applyRouteQuery(route.query)
     await refresh()
@@ -291,7 +302,11 @@ watch(
         :id="`request-${item.id}`"
         :key="item.id"
         class="history-row"
-        :class="{ 'focused-record': focusedRequestId === item.id }"
+        :class="[
+          'request-history-row',
+          requestStatusAccentClass(item.status),
+          { 'focused-record': focusedRequestId === item.id },
+        ]"
         role="row"
       >
         <span>
@@ -300,7 +315,11 @@ watch(
         </span>
         <span>
           <strong>{{ referenceFor(item) }}</strong>
-          <small>{{ item.document_type.document_name }}</small>
+          <small>
+            <span class="document-type-chip" :class="documentTypeAccentClass(item.document_type.document_name)">
+              {{ item.document_type.document_name }}
+            </span>
+          </small>
         </span>
         <time
           v-if="requestTimestamp(item)"

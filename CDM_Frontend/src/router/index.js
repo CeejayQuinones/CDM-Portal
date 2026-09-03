@@ -1,33 +1,34 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
-import AuthLayout from '../layouts/AuthLayout.vue'
-import DashboardLayout from '../layouts/DashboardLayout.vue'
-import DashboardView from '../views/DashboardView.vue'
-import LoginView from '../views/LoginView.vue'
-import PublicLegalView from '../views/PublicLegalView.vue'
-import UnauthorizedView from '../views/UnauthorizedView.vue'
-import GuestDashboardView from '../views/GuestDashboardView.vue'
-import RoleDashboardView from '../views/RoleDashboardView.vue'
-import SettingsView from '../views/SettingsView.vue'
-import ComingSoonView from '../views/ComingSoonView.vue'
-import AdmissionView from '../modules/admission/AdmissionView.vue'
-import EnrollmentView from '../modules/enrollment/EnrollmentView.vue'
-import GradingView from '../modules/grading/GradingView.vue'
-import MonitoringView from '../modules/monitoring/MonitoringView.vue'
-import DocumentTypesManagementView from '../modules/document-request/DocumentTypesManagementView.vue'
-import StudentDocumentRequestView from '../modules/document-request/StudentDocumentRequestView.vue'
-import StudentAppointmentsView from '../modules/document-request/StudentAppointmentsView.vue'
-import RegistrarDocumentRequestView from '../modules/document-request/RegistrarDocumentRequestView.vue'
-import RegistrarAppointmentsView from '../modules/document-request/RegistrarAppointmentsView.vue'
-import RegistrarAppointmentAvailabilityView from '../modules/document-request/RegistrarAppointmentAvailabilityView.vue'
-import RegistrarDocumentRequestHistoryView from '../modules/document-request/RegistrarDocumentRequestHistoryView.vue'
-import StudentRecordsView from '../modules/student-management/StudentRecordsView.vue'
-import StudentProfileView from '../modules/student-management/StudentProfileView.vue'
-import StudentDocumentsView from '../modules/student-management/StudentDocumentsView.vue'
-import PhysicalRecordsView from '../modules/student-management/PhysicalRecordsView.vue'
-import EventAttendanceView from '../modules/event-attendance/EventAttendanceView.vue'
-import RegistrarDashboardView from '../modules/registrar-dashboard/RegistrarDashboardView.vue'
+import { performanceMonitor } from '../services/performance/performanceMonitor'
+
+const AuthLayout = () => import('../layouts/AuthLayout.vue')
+const DashboardLayout = () => import('../layouts/DashboardLayout.vue')
+const DashboardView = () => import('../views/DashboardView.vue')
+const LoginView = () => import('../views/LoginView.vue')
+const PublicLegalView = () => import('../views/PublicLegalView.vue')
+const UnauthorizedView = () => import('../views/UnauthorizedView.vue')
+const GuestDashboardView = () => import('../views/GuestDashboardView.vue')
+const RoleDashboardView = () => import('../views/RoleDashboardView.vue')
+const SettingsView = () => import('../views/SettingsView.vue')
+const ComingSoonView = () => import('../views/ComingSoonView.vue')
+const AdmissionView = () => import('../modules/admission/AdmissionView.vue')
+const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
+const GradingView = () => import('../modules/grading/GradingView.vue')
+const MonitoringView = () => import('../modules/monitoring/MonitoringView.vue')
+const DocumentTypesManagementView = () => import('../modules/document-request/DocumentTypesManagementView.vue')
+const StudentDocumentRequestView = () => import('../modules/document-request/StudentDocumentRequestView.vue')
+const RegistrarDocumentRequestView = () => import('../modules/document-request/RegistrarDocumentRequestView.vue')
+const RegistrarAppointmentsView = () => import('../modules/document-request/RegistrarAppointmentsView.vue')
+const RegistrarDocumentRequestHistoryView = () =>
+  import('../modules/document-request/RegistrarDocumentRequestHistoryView.vue')
+const StudentRecordsView = () => import('../modules/student-management/StudentRecordsView.vue')
+const StudentProfileView = () => import('../modules/student-management/StudentProfileView.vue')
+const StudentDocumentsView = () => import('../modules/student-management/StudentDocumentsView.vue')
+const PhysicalRecordsView = () => import('../modules/student-management/PhysicalRecordsView.vue')
+const EventAttendanceView = () => import('../modules/event-attendance/EventAttendanceView.vue')
+const RegistrarDashboardView = () => import('../modules/registrar-dashboard/RegistrarDashboardView.vue')
 
 const protectedRoute = (route) => ({
   ...route,
@@ -191,9 +192,12 @@ const routes = [
       protectedRoute({
         path: 'document-requests/appointments',
         name: 'student-document-appointments',
-        component: StudentAppointmentsView,
+        redirect: (to) => ({
+          name: 'student-document-requests',
+          query: { ...to.query, panel: 'appointment' },
+        }),
         meta: {
-          title: 'Appointments',
+          title: 'Document Requests',
           roles: ROUTE_ROLES['student-document-appointments'],
         },
       }),
@@ -220,17 +224,8 @@ const routes = [
         name: 'registrar-document-appointments',
         component: RegistrarAppointmentsView,
         meta: {
-          title: 'Appointments',
+          title: 'Appointments & Release',
           roles: ROUTE_ROLES['registrar-document-appointments'],
-        },
-      }),
-      protectedRoute({
-        path: 'registrar/appointment-availability',
-        name: 'registrar-appointment-availability',
-        component: RegistrarAppointmentAvailabilityView,
-        meta: {
-          title: 'Appointment Availability',
-          roles: ROUTE_ROLES['registrar-appointment-availability'],
         },
       }),
       protectedRoute({
@@ -301,6 +296,7 @@ const routes = [
 const router = createRouter({ history: createWebHashHistory(), routes })
 
 router.beforeEach(async (to) => {
+  performanceMonitor.beginRoute(to.name || to.path)
   const authStore = useAuthStore()
   await authStore.initialize()
 
@@ -315,6 +311,7 @@ router.beforeEach(async (to) => {
 
 router.afterEach((to) => {
   document.title = to.meta.title ? `${to.meta.title} | CDM Portal` : 'CDM Portal'
+  requestAnimationFrame(() => performanceMonitor.markRouteRendered())
 })
 
 export default router

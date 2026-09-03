@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\AppointmentDateAvailable;
+
 class StoreAppointmentRequest extends ApiFormRequest
 {
     public function authorize(): bool
@@ -12,7 +14,7 @@ class StoreAppointmentRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'appointment_date' => ['required', 'date', 'after_or_equal:today'],
+            'appointment_date' => ['bail', 'required', 'date_format:Y-m-d', 'after_or_equal:today', new AppointmentDateAvailable],
             'appointment_time' => ['required', 'date_format:H:i'],
             'purpose' => ['nullable', 'string', 'max:255'],
         ];

@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'document_analysis' => [
+        'driver' => env('AI_DOCUMENT_ANALYZER', 'mock'),
+        'gemini' => [
+            'api_key' => env('GEMINI_API_KEY'),
+            'model' => env('GEMINI_MODEL'),
+            'timeout' => (int) env('GEMINI_TIMEOUT', 60),
+        ],
+    ],
+
 ];

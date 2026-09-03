@@ -1,16 +1,25 @@
 import axios from 'axios'
+import { isOfflineDemo } from '../config/demoMode'
+import { createOfflineApiClient } from './offline/offlineApi'
+import { performanceMonitor } from './performance/performanceMonitor'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
 
-export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
+const onlineApiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
   },
 })
 
-apiClient.interceptors.request.use((config) => {
+onlineApiClient.interceptors.request.use((config) => {
+  config.cdmPerformanceRequest = performanceMonitor.beginApiRequest(
+    config.method,
+    config.url,
+    config.baseURL,
+    config.params,
+  )
   const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY)
 
   if (savedAuth) {
@@ -25,9 +34,17 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
-apiClient.interceptors.response.use(
-  (response) => response,
+onlineApiClient.interceptors.response.use(
+  (response) => {
+    performanceMonitor.endApiRequest(response.config.cdmPerformanceRequest, response.status, response.data)
+    return response
+  },
   (error) => {
+    performanceMonitor.endApiRequest(
+      error.config?.cdmPerformanceRequest,
+      error.response?.status,
+      error.response?.data,
+    )
     if (error.response?.status === 401 && !error.config?.url?.includes('/login')) {
       localStorage.removeItem(AUTH_STORAGE_KEY)
       if (window.location.hash !== '#/login') window.location.hash = '#/login'
@@ -36,3 +53,5 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   },
 )
+
+export const apiClient = isOfflineDemo ? createOfflineApiClient() : onlineApiClient

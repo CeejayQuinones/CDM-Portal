@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             DepartmentsSeeder::class,
             AcademicYearsSeeder::class,
             SemestersSeeder::class,
+            AppointmentBlockedDateSeeder::class,
 
             // Academic
             CoursesSeeder::class,

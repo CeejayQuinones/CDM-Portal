@@ -79,7 +79,7 @@ function close() {
   justify-content: center;
   padding: 20px;
   position: fixed;
-  z-index: 1000;
+  z-index: 2000;
 }
 .step-up-modal {
   background: var(--color-surface, #fff);
