@@ -33,8 +33,8 @@ const appointmentIdFilter = ref(null)
 const focusedRequestId = ref(null)
 const focusedAppointmentId = ref(null)
 const focusedSection = ref('')
-const finalRequestStatuses = ['released', 'rejected', 'cancelled']
-const historicalAppointmentStatuses = ['cancelled', 'completed', 'no_show']
+const finalRequestStatuses = ['completed', 'rejected', 'cancelled']
+const historicalAppointmentStatuses = ['cancelled', 'completed']
 const requestError = (err) => err.response?.data?.message || 'Document request history could not be loaded.'
 const queryValue = (value) => (Array.isArray(value) ? value[0] : value)
 const positiveId = (value) => {
@@ -48,7 +48,7 @@ const appointmentReference = (appointment) =>
   requestReference(appointment?.document_request_id || appointment?.document_request?.id)
 const requestTimestamp = (item) => item?.created_at || item?.request_date || null
 const completionTimestamp = (item) =>
-  item?.released_at || item?.rejected_at || item?.cancelled_at || item?.updated_at || item?.release_date || null
+  item?.completed_at || item?.rejected_at || item?.cancelled_at || item?.updated_at || item?.release_date || null
 const focusId = (value, type) => {
   const match = String(queryValue(value) || '').match(new RegExp(`^${type}-(\\d+)$`))
 

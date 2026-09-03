@@ -45,20 +45,21 @@ export const documentRequestService = {
     unwrap(apiClient.patch(`/document-requests/${requestId}/cancel`, payload)),
   appointmentAvailability: (month) =>
     unwrap(apiClient.get('/appointment-availability', { params: { month } })),
-  slots: (date) => unwrap(apiClient.get('/appointment-slots', { params: { date } })),
-  book: (requestId, payload) => unwrap(apiClient.post(`/document-requests/${requestId}/appointments`, payload)),
-  cancelAppointment: (appointmentId, payload) =>
-    unwrap(apiClient.patch(`/appointments/${appointmentId}/cancel`, payload)),
   registrarRecentActivity: (params) => unwrap(apiClient.get('/registrar/document-request-activity', { params })),
   registrarRequests: (params) => unwrap(apiClient.get('/registrar/document-requests', { params })),
   registrarHistory: (params) => unwrap(apiClient.get('/registrar/document-requests/history', { params })),
   registrarRequest: (id) => unwrap(apiClient.get(`/registrar/document-requests/${id}`)),
   updateRequest: (id, payload) => unwrap(apiClient.patch(`/registrar/document-requests/${id}`, payload)),
+  assignAppointment: (id, payload) => unwrap(apiClient.post(`/registrar/document-requests/${id}/appointment`, payload)),
+  verifyCode: (verification_code) => unwrap(apiClient.post('/registrar/document-requests/verify-code', { verification_code })),
+  resendClaimCode: (id) => unwrap(apiClient.post(`/registrar/document-requests/${id}/resend-claim-code`)),
   registrarAppointments: (params) => unwrap(apiClient.get('/registrar/appointments', { params })),
   updateAppointment: (id, payload) => unwrap(apiClient.patch(`/registrar/appointments/${id}`, payload)),
   appointmentAvailabilitySettings: () => unwrap(apiClient.get('/registrar/appointment-availability/settings')),
   updateAppointmentAvailabilitySettings: async (payload) =>
     (await apiClient.patch('/registrar/appointment-availability/settings', payload)).data,
+  registrarCalendar: (month) => unwrap(apiClient.get('/registrar/appointment-availability/calendar', { params: { month } })),
+  updateDateCapacity: (date, capacity) => unwrap(apiClient.put(`/registrar/appointment-availability/capacity/${date}`, { capacity })),
   appointmentBlockedDates: () => unwrap(apiClient.get('/registrar/appointment-blocked-dates')),
   createAppointmentBlockedDate: async (payload) =>
     (await apiClient.post('/registrar/appointment-blocked-dates', payload)).data,

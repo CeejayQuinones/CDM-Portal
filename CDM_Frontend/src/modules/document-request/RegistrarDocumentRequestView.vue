@@ -32,6 +32,9 @@ const reasonDialogOpen = ref(false)
 const reasonDialogBusy = ref(false)
 const modalActionBusy = ref(false)
 const rowActionBusyId = ref(null)
+const assignmentDate = ref('')
+const assigningDate = ref(false)
+const resendingClaimCode = ref(false)
 const recentActivity = ref(null)
 const highlightedRequestId = ref(null)
 const pendingPage = ref(1)
@@ -66,26 +69,26 @@ const requestWorkspaceSelectors = computed(() => [
     description: 'New submissions awaiting review.',
   },
   {
-    key: 'processing',
+    key: 'approved',
     eyebrow: 'Active work',
-    title: 'Processing Requests',
+    title: 'Approved Requests',
     count: processingTotal.value,
     countLabel: 'active',
-    description: 'Approved documents currently being prepared.',
+    description: 'Approved requests awaiting their appointment day.',
   },
 ])
 const selectedQueue = computed(() =>
-  selectedQueueKey.value === 'processing'
+  selectedQueueKey.value === 'approved'
     ? {
-        key: 'processing',
-        title: 'Processing Requests',
-        description: 'Approved documents currently being prepared.',
+        key: 'approved',
+        title: 'Approved Requests',
+        description: 'Approved requests awaiting their appointment day.',
         items: processingRequests.value,
         total: processingTotal.value,
         currentPage: processingPage.value,
         lastPage: processingLastPage.value,
-        emptyMessage: 'No document requests are currently being processed.',
-        actionLabel: 'Ready for Release',
+        emptyMessage: 'No approved document requests.',
+        actionLabel: '',
       }
     : {
         key: 'pending',
@@ -150,6 +153,7 @@ const formatAppointment = (appointment) => {
 }
 const referenceFor = (item) => item?.request_reference || requestReference(item?.id)
 const auditActor = (change) => {
+  if (change?.actor_type === 'system') return 'System'
   const profile = change?.registrar_staff?.user?.profile
 
   return [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'Registrar Staff'
@@ -286,16 +290,16 @@ async function refresh(resetPages = false) {
       search: search.value || undefined,
       time_filter: timeFilter.value,
       pending_page: pendingPage.value,
-      processing_page: processingPage.value,
+      approved_page: processingPage.value,
     })
     pendingRequests.value = queues.pending.data
     pendingPage.value = queues.pending.current_page || pendingPage.value
     pendingLastPage.value = queues.pending.last_page
     pendingTotal.value = queues.pending.total
-    processingRequests.value = queues.processing.data
-    processingPage.value = queues.processing.current_page || processingPage.value
-    processingLastPage.value = queues.processing.last_page
-    processingTotal.value = queues.processing.total
+    processingRequests.value = queues.approved.data
+    processingPage.value = queues.approved.current_page || processingPage.value
+    processingLastPage.value = queues.approved.last_page
+    processingTotal.value = queues.approved.total
   } catch (err) {
     error.value = requestError(err)
   } finally {
@@ -315,7 +319,7 @@ async function revealFocusedRequest() {
     return
   }
 
-  if (processingRequests.value.some(({ id }) => id === focusedRequestId.value)) selectedQueueKey.value = 'processing'
+  if (processingRequests.value.some(({ id }) => id === focusedRequestId.value)) selectedQueueKey.value = 'approved'
   else if (pendingRequests.value.some(({ id }) => id === focusedRequestId.value)) selectedQueueKey.value = 'pending'
 
   const opened = await selectRequest({ id: focusedRequestId.value })
@@ -372,7 +376,7 @@ async function selectRequest(item) {
 }
 
 function openReject() {
-  if (!selected.value || !['pending', 'processing'].includes(selected.value.status)) return
+  if (!selected.value || selected.value.status !== 'pending') return
 
   reasonDialogOpen.value = true
 }
@@ -389,13 +393,13 @@ function updateWorkQueues(updated, previousStatus) {
   if (wasPendingVisible) pendingTotal.value = Math.max(0, pendingTotal.value - 1)
   if (wasProcessingVisible) processingTotal.value = Math.max(0, processingTotal.value - 1)
 
-  if (updated.status === 'processing') {
+  if (updated.status === 'approved') {
     processingTotal.value += previousStatus === 'pending' && wasPendingVisible ? 1 : 0
     if (processingPage.value === 1) {
       processingRequests.value = [updated, ...processingRequests.value].slice(0, PROCESSING_PAGE_SIZE)
     }
 
-    if (previousStatus === 'pending') selectedQueueKey.value = 'processing'
+    if (previousStatus === 'pending') selectedQueueKey.value = 'approved'
   }
 
   selectedSummary.value = updated
@@ -426,15 +430,16 @@ async function updateRequestStatus(item, nextAction, reason = null) {
     const updated = mergeDocumentRequestRow(requestBeforeUpdate, updateResponse)
     if (selected.value?.id === updated.id) selected.value = updated
     updateWorkQueues(updated, previousStatus)
-    if (['pending', 'processing'].includes(updated.status)) {
+    if (['pending', 'approved'].includes(updated.status)) {
       highlightRequest(updated.id, previousStatus !== updated.status)
     }
     recentActivity.value?.refresh()
-    message.value = {
-      approve: 'Request approved and moved to Processing.',
+    message.value = updateResponse._demo_claim_code
+      ? `DEMO ONLY — claim code: ${updateResponse._demo_claim_code}. No email is sent in offline demo mode.`
+      : {
+      approve: 'Request approved. Appointment instructions were sent to the registered email.',
       reject: 'Request rejected and moved to History.',
       cancel: 'Request cancelled and moved to History.',
-      ready_for_release: 'Request moved to Appointments & Release.',
     }[nextAction]
 
     if (!pendingRequests.value.length && pendingPage.value > 1) {
@@ -460,13 +465,32 @@ async function approveSelected() {
   }
 }
 
-async function markReadyForRelease(item) {
-  rowActionBusyId.value = item.id
+async function assignSelectedDate() {
+  if (!selected.value || !assignmentDate.value) return
+  assigningDate.value = true
+  error.value = ''
   try {
-    await updateRequestStatus(item, 'ready_for_release')
+    const updated = await api.assignAppointment(selected.value.id, { appointment_date: assignmentDate.value })
+    selected.value = mergeDocumentRequestRow(selected.value, updated)
+    const index = pendingRequests.value.findIndex(({ id }) => id === updated.id)
+    if (index >= 0) pendingRequests.value[index] = mergeDocumentRequestRow(pendingRequests.value[index], updated)
+    message.value = 'Appointment date assigned. The request remains Pending until approval.'
+  } catch (err) {
+    error.value = requestError(err)
   } finally {
-    rowActionBusyId.value = null
+    assigningDate.value = false
   }
+}
+
+async function resendSelectedClaimCode() {
+  if (!selected.value || selected.value.status !== 'approved') return
+  resendingClaimCode.value = true; error.value = ''
+  try {
+    const updated = await api.resendClaimCode(selected.value.id)
+    message.value = updated._demo_claim_code
+      ? `DEMO ONLY — new claim code: ${updated._demo_claim_code}. No email is sent in offline demo mode.`
+      : 'A new claim code was sent to the student.'
+  } catch (err) { error.value = requestError(err) } finally { resendingClaimCode.value = false }
 }
 
 async function confirmReject({ reason }) {
@@ -486,7 +510,7 @@ onMounted(async () => {
   await refresh()
   const rememberedRequestId = consumeDocumentRequestFocus()
   if (rememberedRequestId) {
-    if (processingRequests.value.some(({ id }) => id === rememberedRequestId)) selectedQueueKey.value = 'processing'
+    if (processingRequests.value.some(({ id }) => id === rememberedRequestId)) selectedQueueKey.value = 'approved'
     highlightRequest(rememberedRequestId, true)
   }
   await revealFocusedRequest()
@@ -523,7 +547,7 @@ watch(
     </button>
     <p class="page-kicker">Registrar Staff</p>
     <h1 class="page-title">Document Request Work Queues</h1>
-    <p class="page-description">Review new submissions, then move approved requests through document processing.</p>
+    <p class="page-description">Assign appointment dates, then approve or reject pending document requests.</p>
   </section>
 
   <p v-if="message" class="notice success">{{ message }}</p>
@@ -584,7 +608,6 @@ watch(
           :action-busy-id="rowActionBusyId"
           @select="selectRequest"
           @page-change="changePage(selectedQueue.key, $event)"
-          @action="markReadyForRelease"
         />
       </Transition>
     </section>
@@ -695,13 +718,23 @@ watch(
             v-if="selected.status === 'pending'"
             type="button"
             class="primary-action"
-            :disabled="modalActionBusy"
+            :disabled="modalActionBusy || !currentAppointment"
             @click="approveSelected"
           >
             {{ modalActionBusy ? 'Approving…' : 'Approve' }}
           </button>
+          <button v-if="selected.status === 'approved' && !selected.code_verified_at" type="button" class="secondary-action" :disabled="resendingClaimCode" @click="resendSelectedClaimCode">
+            {{ resendingClaimCode ? 'Sending…' : 'Resend Claim Code' }}
+          </button>
+          <label v-if="selected.status === 'pending'" class="appointment-date-assignment">
+            <span>Appointment date</span>
+            <input v-model="assignmentDate" type="date" :min="new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })" />
+          </label>
+          <button v-if="selected.status === 'pending'" type="button" class="secondary-action" :disabled="assigningDate || !assignmentDate" @click="assignSelectedDate">
+            {{ assigningDate ? 'Assigning…' : currentAppointment ? 'Change Date' : 'Assign Date' }}
+          </button>
           <button
-            v-if="['pending', 'processing'].includes(selected.status)"
+            v-if="selected.status === 'pending'"
             type="button"
             class="danger-action"
             :disabled="modalActionBusy"

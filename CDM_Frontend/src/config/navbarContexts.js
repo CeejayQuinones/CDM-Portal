@@ -1,5 +1,3 @@
-const READY_FOR_RELEASE_GROUP = 'ready_for_release'
-
 const DOCUMENT_REQUEST_CONTEXT = Object.freeze({
   routeNames: ['registrar-document-types', 'registrar-document-requests', 'registrar-document-request-history'],
   items: [
@@ -26,17 +24,6 @@ const APPOINTMENT_CONTEXT = Object.freeze({
       label: 'Appointments',
       to: { name: 'registrar-document-appointments' },
       activeRouteNames: ['registrar-document-appointments'],
-      excludedQuery: { group: READY_FOR_RELEASE_GROUP },
-    },
-    {
-      key: 'ready-for-release',
-      label: 'Ready to Release',
-      to: {
-        name: 'registrar-document-appointments',
-        query: { group: READY_FOR_RELEASE_GROUP },
-      },
-      activeRouteNames: ['registrar-document-appointments'],
-      requiredQuery: { group: READY_FOR_RELEASE_GROUP },
     },
     {
       key: 'availability',
@@ -75,5 +62,3 @@ export const navbarContextForRoute = (route, { appointmentAvailabilityOpen = fal
     })),
   }
 }
-
-export { READY_FOR_RELEASE_GROUP }

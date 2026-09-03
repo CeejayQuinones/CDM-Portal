@@ -10,13 +10,15 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DocumentRequest extends Model
 {
-    protected $fillable = ['student_id', 'document_type_id', 'registrar_staff_id', 'quantity', 'total_fee', 'purpose', 'status', 'request_date', 'release_date', 'remarks', 'cancellation_reason', 'cancelled_at', 'approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at'];
+    protected $hidden = ['verification_code_lookup', 'verification_code_hash'];
+
+    protected $fillable = ['student_id', 'document_type_id', 'registrar_staff_id', 'quantity', 'total_fee', 'purpose', 'status', 'request_date', 'release_date', 'remarks', 'cancellation_reason', 'cancelled_at', 'approved_at', 'completed_at', 'rejected_at', 'verification_code_lookup', 'verification_code_hash', 'code_verified_at'];
 
     protected $appends = ['request_reference'];
 
     protected function casts(): array
     {
-        return ['request_date' => 'date', 'release_date' => 'date', 'cancelled_at' => 'datetime', 'approved_at' => 'datetime', 'processed_at' => 'datetime', 'ready_for_release_at' => 'datetime', 'released_at' => 'datetime', 'rejected_at' => 'datetime'];
+        return ['request_date' => 'date', 'release_date' => 'date', 'cancelled_at' => 'datetime', 'approved_at' => 'datetime', 'completed_at' => 'datetime', 'rejected_at' => 'datetime', 'code_verified_at' => 'datetime'];
     }
 
     public function student(): BelongsTo
@@ -42,6 +44,14 @@ class DocumentRequest extends Model
     public function latestAppointment(): HasOne
     {
         return $this->hasOne(Appointment::class)->latestOfMany();
+    }
+
+    public function activeAppointment(): HasOne
+    {
+        return $this->hasOne(Appointment::class)->ofMany(
+            ['id' => 'max'],
+            fn ($query) => $query->whereIn('status', ['pending', 'confirmed']),
+        );
     }
 
     public function statusChanges(): HasMany

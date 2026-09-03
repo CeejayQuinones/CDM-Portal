@@ -2,7 +2,7 @@ import { offlineDb } from './offlineDb.js'
 
 const date = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return d.toISOString().slice(0, 10) }
 const now = () => new Date().toISOString()
-const SEED_VERSION = 2
+const SEED_VERSION = 3
 let seeding
 
 export async function ensureOfflineSeeded() {
@@ -22,9 +22,9 @@ export async function ensureOfflineSeeded() {
     const types = ['Birth Certificate','Certificate of Enrollment','Form 137','Registration Form','Good Moral Certificate'].map((document_name, i) => ({ id:i+1, document_name, processing_fee:[100,75,150,50,100][i], processing_days:3, requires_appointment:true, is_active:true }))
     const requests = [
       { id:75001, request_reference:'REQ-075001', student_id:1, document_type_id:2, status:'pending', purpose:'Scholarship application', quantity:1, total_fee:75, created_at:now() },
-      { id:75002, request_reference:'REQ-075002', student_id:1, document_type_id:5, status:'processing', purpose:'Employment', quantity:1, total_fee:100, created_at:now() },
-      { id:75003, request_reference:'REQ-075003', student_id:1, document_type_id:4, status:'ready_for_release', purpose:'Personal copy', quantity:1, total_fee:50, created_at:now() },
-      { id:75004, request_reference:'REQ-075004', student_id:1, document_type_id:1, status:'released', purpose:'Records', quantity:1, total_fee:100, created_at:now() },
+      { id:75002, request_reference:'REQ-075002', student_id:1, document_type_id:5, status:'pending', purpose:'Employment', quantity:1, total_fee:100, created_at:now() },
+      { id:75003, request_reference:'REQ-075003', student_id:1, document_type_id:4, status:'approved', purpose:'Personal copy', quantity:1, total_fee:50, verification_code:'246810', approved_at:now(), created_at:now() },
+      { id:75004, request_reference:'REQ-075004', student_id:1, document_type_id:1, status:'completed', purpose:'Records', quantity:1, total_fee:100, completed_at:now(), created_at:now() },
     ]
     const appointments = [
       { id:101, document_request_id:75002, student_id:1, appointment_date:date(2), appointment_time:'10:00:00', status:'pending', created_at:now() },

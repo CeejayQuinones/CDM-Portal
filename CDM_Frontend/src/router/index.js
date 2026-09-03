@@ -194,7 +194,7 @@ const routes = [
         name: 'student-document-appointments',
         redirect: (to) => ({
           name: 'student-document-requests',
-          query: { ...to.query, panel: 'appointment' },
+          query: { ...to.query },
         }),
         meta: {
           title: 'Document Requests',
