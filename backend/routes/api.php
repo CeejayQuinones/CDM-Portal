@@ -37,6 +37,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/monitoring/adviser-alerts', [MonitoringController::class, 'adviserAlerts']);
         Route::get('/monitoring/ai-status', [MonitoringController::class, 'aiStatus']);
         Route::post('/monitoring/students/{student}/ai-help', [MonitoringController::class, 'aiHelp']);
+        Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification']);
+        Route::get('/monitoring/my-risk-notifications', [MonitoringController::class, 'myRiskNotifications']);
+        Route::patch('/monitoring/risk-notifications/{notification}/read', [MonitoringController::class, 'markRiskNotificationRead']);
     });
 
     Route::middleware('role.registrar-or-admin')->group(function (): void {

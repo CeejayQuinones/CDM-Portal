@@ -10,7 +10,10 @@ import {
   fetchAiStatus,
   fetchEarlyWarnings,
   fetchMyRisk,
+  fetchMyRiskNotifications,
   generateSupportPlan,
+  markRiskNotificationRead,
+  sendRiskNotification,
 } from './services/monitoringApi'
 
 const authStore = useAuthStore()
@@ -19,12 +22,17 @@ const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const generating = ref(false)
+const sendingNotice = ref(false)
+const noticeSuccess = ref('')
+const noticeDraft = ref('')
 const overview = ref(null)
 const selectedId = ref(null)
 const supportPlan = ref(null)
 const aiStatus = ref({ live_ai_configured: false, provider: 'cdm-coach', model: null })
+const studentNotices = ref({ unread: 0, notifications: [] })
 
 const isStudent = computed(() => authStore.currentRole === ROLES.STUDENT)
+const canNotifyStudents = computed(() => !isStudent.value)
 const canSeeAlerts = computed(() => !isStudent.value)
 const tabs = computed(() => {
   const items = [
@@ -32,11 +40,16 @@ const tabs = computed(() => {
     { id: 'study-plans', label: 'Study Plans' },
   ]
   if (canSeeAlerts.value) items.push({ id: 'alerts', label: 'Adviser Alerts' })
+  if (isStudent.value) {
+    const unread = studentNotices.value.unread || 0
+    items.push({ id: 'notices', label: unread ? `My Notices (${unread})` : 'My Notices' })
+  }
   return items
 })
 const activeTab = computed(() => {
   const tab = String(route.query.tab || 'warnings')
   if (tab === 'alerts' && !canSeeAlerts.value) return 'warnings'
+  if (tab === 'notices' && !isStudent.value) return 'warnings'
   if (tabs.value.some((item) => item.id === tab)) return tab
   return 'warnings'
 })
@@ -44,6 +57,10 @@ const students = computed(() => overview.value?.students || [])
 const summary = computed(() => overview.value?.summary || { high: 0, moderate: 0, low: 0, total: 0 })
 const selected = computed(() => students.value.find((item) => item.student_id === selectedId.value) || students.value[0] || null)
 const aiBadgeLive = computed(() => Boolean(aiStatus.value.live_ai_configured))
+const canSendToSelected = computed(() => {
+  if (!canNotifyStudents.value || !selected.value) return false
+  return ['high', 'moderate'].includes(selected.value.risk_level)
+})
 
 const setTab = (tab) => {
   router.replace({ name: 'monitoring', query: tab === 'warnings' ? {} : { tab } })
@@ -59,16 +76,30 @@ watch(canSeeAlerts, (allowed) => {
   if (!allowed && route.query.tab === 'alerts') setTab('warnings')
 })
 
+watch(isStudent, (student) => {
+  if (!student && route.query.tab === 'notices') setTab('warnings')
+})
+
 const riskClass = (level) => ({
   high: 'risk-high',
   moderate: 'risk-moderate',
   low: 'risk-low',
 }[level] || 'risk-low')
 
+const loadStudentNotices = async () => {
+  if (!isStudent.value) return
+  try {
+    studentNotices.value = await fetchMyRiskNotifications()
+  } catch {
+    studentNotices.value = { unread: 0, notifications: [] }
+  }
+}
+
 const load = async () => {
   loading.value = true
   error.value = ''
   supportPlan.value = null
+  noticeSuccess.value = ''
   try {
     const [monitoringData, status] = await Promise.all([
       isStudent.value ? fetchMyRisk() : fetchEarlyWarnings(),
@@ -78,6 +109,7 @@ const load = async () => {
     aiStatus.value = status
     selectedId.value = overview.value?.students?.[0]?.student_id ?? null
     if (selected.value?.support_plan) supportPlan.value = selected.value.support_plan
+    await loadStudentNotices()
   } catch (err) {
     error.value = err.response?.data?.message || 'Unable to load AI monitoring data.'
   } finally {
@@ -88,6 +120,8 @@ const load = async () => {
 const selectStudent = (studentId) => {
   selectedId.value = studentId
   supportPlan.value = students.value.find((item) => item.student_id === studentId)?.support_plan || null
+  noticeDraft.value = ''
+  noticeSuccess.value = ''
 }
 
 const onGenerate = async () => {
@@ -106,8 +140,47 @@ const onGenerate = async () => {
   }
 }
 
+const onSendNotice = async () => {
+  if (!selected.value || !canSendToSelected.value || sendingNotice.value) return
+  sendingNotice.value = true
+  error.value = ''
+  noticeSuccess.value = ''
+  try {
+    await sendRiskNotification(selected.value.student_id, noticeDraft.value.trim())
+    noticeSuccess.value = `Notification sent to ${selected.value.student_name}.`
+    noticeDraft.value = ''
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Unable to send risk notification.'
+  } finally {
+    sendingNotice.value = false
+  }
+}
+
+const onOpenNotice = async (notice) => {
+  if (!notice?.is_read) {
+    try {
+      const updated = await markRiskNotificationRead(notice.id)
+      const idx = studentNotices.value.notifications.findIndex((item) => item.id === notice.id)
+      if (idx >= 0) studentNotices.value.notifications[idx] = updated
+      studentNotices.value.unread = studentNotices.value.notifications.filter((item) => !item.is_read).length
+    } catch {
+      // still allow navigation even if mark-read fails
+    }
+  }
+  router.push({ name: 'grading' })
+}
+
 const onPlanFromChat = (plan) => {
   if (plan?.actions?.length) supportPlan.value = plan
+}
+
+const formatNoticeDate = (value) => {
+  if (!value) return ''
+  try {
+    return new Date(value).toLocaleString()
+  } catch {
+    return value
+  }
 }
 
 onMounted(load)
@@ -118,7 +191,7 @@ onMounted(load)
     <p class="page-kicker">AI Monitoring</p>
     <h1 class="page-title">Academic Risk Center</h1>
     <p class="page-description">
-      Early warnings, professional study plans, and adviser alerts in one place — catch failing risk early and guide recovery.
+      Early warnings, study plans, and risk notices — professors and admins can alert students so they can recover grades quickly.
     </p>
   </section>
 
@@ -239,6 +312,35 @@ onMounted(load)
             </table>
           </div>
 
+          <div v-if="canNotifyStudents" class="support-block notify-block">
+            <div class="support-head">
+              <h3>Notify student</h3>
+              <button
+                type="button"
+                class="generate-btn"
+                :disabled="!canSendToSelected || sendingNotice"
+                @click="onSendNotice"
+              >
+                {{ sendingNotice ? 'Sending…' : 'Send risk notice' }}
+              </button>
+            </div>
+            <p v-if="canSendToSelected" class="empty">
+              Send an in-app notice so {{ selected.student_name }} can open Grading and fix at-risk subjects right away.
+            </p>
+            <p v-else class="empty">
+              Notifications are for high or moderate risk students only.
+            </p>
+            <label class="ai-label" for="risk-notice">Optional message</label>
+            <textarea
+              id="risk-notice"
+              v-model="noticeDraft"
+              rows="3"
+              :disabled="!canSendToSelected || sendingNotice"
+              placeholder="Example: Please see me after class and prioritize IT102 recovery this week."
+            />
+            <p v-if="noticeSuccess" class="notice-success">{{ noticeSuccess }}</p>
+          </div>
+
           <div class="support-block">
             <div class="support-head">
               <h3>Help support plan</h3>
@@ -275,6 +377,37 @@ onMounted(load)
     v-if="activeTab === 'alerts' && canSeeAlerts"
     @open-student="openStudentFromAlert"
   />
+
+  <section v-if="activeTab === 'notices' && isStudent" class="notices-panel">
+    <header class="notices-head">
+      <div>
+        <h2>My risk notices</h2>
+        <p>Messages from your professor, registrar, or admin when you are at risk of failing.</p>
+      </div>
+      <button type="button" class="generate-btn" @click="loadStudentNotices">Refresh</button>
+    </header>
+
+    <article
+      v-for="notice in studentNotices.notifications"
+      :key="notice.id"
+      class="notice-card"
+      :class="{ unread: !notice.is_read }"
+    >
+      <div class="notice-top">
+        <strong>{{ notice.title }}</strong>
+        <span class="risk-badge" :class="riskClass(notice.risk_level)">{{ notice.risk_level }}</span>
+      </div>
+      <p class="notice-meta">From {{ notice.sender_name }} · {{ formatNoticeDate(notice.created_at) }}</p>
+      <p class="notice-body">{{ notice.message }}</p>
+      <button type="button" class="generate-btn" @click="onOpenNotice(notice)">
+        Open Grading to fix grades
+      </button>
+    </article>
+
+    <p v-if="!studentNotices.notifications?.length" class="empty">
+      No risk notices yet. When staff flags your grades, they will appear here.
+    </p>
+  </section>
 
   <AiHelpChatbot
     :student-id="selected?.student_id || null"
@@ -566,6 +699,92 @@ th {
   margin: 10px 0;
   padding-left: 18px;
   line-height: 1.55;
+}
+
+.notify-block textarea,
+.ai-label + textarea {
+  width: 100%;
+  resize: vertical;
+  margin: 8px 0 0;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.ai-label {
+  display: block;
+  margin-top: 10px;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.notice-success {
+  margin: 10px 0 0;
+  color: #176434;
+  font-weight: 700;
+}
+
+.notices-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+  padding: 18px;
+}
+
+.notices-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.notices-head h2 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+}
+
+.notices-head p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.notice-card {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.notice-card.unread {
+  border-color: rgba(16, 106, 46, 0.35);
+  background: rgba(16, 106, 46, 0.05);
+}
+
+.notice-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.notice-meta,
+.notice-body {
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.notice-meta {
+  margin: 6px 0 0;
+  font-size: 0.86rem;
+}
+
+.notice-body {
+  margin: 10px 0 12px;
 }
 
 @media (max-width: 960px) {

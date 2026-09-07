@@ -1,0 +1,279 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "CDM Portal — Runtime Architecture",
+    "output": "cdm-portal.architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "request-path",
+        "label": "Primary request path",
+        "focus": ["clients", "spa", "api", "db"],
+        "note": "Browser, Capacitor, or Electron clients call the Vue SPA, which talks to the Laravel API and MySQL."
+      },
+      {
+        "id": "auth-rbac",
+        "label": "Auth and RBAC",
+        "focus": ["spa", "sanctum", "api", "rbac"],
+        "note": "Sanctum Bearer tokens plus role and step-up middleware gate sensitive campus APIs."
+      },
+      {
+        "id": "doc-ai",
+        "label": "Document AI path",
+        "focus": ["domain", "files", "queue", "worker", "ai"],
+        "note": "Uploaded student documents land on local disk, enqueue analysis, and call Gemini or a mock analyzer."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "external",
+      "label": "Campus Users",
+      "sublabel": "Web · Mobile · Desktop",
+      "pos": [36, 260],
+      "size": [140, 60]
+    },
+    {
+      "id": "pages",
+      "type": "cloud",
+      "label": "GitHub Pages",
+      "sublabel": "SPA host",
+      "pos": [230, 80],
+      "size": [130, 56],
+      "tag": "deploy"
+    },
+    {
+      "id": "spa",
+      "type": "frontend",
+      "label": "Vue 3 SPA",
+      "sublabel": "Vite · Pinia · Axios",
+      "pos": [230, 260],
+      "size": [140, 60],
+      "tag": "CDM_Frontend"
+    },
+    {
+      "id": "sanctum",
+      "type": "security",
+      "label": "Sanctum",
+      "sublabel": "Bearer tokens",
+      "pos": [430, 80],
+      "size": [130, 56],
+      "tag": "auth"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Laravel API",
+      "sublabel": "/api · :8000",
+      "pos": [430, 260],
+      "size": [140, 60]
+    },
+    {
+      "id": "rbac",
+      "type": "security",
+      "label": "RBAC + Step-up",
+      "sublabel": "role gates",
+      "pos": [430, 440],
+      "size": [140, 60],
+      "tag": "Guest→Admin"
+    },
+    {
+      "id": "domain",
+      "type": "backend",
+      "label": "Domain Services",
+      "sublabel": "docs · students · monitor",
+      "pos": [640, 260],
+      "size": [160, 60]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "MySQL",
+      "sublabel": "cdm_portal",
+      "pos": [880, 260],
+      "size": [120, 56]
+    },
+    {
+      "id": "files",
+      "type": "database",
+      "label": "Local Files",
+      "sublabel": "documents",
+      "pos": [650, 80],
+      "size": [130, 56]
+    },
+    {
+      "id": "queue",
+      "type": "messagebus",
+      "label": "DB Queue",
+      "sublabel": "doc-analysis",
+      "pos": [650, 440],
+      "size": [130, 56]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "AI Worker",
+      "sublabel": "document job",
+      "pos": [860, 440],
+      "size": [130, 56]
+    },
+    {
+      "id": "ai",
+      "type": "external",
+      "label": "AI Providers",
+      "sublabel": "Gemini · Ollama",
+      "pos": [1040, 440],
+      "size": [140, 56],
+      "tag": "optional"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "CDM Portal application",
+      "wraps": ["spa", "sanctum", "api", "rbac", "domain", "db", "files", "queue", "worker"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Authenticated API",
+      "wraps": ["sanctum", "api", "rbac", "domain"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "clients-to-spa",
+      "from": "clients",
+      "to": "spa",
+      "label": "app shell",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "id": "pages-serves-spa",
+      "from": "pages",
+      "to": "spa",
+      "label": "serves build",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 36
+    },
+    {
+      "id": "spa-to-api",
+      "from": "spa",
+      "to": "api",
+      "label": "REST + Bearer",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "id": "sanctum-to-api",
+      "from": "sanctum",
+      "to": "api",
+      "label": "token auth",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 32
+    },
+    {
+      "id": "api-to-rbac",
+      "from": "api",
+      "to": "rbac",
+      "label": "middleware",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 36
+    },
+    {
+      "id": "api-to-domain",
+      "from": "api",
+      "to": "domain",
+      "label": "controllers",
+      "labelDy": -26
+    },
+    {
+      "id": "domain-to-db",
+      "from": "domain",
+      "to": "db",
+      "label": "Eloquent",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "id": "domain-to-files",
+      "from": "domain",
+      "to": "files",
+      "label": "upload",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDy": -36
+    },
+    {
+      "id": "domain-enqueue",
+      "from": "domain",
+      "to": "queue",
+      "label": "enqueue",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 36
+    },
+    {
+      "id": "queue-to-worker",
+      "from": "queue",
+      "to": "worker",
+      "label": "dispatch",
+      "labelDy": -26
+    },
+    {
+      "id": "worker-to-ai",
+      "from": "worker",
+      "to": "ai",
+      "label": "analyze",
+      "variant": "dashed",
+      "labelDy": -26
+    },
+    {
+      "id": "worker-to-db",
+      "from": "worker",
+      "to": "db",
+      "label": "persist",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDy": -36
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Clients",
+      "items": [
+        "Vue 3 SPA with hash router and Pinia auth store",
+        "Capacitor mobile and Electron desktop share the same shell",
+        "GitHub Pages hosts the static frontend build"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Live API domains",
+      "items": [
+        "Auth, students, registrar documents/appointments, physical records",
+        "Monitoring / early-warning with optional LLM coach",
+        "Admission, enrollment, grading UI shells are mostly frontend-only today"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Trust boundaries",
+      "items": [
+        "Public: login, register, email verification",
+        "Sanctum token + role middleware (Student, Registrar, Professor, Admin)",
+        "Step-up re-auth for bulk student edits, cabinets, and file deletes"
+      ]
+    }
+  ]
+}

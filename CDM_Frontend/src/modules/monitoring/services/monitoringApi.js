@@ -42,3 +42,20 @@ export const askAiHelp = async (studentId, question = '', messages = []) => {
   })
   return data.data
 }
+
+export const sendRiskNotification = async (studentId, message = '') => {
+  const { data } = await apiClient.post(`/monitoring/students/${studentId}/risk-notifications`, {
+    message: message || null,
+  })
+  return data.data
+}
+
+export const fetchMyRiskNotifications = async () => {
+  const { data } = await apiClient.get('/monitoring/my-risk-notifications')
+  return data.data
+}
+
+export const markRiskNotificationRead = async (notificationId) => {
+  const { data } = await apiClient.patch(`/monitoring/risk-notifications/${notificationId}/read`)
+  return data.data
+}
