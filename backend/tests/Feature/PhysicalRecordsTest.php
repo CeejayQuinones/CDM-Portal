@@ -238,20 +238,20 @@ class PhysicalRecordsTest extends TestCase
 
         $this->assertSame(8, $plan['cabinet_count']);
         $this->assertSame(['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'], $plan['cabinet_codes']);
-        $this->assertSame(5, $plan['rows']);
+        $this->assertSame(10, $plan['rows']);
         $this->assertSame(10, $plan['columns']);
         $this->assertSame(20, $plan['slot_capacity']);
-        $this->assertSame(50, $plan['slots_per_cabinet']);
-        $this->assertSame(400, $occupancies->count());
-        $this->assertSame(5_000, $occupancies->sum());
+        $this->assertSame(100, $plan['slots_per_cabinet']);
+        $this->assertSame(800, $occupancies->count());
+        $this->assertSame(10_000, $occupancies->sum());
         $this->assertSame(12.5, $occupancies->average());
         $this->assertSame(5, $occupancies->min());
         $this->assertSame(19, $occupancies->max());
-        $this->assertSame([5 => 80, 13 => 240, 18 => 40, 19 => 40], $occupancies->countBy()->sortKeys()->all());
+        $this->assertSame([5 => 160, 13 => 480, 18 => 80, 19 => 80], $occupancies->countBy()->sortKeys()->all());
         $this->assertSame($plan, LargeDatasetSeeder::physicalRecordStressPlan());
         $this->assertGreaterThanOrEqual(4, $occupancies->unique()->count());
         $this->assertTrue($occupancies->chunk($plan['slots_per_cabinet'])->every(
-            fn (Collection $cabinetOccupancies): bool => $cabinetOccupancies->sum() === 625,
+            fn (Collection $cabinetOccupancies): bool => $cabinetOccupancies->sum() === 1_250,
         ));
         $this->assertTrue($occupancies->every(
             fn (int $occupancy): bool => $occupancy <= $plan['slot_capacity'],

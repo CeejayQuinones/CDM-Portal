@@ -40,6 +40,7 @@ class LargeDatasetCleanupSeeder extends Seeder
         $cabinetIds = $this->generatedCabinetIds();
         $slotIds = $this->generatedCabinetSlotIds($cabinetIds);
         $recordLocationIds = $this->generatedRecordLocationIds($studentIds, $slotIds);
+        $capacityIds = $this->generatedCapacityIds();
 
         $counts = [
             'appointments' => $this->countForStudents('appointments', $studentIds),
@@ -52,6 +53,7 @@ class LargeDatasetCleanupSeeder extends Seeder
             'student_record_locations' => count($recordLocationIds),
             'cabinet_slots' => count($slotIds),
             'cabinets' => count($cabinetIds),
+            'appointment_capacities' => count($capacityIds),
         ];
 
         $this->command?->info('Found LargeDatasetSeeder records:');
@@ -75,12 +77,16 @@ class LargeDatasetCleanupSeeder extends Seeder
         }
 
         $hasPersonalAccessTokens = Schema::hasTable('personal_access_tokens');
-        DB::transaction(function () use ($studentIds, $userIds, $hasPersonalAccessTokens, $recordLocationIds, $slotIds, $cabinetIds): void {
+        DB::transaction(function () use ($studentIds, $userIds, $hasPersonalAccessTokens, $recordLocationIds, $slotIds, $cabinetIds, $capacityIds): void {
             foreach (array_chunk($recordLocationIds, self::DELETE_CHUNK_SIZE) as $recordLocationIdChunk) {
                 DB::table('student_record_locations')->whereIn('id', $recordLocationIdChunk)->delete();
             }
 
             foreach (array_chunk($studentIds, self::DELETE_CHUNK_SIZE) as $studentIdChunk) {
+                $requestChunk = $this->idsForStudents('document_requests', $studentIdChunk);
+                if ($requestChunk !== []) {
+                    DB::table('document_request_status_changes')->whereIn('document_request_id', $requestChunk)->delete();
+                }
                 DB::table('appointments')->whereIn('student_id', $studentIdChunk)->delete();
                 DB::table('document_requests')->whereIn('student_id', $studentIdChunk)->delete();
                 DB::table('student_documents')->whereIn('student_id', $studentIdChunk)->delete();
@@ -105,6 +111,10 @@ class LargeDatasetCleanupSeeder extends Seeder
 
             foreach (array_chunk($cabinetIds, self::DELETE_CHUNK_SIZE) as $cabinetIdChunk) {
                 DB::table('cabinets')->whereIn('id', $cabinetIdChunk)->delete();
+            }
+
+            foreach (array_chunk($capacityIds, self::DELETE_CHUNK_SIZE) as $capacityIdChunk) {
+                DB::table('appointment_date_capacities')->whereIn('id', $capacityIdChunk)->delete();
             }
 
             $this->purgeDatasetRegistry();
@@ -299,7 +309,7 @@ class LargeDatasetCleanupSeeder extends Seeder
                         ->on($table.'.id', '=', 'generated_records.record_id')
                         ->on($table.'.created_at', '=', 'generated_records.record_created_at');
                 })
-                ->where('generated_records.dataset_key', LargeDatasetSeeder::DATASET_KEY)
+                ->whereIn('generated_records.dataset_key', [LargeDatasetSeeder::DATASET_KEY, LargeDatasetSeeder::LEGACY_DATASET_KEY])
                 ->where('generated_records.record_type', $recordType)
                 ->pluck($table.'.id')
         );
@@ -312,8 +322,24 @@ class LargeDatasetCleanupSeeder extends Seeder
         }
 
         DB::table('generated_data_records')
-            ->where('dataset_key', LargeDatasetSeeder::DATASET_KEY)
+            ->whereIn('dataset_key', [LargeDatasetSeeder::DATASET_KEY, LargeDatasetSeeder::LEGACY_DATASET_KEY])
             ->delete();
+    }
+
+    /** @return array<int, int> */
+    private function generatedCapacityIds(): array
+    {
+        return $this->registeredRecordIds('appointment_date_capacities', LargeDatasetSeeder::GENERATED_CAPACITY_RECORD_TYPE);
+    }
+
+    /** @param array<int, int> $studentIds @return array<int, int> */
+    private function idsForStudents(string $table, array $studentIds): array
+    {
+        if (! Schema::hasTable($table) || $studentIds === []) {
+            return [];
+        }
+
+        return $this->normalizeIds(DB::table($table)->whereIn('student_id', $studentIds)->pluck('id'));
     }
 
     /** @param Collection<int, mixed> $ids */

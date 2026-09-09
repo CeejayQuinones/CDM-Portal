@@ -10,6 +10,8 @@ const route = useRoute()
 const router = useRouter()
 const { isOpen: stepUpOpen, runWithStepUp } = useStepUpAuth()
 const cabinets = ref([])
+const selectedCabinet = ref(null)
+const storageSearch = ref('')
 const loading = ref(false)
 const creating = ref(false)
 const showCreateForm = ref(false)
@@ -53,6 +55,27 @@ const pagination = computed(() => ({
 }))
 const displayedSlot = computed(() => selectedSlot.value || slotPreview.value)
 const returnContext = computed(() => documentRequestReturnContext(route.query))
+const normalizedStorageSearch = computed(() => storageSearch.value.trim().toLowerCase())
+const filteredCabinets = computed(() => {
+  if (!normalizedStorageSearch.value) return cabinets.value
+  return cabinets.value.filter((cabinet) => {
+    const cabinetMatch = cabinetName(cabinet).toLowerCase().includes(normalizedStorageSearch.value)
+    const drawerMatch = cabinet.slots?.some((slot) => String(slot.slot_code).toLowerCase().includes(normalizedStorageSearch.value))
+    return cabinetMatch || drawerMatch
+  })
+})
+const filteredDrawers = computed(() => {
+  if (!selectedCabinet.value) return []
+  if (!normalizedStorageSearch.value) return selectedCabinet.value.slots || []
+  return (selectedCabinet.value.slots || []).filter((slot) => String(slot.slot_code).toLowerCase().includes(normalizedStorageSearch.value))
+})
+const storageSummary = computed(() => cabinets.value.reduce((summary, cabinet) => {
+  const slots = cabinet.slots || []
+  summary.cabinets += 1
+  summary.drawers += slots.length
+  slots.forEach((slot) => { summary.records += slotCount(slot); if (slot.capacity) summary.available += Math.max(0, slot.capacity - slotCount(slot)) })
+  return summary
+}, { cabinets: 0, drawers: 0, records: 0, available: 0 }))
 
 const errorMessage = (requestError, fallback) => requestError.response?.data?.message || fallback
 const title = (value) =>
@@ -68,6 +91,18 @@ const courseLabel = (student) => {
   return [code, name].filter(Boolean).join(' — ') || 'Not available'
 }
 const slotCount = (slot) => Number(slot.record_count ?? slot.student_record_locations_count ?? 0)
+const drawerStatus = (slot) => {
+  if (slot.status === 'inactive') return 'Disabled'
+  if (!slot.capacity) return 'Available'
+  const ratio = slotCount(slot) / slot.capacity
+  if (ratio >= 1) return 'Full'
+  if (ratio >= .9) return 'Nearly full'
+  if (ratio >= .7) return 'Filling up'
+  return 'Available'
+}
+const drawerPercent = (slot) => slot.capacity ? Math.min(100, Math.round((slotCount(slot) / slot.capacity) * 100)) : 0
+const cabinetRecordCount = (cabinet) => (cabinet.slots || []).reduce((count, slot) => count + slotCount(slot), 0)
+const cabinetCapacity = (cabinet) => (cabinet.slots || []).reduce((count, slot) => count + (Number(slot.capacity) || 0), 0)
 const availableDocuments = (student) =>
   student.available_documents ||
   (student.documents || []).filter((document) => (document.availability_status || document.status) === 'available')
@@ -82,12 +117,16 @@ async function loadCabinets() {
   try {
     const data = await api.cabinets()
     cabinets.value = Array.isArray(data) ? data : []
+    if (selectedCabinet.value) selectedCabinet.value = cabinets.value.find((cabinet) => cabinet.id === selectedCabinet.value.id) || null
   } catch (requestError) {
     error.value = errorMessage(requestError, 'Unable to load physical record cabinets.')
   } finally {
     loading.value = false
   }
 }
+
+function openCabinet(cabinet) { selectedCabinet.value = cabinet }
+function closeCabinet() { selectedCabinet.value = null; storageSearch.value = '' }
 
 function resetForm() {
   Object.assign(form, {
@@ -351,49 +390,18 @@ onBeforeUnmount(() => {
     </form>
   </section>
 
+  <section class="storage-toolbar" aria-label="Physical storage search"><input v-model="storageSearch" type="search" placeholder="Search cabinet or drawer..." aria-label="Search cabinet or drawer" /></section>
   <section v-if="loading" class="records-panel state">Loading cabinets…</section>
   <section v-else-if="!cabinets.length && !error" class="records-panel state">
     <h2>No cabinets yet</h2>
     <p>Create the first cabinet to begin assigning physical student records.</p>
   </section>
-  <div v-else class="cabinet-list">
-    <article v-for="cabinet in cabinets" :key="cabinet.id" class="cabinet-card">
-      <header class="cabinet-heading">
-        <div>
-          <p class="eyebrow">Storage Cabinet</p>
-          <h2>Cabinet {{ cabinetName(cabinet) }}</h2>
-          <p v-if="cabinet.description">{{ cabinet.description }}</p>
-        </div>
-        <div class="cabinet-summary">
-          <strong>
-            {{ cabinet.occupied_slots_count || 0 }} / {{ cabinet.slots_count ?? cabinet.slots?.length ?? 0 }}
-          </strong>
-          <span>occupied slots</span>
-        </div>
-      </header>
-      <div class="cabinet-grid">
-        <button
-          v-for="slot in cabinet.slots"
-          :key="slot.id"
-          class="slot-drawer"
-          :class="{
-            occupied: slotCount(slot) > 0,
-            selected: displayedSlot?.id === slot.id,
-            inactive: slot.status === 'inactive',
-            [`size-${slot.size || 'small'}`]: true,
-          }"
-          type="button"
-          @click="openSlot(slot.id, 1, true, $event.currentTarget)"
-        >
-          <span class="drawer-handle" aria-hidden="true"></span>
-          <strong>{{ slot.slot_code }}</strong>
-          <small v-if="slot.capacity">{{ slotCount(slot) }} / {{ slot.capacity }} records</small>
-          <small v-else>{{ slotCount(slot) }} {{ slotCount(slot) === 1 ? 'record' : 'records' }}</small>
-          <span v-if="slot.status === 'inactive'" class="slot-status">Inactive</span>
-        </button>
-      </div>
-    </article>
-  </div>
+  <template v-else>
+    <nav class="storage-breadcrumbs" aria-label="Physical storage location"><button type="button" @click="closeCabinet">Physical Storage</button><span v-if="selectedCabinet">/ Cabinet {{ cabinetName(selectedCabinet) }}</span></nav>
+    <dl v-if="!selectedCabinet" class="storage-summary"><div><dt>Cabinets</dt><dd>{{ storageSummary.cabinets }}</dd></div><div><dt>Drawers</dt><dd>{{ storageSummary.drawers }}</dd></div><div><dt>Stored records</dt><dd>{{ storageSummary.records }}</dd></div><div><dt>Available spaces</dt><dd>{{ storageSummary.available }}</dd></div></dl>
+    <div v-if="!selectedCabinet" class="cabinet-list cabinet-overview-list"><button v-for="cabinet in filteredCabinets" :key="cabinet.id" class="cabinet-card cabinet-overview" type="button" :aria-label="`Open Cabinet ${cabinetName(cabinet)}`" @click="openCabinet(cabinet)"><span class="cabinet-handle" aria-hidden="true"></span><span class="eyebrow">Physical storage</span><strong>Cabinet {{ cabinetName(cabinet) }}</strong><span class="cabinet-occupancy">{{ cabinetRecordCount(cabinet) }} / {{ cabinetCapacity(cabinet) || 'unlimited' }} records</span><span>{{ cabinet.slots?.length || 0 }} drawers</span><span class="open-cabinet">Open cabinet</span></button></div>
+    <section v-else class="drawer-workspace"><header class="drawer-workspace-header"><div><button class="contextual-back" type="button" @click="closeCabinet">Back to Cabinets</button><p class="eyebrow">Cabinet</p><h2>Cabinet {{ cabinetName(selectedCabinet) }}</h2><p>{{ cabinetRecordCount(selectedCabinet) }} records · {{ selectedCabinet.slots?.length || 0 }} drawers</p></div></header><div v-if="!filteredDrawers.length" class="records-panel state">No drawers match this search.</div><div v-else class="cabinet-grid drawer-card-grid"><button v-for="slot in filteredDrawers" :key="slot.id" class="slot-drawer" :class="[drawerStatus(slot).toLowerCase().replaceAll(' ', '-'), { selected: displayedSlot?.id === slot.id, inactive: slot.status === 'inactive' }]" type="button" @click="openSlot(slot.id, 1, true, $event.currentTarget)"><span class="drawer-handle" aria-hidden="true"></span><strong>Drawer {{ slot.slot_code }}</strong><small v-if="slot.capacity">{{ slotCount(slot) }} of {{ slot.capacity }} records</small><small v-else>{{ slotCount(slot) }} records</small><span v-if="slot.capacity" class="drawer-progress"><i :style="{ width: `${drawerPercent(slot)}%` }"></i></span><span class="slot-status">{{ drawerStatus(slot) }}</span></button></div></section>
+  </template>
 
   <Teleport to="body">
     <div
@@ -416,11 +424,11 @@ onBeforeUnmount(() => {
         <h2 id="slot-records-title">
           Cabinet {{ cabinetName(displayedSlot?.cabinet) }}
           <span aria-hidden="true">&middot;</span>
-          Slot {{ displayedSlot?.slot_code || '' }}
+          Drawer {{ displayedSlot?.slot_code || '' }}
         </h2>
       </div>
       <div class="slot-detail-actions">
-        <button v-if="selectedSlot" class="primary-button" type="button" @click="editSlot">Edit Slot</button>
+        <button v-if="selectedSlot" class="primary-button" type="button" @click="editSlot">Drawer Settings</button>
         <button
           ref="slotCloseButton"
           class="slot-modal-close"
@@ -437,7 +445,7 @@ onBeforeUnmount(() => {
     <div class="slot-records-body" aria-live="polite">
       <dl v-if="displayedSlot" class="slot-metadata">
         <div><dt>Cabinet</dt><dd>{{ cabinetName(displayedSlot.cabinet) }}</dd></div>
-        <div><dt>Slot</dt><dd>{{ displayedSlot.slot_code }}</dd></div>
+        <div><dt>Drawer</dt><dd>{{ displayedSlot.slot_code }}</dd></div>
         <div><dt>Occupancy</dt><dd>{{ displayedSlot.record_count ?? slotCount(displayedSlot) }}</dd></div>
         <div><dt>Capacity</dt><dd>{{ displayedSlot.capacity ?? 'No limit' }}</dd></div>
         <div><dt>Status</dt><dd><span class="slot-status-badge">{{ title(displayedSlot.status) }}</span></dd></div>
@@ -538,14 +546,14 @@ onBeforeUnmount(() => {
       aria-describedby="slot-edit-description"
     >
       <p class="eyebrow">Cabinet {{ cabinetName(selectedSlot?.cabinet) }}</p>
-      <h2 id="slot-edit-title">Edit Slot</h2>
-      <p id="slot-edit-description">Update this storage slot without changing its assigned student records.</p>
+      <h2 id="slot-edit-title">Drawer Settings</h2>
+      <p id="slot-edit-description">Update this drawer without changing its assigned student records.</p>
 
       <p v-if="slotEditError" class="notice error" role="alert">{{ slotEditError }}</p>
 
       <form class="slot-edit-form" @submit.prevent="updateSlot">
         <label>
-          Slot Name / Code
+          Drawer Name / Code
           <input v-model="slotForm.slot_code" required maxlength="100" autocomplete="off" />
           <small v-if="slotFormErrors.slot_code">{{ slotFormErrors.slot_code[0] }}</small>
         </label>
@@ -611,6 +619,11 @@ onBeforeUnmount(() => {
 .contextual-back:hover {
   text-decoration: underline;
 }
+.storage-toolbar { display: flex; justify-content: flex-end; margin: -54px 0 22px; }
+.storage-toolbar input { border: 1px solid var(--color-border); border-radius: 7px; font: inherit; max-width: 280px; min-height: 38px; padding: 7px 10px; width: 100%; }
+.storage-breadcrumbs { color: var(--color-muted); font-size: .8rem; margin: 0 0 14px; }.storage-breadcrumbs button { background: transparent; border: 0; color: var(--color-dartmouth-green); cursor: pointer; font: inherit; font-weight: 800; padding: 0; }
+.storage-summary { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 20px; }.storage-summary div { background: #f4f8f5; border-left: 3px solid var(--color-naples-yellow); padding: 10px 12px; }.storage-summary dt { color: var(--color-muted); font-size: .68rem; font-weight: 800; text-transform: uppercase; }.storage-summary dd { color: var(--color-dartmouth-green); font-size: 1.05rem; font-weight: 900; margin: 4px 0 0; }
+.cabinet-overview-list { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }.cabinet-overview { align-items: flex-start; cursor: pointer; display: flex; flex-direction: column; min-height: 220px; text-align: left; transition: transform .18s ease, box-shadow .18s ease; }.cabinet-overview:hover,.cabinet-overview:focus-visible { border-color: var(--color-dark-spring-green); outline: none; transform: translateY(-2px); }.cabinet-overview strong { color: var(--color-dartmouth-green); font-size: 1.3rem; margin-top: 16px; }.cabinet-overview span:not(.eyebrow) { color: var(--color-muted); font-size: .82rem; margin-top: 5px; }.cabinet-handle { background: #718276; border-radius: 99px; height: 5px; margin: 5px auto 0; width: 54px; }.cabinet-overview .open-cabinet { color: var(--color-dartmouth-green); font-weight: 800; margin-top: auto; }.drawer-workspace { animation: storage-enter .2s ease; }.drawer-workspace-header h2 { color: var(--color-dartmouth-green); margin: 3px 0; }.drawer-workspace-header p:last-child { color: var(--color-muted); margin: 0 0 16px; }.drawer-card-grid { grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); }.drawer-progress { background: #dce7de; border-radius: 4px; height: 5px; margin-top: 10px; overflow: hidden; width: 100%; }.drawer-progress i { background: var(--color-dark-spring-green); display: block; height: 100%; }.slot-drawer.nearly-full .drawer-progress i,.slot-drawer.filling-up .drawer-progress i { background: #c49518; }.slot-drawer.full .drawer-progress i { background: #b6473b; }@keyframes storage-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .primary-button,
 .secondary-button {
   border: 0;
@@ -1155,6 +1168,7 @@ button:disabled {
   .student-summary .primary-button {
     width: 100%;
   }
+  .storage-toolbar { margin: 0 0 16px; }.storage-toolbar input { max-width: none; }.storage-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .slot-detail-actions {
     flex: 0 0 auto;
   }
@@ -1204,4 +1218,5 @@ button:disabled {
     display: none;
   }
 }
+@media (prefers-reduced-motion: reduce) { .cabinet-overview,.drawer-workspace { animation: none; transition-duration: 1ms; } }
 </style>

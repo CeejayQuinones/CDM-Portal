@@ -5,6 +5,12 @@ use App\Services\Demo\StudentDocumentDemoFixtureService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Symfony\Component\Console\Command\Command;
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('document-requests:cancel-no-shows')
+    ->dailyAt('00:10')
+    ->timezone('Asia/Manila')
+    ->withoutOverlapping();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

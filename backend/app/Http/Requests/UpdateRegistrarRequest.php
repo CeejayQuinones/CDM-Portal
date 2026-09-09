@@ -12,10 +12,10 @@ class UpdateRegistrarRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'action' => ['required', 'in:approve,reject,ready_for_release,return_to_processing,release,cancel'],
+            'action' => ['required', 'in:approve,reject,complete,cancel'],
             'appointment_id' => ['nullable', 'integer', 'exists:appointments,id'],
             'remarks' => ['nullable', 'string', 'max:2000'],
-            'reason' => ['nullable', 'required_if:action,reject,cancel,return_to_processing', 'string', 'max:2000'],
+            'reason' => ['nullable', 'required_if:action,reject,cancel', 'string', 'max:2000'],
         ];
     }
 }

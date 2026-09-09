@@ -66,7 +66,7 @@ class RegistrarDashboardController extends Controller
         $requests = DocumentRequest::query()
             ->select([
                 'id', 'student_id', 'document_type_id', 'status', 'created_at', 'updated_at',
-                'approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at',
+                'approved_at', 'completed_at', 'rejected_at', 'cancelled_at',
             ])
             ->with([
                 ...$this->studentRelations(),
@@ -116,12 +116,9 @@ class RegistrarDashboardController extends Controller
     {
         [$action, $occurredAt] = match ($request->status) {
             'rejected' => ['Document request rejected', $request->rejected_at ?? $request->updated_at],
-            'released' => ['Document request released', $request->released_at ?? $request->updated_at],
-            'ready_for_release' => ['Document request ready for release', $request->ready_for_release_at ?? $request->updated_at],
+            'completed' => ['Document request completed', $request->completed_at ?? $request->updated_at],
             'cancelled' => ['Document request cancelled', $request->updated_at],
-            'processing' => $request->processed_at !== null
-                ? ['Document request processed', $request->processed_at]
-                : ['Document request approved', $request->approved_at ?? $request->updated_at],
+            'approved' => ['Document request approved', $request->approved_at ?? $request->updated_at],
             default => ['Document request submitted', $request->created_at],
         };
 

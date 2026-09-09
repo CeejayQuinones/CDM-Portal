@@ -8,7 +8,7 @@ const route = useRoute()
 const router = useRouter()
 const requests = ref([])
 const documentTypes = ref([])
-const selectedPanel = ref(route.query.panel === 'appointment' ? 'appointment' : 'request')
+const selectedPanel = ref('request')
 const selectedRequestId = ref(null)
 const selectedAppointmentId = ref(null)
 const loading = ref(false)
@@ -56,9 +56,9 @@ const requestCancellationError = ref('')
 const requestCancellationInProgress = ref(false)
 const requestCancellationDialog = ref(null)
 
-const activeRequestStatuses = ['pending', 'processing', 'ready_for_release']
+const activeRequestStatuses = ['pending', 'approved']
 const activeAppointmentStatuses = ['pending', 'confirmed']
-const terminalRequestStatuses = ['released', 'rejected', 'cancelled']
+const terminalRequestStatuses = ['completed', 'rejected', 'cancelled']
 const terminalAppointmentStatuses = ['completed', 'cancelled', 'no_show']
 
 const requestError = (err) => {
@@ -113,13 +113,7 @@ const detailTransitionKey = computed(
 )
 const selectedType = computed(() => documentTypes.value.find((item) => item.id === Number(selectedTypeId.value)))
 const canBookSelectedRequest = computed(() => {
-  const documentRequest = selectedRequest.value
-  if (!documentRequest?.document_type?.requires_appointment) return false
-  if (!activeRequestStatuses.includes(documentRequest.status)) return false
-
-  return !(documentRequest.appointments || []).some((appointment) =>
-    activeAppointmentStatuses.includes(appointment.status),
-  )
+  return false
 })
 const canCancelSelectedRequest = computed(() => selectedRequest.value?.status === 'pending')
 const historyItems = computed(() =>
@@ -592,7 +586,7 @@ onBeforeUnmount(() => {
   <section class="page-header student-document-heading">
     <p class="page-kicker">Student Services</p>
     <h1 class="page-title">Student Document Requests</h1>
-    <p class="page-description">Request documents, book appointments, and follow your progress in one place.</p>
+    <p class="page-description">Request documents and follow the Registrar-assigned appointment workflow in one place.</p>
   </section>
 
   <p v-if="message" class="notice success" role="status">{{ message }}</p>
@@ -601,6 +595,7 @@ onBeforeUnmount(() => {
   <section class="student-request-workspace" aria-label="Document request and appointment workspace">
     <aside class="student-summary-rail" aria-label="Select details to view">
       <button
+        v-if="false"
         type="button"
         class="student-summary-card"
         :class="{ 'is-active': selectedPanel === 'request' }"
@@ -669,18 +664,15 @@ onBeforeUnmount(() => {
                 <div><dt>Request reference</dt><dd>{{ requestReference(selectedRequest.id) }}</dd></div>
                 <div><dt>Document type</dt><dd>{{ selectedRequest.document_type.document_name }}</dd></div>
                 <div><dt>Status</dt><dd><span class="badge" :class="selectedRequest.status">{{ formatStatus(selectedRequest.status) }}</span></dd></div>
+                <div v-if="selectedRequest.status === 'approved'" class="student-approval-message">
+                  <dt>Approved</dt><dd>Your request has been approved. Check your registered email for your verification code and appointment instructions.</dd>
+                </div>
                 <div><dt>Request date</dt><dd>{{ formatDate(selectedRequest.request_date) }}</dd></div>
                 <div><dt>Fee</dt><dd>₱{{ formatMoney(selectedRequest.total_fee) }}</dd></div>
-                <div>
-                  <dt>Appointment requirement</dt>
-                  <dd>{{ selectedRequest.document_type.requires_appointment ? 'Required' : 'Not required' }}</dd>
-                </div>
                 <div v-if="selectedRequestAppointment">
                   <dt>Appointment date</dt><dd>{{ formatDate(selectedRequestAppointment.appointment_date) }}</dd>
                 </div>
-                <div v-if="selectedRequestAppointment">
-                  <dt>Appointment time</dt><dd>{{ formatTime(selectedRequestAppointment.appointment_time) }}</dd>
-                </div>
+                <div v-else><dt>Appointment</dt><dd>Not assigned yet</dd></div>
               </dl>
 
               <p v-if="selectedRequest.purpose" class="student-detail-note"><strong>Purpose:</strong> {{ selectedRequest.purpose }}</p>

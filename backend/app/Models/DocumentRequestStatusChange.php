@@ -10,6 +10,7 @@ class DocumentRequestStatusChange extends Model
     protected $fillable = [
         'document_request_id',
         'registrar_staff_id',
+        'actor_type',
         'from_status',
         'to_status',
         'action',

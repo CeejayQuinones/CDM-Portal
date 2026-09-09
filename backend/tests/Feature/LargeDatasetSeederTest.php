@@ -19,8 +19,8 @@ class LargeDatasetSeederTest extends TestCase
         $this->seed(DatabaseSeeder::class);
         $this->seed(LargeDatasetSeeder::class);
 
-        $this->assertDatabaseCount('generated_data_records', 5_008);
-        $this->assertSame(5_000, DB::table('generated_data_records')
+        $this->assertDatabaseCount('generated_data_records', 10_008);
+        $this->assertSame(10_000, DB::table('generated_data_records')
             ->where('dataset_key', LargeDatasetSeeder::DATASET_KEY)
             ->where('record_type', LargeDatasetSeeder::GENERATED_USER_RECORD_TYPE)
             ->count());
@@ -48,9 +48,9 @@ class LargeDatasetSeederTest extends TestCase
                 'students.year_level',
             ]);
 
-        $this->assertCount(5_000, $generatedUsers);
-        $this->assertCount(5_000, $generatedUsers->pluck('username')->unique());
-        $this->assertCount(5_000, $generatedUsers->pluck('email')->unique());
+        $this->assertCount(10_000, $generatedUsers);
+        $this->assertCount(10_000, $generatedUsers->pluck('username')->unique());
+        $this->assertCount(10_000, $generatedUsers->pluck('email')->unique());
 
         $allStudentNumbersAreRealistic = true;
         $allUsernamesMatchNames = true;
@@ -75,10 +75,12 @@ class LargeDatasetSeederTest extends TestCase
         $this->assertTrue($allStudentNumbersAreRealistic);
         $this->assertTrue($allUsernamesMatchNames);
         $this->assertTrue($allEmailsAreSchoolAddresses);
-        $this->assertSame(
-            LargeDatasetSeeder::PROCESSING_REQUEST_COUNT,
-            DB::table('document_requests')->where('status', 'processing')->count(),
-        );
+        $this->assertSame(50_000, DB::table('document_requests')->count());
+        $this->assertSame(20_000, DB::table('appointments')->count());
+        $this->assertSame(0, DB::table('document_requests')->whereIn('status', ['processing', 'ready_for_release', 'released'])->count());
+        $this->assertSame(LargeDatasetSeeder::PENDING_REQUEST_COUNT, DB::table('document_requests')->where('status', 'pending')->count());
+        $this->assertSame(LargeDatasetSeeder::APPROVED_REQUEST_COUNT, DB::table('document_requests')->where('status', 'approved')->count());
+        $this->assertSame(LargeDatasetSeeder::COMPLETED_REQUEST_COUNT, DB::table('document_requests')->where('status', 'completed')->count());
 
         foreach ($this->visibleTextColumns() as $table => $columns) {
             foreach ($columns as $column) {

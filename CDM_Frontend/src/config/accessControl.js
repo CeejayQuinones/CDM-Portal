@@ -34,7 +34,7 @@ export const ROUTE_ROLES = Object.freeze({
   admission: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   enrollment: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   grading: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.ADMIN],
-  monitoring: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
+  monitoring: [ROLES.STUDENT, ROLES.PROFESSOR],
   'student-management': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'physical-records': [ROLES.REGISTRAR_STAFF],
   'event-attendance': [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
@@ -88,7 +88,7 @@ export const NAVIGATION_ITEMS = Object.freeze([
       },
       {
         name: 'registrar-document-appointments',
-        label: 'Appointments & Release',
+        label: "Today's Appointments",
         path: '/registrar/appointments',
         roles: ROUTE_ROLES['registrar-document-appointments'],
       },

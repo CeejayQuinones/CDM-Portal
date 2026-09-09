@@ -6,7 +6,7 @@ export const TIME_FILTERS = Object.freeze([
   { value: 'all', label: 'All' },
 ])
 
-const STATUS_ACCENTS = new Set(['pending', 'processing', 'ready_for_release', 'released', 'rejected', 'cancelled'])
+const STATUS_ACCENTS = new Set(['pending', 'approved', 'completed', 'rejected', 'cancelled'])
 
 const exactDateTimeFormatter = new Intl.DateTimeFormat('en-PH', {
   dateStyle: 'medium',
@@ -69,7 +69,7 @@ export function requestStatusFromActivity(activity) {
   if (activity?.type !== 'request') return null
 
   if (activity.action === 'submitted') return 'pending'
-  if (['approved', 'processed', 'returned_to_processing'].includes(activity.action)) return 'processing'
+  if (['approved', 'code_verified'].includes(activity.action)) return 'approved'
 
   return activity.action
 }

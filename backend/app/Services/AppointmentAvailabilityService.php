@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AppointmentAvailabilitySetting;
 use App\Models\AppointmentBlockedDate;
+use Illuminate\Support\Facades\DB;
 use Carbon\CarbonImmutable;
 
 class AppointmentAvailabilityService
@@ -67,6 +68,11 @@ class AppointmentAvailabilityService
             || ($appointmentDate->isSunday() && $settings['block_sunday'])
         ) {
             return 'This date is unavailable because appointments are closed on weekends.';
+        }
+
+        $holiday = DB::table('holidays')->whereDate('holiday_date', $date)->where('is_active', true)->value('name');
+        if ($holiday) {
+            return "This date is unavailable due to {$holiday}.";
         }
 
         $blockedDates = AppointmentBlockedDate::query()

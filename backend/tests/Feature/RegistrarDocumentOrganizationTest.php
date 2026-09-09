@@ -28,8 +28,8 @@ class RegistrarDocumentOrganizationTest extends TestCase
         $student = $this->createStudent('26-02001');
         $type = $this->createDocumentType('Transcript of Records');
         $first = $this->createRequest($student, $type, 'pending', '2026-08-20 09:00:00', '2026-08-25 08:00:00');
-        $mostRecent = $this->createRequest($student, $type, 'processing', '2026-08-19 09:00:00', '2026-08-25 11:00:00');
-        $yesterday = $this->createRequest($student, $type, 'ready_for_release', '2026-08-18 09:00:00', '2026-08-24 15:00:00');
+        $mostRecent = $this->createRequest($student, $type, 'approved', '2026-08-19 09:00:00', '2026-08-25 11:00:00', ['approved_at' => '2026-08-25 11:00:00']);
+        $yesterday = $this->createRequest($student, $type, 'pending', '2026-08-18 09:00:00', '2026-08-24 15:00:00');
 
         Sanctum::actingAs($this->createRegistrar()->user);
 
@@ -59,7 +59,7 @@ class RegistrarDocumentOrganizationTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data.data')
             ->assertJsonPath('data.data.0.id', $yesterday->id);
-        $this->getJson('/api/registrar/document-requests?status=released')->assertUnprocessable();
+        $this->getJson('/api/registrar/document-requests?status=processing')->assertUnprocessable();
     }
 
     public function test_time_filters_use_manila_business_days_around_local_midnight(): void
@@ -70,7 +70,7 @@ class RegistrarDocumentOrganizationTest extends TestCase
         $insideToday = $this->createRequest(
             $student,
             $type,
-            'processing',
+            'approved',
             '2026-08-24 16:10:00',
             '2026-08-24 16:10:00',
             ['approved_at' => '2026-08-24 16:10:00'],
@@ -82,7 +82,7 @@ class RegistrarDocumentOrganizationTest extends TestCase
             '2026-08-24 15:59:00',
             '2026-08-24 15:59:00',
         );
-        $todayAppointment = $this->createAppointment($insideToday, 'pending', '2026-08-25', '09:00', '2026-08-24 16:15:00');
+        $todayAppointment = $this->createAppointment($insideToday, 'confirmed', '2026-08-25', '09:00', '2026-08-24 16:15:00');
         $this->createAppointment($insideYesterday, 'pending', '2026-08-24', '10:00', '2026-08-24 15:50:00');
 
         Sanctum::actingAs($this->createRegistrar()->user);
@@ -114,11 +114,11 @@ class RegistrarDocumentOrganizationTest extends TestCase
         $this->travelTo(Carbon::parse('2026-08-25 12:00:00'));
         $student = $this->createStudent('26-02002');
         $type = $this->createDocumentType('Certificate of Enrollment');
-        $todayRequest = $this->createRequest($student, $type, 'processing', '2026-08-23 09:00:00', '2026-08-25 08:00:00');
-        $upcomingRequest = $this->createRequest($student, $type, 'pending', '2026-08-24 09:00:00', '2026-08-25 09:00:00');
-        $historicalRequest = $this->createRequest($student, $type, 'released', '2026-08-20 09:00:00', '2026-08-25 10:00:00');
+        $todayRequest = $this->createRequest($student, $type, 'approved', '2026-08-23 09:00:00', '2026-08-25 08:00:00', ['approved_at' => '2026-08-25 08:00:00']);
+        $upcomingRequest = $this->createRequest($student, $type, 'approved', '2026-08-24 09:00:00', '2026-08-25 09:00:00', ['approved_at' => '2026-08-25 09:00:00']);
+        $historicalRequest = $this->createRequest($student, $type, 'completed', '2026-08-20 09:00:00', '2026-08-25 10:00:00', ['completed_at' => '2026-08-25 10:00:00']);
 
-        $today = $this->createAppointment($todayRequest, 'pending', '2026-08-25', '09:00', '2026-08-25 08:30:00');
+        $today = $this->createAppointment($todayRequest, 'confirmed', '2026-08-25', '09:00', '2026-08-25 08:30:00');
         $upcoming = $this->createAppointment($upcomingRequest, 'confirmed', '2026-08-27', '10:00', '2026-08-25 09:30:00');
         $completed = $this->createAppointment($historicalRequest, 'completed', '2026-08-24', '11:00', '2026-08-25 10:30:00');
         $cancelled = $this->createAppointment($historicalRequest, 'cancelled', '2026-08-28', '13:00', '2026-08-25 11:30:00');
@@ -127,8 +127,9 @@ class RegistrarDocumentOrganizationTest extends TestCase
 
         $this->getJson('/api/registrar/appointments')
             ->assertOk()
-            ->assertJsonCount(2, 'data')
-            ->assertJsonPath('data.0.id', $upcoming->id)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $today->id)
+            ->assertJsonMissing(['id' => $upcoming->id])
             ->assertJsonMissing(['id' => $completed->id])
             ->assertJsonMissing(['id' => $cancelled->id]);
         $this->getJson('/api/registrar/appointments?group=today&page=1')
@@ -148,7 +149,7 @@ class RegistrarDocumentOrganizationTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data.data')
             ->assertJsonPath('data.data.0.document_request.request_reference', $reference);
-        $this->getJson("/api/registrar/appointments?appointment_id={$upcoming->id}&page=1")
+        $this->getJson("/api/registrar/appointments?group=upcoming&appointment_id={$upcoming->id}&page=1")
             ->assertOk()
             ->assertJsonCount(1, 'data.data')
             ->assertJsonPath('data.data.0.id', $upcoming->id);
@@ -165,7 +166,7 @@ class RegistrarDocumentOrganizationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.requests', null)
             ->assertJsonCount(1, 'data.appointments.data');
-        $this->getJson('/api/registrar/document-requests/history?section=requests&request_status=released')
+        $this->getJson('/api/registrar/document-requests/history?section=requests&request_status=completed')
             ->assertOk()
             ->assertJsonCount(1, 'data.requests.data')
             ->assertJsonPath('data.appointments', null);
@@ -176,19 +177,19 @@ class RegistrarDocumentOrganizationTest extends TestCase
         $this->travelTo(Carbon::parse('2026-08-25 12:00:00'));
         $student = $this->createStudent('26-02005');
         $type = $this->createDocumentType('Certification');
-        $documentRequest = $this->createRequest($student, $type, 'pending', '2026-08-25 08:00:00', '2026-08-25 08:00:00');
+        $documentRequest = $this->createRequest($student, $type, 'approved', '2026-08-25 08:00:00', '2026-08-25 08:00:00', ['approved_at' => '2026-08-25 08:00:00']);
 
         foreach (range(0, 50) as $offset) {
             $date = Carbon::parse('2026-09-01')->addDays($offset)->toDateString();
-            $this->createAppointment($documentRequest, 'pending', $date, '09:00', '2026-08-25 09:00:00');
+            $this->createAppointment($documentRequest, 'confirmed', $date, '09:00', '2026-08-25 09:00:00');
         }
 
         Sanctum::actingAs($this->createRegistrar()->user);
 
-        $this->getJson('/api/registrar/appointments')
+        $this->getJson('/api/registrar/appointments?group=upcoming')
             ->assertOk()
             ->assertJsonCount(50, 'data');
-        $this->getJson('/api/registrar/appointments?page=1')
+        $this->getJson('/api/registrar/appointments?group=upcoming&page=1')
             ->assertOk()
             ->assertJsonCount(50, 'data.data')
             ->assertJsonPath('data.total', 51);
@@ -202,10 +203,10 @@ class RegistrarDocumentOrganizationTest extends TestCase
         $documentRequest = $this->createRequest(
             $student,
             $type,
-            'processing',
+            'approved',
             '2026-08-23 09:00:00',
             '2026-08-25 09:00:00',
-            ['approved_at' => '2026-08-25 08:00:00', 'processed_at' => '2026-08-25 09:00:00'],
+            ['approved_at' => '2026-08-25 08:00:00'],
         );
         $confirmed = $this->createAppointment($documentRequest, 'confirmed', '2026-08-26', '09:00', '2026-08-25 10:00:00');
         $completed = $this->createAppointment($documentRequest, 'completed', '2026-08-24', '10:00', '2026-08-25 11:00:00');
@@ -218,9 +219,8 @@ class RegistrarDocumentOrganizationTest extends TestCase
                 'action' => 'approved',
                 'request_id' => $documentRequest->id,
                 'request_reference' => sprintf('REQ-%06d', $documentRequest->id),
-                'destination' => 'requests',
+                'destination' => 'appointments',
             ])
-            ->assertJsonFragment(['type' => 'request', 'action' => 'processed'])
             ->assertJsonFragment([
                 'type' => 'appointment',
                 'action' => 'confirmed',

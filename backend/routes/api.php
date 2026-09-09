@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDashboardController;
@@ -28,6 +29,20 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/step-up/verify', [StepUpAuthenticationController::class, 'verify'])
         ->middleware('throttle:5,1');
 
+    Route::middleware('role.monitoring')->group(function (): void {
+        Route::get('/monitoring/early-warnings', [MonitoringController::class, 'earlyWarnings']);
+        Route::get('/monitoring/my-risk', [MonitoringController::class, 'myRisk']);
+        Route::post('/monitoring/students/{student}/support-plan', [MonitoringController::class, 'supportPlan']);
+        Route::get('/monitoring/study-plans', [MonitoringController::class, 'studyPlans']);
+        Route::get('/monitoring/students/{student}/study-plan', [MonitoringController::class, 'studyPlan']);
+        Route::get('/monitoring/adviser-alerts', [MonitoringController::class, 'adviserAlerts']);
+        Route::get('/monitoring/ai-status', [MonitoringController::class, 'aiStatus']);
+        Route::post('/monitoring/students/{student}/ai-help', [MonitoringController::class, 'aiHelp'])->middleware('throttle:10,1');
+        Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification']);
+        Route::get('/monitoring/my-risk-notifications', [MonitoringController::class, 'myRiskNotifications']);
+        Route::patch('/monitoring/risk-notifications/{notification}/read', [MonitoringController::class, 'markRiskNotificationRead']);
+    });
+
     Route::middleware('role.registrar-or-admin')->group(function (): void {
         Route::get('/students', [StudentController::class, 'index']);
         Route::get('/students/bulk-options', [StudentController::class, 'bulkOptions']);
@@ -39,22 +54,18 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::middleware('role.student')->group(function (): void {
         Route::get('/holidays', HolidayController::class);
-        Route::get('/appointment-availability', AppointmentAvailabilityController::class);
         Route::get('/document-types', [StudentDocumentRequestController::class, 'documentTypes']);
         Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);
         Route::post('/document-requests', [StudentDocumentRequestController::class, 'store']);
         Route::get('/document-requests/{documentRequest}', [StudentDocumentRequestController::class, 'show']);
         Route::patch('/document-requests/{documentRequest}/cancel', [StudentDocumentRequestController::class, 'cancelDocumentRequest']);
-        Route::post('/document-requests/{documentRequest}/appointments', [StudentDocumentRequestController::class, 'book']);
-        Route::get('/appointment-slots', [StudentDocumentRequestController::class, 'slots']);
-        Route::get('/appointment-overview', [StudentDocumentRequestController::class, 'appointmentOverview']);
-        Route::get('/appointments', [StudentDocumentRequestController::class, 'appointments']);
-        Route::patch('/appointments/{appointment}/cancel', [StudentDocumentRequestController::class, 'cancelAppointment']);
     });
 
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
         Route::get('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'settings']);
         Route::patch('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'updateSettings']);
+        Route::get('/appointment-availability/calendar', [AppointmentAvailabilityController::class, 'calendar']);
+        Route::put('/appointment-availability/capacity/{date}', [AppointmentAvailabilityController::class, 'updateCapacity']);
         Route::apiResource('appointment-blocked-dates', RegistrarAppointmentBlockedDateController::class)
             ->only(['index', 'store', 'update', 'destroy']);
         Route::get('/dashboard', RegistrarDashboardController::class);
@@ -80,6 +91,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/document-request-activity', [RegistrarDocumentRequestController::class, 'activity']);
         Route::get('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'show']);
         Route::patch('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'update']);
+        Route::post('/document-requests/{documentRequest}/appointment', [RegistrarDocumentRequestController::class, 'assignAppointment']);
+        Route::post('/document-requests/verify-code', [RegistrarDocumentRequestController::class, 'verifyCode'])->middleware('throttle:10,1');
+        Route::post('/document-requests/{documentRequest}/resend-claim-code', [RegistrarDocumentRequestController::class, 'resendClaimCode'])->middleware('throttle:3,10');
         Route::get('/appointments', [RegistrarDocumentRequestController::class, 'appointments']);
         Route::patch('/appointments/{appointment}', [RegistrarDocumentRequestController::class, 'updateAppointment']);
     });

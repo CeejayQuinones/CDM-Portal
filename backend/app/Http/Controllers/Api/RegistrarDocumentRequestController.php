@@ -8,7 +8,7 @@ use App\Http\Requests\UpdateRegistrarRequest;
 use App\Models\Appointment;
 use App\Models\DocumentRequest;
 use App\Models\RegistrarStaff;
-use App\Services\DocumentReleaseService;
+use App\Services\DocumentRequestWorkflowService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -19,9 +19,9 @@ use Illuminate\Validation\Rule;
 
 class RegistrarDocumentRequestController extends Controller
 {
-    private const ACTIVE_STATUSES = ['pending', 'processing', 'ready_for_release'];
+    private const ACTIVE_STATUSES = ['pending', 'approved'];
 
-    private const HISTORY_STATUSES = ['released', 'rejected', 'cancelled'];
+    private const HISTORY_STATUSES = ['completed', 'rejected', 'cancelled'];
 
     private const ACTIVE_APPOINTMENT_STATUSES = ['pending', 'confirmed'];
 
@@ -33,7 +33,7 @@ class RegistrarDocumentRequestController extends Controller
 
     private const BUSINESS_TIMEZONE = 'Asia/Manila';
 
-    public function __construct(private readonly DocumentReleaseService $documentReleaseService) {}
+    public function __construct(private readonly DocumentRequestWorkflowService $workflow) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -45,13 +45,13 @@ class RegistrarDocumentRequestController extends Controller
             'request_id' => ['nullable', 'integer', 'min:1'],
             'page' => ['nullable', 'integer', 'min:1'],
             'pending_page' => ['nullable', 'integer', 'min:1'],
-            'processing_page' => ['nullable', 'integer', 'min:1'],
+            'approved_page' => ['nullable', 'integer', 'min:1'],
         ]);
         $query = $this->summaryQuery()
             ->select([
                 'id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'status',
-                'request_date', 'release_date', 'remarks', 'approved_at', 'processed_at',
-                'ready_for_release_at', 'released_at', 'rejected_at', 'created_at', 'updated_at',
+                'request_date', 'release_date', 'remarks', 'approved_at', 'completed_at',
+                'rejected_at', 'cancelled_at', 'code_verified_at', 'created_at', 'updated_at',
             ])
             ->latest('updated_at')
             ->latest('id');
@@ -65,9 +65,9 @@ class RegistrarDocumentRequestController extends Controller
                 'pending' => (clone $query)
                     ->where('status', 'pending')
                     ->paginate(20, ['*'], 'pending_page'),
-                'processing' => (clone $query)
-                    ->where('status', 'processing')
-                    ->paginate(10, ['*'], 'processing_page'),
+                'approved' => (clone $query)
+                    ->where('status', 'approved')
+                    ->paginate(10, ['*'], 'approved_page'),
             ], 'Document request work queues retrieved successfully.');
         }
 
@@ -83,7 +83,7 @@ class RegistrarDocumentRequestController extends Controller
     public function history(Request $request): JsonResponse
     {
         $request->validate([
-            'request_status' => ['nullable', 'in:released,cancelled,rejected'],
+            'request_status' => ['nullable', 'in:completed,cancelled,rejected'],
             'appointment_status' => ['nullable', 'in:cancelled,completed,no_show'],
             'search' => ['nullable', 'string', 'max:100'],
             'time_filter' => ['nullable', Rule::in(self::TIME_FILTERS)],
@@ -97,8 +97,8 @@ class RegistrarDocumentRequestController extends Controller
         $query = $this->summaryQuery()
             ->select([
                 'id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'status',
-                'request_date', 'release_date', 'remarks', 'approved_at', 'processed_at',
-                'ready_for_release_at', 'released_at', 'rejected_at', 'created_at', 'updated_at',
+                'request_date', 'release_date', 'remarks', 'approved_at', 'completed_at',
+                'rejected_at', 'cancelled_at', 'code_verified_at', 'created_at', 'updated_at',
             ])
             ->with(['latestAppointment' => fn ($appointments) => $appointments->select([
                 'appointments.id',
@@ -164,75 +164,37 @@ class RegistrarDocumentRequestController extends Controller
     {
         $staff = $this->staffFor($request);
         $action = $request->string('action')->toString();
-
-        if ($action === 'release') {
-            $releasedRequest = $this->documentReleaseService->release(
-                $documentRequest,
-                $staff,
-                $request->filled('appointment_id') ? $request->integer('appointment_id') : null,
-                $request->has('remarks'),
-                $request->input('remarks'),
-            );
-
-            return $this->ok(
-                $releasedRequest->fresh()->load($this->detailRelations()),
-                'Document release completed successfully.',
-            );
-        }
-
-        $fromStatus = $documentRequest->status;
         $reason = $request->filled('reason') ? trim($request->string('reason')->toString()) : null;
-        $updates = ['registrar_staff_id' => $staff->id];
-        if ($request->has('remarks')) {
-            $updates['remarks'] = $request->input('remarks');
+        if ($action === 'approve') {
+            $result = $this->workflow->approve($documentRequest, $staff);
+            return $this->ok($result['request'], $result['email_delivered'] ? 'Document request approved and notification sent.' : 'Document request approved; email delivery was unavailable.');
+        }
+        $updated = $action === 'reject'
+            ? $this->workflow->reject($documentRequest, $staff, (string) $reason)
+            : $this->workflow->finalize($documentRequest, $staff, $action, $reason);
+        return $this->ok($updated, 'Document request updated successfully.');
+    }
+
+    public function assignAppointment(Request $request, DocumentRequest $documentRequest): JsonResponse
+    {
+        $validated = $request->validate(['appointment_date' => ['required', 'date_format:Y-m-d']]);
+        return $this->ok($this->workflow->assignDate($documentRequest, $this->staffFor($request), $validated['appointment_date']), 'Appointment date assigned; request remains pending.');
+    }
+
+    public function verifyCode(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['verification_code' => ['required', 'digits:6']]);
+        return $this->ok($this->workflow->verify($validated['verification_code'], $this->staffFor($request)), 'Verification code accepted.');
+    }
+
+    public function resendClaimCode(Request $request, DocumentRequest $documentRequest): JsonResponse
+    {
+        $result = $this->workflow->resendClaimCode($documentRequest, $this->staffFor($request));
+        if (! $result['email_delivered']) {
+            return response()->json(['success' => false, 'message' => 'A new claim code was generated, but the email could not be delivered. Retry resend after checking mail configuration.'], 503);
         }
 
-        switch ($action) {
-            case 'approve':
-                $this->requireStatus($documentRequest, ['pending']);
-                $updates += ['status' => 'processing', 'approved_at' => now()];
-                $auditAction = 'approved';
-                break;
-            case 'reject':
-                $this->requireStatus($documentRequest, ['pending', 'processing']);
-                $updates += ['status' => 'rejected', 'rejected_at' => now()];
-                $auditAction = 'rejected';
-                break;
-            case 'ready_for_release':
-                $this->requireStatus($documentRequest, ['processing']);
-
-                $updates += [
-                    'status' => 'ready_for_release',
-                    'processed_at' => now(),
-                    'ready_for_release_at' => now(),
-                ];
-                $auditAction = 'ready_for_release';
-                break;
-            case 'return_to_processing':
-                $this->requireStatus($documentRequest, ['ready_for_release']);
-                $updates['status'] = 'processing';
-                $auditAction = 'returned_to_processing';
-                break;
-
-            case 'cancel':
-                $this->requireStatus($documentRequest, ['pending', 'processing', 'ready_for_release']);
-                $updates['status'] = 'cancelled';
-                $auditAction = 'cancelled';
-                break;
-        }
-
-        DB::transaction(function () use ($auditAction, $documentRequest, $fromStatus, $reason, $staff, $updates): void {
-            $documentRequest->update($updates);
-            $documentRequest->statusChanges()->create([
-                'registrar_staff_id' => $staff->id,
-                'from_status' => $fromStatus,
-                'to_status' => $updates['status'],
-                'action' => $auditAction,
-                'reason' => $reason,
-            ]);
-        });
-
-        return $this->ok($documentRequest->fresh()->load($this->detailRelations()), 'Document request updated successfully.');
+        return $this->ok($result['request'], 'A new claim code was sent to the student.');
     }
 
     public function appointments(Request $request): JsonResponse
@@ -251,11 +213,12 @@ class RegistrarDocumentRequestController extends Controller
             ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'status', 'remarks', 'created_at', 'updated_at'])
             ->whereNotNull('document_request_id')
             ->whereIn('status', self::ACTIVE_APPOINTMENT_STATUSES)
+            ->whereHas('documentRequest', fn ($requests) => $requests->where('status', 'approved'))
             ->with([
                 'student:id,user_id,student_number',
                 'student.user:id',
                 'student.user.profile:id,user_id,first_name,last_name',
-                'documentRequest:id,document_type_id,status,request_date,created_at,updated_at',
+                'documentRequest:id,document_type_id,status,request_date,code_verified_at,created_at,updated_at',
                 'documentRequest.documentType:id,document_name',
             ])
             ->latest('updated_at')
@@ -265,7 +228,7 @@ class RegistrarDocumentRequestController extends Controller
         $businessTomorrow = $businessToday->copy()->addDay()->toDateString();
         if ($request->input('group') === 'upcoming') {
             $query->where('appointment_date', '>=', $businessTomorrow);
-        } elseif ($request->input('group') === 'today') {
+        } elseif (! $request->filled('group') || $request->input('group') === 'today') {
             $query->where('appointment_date', '>=', $businessToday->toDateString())
                 ->where('appointment_date', '<', $businessTomorrow);
         } elseif ($request->input('group') === 'recent') {
@@ -303,7 +266,7 @@ class RegistrarDocumentRequestController extends Controller
         $requests = DocumentRequest::query()
             ->select([
                 'id', 'student_id', 'document_type_id', 'status', 'created_at', 'updated_at',
-                'approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at',
+                'approved_at', 'completed_at', 'rejected_at', 'cancelled_at',
             ])
             ->with([
                 ...$this->activityStudentRelations(),
@@ -311,7 +274,7 @@ class RegistrarDocumentRequestController extends Controller
                 'statusChanges:id,document_request_id,action,reason,created_at',
             ])
             ->when($timeFilter !== 'all', fn (Builder $query) => $this->applyAnyTimestampFilter($query, [
-                'created_at', 'updated_at', 'approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at',
+                'created_at', 'updated_at', 'approved_at', 'completed_at', 'rejected_at', 'cancelled_at',
             ], $timeFilter))
             ->latest('updated_at')
             ->latest('id')
@@ -345,6 +308,12 @@ class RegistrarDocumentRequestController extends Controller
 
     public function updateAppointment(UpdateAppointmentRequest $request, Appointment $appointment): JsonResponse
     {
+        abort_if(
+            $appointment->document_request_id !== null
+                && ($request->filled('status') || $request->filled('appointment_date') || $request->filled('appointment_time')),
+            422,
+            'Use the document request workflow to change a linked appointment.',
+        );
         $staff = $this->staffFor($request);
         $updates = $request->validated();
         $updates['registrar_staff_id'] = $staff->id;
@@ -585,9 +554,7 @@ class RegistrarDocumentRequestController extends Controller
 
         $workflowEvents = [
             'approved' => $documentRequest->approved_at,
-            'processed' => $documentRequest->processed_at,
-            'ready_for_release' => $documentRequest->ready_for_release_at,
-            'released' => $documentRequest->released_at,
+            'completed' => $documentRequest->completed_at,
             'rejected' => $documentRequest->rejected_at,
         ];
 
@@ -642,7 +609,7 @@ class RegistrarDocumentRequestController extends Controller
             : in_array($record->status, self::HISTORY_APPOINTMENT_STATUSES, true);
         $destination = match (true) {
             $historical => 'history',
-            $record instanceof Appointment, $documentRequest?->status === 'ready_for_release' => 'appointments',
+            $record instanceof Appointment, $documentRequest?->status === 'approved' => 'appointments',
             default => 'requests',
         };
 
@@ -693,7 +660,7 @@ class RegistrarDocumentRequestController extends Controller
             'student.physicalRecordLocation.cabinetSlot.cabinet:id,cabinet_code,description,rows,columns',
             'documentType:id,document_name,requires_appointment',
             'appointments:id,document_request_id,registrar_staff_id,appointment_date,appointment_time,status,remarks,completed_at,cancelled_at,updated_at',
-            'statusChanges:id,document_request_id,registrar_staff_id,from_status,to_status,action,reason,created_at',
+            'statusChanges:id,document_request_id,registrar_staff_id,actor_type,from_status,to_status,action,reason,created_at',
             'statusChanges.registrarStaff:id,user_id,employee_number',
             'statusChanges.registrarStaff.user:id',
             'statusChanges.registrarStaff.user.profile:id,user_id,first_name,last_name',
