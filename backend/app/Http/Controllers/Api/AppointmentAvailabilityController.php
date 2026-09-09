@@ -71,8 +71,18 @@ class AppointmentAvailabilityController extends Controller
             ...$availability,
             'days' => collect(range(0, $start->daysInMonth - 1))->map(function ($offset) use ($counts, $overrides, $start): array {
                 $date = $start->addDays($offset)->toDateString();
-                return ['date' => $date, 'booked' => (int) ($counts[$date] ?? 0), 'capacity' => (int) ($overrides[$date] ?? DocumentRequestWorkflowService::DEFAULT_CAPACITY)];
+                $capacity = (int) ($overrides[$date] ?? DocumentRequestWorkflowService::DEFAULT_CAPACITY);
+
+                return [
+                    'date' => $date,
+                    'booked' => (int) ($counts[$date] ?? 0),
+                    'capacity' => $capacity,
+                    // A default-capacity row may exist after an appointment is assigned.
+                    // The planner only needs to distinguish an effective custom capacity.
+                    'has_custom_capacity' => $capacity !== DocumentRequestWorkflowService::DEFAULT_CAPACITY,
+                ];
             })->all(),
+            'default_capacity' => DocumentRequestWorkflowService::DEFAULT_CAPACITY,
         ]]);
     }
 

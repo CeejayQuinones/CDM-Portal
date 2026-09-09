@@ -18,29 +18,49 @@ use Random\Randomizer;
 
 class LargeDatasetSeeder extends Seeder
 {
-    public const DATASET_KEY = 'school-demo-v1';
+    public const DATASET_KEY = 'school-demo-v2';
+
+    public const LEGACY_DATASET_KEY = 'school-demo-v1';
 
     public const GENERATED_USER_RECORD_TYPE = 'user';
 
     public const GENERATED_CABINET_RECORD_TYPE = 'cabinet';
 
+    public const GENERATED_CAPACITY_RECORD_TYPE = 'appointment_capacity';
+
     public const PHYSICAL_RECORD_CABINET_CODES = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
-    private const STUDENT_COUNT = 5_000;
+    public const STUDENT_COUNT = 10_000;
 
-    private const STUDENT_DOCUMENT_COUNT = 15_000;
+    public const STUDENT_DOCUMENT_COUNT = 30_000;
 
-    private const DOCUMENT_REQUEST_COUNT = 25_000;
+    public const DOCUMENT_REQUEST_COUNT = 50_000;
 
-    public const PROCESSING_REQUEST_COUNT = 8;
+    public const APPOINTMENT_COUNT = 20_000;
 
-    private const APPOINTMENT_COUNT = 10_000;
+    public const PENDING_REQUEST_COUNT = 20_000;
+
+    public const APPROVED_REQUEST_COUNT = 400;
+
+    public const COMPLETED_REQUEST_COUNT = 10_000;
+
+    public const REJECTED_REQUEST_COUNT = 10_000;
+
+    public const CANCELLED_REQUEST_COUNT = 9_600;
+
+    public const PENDING_APPOINTMENT_COUNT = 600;
+
+    public const CONFIRMED_APPOINTMENT_COUNT = 400;
+
+    public const COMPLETED_APPOINTMENT_COUNT = 10_000;
+
+    public const CANCELLED_APPOINTMENT_COUNT = 9_000;
 
     private const BATCH_SIZE = 500;
 
     private const STRESS_CABINET_COUNT = 8;
 
-    private const STRESS_CABINET_ROWS = 5;
+    private const STRESS_CABINET_ROWS = 10;
 
     private const STRESS_CABINET_COLUMNS = 10;
 
@@ -92,7 +112,7 @@ class LargeDatasetSeeder extends Seeder
 
         if (
             ! Schema::hasColumn('student_documents', 'availability_status')
-            || ! Schema::hasColumns('document_requests', ['approved_at', 'processed_at', 'ready_for_release_at', 'released_at', 'rejected_at'])
+            || ! Schema::hasColumns('document_requests', ['approved_at', 'completed_at', 'rejected_at', 'cancelled_at', 'verification_code_lookup', 'verification_code_hash', 'code_verified_at'])
             || ! Schema::hasColumn('appointments', 'active_slot_key')
             || ! Schema::hasColumns('cabinets', ['cabinet_code', 'rows', 'columns'])
             || ! Schema::hasColumns('cabinet_slots', ['cabinet_id', 'slot_code', 'capacity'])
@@ -120,9 +140,6 @@ class LargeDatasetSeeder extends Seeder
             ->orderBy('id')
             ->get(['id', 'document_name', 'processing_fee', 'requires_appointment'])
             ->values();
-        $appointmentDocumentTypes = $activeDocumentTypes
-            ->filter(fn (object $documentType): bool => (bool) $documentType->requires_appointment)
-            ->values();
 
         if (! $roleId) {
             throw new LogicException('The existing Student role is required. Run the normal seeders first.');
@@ -136,9 +153,6 @@ class LargeDatasetSeeder extends Seeder
 
         if ($activeDocumentTypes->isEmpty()) {
             throw new LogicException('At least one active document type is required before generating the large dataset.');
-        }
-        if ($appointmentDocumentTypes->isEmpty()) {
-            throw new LogicException('At least one active document type with requires_appointment = true is required before generating the large dataset.');
         }
 
         $missingDocumentTypes = collect(self::DOCUMENT_NAMES)->diff($studentDocumentTypes->keys());
@@ -172,7 +186,6 @@ class LargeDatasetSeeder extends Seeder
         DB::transaction(fn () => $this->seedDocumentRequests(
             $studentIds,
             $activeDocumentTypes,
-            $appointmentDocumentTypes,
             $registrarIds,
             $now,
         ));
@@ -208,10 +221,10 @@ class LargeDatasetSeeder extends Seeder
     public static function physicalRecordStressPlan(): array
     {
         $perCabinetOccupancies = [
-            ...array_fill(0, 10, 5),
-            ...array_fill(0, 30, 13),
-            ...array_fill(0, 5, 18),
-            ...array_fill(0, 5, 19),
+            ...array_fill(0, 20, 5),
+            ...array_fill(0, 60, 13),
+            ...array_fill(0, 10, 18),
+            ...array_fill(0, 10, 19),
         ];
         $randomizer = new Randomizer(new Mt19937(self::STRESS_OCCUPANCY_SHUFFLE_SEED));
         $slotOccupancies = [];
@@ -335,7 +348,7 @@ class LargeDatasetSeeder extends Seeder
         }
         $studentIds = $studentIds->map(fn ($id): int => (int) $id)->values();
 
-        $this->command?->info('Generated 5,000 users, profiles, and students.');
+        $this->command?->info('Generated 10,000 users, profiles, and students.');
 
         return [$userIds, $studentIds];
     }
@@ -501,7 +514,7 @@ class LargeDatasetSeeder extends Seeder
         $rows = [];
 
         foreach ($studentIds as $offset => $studentId) {
-            $documentCount = $offset < 500 ? 5 : ($offset < 4_000 ? 3 : 2);
+            $documentCount = 3;
 
             for ($documentOffset = 0; $documentOffset < $documentCount; $documentOffset++) {
                 $documentType = $types[($offset + $documentOffset) % $types->count()];
@@ -529,35 +542,20 @@ class LargeDatasetSeeder extends Seeder
             DB::table('student_documents')->insert($rows);
         }
 
-        $this->command?->info('Generated 15,000 student document records.');
+        $this->command?->info('Generated 30,000 student document records.');
     }
 
     /**
      * @param  Collection<int, int>  $studentIds
      * @param  Collection<int, object>  $activeDocumentTypes
-     * @param  Collection<int, object>  $appointmentDocumentTypes
      * @param  Collection<int, int>  $registrarIds
      */
     private function seedDocumentRequests(
         Collection $studentIds,
         Collection $activeDocumentTypes,
-        Collection $appointmentDocumentTypes,
         Collection $registrarIds,
         CarbonImmutable $now,
     ): void {
-        $requestsPerStudent = intdiv(self::DOCUMENT_REQUEST_COUNT, self::STUDENT_COUNT);
-        $appointmentRequestsPerStudent = intdiv(self::APPOINTMENT_COUNT, self::STUDENT_COUNT);
-
-        if ($requestsPerStudent * self::STUDENT_COUNT !== self::DOCUMENT_REQUEST_COUNT) {
-            throw new LogicException('Document request count must be evenly distributed across generated students.');
-        }
-        if ($appointmentRequestsPerStudent * self::STUDENT_COUNT !== self::APPOINTMENT_COUNT) {
-            throw new LogicException('Appointment count must be evenly distributed across generated students.');
-        }
-        if ($appointmentRequestsPerStudent > $requestsPerStudent) {
-            throw new LogicException('Appointment target cannot exceed the generated document request capacity.');
-        }
-
         $purposes = [
             'Scholarship requirement',
             'Employment requirement',
@@ -570,29 +568,19 @@ class LargeDatasetSeeder extends Seeder
         $rows = [];
 
         foreach ($studentIds as $studentOffset => $studentId) {
-            foreach (range(0, $requestsPerStudent - 1) as $requestOffset) {
-                if ($requestOffset < $appointmentRequestsPerStudent) {
-                    $typeOffset = (($studentOffset * $appointmentRequestsPerStudent) + $requestOffset)
-                        % $appointmentDocumentTypes->count();
-                    $documentType = $appointmentDocumentTypes[$typeOffset];
-                } else {
-                    $remainingOffset = $requestOffset - $appointmentRequestsPerStudent;
-                    $typeOffset = (($studentOffset * ($requestsPerStudent - $appointmentRequestsPerStudent)) + $remainingOffset)
-                        % $activeDocumentTypes->count();
-                    $documentType = $activeDocumentTypes[$typeOffset];
-                }
-
-                $sequence = ($studentOffset * $requestsPerStudent) + $requestOffset;
+            foreach (range(0, 4) as $requestOffset) {
+                $sequence = ($studentOffset * 5) + $requestOffset;
                 $status = $this->requestStatus($sequence);
+                $documentType = $activeDocumentTypes[$sequence % $activeDocumentTypes->count()];
                 $quantity = 1 + ($sequence % 3);
-                $ageDays = $status === 'pending' ? $sequence % 30 : 7 + (($sequence * 17) % 720);
+                $ageDays = $status === 'pending' ? $sequence % 30 : 14 + (($sequence * 17) % 720);
                 $requestAt = $now->subDays($ageDays)->startOfDay()->addHours(9);
-                $approvedAt = in_array($status, ['processing', 'ready_for_release', 'released'], true) ? $requestAt->addDay() : null;
-                $processedAt = in_array($status, ['ready_for_release', 'released'], true) ? $requestAt->addDays(2) : null;
-                $readyAt = in_array($status, ['ready_for_release', 'released'], true) ? $requestAt->addDays(3) : null;
-                $releasedAt = $status === 'released' ? $requestAt->addDays(4) : null;
+                $approvedAt = in_array($status, ['approved', 'completed'], true) ? $requestAt->addDay() : null;
+                $completedAt = $status === 'completed' ? $requestAt->addDays(4) : null;
                 $rejectedAt = $status === 'rejected' ? $requestAt->addDay() : null;
+                $cancelledAt = $status === 'cancelled' ? $requestAt->addDays(2) : null;
                 $handled = $status !== 'pending';
+                $claimCode = $status === 'approved' ? sprintf('%06d', 100000 + ($sequence % 800000)) : null;
 
                 $rows[] = [
                     'student_id' => $studentId,
@@ -603,23 +591,22 @@ class LargeDatasetSeeder extends Seeder
                     'purpose' => $purposes[$sequence % count($purposes)],
                     'status' => $status,
                     'request_date' => $requestAt->toDateString(),
-                    'release_date' => $releasedAt?->toDateString(),
+                    'release_date' => $completedAt?->toDateString(),
                     'remarks' => match ($status) {
                         'pending' => 'Awaiting registrar review.',
-                        'processing' => 'Ready for processing.',
-                        'ready_for_release' => 'Records complete.',
-                        'released' => 'Released to student.',
                         'rejected' => 'Awaiting supporting document.',
-                        'cancelled' => 'Request cancelled by student.',
+                        'cancelled' => $sequence % 3 === 0 ? 'Cancelled after a missed collection date.' : 'Request cancelled by registrar.',
                         default => null,
                     },
                     'approved_at' => $approvedAt,
-                    'processed_at' => $processedAt,
-                    'ready_for_release_at' => $readyAt,
-                    'released_at' => $releasedAt,
+                    'completed_at' => $completedAt,
                     'rejected_at' => $rejectedAt,
+                    'cancelled_at' => $cancelledAt,
+                    'verification_code_lookup' => $claimCode ? hash_hmac('sha256', $claimCode, (string) config('app.key')) : null,
+                    'verification_code_hash' => $claimCode ? Hash::make($claimCode) : null,
+                    'code_verified_at' => $status === 'completed' ? $requestAt->addDays(3) : null,
                     'created_at' => $requestAt,
-                    'updated_at' => $releasedAt ?? $rejectedAt ?? $readyAt ?? $processedAt ?? $approvedAt ?? $requestAt,
+                    'updated_at' => $completedAt ?? $cancelledAt ?? $rejectedAt ?? $approvedAt ?? $requestAt,
                 ];
 
                 if (count($rows) >= self::BATCH_SIZE) {
@@ -632,7 +619,7 @@ class LargeDatasetSeeder extends Seeder
             DB::table('document_requests')->insert($rows);
         }
 
-        $this->command?->info('Generated 25,000 document requests with consistent workflow timestamps.');
+        $this->command?->info('Generated 50,000 document requests with current workflow statuses.');
     }
 
     /**
@@ -641,109 +628,48 @@ class LargeDatasetSeeder extends Seeder
      */
     private function seedAppointments(Collection $studentIds, Collection $registrarIds, CarbonImmutable $now): void
     {
-        $totalGeneratedRequests = 0;
-        $eligibleRequests = collect();
-
-        foreach ($studentIds->chunk(self::BATCH_SIZE) as $studentIdChunk) {
-            $requestQuery = DB::table('document_requests')
-                ->whereIn('document_requests.student_id', $studentIdChunk->all());
-            $totalGeneratedRequests += (clone $requestQuery)->count();
-            $eligibleRequests = $eligibleRequests->merge(
-                $requestQuery
-                    ->join('document_types', 'document_types.id', '=', 'document_requests.document_type_id')
-                    ->where('document_types.requires_appointment', true)
-                    ->orderBy('document_requests.student_id')
-                    ->orderBy('document_requests.id')
-                    ->get([
-                        'document_requests.id',
-                        'document_requests.student_id',
-                        'document_requests.status as request_status',
-                        'document_requests.request_date',
-                        'document_types.document_name',
-                    ])
-            );
+        $requestIds = collect();
+        foreach ($studentIds->chunk(self::BATCH_SIZE) as $chunk) {
+            $requestIds = $requestIds->merge(DB::table('document_requests')->whereIn('student_id', $chunk->all())->orderBy('id')->pluck('id'));
         }
-
-        $appointmentRequests = $eligibleRequests
-            ->groupBy('student_id')
-            ->flatMap(fn (Collection $requests): Collection => $requests->take(
-                intdiv(self::APPOINTMENT_COUNT, self::STUDENT_COUNT)
-            ))
-            ->take(self::APPOINTMENT_COUNT)
-            ->values();
-
-        $eligibleStudentCount = $eligibleRequests->pluck('student_id')->unique()->count();
-        $selectedStudentCount = $appointmentRequests->pluck('student_id')->unique()->count();
-
-        $this->command?->info(sprintf(
-            'Appointment candidate diagnostics: %s total generated requests, %s appointment-required requests, %s eligible students, %s selected candidates across %s students.',
-            number_format($totalGeneratedRequests),
-            number_format($eligibleRequests->count()),
-            number_format($eligibleStudentCount),
-            number_format($appointmentRequests->count()),
-            number_format($selectedStudentCount),
-        ));
-
-        if (
-            $appointmentRequests->count() !== self::APPOINTMENT_COUNT
-            || $selectedStudentCount !== self::STUDENT_COUNT
-        ) {
-            throw new LogicException(sprintf(
-                'Unable to select 10,000 eligible generated document requests across 5,000 students (total requests: %d, appointment-required: %d, eligible students: %d, selected: %d, selected students: %d).',
-                $totalGeneratedRequests,
-                $eligibleRequests->count(),
-                $eligibleStudentCount,
-                $appointmentRequests->count(),
-                $selectedStudentCount,
-            ));
+        $requests = collect();
+        foreach ($requestIds->chunk(self::BATCH_SIZE) as $chunk) {
+            $requests = $requests->merge(DB::table('document_requests')->whereIn('id', $chunk->all())->orderBy('id')->get(['id', 'student_id', 'status', 'request_date']));
         }
-
-        $usedActiveSlotKeys = DB::table('appointments')
-            ->whereNotNull('active_slot_key')
-            ->pluck('active_slot_key')
-            ->flip()
-            ->all();
-        $times = ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00'];
-        $activeSlotSequence = 0;
+        $activeDates = $this->validActiveDates(self::PENDING_APPOINTMENT_COUNT + self::CONFIRMED_APPOINTMENT_COUNT, $now);
+        $confirmedDates = array_slice($activeDates, 0, self::CONFIRMED_APPOINTMENT_COUNT);
+        $pendingDates = array_slice($activeDates, self::CONFIRMED_APPOINTMENT_COUNT);
+        $confirmedOffset = 0;
+        $pendingOffset = 0;
         $rows = [];
-
-        foreach ($appointmentRequests as $offset => $request) {
-            $status = $this->appointmentStatus($request->request_status, $offset);
-            $active = in_array($status, ['pending', 'confirmed'], true);
-            $activeSlotKey = null;
-
-            if ($active) {
-                do {
-                    $appointmentDate = $now->addDays(1 + intdiv($activeSlotSequence, count($times)));
-                    $appointmentTime = $times[$activeSlotSequence % count($times)];
-                    $activeSlotKey = $appointmentDate->toDateString().' '.$appointmentTime;
-                    $activeSlotSequence++;
-                } while (isset($usedActiveSlotKeys[$activeSlotKey]));
-
-                $usedActiveSlotKeys[$activeSlotKey] = true;
-            } else {
-                $appointmentDate = CarbonImmutable::parse($request->request_date)->addDays(1 + ($offset % 14));
-                $appointmentTime = $times[$offset % count($times)];
+        foreach ($requests as $offset => $request) {
+            $status = $this->appointmentStatus($request->status, $offset);
+            if (! $status) {
+                continue;
             }
-
+            $active = in_array($status, ['pending', 'confirmed'], true);
+            $appointmentDate = $active
+                ? ($status === 'confirmed' ? $confirmedDates[$confirmedOffset++] : $pendingDates[$pendingOffset++])
+                : CarbonImmutable::parse($request->request_date)->addDays(2 + ($offset % 12));
             $createdAt = CarbonImmutable::parse($request->request_date)->startOfDay();
             $rows[] = [
                 'student_id' => $request->student_id,
                 'document_request_id' => $request->id,
-                'registrar_staff_id' => $status === 'pending' ? null : $registrarIds[$offset % $registrarIds->count()],
+                'registrar_staff_id' => $registrarIds[$offset % $registrarIds->count()],
                 'appointment_date' => $appointmentDate->toDateString(),
-                'appointment_time' => $appointmentTime,
-                'active_slot_key' => $activeSlotKey,
-                'purpose' => 'Collection of '.$request->document_name,
+                'appointment_time' => '00:00:00',
+                'active_slot_key' => null,
+                'purpose' => 'Document request collection.',
                 'status' => $status,
                 'remarks' => match ($status) {
-                    'completed' => 'Document released to student.',
-                    'cancelled' => 'Appointment cancelled by student.',
-                    'no_show' => 'Student did not attend the appointment.',
+                    'completed' => 'Document collected by student.',
+                    'cancelled' => 'Appointment cancelled.',
                     default => null,
                 },
                 'created_at' => $createdAt,
-                'updated_at' => $active ? $now : $appointmentDate->startOfDay(),
+                'completed_at' => $status === 'completed' ? $appointmentDate->startOfDay()->addHours(2) : null,
+                'cancelled_at' => $status === 'cancelled' ? $appointmentDate->startOfDay()->addHours(1) : null,
+                'updated_at' => $active ? $now : $appointmentDate->startOfDay()->addHours(2),
             ];
 
             if (count($rows) >= self::BATCH_SIZE) {
@@ -755,7 +681,8 @@ class LargeDatasetSeeder extends Seeder
             DB::table('appointments')->insert($rows);
         }
 
-        $this->command?->info('Generated 10,000 appointments without active slot collisions.');
+        $this->seedStatusChanges($requestIds, $registrarIds, $now);
+        $this->command?->info('Generated 20,000 date-only appointments. Active queue date: '.$activeDates[0]->toDateString().'.');
     }
 
     /** @param array<int, array<string, mixed>> $rows */
@@ -850,29 +777,80 @@ class LargeDatasetSeeder extends Seeder
 
     private function requestStatus(int $sequence): string
     {
-        if ($sequence < self::PROCESSING_REQUEST_COUNT) {
-            return 'processing';
-        }
-
         return match (true) {
-            $sequence % 100 < 35 => 'pending',
-            $sequence % 100 < 50 => 'ready_for_release',
-            $sequence % 100 < 75 => 'released',
-            $sequence % 100 < 90 => 'rejected',
+            $sequence < self::PENDING_REQUEST_COUNT => 'pending',
+            $sequence < self::PENDING_REQUEST_COUNT + self::APPROVED_REQUEST_COUNT => 'approved',
+            $sequence < self::PENDING_REQUEST_COUNT + self::APPROVED_REQUEST_COUNT + self::COMPLETED_REQUEST_COUNT => 'completed',
+            $sequence < self::PENDING_REQUEST_COUNT + self::APPROVED_REQUEST_COUNT + self::COMPLETED_REQUEST_COUNT + self::REJECTED_REQUEST_COUNT => 'rejected',
             default => 'cancelled',
         };
     }
 
-    private function appointmentStatus(string $requestStatus, int $sequence): string
+    private function appointmentStatus(string $requestStatus, int $sequence): ?string
     {
         return match ($requestStatus) {
-            'pending' => 'pending',
-            'processing', 'ready_for_release' => $sequence % 3 === 0 ? 'completed' : 'confirmed',
-            'released' => 'completed',
-            'rejected' => 'no_show',
-            'cancelled' => 'cancelled',
-            default => 'cancelled',
+            'pending' => $sequence < self::PENDING_APPOINTMENT_COUNT ? 'pending' : null,
+            'approved' => 'confirmed',
+            'completed' => 'completed',
+            'cancelled' => $sequence < self::PENDING_REQUEST_COUNT + self::APPROVED_REQUEST_COUNT + self::COMPLETED_REQUEST_COUNT + self::REJECTED_REQUEST_COUNT + self::CANCELLED_APPOINTMENT_COUNT ? 'cancelled' : null,
+            default => null,
         };
+    }
+
+    /** @return array<int, CarbonImmutable> */
+    private function validActiveDates(int $count, CarbonImmutable $now): array
+    {
+        $settings = DB::table('appointment_availability_settings')->first();
+        $blocked = DB::table('appointment_blocked_dates')->where('is_active', true)->pluck('blocked_date')->flip()->all();
+        $dates = [];
+        $date = $now->setTimezone('Asia/Manila')->startOfDay();
+        while (count($dates) < $count) {
+            $weekend = ($date->isSaturday() && ($settings->block_saturday ?? true)) || ($date->isSunday() && ($settings->block_sunday ?? true));
+            if (! $weekend && ! isset($blocked[$date->toDateString()])) {
+                for ($slot = 0; $slot < 5 && count($dates) < $count; $slot++) {
+                    $dates[] = $date;
+                }
+            }
+            $date = $date->addDay();
+        }
+
+        return $dates;
+    }
+
+    /** @param Collection<int, int> $requestIds @param Collection<int, int> $registrarIds */
+    private function seedStatusChanges(Collection $requestIds, Collection $registrarIds, CarbonImmutable $now): void
+    {
+        $requests = collect();
+        foreach ($requestIds->chunk(self::BATCH_SIZE) as $chunk) {
+            $requests = $requests->merge(DB::table('document_requests')->whereIn('id', $chunk->all())->orderBy('id')->get(['id', 'status', 'created_at', 'approved_at', 'completed_at', 'rejected_at', 'cancelled_at']));
+        }
+        $rows = [];
+        foreach ($requests as $offset => $request) {
+            $staff = $registrarIds[$offset % $registrarIds->count()];
+            $add = function (string $from, string $to, string $action, $at, string $actor = 'registrar') use (&$rows, $request, $staff): void {
+                $rows[] = ['document_request_id' => $request->id, 'registrar_staff_id' => $actor === 'system' ? null : $staff, 'actor_type' => $actor, 'from_status' => $from, 'to_status' => $to, 'action' => $action, 'reason' => null, 'created_at' => $at, 'updated_at' => $at];
+            };
+            if ($request->status === 'approved') {
+                $add('pending', 'approved', 'approved', $request->approved_at);
+            }
+            if ($request->status === 'completed') {
+                $add('pending', 'approved', 'approved', $request->approved_at);
+                $add('approved', 'completed', 'completed', $request->completed_at);
+            }
+            if ($request->status === 'rejected') {
+                $add('pending', 'rejected', 'rejected', $request->rejected_at);
+            }
+            if ($request->status === 'cancelled') {
+                $add('pending', 'cancelled', 'cancelled', $request->cancelled_at, $offset % 3 === 0 ? 'system' : 'registrar');
+            }
+            if (count($rows) >= self::BATCH_SIZE) {
+                DB::table('document_request_status_changes')->insert($rows);
+                $rows = [];
+            }
+        }
+        if ($rows !== []) {
+            DB::table('document_request_status_changes')->insert($rows);
+        }
     }
 
     /**
