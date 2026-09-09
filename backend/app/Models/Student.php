@@ -86,4 +86,9 @@ class Student extends Model
     {
         return $this->hasMany(Enrollment::class);
     }
+
+    public function settings(): HasOne
+    {
+        return $this->hasOne(StudentSetting::class);
+    }
 }

@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\RegistrarStudentDocumentController;
 use App\Http\Controllers\Api\StepUpAuthenticationController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentDocumentRequestController;
+use App\Http\Controllers\Api\StudentSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
@@ -53,6 +54,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
     });
 
     Route::middleware('role.student')->group(function (): void {
+        Route::get('/student/settings', [StudentSettingsController::class, 'show']);
+        Route::patch('/student/settings/profile', [StudentSettingsController::class, 'updateProfile']);
+        Route::patch('/student/settings/contact', [StudentSettingsController::class, 'updateContact']);
+        Route::patch('/student/settings/preferences', [StudentSettingsController::class, 'updatePreferences']);
+        Route::post('/student/settings/avatar', [StudentSettingsController::class, 'updateAvatar']);
+        Route::delete('/student/settings/avatar', [StudentSettingsController::class, 'removeAvatar']);
         Route::get('/holidays', HolidayController::class);
         Route::get('/document-types', [StudentDocumentRequestController::class, 'documentTypes']);
         Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);
