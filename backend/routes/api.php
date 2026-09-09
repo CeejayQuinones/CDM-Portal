@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDashboardController;
@@ -27,6 +28,20 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/change-password', [AuthController::class, 'changePassword']);
     Route::post('/step-up/verify', [StepUpAuthenticationController::class, 'verify'])
         ->middleware('throttle:5,1');
+
+    Route::middleware('role.monitoring')->group(function (): void {
+        Route::get('/monitoring/early-warnings', [MonitoringController::class, 'earlyWarnings']);
+        Route::get('/monitoring/my-risk', [MonitoringController::class, 'myRisk']);
+        Route::post('/monitoring/students/{student}/support-plan', [MonitoringController::class, 'supportPlan']);
+        Route::get('/monitoring/study-plans', [MonitoringController::class, 'studyPlans']);
+        Route::get('/monitoring/students/{student}/study-plan', [MonitoringController::class, 'studyPlan']);
+        Route::get('/monitoring/adviser-alerts', [MonitoringController::class, 'adviserAlerts']);
+        Route::get('/monitoring/ai-status', [MonitoringController::class, 'aiStatus']);
+        Route::post('/monitoring/students/{student}/ai-help', [MonitoringController::class, 'aiHelp'])->middleware('throttle:10,1');
+        Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification']);
+        Route::get('/monitoring/my-risk-notifications', [MonitoringController::class, 'myRiskNotifications']);
+        Route::patch('/monitoring/risk-notifications/{notification}/read', [MonitoringController::class, 'markRiskNotificationRead']);
+    });
 
     Route::middleware('role.registrar-or-admin')->group(function (): void {
         Route::get('/students', [StudentController::class, 'index']);

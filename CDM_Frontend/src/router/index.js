@@ -17,6 +17,8 @@ const AdmissionView = () => import('../modules/admission/AdmissionView.vue')
 const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
 const GradingView = () => import('../modules/grading/GradingView.vue')
 const MonitoringView = () => import('../modules/monitoring/MonitoringView.vue')
+const AdviserAlertsView = () => import('../modules/monitoring/AdviserAlertsView.vue')
+const StudyPlansView = () => import('../modules/monitoring/StudyPlansView.vue')
 const DocumentTypesManagementView = () => import('../modules/document-request/DocumentTypesManagementView.vue')
 const StudentDocumentRequestView = () => import('../modules/document-request/StudentDocumentRequestView.vue')
 const RegistrarDocumentRequestView = () => import('../modules/document-request/RegistrarDocumentRequestView.vue')
@@ -200,6 +202,18 @@ const routes = [
           title: 'Document Requests',
           roles: ROUTE_ROLES['student-document-appointments'],
         },
+      }),
+      protectedRoute({
+        path: 'monitoring/adviser-alerts',
+        name: 'monitoring-adviser-alerts',
+        component: AdviserAlertsView,
+        meta: { title: 'Adviser Alerts', roles: [ROLES.PROFESSOR] },
+      }),
+      protectedRoute({
+        path: 'monitoring/study-plans',
+        name: 'monitoring-study-plans',
+        component: StudyPlansView,
+        meta: { title: 'Study Plans', roles: ROUTE_ROLES.monitoring },
       }),
       protectedRoute({
         path: 'registrar/document-types',
