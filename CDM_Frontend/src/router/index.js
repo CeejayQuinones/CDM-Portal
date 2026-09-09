@@ -84,7 +84,7 @@ const routes = [
         path: 'settings',
         name: 'settings',
         component: SettingsView,
-        meta: { title: 'Settings', roles: ROUTE_ROLES.home },
+        meta: { title: 'Settings', roles: [ROLES.STUDENT] },
       }),
       protectedRoute({
         path: 'guest-dashboard',
