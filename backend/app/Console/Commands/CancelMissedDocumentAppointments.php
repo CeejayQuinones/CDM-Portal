@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 class CancelMissedDocumentAppointments extends Command
 {
     protected $signature = 'document-requests:cancel-no-shows';
+
     protected $description = 'Cancel unverified document requests whose appointment date has passed';
 
     public function handle(): int
@@ -26,9 +27,13 @@ class CancelMissedDocumentAppointments extends Command
                 foreach ($appointments as $candidate) {
                     DB::transaction(function () use ($candidate): void {
                         $appointment = Appointment::query()->lockForUpdate()->find($candidate->id);
-                        if (! $appointment || ! in_array($appointment->status, ['pending', 'confirmed'], true)) return;
+                        if (! $appointment || ! in_array($appointment->status, ['pending', 'confirmed'], true)) {
+                            return;
+                        }
                         $request = DocumentRequest::query()->lockForUpdate()->find($appointment->document_request_id);
-                        if (! $request || ! in_array($request->status, ['pending', 'approved'], true) || $request->code_verified_at) return;
+                        if (! $request || ! in_array($request->status, ['pending', 'approved'], true) || $request->code_verified_at) {
+                            return;
+                        }
                         $from = $request->status;
                         $request->update(['status' => 'cancelled', 'cancelled_at' => now(), 'cancellation_reason' => 'Missed appointment / no show', 'verification_code_lookup' => null, 'verification_code_hash' => null]);
                         $appointment->update(['status' => 'cancelled', 'cancelled_at' => now(), 'active_slot_key' => null, 'remarks' => 'Missed appointment / no show']);

@@ -81,7 +81,7 @@ class EarlyWarningService
     }
 
     /** @return array{summary:array<string,int>,alerts:list<array<string,mixed>>} */
-    public function adviserAlerts(int $professorUserId): array
+    public function adviserAlerts(?int $professorUserId = null): array
     {
         $students = $this->overview($professorUserId)['students'];
         $alerts = collect($students)->filter(fn ($s) => $s['risk_level'] !== 'low' || $s['trend'] === 'declining')->map(fn ($s) => ['id' => 'alert-'.$s['student_id'], 'student_id' => $s['student_id'], 'severity' => $s['risk_level'] === 'high' ? 'urgent' : 'attention', 'risk_level' => $s['risk_level'], 'headline' => $s['headline'], 'warnings' => $s['warnings']])->values();

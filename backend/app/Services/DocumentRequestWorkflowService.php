@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Mail;
 class DocumentRequestWorkflowService
 {
     public const BUSINESS_TIMEZONE = 'Asia/Manila';
+
     public const DEFAULT_CAPACITY = 5;
 
     public function __construct(
@@ -106,6 +107,7 @@ class DocumentRequestWorkflowService
             abort_unless($appointment && $appointment->appointment_date->isSameDay(CarbonImmutable::now(self::BUSINESS_TIMEZONE)), 422, 'This code is not valid for an appointment today.');
             $request->update(['code_verified_at' => now(), 'registrar_staff_id' => $staff->id]);
             $this->audit($request, $staff, 'approved', 'approved', 'code_verified');
+
             return $request->fresh(['student.user.profile', 'documentType', 'activeAppointment']);
         });
     }
@@ -158,6 +160,7 @@ class DocumentRequestWorkflowService
             $locked->update(['status' => $status, 'registrar_staff_id' => $staff->id, $status.'_at' => now(), 'cancellation_reason' => $status === 'cancelled' ? $reason : $locked->cancellation_reason, 'verification_code_lookup' => null, 'verification_code_hash' => null]);
             $appointment->update(['status' => $status, $status.'_at' => now(), 'remarks' => $reason ?: $appointment->remarks, 'active_slot_key' => null]);
             $this->audit($locked, $staff, 'approved', $status, $status, $reason);
+
             return $locked->fresh(['documentType', 'student.user.profile', 'latestAppointment']);
         });
     }
@@ -170,6 +173,7 @@ class DocumentRequestWorkflowService
             Appointment::query()->where('document_request_id', $locked->id)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->get()->each->update(['status' => 'cancelled', 'cancelled_at' => now(), 'active_slot_key' => null, 'remarks' => $reason]);
             $locked->update(['status' => 'rejected', 'registrar_staff_id' => $staff->id, 'rejected_at' => now(), 'remarks' => $reason, 'verification_code_lookup' => null, 'verification_code_hash' => null]);
             $this->audit($locked, $staff, 'pending', 'rejected', 'rejected', $reason);
+
             return $locked->fresh(['documentType', 'student.user.profile', 'latestAppointment']);
         });
     }

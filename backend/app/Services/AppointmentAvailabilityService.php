@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\Models\AppointmentAvailabilitySetting;
 use App\Models\AppointmentBlockedDate;
-use Illuminate\Support\Facades\DB;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 class AppointmentAvailabilityService
 {

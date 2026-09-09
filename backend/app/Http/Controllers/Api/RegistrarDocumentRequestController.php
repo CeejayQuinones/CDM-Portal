@@ -167,23 +167,27 @@ class RegistrarDocumentRequestController extends Controller
         $reason = $request->filled('reason') ? trim($request->string('reason')->toString()) : null;
         if ($action === 'approve') {
             $result = $this->workflow->approve($documentRequest, $staff);
+
             return $this->ok($result['request'], $result['email_delivered'] ? 'Document request approved and notification sent.' : 'Document request approved; email delivery was unavailable.');
         }
         $updated = $action === 'reject'
             ? $this->workflow->reject($documentRequest, $staff, (string) $reason)
             : $this->workflow->finalize($documentRequest, $staff, $action, $reason);
+
         return $this->ok($updated, 'Document request updated successfully.');
     }
 
     public function assignAppointment(Request $request, DocumentRequest $documentRequest): JsonResponse
     {
         $validated = $request->validate(['appointment_date' => ['required', 'date_format:Y-m-d']]);
+
         return $this->ok($this->workflow->assignDate($documentRequest, $this->staffFor($request), $validated['appointment_date']), 'Appointment date assigned; request remains pending.');
     }
 
     public function verifyCode(Request $request): JsonResponse
     {
         $validated = $request->validate(['verification_code' => ['required', 'digits:6']]);
+
         return $this->ok($this->workflow->verify($validated['verification_code'], $this->staffFor($request)), 'Verification code accepted.');
     }
 

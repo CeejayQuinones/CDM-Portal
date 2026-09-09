@@ -16,10 +16,12 @@ use App\Models\User;
 use App\Models\UserProfile;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Mail\MailManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -104,7 +106,11 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-07'])->assertOk();
         $this->patchJson("/api/registrar/document-requests/{$request->id}", ['action' => 'approve'])->assertOk();
         $code = null;
-        Mail::assertSent(DocumentRequestApprovedMail::class, function ($mail) use (&$code): bool { $code = $mail->claimCode; return true; });
+        Mail::assertSent(DocumentRequestApprovedMail::class, function ($mail) use (&$code): bool {
+            $code = $mail->claimCode;
+
+            return true;
+        });
         $this->patchJson("/api/registrar/document-requests/{$request->id}", ['action' => 'complete'])->assertUnprocessable();
         $this->postJson('/api/registrar/document-requests/verify-code', ['verification_code' => $code])->assertOk();
         $this->postJson('/api/registrar/document-requests/verify-code', ['verification_code' => $code])->assertUnprocessable();
@@ -151,7 +157,7 @@ class DocumentRequestAppointmentTest extends TestCase
 
     public function test_holidays_are_present_in_test_schema_and_are_enforced(): void
     {
-        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasTable('holidays'));
+        $this->assertTrue(Schema::hasTable('holidays'));
         DB::table('holidays')->insert(['name' => 'College Foundation Day', 'holiday_date' => '2026-09-09', 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
         $request = $this->requestFor($this->createStudent('26-10008'));
         Sanctum::actingAs($this->createRegistrar()->user);
@@ -284,7 +290,7 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->assertNotSame($oldLookup, $failedDeliveryLookup);
         $this->assertSame('approved', $request->fresh()->status);
 
-        Mail::swap(new \Illuminate\Mail\MailManager($this->app));
+        Mail::swap(new MailManager($this->app));
         Mail::fake();
         $response = $this->postJson("/api/registrar/document-requests/{$request->id}/resend-claim-code")
             ->assertOk()->assertJsonPath('data.status', 'approved')->assertJsonMissingPath('data.verification_code_hash')->assertJsonMissingPath('data.verification_code_lookup');
@@ -377,6 +383,7 @@ class DocumentRequestAppointmentTest extends TestCase
         $profile = UserProfile::create(['user_id' => $user->id, 'first_name' => 'Student', 'last_name' => str_replace('-', '', $number), 'gender' => 'Prefer not to say', 'nationality' => 'Filipino', 'email' => "{$number}@example.test"]);
         $course = Course::firstOrCreate(['course_code' => 'BSIT'], ['department_id' => 1, 'course_name' => 'Information Technology', 'years' => 4, 'status' => 'active']);
         $curriculum = Curriculum::firstOrCreate(['curriculum_code' => 'BSIT-2026'], ['course_id' => $course->id, 'curriculum_name' => 'BSIT Curriculum', 'effective_year' => 2026, 'status' => 'active']);
+
         return Student::create(['user_id' => $user->id, 'user_profile_id' => $profile->id, 'course_id' => $course->id, 'curriculum_id' => $curriculum->id, 'student_number' => $number, 'admission_date' => '2026-08-01', 'year_level' => 1, 'student_status' => 'regular']);
     }
 
@@ -384,12 +391,14 @@ class DocumentRequestAppointmentTest extends TestCase
     {
         $user = $this->userWithRole(Role::REGISTRAR_STAFF);
         $profile = UserProfile::create(['user_id' => $user->id, 'first_name' => 'Registrar', 'last_name' => 'Staff', 'gender' => 'Prefer not to say', 'nationality' => 'Filipino', 'email' => "registrar{$user->id}@example.test"]);
+
         return RegistrarStaff::create(['user_id' => $user->id, 'user_profile_id' => $profile->id, 'employee_number' => "REG-{$user->id}", 'position' => 'Registrar Staff', 'employment_status' => 'regular', 'status' => 'active']);
     }
 
     private function userWithRole(string $roleName): User
     {
         $role = Role::firstOrCreate(['role_name' => $roleName], ['description' => $roleName]);
+
         return User::factory()->create(['role_id' => $role->id, 'status' => 'active']);
     }
 }

@@ -12,7 +12,7 @@ class EnsureMonitoringAccess
     public function handle(Request $request, Closure $next): Response
     {
         $role = $request->user()?->role?->role_name;
-        abort_unless(in_array($role, [Role::STUDENT, Role::PROFESSOR], true), 403);
+        abort_unless(in_array($role, [Role::STUDENT, Role::PROFESSOR, Role::REGISTRAR_STAFF], true), 403);
 
         return $next($request);
     }
