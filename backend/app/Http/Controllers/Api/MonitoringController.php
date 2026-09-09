@@ -18,7 +18,11 @@ class MonitoringController extends Controller
 
     public function earlyWarnings(Request $request): JsonResponse
     {
-        return $this->ok($request->user()->role?->role_name === Role::STUDENT ? $this->warnings->assessForUserId($request->user()->id) : $this->warnings->overview($request->user()->id));
+        $role = $request->user()->role?->role_name;
+
+        return $this->ok($role === Role::STUDENT
+            ? $this->warnings->assessForUserId($request->user()->id)
+            : $this->warnings->overview($role === Role::PROFESSOR ? $request->user()->id : null));
     }
 
     public function myRisk(Request $request): JsonResponse
@@ -48,7 +52,9 @@ class MonitoringController extends Controller
             return $this->ok(['summary' => ['total' => $assessment ? 1 : 0], 'plans' => $assessment ? [$this->warnings->generateStudyPlan($assessment)] : []]);
         }
 
-        return $this->ok(collect($this->warnings->overview($request->user()->id)['students'])->map(fn ($a) => $this->warnings->generateStudyPlan($a))->values()->all());
+        $professorUserId = $request->user()->role?->role_name === Role::PROFESSOR ? $request->user()->id : null;
+
+        return $this->ok(collect($this->warnings->overview($professorUserId)['students'])->map(fn ($a) => $this->warnings->generateStudyPlan($a))->values()->all());
     }
 
     public function studyPlan(Request $request, int $student): JsonResponse
@@ -63,11 +69,12 @@ class MonitoringController extends Controller
 
     public function adviserAlerts(Request $request): JsonResponse
     {
-        if ($request->user()->role?->role_name !== Role::PROFESSOR) {
-            return $this->forbidden('Adviser alerts are only available to professors.');
+        $role = $request->user()->role?->role_name;
+        if (! in_array($role, [Role::PROFESSOR, Role::REGISTRAR_STAFF], true)) {
+            return $this->forbidden('Adviser alerts are only available to professors and registrar staff.');
         }
 
-        return $this->ok($this->warnings->adviserAlerts($request->user()->id));
+        return $this->ok($this->warnings->adviserAlerts($role === Role::PROFESSOR ? $request->user()->id : null));
     }
 
     public function aiStatus(): JsonResponse

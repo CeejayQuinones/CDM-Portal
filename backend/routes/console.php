@@ -4,8 +4,8 @@ use App\Models\Student;
 use App\Services\Demo\StudentDocumentDemoFixtureService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
-use Symfony\Component\Console\Command\Command;
 use Illuminate\Support\Facades\Schedule;
+use Symfony\Component\Console\Command\Command;
 
 Schedule::command('document-requests:cancel-no-shows')
     ->dailyAt('00:10')

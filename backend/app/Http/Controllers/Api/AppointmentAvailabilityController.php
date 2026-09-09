@@ -4,14 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateAppointmentAvailabilitySettingsRequest;
-use App\Services\AppointmentAvailabilityService;
 use App\Models\Appointment;
 use App\Models\AppointmentDateCapacity;
+use App\Services\AppointmentAvailabilityService;
 use App\Services\DocumentRequestWorkflowService;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AppointmentAvailabilityController extends Controller
 {
@@ -96,8 +96,10 @@ class AppointmentAvailabilityController extends Controller
             $booked = Appointment::query()->whereDate('appointment_date', $date)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->count();
             abort_if($validated['capacity'] < $booked, 422, 'Capacity cannot be lower than the current booked count.');
             $capacity->update(['capacity' => $validated['capacity'], 'updated_by' => $request->user()->id]);
+
             return $capacity;
         });
+
         return response()->json(['success' => true, 'message' => 'Date capacity updated successfully.', 'data' => $row]);
     }
 }

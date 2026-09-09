@@ -207,7 +207,7 @@ const routes = [
         path: 'monitoring/adviser-alerts',
         name: 'monitoring-adviser-alerts',
         component: AdviserAlertsView,
-        meta: { title: 'Adviser Alerts', roles: [ROLES.PROFESSOR] },
+        meta: { title: 'Adviser Alerts', roles: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF] },
       }),
       protectedRoute({
         path: 'monitoring/study-plans',
