@@ -11,6 +11,12 @@ test('student settings keeps a left internal sidebar and mobile drawer', async (
   assert.doesNotMatch(source, /role="tablist"|<nav class="tabs"/)
 })
 
+test('main navigation exposes Settings only to students', async () => {
+  const access = await readFile(new URL('../src/config/accessControl.js', import.meta.url), 'utf8')
+  assert.match(access, /settings: \[ROLES\.STUDENT\]/)
+  assert.match(access, /name: 'settings',[\s\S]*?path: '\/settings',[\s\S]*?roles: ROUTE_ROLES\.settings/)
+})
+
 test('student settings contains every editable settings surface and loading/error states', async () => {
   const source = await view()
   for (const label of ['Profile', 'Account', 'Student Status', 'Document Status', 'Contact Information', 'Notifications', 'Academic Preferences', 'Appearance', 'Security']) assert.match(source, new RegExp(label))
