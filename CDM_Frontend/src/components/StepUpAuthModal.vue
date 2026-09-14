@@ -131,9 +131,9 @@ input:focus {
   outline: none;
 }
 .step-up-error {
-  background: #fff0f0;
+  background: var(--student-danger-bg, #fff0f0);
   border-radius: 7px;
-  color: #b42318;
+  color: var(--student-danger, #b42318);
   margin: 4px 0 0;
   padding: 9px 11px;
 }

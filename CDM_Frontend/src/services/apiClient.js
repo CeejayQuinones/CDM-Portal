@@ -2,11 +2,12 @@ import axios from 'axios'
 import { isOfflineDemo } from '../config/demoMode'
 import { createOfflineApiClient } from './offline/offlineApi'
 import { performanceMonitor } from './performance/performanceMonitor'
+import { resolveApiAssetUrl } from '../utils/apiAssetUrl'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
 
 const onlineApiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -55,3 +56,5 @@ onlineApiClient.interceptors.response.use(
 )
 
 export const apiClient = isOfflineDemo ? createOfflineApiClient() : onlineApiClient
+
+export const apiAssetUrl = (path) => resolveApiAssetUrl(path, apiClient.defaults?.baseURL, window.location.href)

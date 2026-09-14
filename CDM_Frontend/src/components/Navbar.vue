@@ -149,13 +149,13 @@ const resetDemo = async () => {
 }
 
 .menu-button:hover {
-  background: #eef7f1;
+  background: var(--student-surface-soft, #eef7f1);
   border-color: rgba(16, 106, 46, 0.38);
   box-shadow: 0 4px 10px rgba(16, 106, 46, 0.1);
 }
 
 .menu-button:active {
-  background: #e3f0e7;
+  background: var(--student-surface-soft, #e3f0e7);
   box-shadow: none;
 }
 
@@ -236,8 +236,8 @@ h1 {
 
 .demo-controls { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .demo-badge { border-left: 3px solid var(--color-naples-yellow); color: var(--color-dartmouth-green); font-size: .7rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding-left: 7px; }
-.demo-reset { border: 1px solid rgba(16,106,46,.3); border-radius: 6px; background: #fff; color: var(--color-dark-spring-green); cursor: pointer; font: inherit; font-size: .72rem; font-weight: 700; padding: 5px 8px; }
-.demo-reset:hover { background: #eef7f1; border-color: var(--color-dartmouth-green); }
+.demo-reset { border: 1px solid rgba(16,106,46,.3); border-radius: 6px; background: var(--student-surface, #fff); color: var(--color-dark-spring-green); cursor: pointer; font: inherit; font-size: .72rem; font-weight: 700; padding: 5px 8px; }
+.demo-reset:hover { background: var(--student-surface-soft, #eef7f1); border-color: var(--color-dartmouth-green); }
 .demo-reset:disabled { cursor: wait; opacity: .6; }
 
 .navbar-title p,

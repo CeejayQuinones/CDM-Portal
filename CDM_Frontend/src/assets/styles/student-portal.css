@@ -1,9 +1,9 @@
 /* Authenticated Student theme. Every shell rule is role-scoped to avoid changing staff views. */
-.student-portal-shell .shell-content {
+html[data-student-theme] :is(.student-portal-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
   --student-cdm-green: #106a2e;
   --student-cdm-spring: #0d7856;
   --student-cdm-yellow: #f4d35e;
-  --student-cdm-ink: #1f1f1f;
+  --student-cdm-ink: var(--student-text, #1f1f1f);
   --student-cdm-white: #f1f1f1;
   --student-surface: #fff;
   --student-surface-soft: #f7faf7;
@@ -22,17 +22,21 @@
   --color-border: var(--student-border);
   --color-green-tint: rgb(13 120 86 / 10%);
   --shadow-soft: var(--student-card-shadow);
+}
 
-  background:
+.student-portal-shell .shell-content {
+  color: var(--student-cdm-ink);
+  color-scheme: var(--student-color-scheme, light);
+  background: var(--student-page-background,
     linear-gradient(rgb(16 106 46 / 2.5%) 1px, transparent 1px),
     linear-gradient(90deg, rgb(16 106 46 / 2.5%) 1px, transparent 1px),
-    linear-gradient(135deg, #f5f8f4 0%, #edf4ef 100%);
+    linear-gradient(135deg, #f5f8f4 0%, #edf4ef 100%));
   background-size: 44px 44px, 44px 44px, auto;
 }
 
 .student-portal-shell .navbar {
   border-bottom-color: rgb(16 106 46 / 16%);
-  background: rgb(255 255 255 / 94%);
+  background: var(--student-surface, rgb(255 255 255 / 94%));
   box-shadow: 0 8px 24px rgb(5 39 21 / 6%);
 }
 
@@ -47,14 +51,14 @@
 }
 
 .student-portal-shell .navbar-label {
-  color: var(--student-cdm-spring);
+  color: var(--student-accent, var(--student-cdm-spring));
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .student-portal-shell .navbar-title h1 {
-  color: #133c24;
+  color: var(--student-heading, #133c24);
   font-weight: 900;
 }
 
@@ -79,14 +83,14 @@
 }
 
 .student-portal-shell .main-content .page-kicker {
-  color: var(--student-cdm-spring);
+  color: var(--student-accent, var(--student-cdm-spring));
   font-size: 0.7rem;
   font-weight: 900;
   letter-spacing: 0.15em;
 }
 
 .student-portal-shell .main-content .page-title {
-  color: #133c24;
+  color: var(--student-heading, #133c24);
   font-weight: 950;
   letter-spacing: -0.035em;
 }
@@ -101,7 +105,7 @@
 .student-portal-shell .main-content .student-history-panel {
   border-color: var(--student-border);
   border-radius: 11px;
-  background: rgb(255 255 255 / 96%);
+  background: var(--student-surface);
   box-shadow: var(--student-card-shadow);
 }
 
@@ -133,7 +137,7 @@
 
 .student-portal-shell .main-content .module-card:hover,
 .student-portal-shell .main-content .module-card:focus-visible {
-  border-color: var(--student-cdm-spring);
+  border-color: var(--student-accent, var(--student-cdm-spring));
   box-shadow: var(--student-card-shadow-hover);
   outline: none;
   transform: translateY(-3px);
@@ -160,7 +164,7 @@
 .student-portal-shell .main-content .module-card h2,
 .student-portal-shell .main-content .student-detail-heading h2,
 .student-portal-shell .main-content .student-history-heading h2 {
-  color: #133c24;
+  color: var(--student-heading, #133c24);
   font-weight: 900;
 }
 
@@ -168,18 +172,18 @@
 .student-portal-shell .main-content .student-summary-card {
   border-color: var(--student-border);
   border-radius: 10px;
-  background: rgb(255 255 255 / 97%);
+  background: var(--student-surface);
   box-shadow: var(--student-card-shadow);
 }
 
 .student-portal-shell .main-content .student-summary-card:hover {
-  border-color: var(--student-cdm-spring);
+  border-color: var(--student-accent, var(--student-cdm-spring));
   box-shadow: var(--student-card-shadow-hover);
 }
 
 .student-portal-shell .main-content .student-summary-card.is-active {
-  border-color: var(--student-cdm-green);
-  background: linear-gradient(135deg, #f5faf6, #eaf5ed);
+  border-color: var(--student-accent, var(--student-cdm-green));
+  background: var(--student-selected, linear-gradient(135deg, #f5faf6, #eaf5ed));
   box-shadow: 0 12px 28px rgb(16 106 46 / 13%);
 }
 
@@ -201,19 +205,19 @@
 }
 
 .student-portal-shell .main-content .student-detail-grid > div {
-  border-left-color: var(--student-cdm-spring);
+  border-left-color: var(--student-accent, var(--student-cdm-spring));
   background: var(--student-surface-soft);
 }
 
 .student-portal-shell .main-content .student-detail-grid > div:hover {
   border-left-color: var(--student-cdm-yellow);
-  background: #f0f7f2;
+  background: var(--student-surface-soft, #f0f7f2);
 }
 
 .student-portal-shell .main-content .student-detail-note,
 .student-portal-shell .main-content .student-request-summary {
   border-left-color: var(--student-cdm-yellow);
-  background: #fff9df;
+  background: var(--student-note, #fff9df);
 }
 
 .student-portal-shell .main-content .student-history-panel {
@@ -221,41 +225,41 @@
 }
 
 .student-portal-shell .main-content .student-history-row {
-  border-bottom-color: #e4ece6;
+  border-bottom-color: var(--student-border, #e4ece6);
 }
 
 .student-portal-shell .main-content .student-history-row:hover,
 .student-portal-shell .main-content .student-history-row:focus-visible {
-  background: linear-gradient(90deg, #eff7f1, #fffdf4);
+  background: var(--student-selected, linear-gradient(90deg, #eff7f1, #fffdf4));
 }
 
 .student-portal-shell .main-content .student-panel-state,
 .student-portal-shell .main-content .empty,
 .student-portal-shell .main-content .empty-state {
-  border-color: #bfd2c4;
-  background: #f4f8f5;
+  border-color: var(--student-border, #bfd2c4);
+  background: var(--student-surface-soft, #f4f8f5);
   color: var(--student-muted);
 }
 
 .student-portal-shell .main-content input,
 .student-portal-shell .main-content select,
 .student-portal-shell .main-content textarea {
-  border-color: #cbd9cf;
+  border-color: var(--student-border, #cbd9cf);
   border-radius: 7px;
-  background: #fff;
+  background: var(--student-surface, #fff);
   color: var(--student-cdm-ink);
 }
 
 .student-portal-shell .main-content input:focus,
 .student-portal-shell .main-content select:focus,
 .student-portal-shell .main-content textarea:focus {
-  border-color: var(--student-cdm-spring);
+  border-color: var(--student-accent, var(--student-cdm-spring));
   box-shadow: 0 0 0 4px rgb(13 120 86 / 12%);
 }
 
 .student-portal-shell .main-content .student-primary-action,
 .student-portal-shell .main-content button[type='submit']:not(.student-danger-action) {
-  border-color: var(--student-cdm-green);
+  border-color: var(--student-accent, var(--student-cdm-green));
   background: var(--student-cdm-green);
   color: #fff;
 }
@@ -269,9 +273,9 @@
 
 .student-portal-shell .main-content .student-secondary-action,
 .student-portal-shell .main-content .student-history-more {
-  border-color: var(--student-cdm-green);
-  background: #fff;
-  color: var(--student-cdm-green);
+  border-color: var(--student-accent, var(--student-cdm-green));
+  background: var(--student-surface, #fff);
+  color: var(--student-accent, var(--student-cdm-green));
 }
 
 .student-portal-shell .main-content .badge.pending {
@@ -295,7 +299,7 @@
 
 .student-portal-shell .main-content .badge.completed,
 .student-portal-shell .main-content .badge.released {
-  border-color: var(--student-cdm-green);
+  border-color: var(--student-accent, var(--student-cdm-green));
   background: #dff0e4;
   color: #084e24;
 }
@@ -326,7 +330,7 @@
   border: 1px solid rgb(16 106 46 / 22%);
   border-top: 4px solid #106a2e;
   border-radius: 11px;
-  background: #fff;
+  background: var(--student-surface, #fff);
   box-shadow: 0 26px 68px rgb(5 34 20 / 30%);
 }
 
@@ -336,16 +340,16 @@
 .student-cancellation-modal .appointment-details-header {
   position: relative;
   border-bottom-color: rgb(13 120 86 / 18%);
-  background:
+  background: var(--student-panel-header,
     radial-gradient(circle at 100% 0, rgb(244 211 94 / 18%), transparent 36%),
-    linear-gradient(135deg, #f7faf7, #edf5ef);
+    linear-gradient(135deg, #f7faf7, #edf5ef));
 }
 
 .student-request-modal .student-modal-header h2,
 .student-booking-modal .student-modal-header h2,
 .student-request-cancellation-modal .student-modal-header h2,
 .student-cancellation-modal .appointment-details-header h2 {
-  color: #133c24;
+  color: var(--student-heading, #133c24);
 }
 
 .student-request-modal .student-modal-header::after,
@@ -366,9 +370,9 @@
 .student-request-modal textarea,
 .student-request-cancellation-modal textarea,
 .student-cancellation-modal textarea {
-  border-color: #cbd9cf;
+  border-color: var(--student-border, #cbd9cf);
   border-radius: 7px;
-  background: #fbfdfb;
+  background: var(--student-surface-soft, #fbfdfb);
 }
 
 .student-request-modal input:focus,
@@ -392,21 +396,21 @@
 .student-booking-modal .appointment-close-action,
 .student-request-cancellation-modal .appointment-close-action,
 .student-cancellation-modal .appointment-close-action {
-  border-color: #b9cdc0;
-  background: #f4f8f5;
-  color: #405047;
+  border-color: var(--student-border, #b9cdc0);
+  background: var(--student-surface-soft, #f4f8f5);
+  color: var(--student-muted, #405047);
 }
 
 .student-booking-modal .appointment-calendar,
 .student-booking-modal .appointment-times {
-  border-color: #cfddd3;
-  background: #fbfdfb;
+  border-color: var(--student-border, #cfddd3);
+  background: var(--student-surface-soft, #fbfdfb);
 }
 
 .student-booking-modal .calendar-day.selected,
 .student-booking-modal .appointment-time-option.selected {
   border-color: #106a2e;
-  background: #eaf6ed;
+  background: var(--student-surface-soft, #eaf6ed);
   box-shadow: inset 0 -3px #f4d35e;
 }
 

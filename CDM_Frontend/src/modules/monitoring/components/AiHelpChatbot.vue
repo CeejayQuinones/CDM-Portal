@@ -31,6 +31,6 @@ const ask = async () => {
 </template>
 
 <style scoped>
-.ai-help { border: 1px solid #d7dfd6; border-radius: 8px; padding: 16px; background: #fff; }
-h3, p { margin: 0 0 8px; } p { color: #52605a; } form { display: grid; gap: 8px; } textarea { min-height: 72px; padding: 10px; resize: vertical; } button { justify-self: start; background: #106a2e; color: #fff; border: 0; border-radius: 5px; padding: 9px 13px; font-weight: 700; } button:disabled { opacity: .55; } .error { color: #a8291f; } .reply { white-space: pre-wrap; color: #1d2c23; }
+.ai-help { border: 1px solid var(--student-border, #d7dfd6); border-radius: 8px; padding: 16px; background: var(--student-surface, #fff); }
+h3, p { margin: 0 0 8px; } p { color: var(--student-muted, #52605a); } form { display: grid; gap: 8px; } textarea { min-height: 72px; padding: 10px; resize: vertical; } button { justify-self: start; background: #106a2e; color: #fff; border: 0; border-radius: 5px; padding: 9px 13px; font-weight: 700; } button:disabled { opacity: .55; } .error { color: var(--student-danger, #a8291f); } .reply { white-space: pre-wrap; color: var(--student-accent, #1d2c23); }
 </style>

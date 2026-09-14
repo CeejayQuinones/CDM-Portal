@@ -62,6 +62,36 @@ class StudentSettingsTest extends TestCase
         $this->actingAs($student->user)->post('/api/student/settings/avatar', ['avatar' => UploadedFile::fake()->image('large.png')->size(2049)])->assertUnprocessable();
         $this->actingAs($student->user)->deleteJson('/api/student/settings/avatar')->assertOk();
         Storage::disk('public')->assertMissing($path);
+        $this->assertNull($student->fresh()->userProfile->profile_photo);
+        $this->actingAs($student->user)->getJson('/api/student/settings')->assertOk()
+            ->assertJsonPath('data.profile.avatar_url', null);
+    }
+
+    public function test_avatar_url_is_origin_independent_and_persists_on_reload(): void
+    {
+        config([
+            'app.url' => 'http://127.0.0.1:8000',
+            'app.asset_url' => 'http://localhost:8000',
+            'filesystems.disks.public.url' => 'http://127.0.0.1:8000/storage',
+        ]);
+        Storage::fake('public');
+        $student = $this->studentFixture();
+        $origin = 'https://student-api.example.test:8443';
+
+        $response = $this->actingAs($student->user)->post('http://127.0.0.1:8000/api/student/settings/avatar', [
+            'avatar' => UploadedFile::fake()->image('avatar.png'),
+        ])->assertOk();
+
+        $path = $student->fresh()->userProfile->profile_photo;
+        Storage::disk('public')->assertExists($path);
+        $response->assertJsonPath('data.profile.avatar_url', '/storage/'.$path);
+        $this->actingAs($student->user)->getJson($origin.'/api/student/settings')->assertOk()
+            ->assertJsonPath('data.profile.avatar_url', '/storage/'.$path);
+
+        $this->actingAs($student->user)->deleteJson($origin.'/api/student/settings/avatar')->assertOk();
+        Storage::disk('public')->assertMissing($path);
+        $this->actingAs($student->user)->getJson($origin.'/api/student/settings')->assertOk()
+            ->assertJsonPath('data.profile.avatar_url', null);
     }
 
     public function test_password_change_requires_the_current_password(): void

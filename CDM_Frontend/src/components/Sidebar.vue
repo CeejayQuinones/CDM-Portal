@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import logoUrl from '../assets/styles/images/cdm_logo.png'
 import { useAuthStore } from '../stores/authStore'
+import { useStudentProfileStore } from '../stores/studentProfile'
 import { useNavigationStore } from '../stores/navigation'
 
 defineProps({
@@ -15,6 +16,9 @@ defineProps({
 const emit = defineEmits(['close'])
 const navigationStore = useNavigationStore()
 const authStore = useAuthStore()
+const studentProfile = useStudentProfileStore()
+const avatarFailed = ref(false)
+watch(() => studentProfile.avatarUrl, () => { avatarFailed.value = false })
 const route = useRoute()
 const router = useRouter()
 const expandedItems = ref([])
@@ -165,7 +169,10 @@ const logout = async () => {
 
     <footer class="sidebar-footer">
       <div class="sidebar-user" aria-label="Signed in user">
-        <span class="sidebar-avatar">{{ initials }}</span>
+        <span class="sidebar-avatar">
+          <img v-if="studentProfile.avatarUrl && !avatarFailed" :key="studentProfile.avatarUrl" :src="studentProfile.avatarUrl" alt="Profile picture" @error="avatarFailed = true" />
+          <template v-else>{{ initials }}</template>
+        </span>
         <div class="user-copy">
           <strong>{{ displayName }}</strong>
           <small>{{ authStore.currentRole }}</small>
@@ -395,6 +402,14 @@ const logout = async () => {
   height: 36px;
   justify-content: center;
   width: 36px;
+}
+
+.sidebar-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
 }
 
 .sign-out-button {
