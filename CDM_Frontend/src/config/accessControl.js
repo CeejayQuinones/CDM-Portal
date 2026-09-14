@@ -31,6 +31,7 @@ export const ROUTE_ROLES = Object.freeze({
   'registrar-document-appointments': [ROLES.REGISTRAR_STAFF],
   'registrar-document-request-history': [ROLES.REGISTRAR_STAFF],
   'activate-student-account': [ROLES.GUEST],
+  settings: [ROLES.STUDENT],
   admission: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   enrollment: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   grading: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.ADMIN],
@@ -184,6 +185,13 @@ export const NAVIGATION_ITEMS = Object.freeze([
     path: '/event-attendance',
     icon: 'EV',
     roles: ROUTE_ROLES['event-attendance'],
+  },
+  {
+    name: 'settings',
+    label: 'Settings',
+    path: '/settings',
+    icon: 'SE',
+    roles: ROUTE_ROLES.settings,
   },
 ])
 

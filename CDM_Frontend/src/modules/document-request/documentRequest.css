@@ -74,7 +74,7 @@
 .dr-panel .calendar-day,
 .student-booking-modal .calendar-day {
   align-items: flex-start;
-  background: #fff;
+  background: var(--student-surface, #fff);
   border: 1px solid var(--color-border);
   color: var(--color-eerie-black);
   display: flex;
@@ -90,15 +90,15 @@
 .dr-panel .calendar-day.selected,
 .student-booking-modal .calendar-day:hover:not(:disabled),
 .student-booking-modal .calendar-day.selected {
-  background: #e9f8ee;
+  background: var(--student-surface-soft, #e9f8ee);
   border-color: var(--color-dartmouth-green);
 }
 
 .dr-panel .calendar-day.unavailable,
 .student-booking-modal .calendar-day.unavailable {
-  background: #fff0f0;
-  border-color: #f4b4b4;
-  color: #991b1b;
+  background: var(--student-danger-bg, #fff0f0);
+  border-color: var(--student-border, #f4b4b4);
+  color: var(--student-danger, #991b1b);
   opacity: 1;
 }
 
@@ -140,7 +140,7 @@
 .student-summary-card {
   align-items: center;
   appearance: none;
-  background: #fff;
+  background: var(--student-surface, #fff);
   border: 1px solid var(--color-border);
   border-radius: 12px;
   box-shadow: 0 5px 16px rgb(14 54 31 / 6%);
@@ -197,7 +197,7 @@
 }
 
 .student-summary-card.is-active {
-  background: #eef8f1;
+  background: var(--student-surface-soft, #eef8f1);
   border-color: var(--color-dartmouth-green);
   box-shadow: 0 9px 24px rgb(0 112 60 / 13%);
 }
@@ -209,8 +209,8 @@
 
 .student-summary-icon {
   align-items: center;
-  background: #e6f2e9;
-  border: 1px solid #c9dfcf;
+  background: var(--student-surface-soft, #e6f2e9);
+  border: 1px solid var(--student-border, #c9dfcf);
   border-radius: 9px;
   color: var(--color-dartmouth-green);
   display: inline-flex;
@@ -239,7 +239,7 @@
 }
 
 .student-summary-copy strong {
-  color: #1b3425;
+  color: var(--student-accent, #1b3425);
   font-size: 0.98rem;
   margin-top: 4px;
 }
@@ -299,13 +299,13 @@
 
 .student-detail-heading h2,
 .student-history-heading h2 {
-  color: #193e29;
+  color: var(--student-accent, #193e29);
   margin: 2px 0 0;
 }
 
 .student-panel-state {
-  background: #f7faf8;
-  border: 1px dashed #cbd9cf;
+  background: var(--student-surface-soft, #f7faf8);
+  border: 1px dashed var(--student-border, #cbd9cf);
   color: var(--color-muted);
   line-height: 1.5;
   margin: 12px 0 0;
@@ -324,7 +324,7 @@
 }
 
 .student-record-selector select {
-  background: #fff;
+  background: var(--student-surface, #fff);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   color: var(--color-eerie-black);
@@ -341,8 +341,8 @@
 }
 
 .student-detail-grid > div {
-  background: #f6f9f7;
-  border-left: 2px solid #d6e6da;
+  background: var(--student-surface-soft, #f6f9f7);
+  border-left: 2px solid var(--student-border, #d6e6da);
   min-width: 0;
   padding: 11px 13px;
   transition:
@@ -351,7 +351,7 @@
 }
 
 .student-detail-grid > div:hover {
-  background: #f0f7f2;
+  background: var(--student-surface-soft, #f0f7f2);
   border-color: var(--color-dark-spring-green);
 }
 
@@ -372,9 +372,9 @@
 }
 
 .student-detail-note {
-  background: #fffbea;
+  background: var(--student-note, #fffbea);
   border-left: 3px solid var(--color-naples-yellow);
-  color: #4f5d54;
+  color: var(--student-muted, #4f5d54);
   line-height: 1.5;
   margin: 16px 0 0;
   padding: 10px 12px;
@@ -412,15 +412,15 @@
 }
 
 .dr-panel .student-secondary-action {
-  background: #f1f5f2;
-  border-color: #d2ddd5;
-  color: #405047;
+  background: var(--student-surface-soft, #f1f5f2);
+  border-color: var(--student-border, #d2ddd5);
+  color: var(--student-muted, #405047);
 }
 
 .dr-panel .student-danger-action {
-  background: #fff;
+  background: var(--student-surface, #fff);
   border-color: #b95649;
-  color: #9f3f34;
+  color: var(--student-danger, #9f3f34);
 }
 
 .dr-panel .student-primary-action:hover:not(:disabled),
@@ -440,7 +440,7 @@
 }
 
 .student-history-panel {
-  background: #fff;
+  background: var(--student-surface, #fff);
   border: 1px solid var(--color-border);
   border-radius: 14px;
   box-shadow: var(--shadow-soft);
@@ -469,7 +469,7 @@
   appearance: none;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #edf1ee;
+  border-bottom: 1px solid var(--student-border, #edf1ee);
   color: var(--color-eerie-black);
   cursor: pointer;
   display: grid;
@@ -486,8 +486,8 @@
 }
 
 .student-history-row:hover {
-  background: #f3f8f4;
-  border-color: #d8e5db;
+  background: var(--student-surface-soft, #f3f8f4);
+  border-color: var(--student-border, #d8e5db);
   transform: translateX(3px);
 }
 
@@ -496,7 +496,7 @@
 }
 
 .student-history-row:focus-visible {
-  background: #f3f8f4;
+  background: var(--student-surface-soft, #f3f8f4);
   outline: 2px solid var(--color-naples-yellow);
   outline-offset: -2px;
 }
@@ -519,8 +519,8 @@
 }
 
 .student-history-more {
-  background: #f1f6f2;
-  border-color: #d2ddd5;
+  background: var(--student-surface-soft, #f1f6f2);
+  border-color: var(--student-border, #d2ddd5);
   color: var(--color-dartmouth-green);
   display: block;
   margin: 16px auto 0;
@@ -704,8 +704,8 @@
 .dr-panel .appointment-time-option,
 .student-booking-modal .appointment-time-option {
   align-items: center;
-  background: #fff;
-  border: 1px solid #cbd8cf;
+  background: var(--student-surface, #fff);
+  border: 1px solid var(--student-border, #cbd8cf);
   border-radius: 7px;
   color: var(--color-dartmouth-green);
   display: flex;
@@ -720,7 +720,7 @@
 .dr-panel .appointment-time-option:focus-visible,
 .student-booking-modal .appointment-time-option:hover:not(:disabled),
 .student-booking-modal .appointment-time-option:focus-visible {
-  background: #f0f8f2;
+  background: var(--student-surface-soft, #f0f8f2);
   border-color: var(--color-dark-spring-green);
   outline: 2px solid rgb(13 120 86 / 20%);
   outline-offset: 2px;
@@ -736,9 +736,9 @@
 
 .dr-panel .appointment-time-option:disabled,
 .student-booking-modal .appointment-time-option:disabled {
-  background: #f1f3f1;
-  border-color: #dfe4e0;
-  color: #8a938d;
+  background: var(--student-surface-soft, #f1f3f1);
+  border-color: var(--student-border, #dfe4e0);
+  color: var(--student-muted, #8a938d);
   cursor: not-allowed;
 }
 
@@ -760,15 +760,15 @@
 }
 
 .appointment-time-empty {
-  background: #fff9db;
+  background: var(--student-note, #fff9db);
   border-left: 3px solid var(--color-naples-yellow);
-  color: #5c542d;
+  color: var(--student-muted, #5c542d);
   margin-top: 10px;
   padding: 10px 12px;
 }
 
 .appointment-time-error {
-  color: #a13f34;
+  color: var(--student-danger, #a13f34);
   font-weight: 700;
   margin-top: 10px;
 }
@@ -1055,12 +1055,12 @@
   padding: 12px 14px;
 }
 .notice.success {
-  background: #e9f8ee;
-  color: #166534;
+  background: var(--student-surface-soft, #e9f8ee);
+  color: var(--student-accent, #166534);
 }
 .notice.error {
-  background: #fff0f0;
-  color: #b42318;
+  background: var(--student-danger-bg, #fff0f0);
+  color: var(--student-danger, #b42318);
 }
 
 .request-line,
@@ -3078,7 +3078,7 @@
 }
 
 .appointment-details-modal {
-  background: #fff;
+  background: var(--student-surface, #fff);
   border: 1px solid rgb(255 255 255 / 45%);
   border-radius: 12px;
   box-shadow: 0 24px 64px rgb(5 34 20 / 28%);
@@ -3120,10 +3120,10 @@
 
 .student-modal-close {
   align-items: center;
-  background: #edf3ef;
-  border: 1px solid #d5dfd8;
+  background: var(--student-surface-soft, #edf3ef);
+  border: 1px solid var(--student-border, #d5dfd8);
   border-radius: 50%;
-  color: #405047;
+  color: var(--student-muted, #405047);
   cursor: pointer;
   display: inline-flex;
   flex: 0 0 36px;
@@ -3140,7 +3140,7 @@
 
 .student-modal-close:hover:not(:disabled),
 .student-modal-close:focus-visible {
-  background: #e3ede6;
+  background: var(--student-surface-soft, #e3ede6);
   border-color: var(--color-dark-spring-green);
   outline: none;
   transform: scale(1.03);
@@ -3165,7 +3165,7 @@
 .student-request-form-grid input,
 .student-request-form-grid select,
 .student-request-form-grid textarea {
-  background: #fff;
+  background: var(--student-surface, #fff);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   color: var(--color-eerie-black);
@@ -3196,15 +3196,15 @@
 .student-request-form-grid input:disabled,
 .student-request-form-grid select:disabled,
 .student-request-form-grid textarea:disabled {
-  background: #f2f5f3;
+  background: var(--student-surface-soft, #f2f5f3);
   cursor: not-allowed;
   opacity: 0.72;
 }
 
 .student-request-summary {
-  background: #f3f8f4;
+  background: var(--student-surface-soft, #f3f8f4);
   border-left: 3px solid var(--color-naples-yellow);
-  color: #405047;
+  color: var(--student-muted, #405047);
   display: grid;
   font-size: 0.82rem;
   gap: 5px;
@@ -3301,7 +3301,7 @@
 
 .appointment-details-header {
   align-items: flex-start;
-  background: #f8fbf9;
+  background: var(--student-surface-soft, #f8fbf9);
   border-bottom: 1px solid var(--color-border);
   display: flex;
   flex: 0 0 auto;
@@ -3311,7 +3311,7 @@
 }
 
 .appointment-details-header h2 {
-  color: #193e29;
+  color: var(--student-accent, #193e29);
   font-size: 1.25rem;
   margin: 3px 0;
 }
@@ -3368,8 +3368,8 @@
 }
 
 .appointment-detail-grid > div {
-  background: #f6f9f7;
-  border-left: 2px solid #d9e8dd;
+  background: var(--student-surface-soft, #f6f9f7);
+  border-left: 2px solid var(--student-border, #d9e8dd);
   min-width: 0;
   padding: 10px 12px;
 }
@@ -3391,9 +3391,9 @@
 }
 
 .appointment-detail-notes p {
-  background: #fffbea;
+  background: var(--student-note, #fffbea);
   border-left: 3px solid var(--color-naples-yellow);
-  color: #4f5d54;
+  color: var(--student-muted, #4f5d54);
   line-height: 1.55;
   margin: 0;
   padding: 11px 13px;
@@ -3422,7 +3422,7 @@
 }
 
 .appointment-details-footer {
-  background: #fff;
+  background: var(--student-surface, #fff);
   border-top: 1px solid var(--color-border);
   display: flex;
   flex: 0 0 auto;
@@ -3453,9 +3453,9 @@
 }
 
 .appointment-details-footer .appointment-cancel-action {
-  background: #fff;
+  background: var(--student-surface, #fff);
   border-color: #b95649;
-  color: #9f3f34;
+  color: var(--student-danger, #9f3f34);
 }
 
 .appointment-details-footer .appointment-request-action {
@@ -3465,9 +3465,9 @@
 }
 
 .appointment-details-footer .appointment-close-action {
-  background: #eef3ef;
-  border-color: #d5dfd8;
-  color: #405047;
+  background: var(--student-surface-soft, #eef3ef);
+  border-color: var(--student-border, #d5dfd8);
+  color: var(--student-muted, #405047);
 }
 
 @media (max-width: 900px) {

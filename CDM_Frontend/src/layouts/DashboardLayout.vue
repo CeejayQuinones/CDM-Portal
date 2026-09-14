@@ -4,10 +4,12 @@ import Navbar from '../components/Navbar.vue'
 import Sidebar from '../components/Sidebar.vue'
 import StepUpAuthModal from '../components/StepUpAuthModal.vue'
 import { useAuthStore } from '../stores/authStore'
+import { useStudentTheme } from '../composables/useStudentTheme'
 
 const isSidebarOpen = ref(false)
 const authStore = useAuthStore()
 const isStudentTheme = computed(() => authStore.currentRole === 'Student')
+useStudentTheme(authStore)
 </script>
 
 <template>
@@ -69,3 +71,4 @@ const isStudentTheme = computed(() => authStore.currentRole === 'Student')
 </style>
 
 <style src="../assets/styles/student-portal.css"></style>
+<style src="../assets/styles/student-theme.css"></style>

@@ -83,7 +83,7 @@ class StudentSettingsController extends Controller
         $appearance = $student->settings?->appearance ?? 'system';
 
         return [
-            'profile' => ['preferred_display_name' => $student->settings?->preferred_display_name, 'bio' => $student->settings?->bio, 'avatar_url' => $profile?->profile_photo ? Storage::disk('public')->url($profile->profile_photo) : null],
+            'profile' => ['preferred_display_name' => $student->settings?->preferred_display_name, 'bio' => $student->settings?->bio, 'avatar_url' => $profile?->profile_photo ? '/storage/'.$profile->profile_photo : null],
             'account' => ['school_email' => $student->user?->username, 'role' => $student->user?->role?->role_name, 'status' => $student->user?->status, 'last_login' => $student->user?->last_login?->toIso8601String(), 'created_at' => $student->user?->created_at?->toIso8601String(), 'profile_updated_at' => $profile?->updated_at?->toIso8601String()],
             'student_status' => ['enrollment_status' => $student->student_status, 'academic_year' => $student->latestEnrollment?->academicYear?->year_name, 'semester' => $student->latestEnrollment?->semester?->semester_name, 'year_level' => $student->year_level, 'section' => $student->latestEnrollment?->section?->section_name, 'program' => $student->course?->course_name],
             'official' => ['legal_name' => trim(implode(' ', array_filter([$profile?->first_name, $profile?->middle_name, $profile?->last_name]))), 'student_number' => $student->student_number, 'program' => $student->course?->course_name, 'year_level' => $student->year_level, 'section' => $student->latestEnrollment?->section?->section_name],

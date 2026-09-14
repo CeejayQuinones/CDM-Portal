@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import logoUrl from '../assets/styles/images/cdm_logo.png'
 import { useAuthStore } from '../stores/authStore'
+import { useStudentProfileStore } from '../stores/studentProfile'
 import { useNavigationStore } from '../stores/navigation'
 
 defineProps({
@@ -15,6 +16,9 @@ defineProps({
 const emit = defineEmits(['close'])
 const navigationStore = useNavigationStore()
 const authStore = useAuthStore()
+const studentProfile = useStudentProfileStore()
+const avatarFailed = ref(false)
+watch(() => studentProfile.avatarUrl, () => { avatarFailed.value = false })
 const route = useRoute()
 const router = useRouter()
 const expandedItems = ref([])
@@ -70,6 +74,7 @@ const iconPath = (name) =>
     enrollment: 'M4 5h16v14H4zM8 9h8M8 13h5',
     grading: 'M4 19V5l8-3 8 3v14l-8 3zM9 12l2 2 4-4',
     monitoring: 'M4 19V5M8 15v4M12 9v10M16 12v7M20 5v14',
+    settings: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-3v-.08a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.06 15 1.7 1.7 0 0 0 5.5 13.97H5v-3h.5A1.7 1.7 0 0 0 7.06 9.4a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 11.73 4.2V4h3v.2a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.5v3h-.5A1.7 1.7 0 0 0 19.4 15z',
     'document-requests-menu': 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
     'event-attendance': 'M5 4h14v16H5zM8 2v4M16 2v4M8 10h8M8 14h5',
     appointments: 'M12 8v4l3 2M4 5h16v16H4z',
@@ -164,7 +169,10 @@ const logout = async () => {
 
     <footer class="sidebar-footer">
       <div class="sidebar-user" aria-label="Signed in user">
-        <span class="sidebar-avatar">{{ initials }}</span>
+        <span class="sidebar-avatar">
+          <img v-if="studentProfile.avatarUrl && !avatarFailed" :key="studentProfile.avatarUrl" :src="studentProfile.avatarUrl" alt="Profile picture" @error="avatarFailed = true" />
+          <template v-else>{{ initials }}</template>
+        </span>
         <div class="user-copy">
           <strong>{{ displayName }}</strong>
           <small>{{ authStore.currentRole }}</small>
@@ -394,6 +402,14 @@ const logout = async () => {
   height: 36px;
   justify-content: center;
   width: 36px;
+}
+
+.sidebar-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
 }
 
 .sign-out-button {

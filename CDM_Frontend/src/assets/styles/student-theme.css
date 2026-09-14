@@ -1,0 +1,87 @@
+/* Loaded by the Student shell. The html attribute is removed on role change/logout.
+   Teleported Student dialogs share the palette without theming staff or the sidebar. */
+html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
+  --student-page: #17221b;
+  --student-page-background: #17221b;
+  --student-surface: #213127;
+  --student-surface-soft: #19271f;
+  --student-field: #19271f;
+  --student-panel-header: #19271f;
+  --student-text: #edf6ef;
+  --student-heading: #edf6ef;
+  --student-muted: #b9cabc;
+  --student-border: #587061;
+  --student-accent: #a5e0b8;
+  --student-selected: #294434;
+  --student-focus: #82c69b;
+  --student-toggle: #587061;
+  --student-save: #1e3728;
+  --student-success: #24452f;
+  --student-danger: #ffb4aa;
+  --student-danger-bg: #442822;
+  --student-danger-border: #925a50;
+  --student-note: #3c3822;
+  --student-shadow: 0 5px 18px #0004;
+  --student-card-shadow: 0 10px 30px #0004;
+  --student-card-shadow-hover: 0 18px 34px #0005;
+  --student-color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-student-theme='system'] :is(.student-portal-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
+    --student-page: #17221b;
+    --student-page-background: #17221b;
+    --student-surface: #213127;
+    --student-surface-soft: #19271f;
+    --student-field: #19271f;
+    --student-panel-header: #19271f;
+    --student-text: #edf6ef;
+    --student-heading: #edf6ef;
+    --student-muted: #b9cabc;
+    --student-border: #587061;
+    --student-accent: #a5e0b8;
+    --student-selected: #294434;
+    --student-focus: #82c69b;
+    --student-toggle: #587061;
+    --student-save: #1e3728;
+    --student-success: #24452f;
+    --student-danger: #ffb4aa;
+    --student-danger-bg: #442822;
+    --student-danger-border: #925a50;
+    --student-note: #3c3822;
+    --student-shadow: 0 5px 18px #0004;
+    --student-card-shadow: 0 10px 30px #0004;
+    --student-card-shadow-hover: 0 18px 34px #0005;
+    --student-color-scheme: dark;
+  }
+}
+
+html[data-student-theme] :is(.student-workflow-backdrop, .step-up-backdrop) {
+  color: var(--student-text, #1f1f1f);
+  color-scheme: var(--student-color-scheme, light);
+}
+
+.student-portal-shell .main-content :is(table, th, td) {
+  border-color: var(--student-border);
+  color: var(--student-cdm-ink);
+}
+.student-portal-shell .main-content table { background: var(--student-surface); }
+.student-portal-shell .main-content :is(thead, tbody tr:hover) { background: var(--student-surface-soft); }
+.student-portal-shell .main-content :is(input, select, textarea)::placeholder {
+  color: var(--student-muted);
+}
+html[data-student-theme] :is(.student-workflow-backdrop, .step-up-backdrop) :is(input, select, textarea) {
+  background: var(--student-field, #fff);
+  color: var(--student-text, #1f1f1f);
+  border-color: var(--student-border);
+}
+
+html[data-student-theme] .student-workflow-backdrop :is(.page-kicker, .calendar-selection, .appointment-times legend, .student-request-summary strong) {
+  color: var(--student-accent, var(--color-dartmouth-green));
+}
+html[data-student-theme] .student-booking-modal .appointment-time-option:not(:disabled) {
+  color: var(--student-accent, var(--color-dartmouth-green));
+}
+html[data-student-theme] .step-up-backdrop :is(.step-up-kicker, .cancel-button) {
+  color: var(--student-accent, var(--color-dartmouth-green));
+}
