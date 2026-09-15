@@ -16,9 +16,10 @@ const dirty = computed(() => editable.includes(active.value) && saved.value !== 
 const status = computed(() => data.value?.student_status || {})
 const avatarInput = ref(null), avatarFailed = ref(false)
 const avatarUrl = computed(() => studentProfile.avatarUrl)
-watch(() => data.value?.profile?.avatar_url, path => studentProfile.setAvatar(path, studentUserId), { flush: 'sync' })
+watch(() => data.value?.profile, profile => studentProfile.setProfile(profile, studentUserId), { deep: true, flush: 'sync' })
 const initials = computed(() => {
-  const name = form.value.preferred_display_name.trim() || data.value?.official?.legal_name || 'Student'
+  const preferredName = form.value.preferred_display_name
+  const name = (typeof preferredName === 'string' ? preferredName.trim() : '') || data.value?.official?.legal_name || 'Student'
   const parts = name.trim().split(/\s+/)
   return [parts[0], ...(parts.length > 1 ? [parts.at(-1)] : [])].map(part => Array.from(part)[0]).join('').toUpperCase()
 })
@@ -29,13 +30,38 @@ const appearances = [
 ]
 watch(avatarUrl, () => { avatarFailed.value = false })
 const messageFor = (err, fallback) => {
-  const fields = err.response?.data?.errors
-  return fields ? Object.values(fields).flat().join(' ') : (err.response?.data?.message || fallback)
+  const response = err?.response?.data
+  const fields = Object.values(response?.errors || {}).flat().filter(message => typeof message === 'string').join(' ')
+  return fields || response?.message || fallback
 }
 const applyAppearance = () => applyStudentAppearance(form.value.appearance)
-const load = async () => { loading.value = true; error.value = ''; try { data.value = (await apiClient.get('/student/settings')).data.data; Object.assign(form.value, { preferred_display_name: data.value.profile.preferred_display_name || '', bio: data.value.profile.bio || '', email: data.value.contact.personal_email || '', contact_number: data.value.contact.mobile || '', address: data.value.contact.address || '', notification_preferences: data.value.preferences.notification_preferences || {}, academic_preferences: data.value.preferences.academic_preferences || {}, appearance: data.value.appearance || 'system' }); saved.value = JSON.stringify(form.value); applyAppearance() } catch (err) { error.value = err.response?.data?.message || 'Unable to load settings.' } finally { loading.value = false } }
-const reset = () => { Object.assign(form.value, JSON.parse(saved.value)); applyAppearance(); error.value = '' }
-const save = async (path, payload, message) => { saving.value = true; error.value = ''; try { data.value = (await apiClient.patch(path, payload)).data.data; saved.value = JSON.stringify(form.value); success.value = message } catch (err) { error.value = messageFor(err, 'Unable to save settings.') } finally { saving.value = false } }
+const load = async () => {
+  loading.value = true
+  error.value = ''
+  try {
+    data.value = (await apiClient.get('/student/settings')).data.data
+    const settings = data.value
+    const name = settings?.profile?.preferred_display_name
+    Object.assign(form.value, {
+      preferred_display_name: typeof name === 'string' ? name : '',
+      bio: settings?.profile?.bio || '',
+      email: settings?.contact?.personal_email || '',
+      contact_number: settings?.contact?.mobile || '',
+      address: settings?.contact?.address || '',
+      notification_preferences: settings?.preferences?.notification_preferences || {},
+      academic_preferences: settings?.preferences?.academic_preferences || {},
+      appearance: settings?.appearance || 'system',
+    })
+    saved.value = JSON.stringify(form.value)
+    applyAppearance()
+  } catch (err) {
+    error.value = messageFor(err, 'Unable to load settings.')
+  } finally {
+    loading.value = false
+  }
+}
+const reset = () => { if (!saved.value) return; Object.assign(form.value, JSON.parse(saved.value)); applyAppearance(); error.value = '' }
+const save = async (path, payload, message) => { saving.value = true; error.value = success.value = ''; try { data.value = (await apiClient.patch(path, payload)).data.data; saved.value = JSON.stringify(form.value); success.value = message } catch (err) { error.value = messageFor(err, 'Unable to save settings.') } finally { saving.value = false } }
 const saveProfile = () => save('/student/settings/profile', { preferred_display_name: form.value.preferred_display_name, bio: form.value.bio }, 'Profile saved.')
 const saveContact = () => save('/student/settings/contact', { email: form.value.email, contact_number: form.value.contact_number, address: form.value.address }, 'Contact information saved.')
 const savePreferences = () => { applyAppearance(); return save('/student/settings/preferences', { notification_preferences: form.value.notification_preferences, academic_preferences: form.value.academic_preferences, appearance: form.value.appearance }, 'Preferences saved.') }

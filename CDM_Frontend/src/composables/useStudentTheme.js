@@ -30,8 +30,8 @@ export function useStudentTheme(auth) {
     const profileRevision = studentProfile.revision
     try {
       const { data } = await apiClient.get('/student/settings')
-      // Reuse this response for the sidebar, without overwriting a newer upload/removal.
-      if (active && studentProfile.revision === profileRevision) studentProfile.setAvatar(data.data.profile?.avatar_url, userId)
+      // Reuse this response for the sidebar, without overwriting newer profile changes.
+      if (active && studentProfile.revision === profileRevision) studentProfile.setProfile(data.data.profile, userId)
       // A late response must not override a new selection or another session.
       if (active && revision === startedAt) applyStudentAppearance(data.data.appearance)
     } catch {

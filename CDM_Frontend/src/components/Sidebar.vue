@@ -18,13 +18,16 @@ const navigationStore = useNavigationStore()
 const authStore = useAuthStore()
 const studentProfile = useStudentProfileStore()
 const avatarFailed = ref(false)
-watch(() => studentProfile.avatarUrl, () => { avatarFailed.value = false })
+watch(() => studentProfile.revision, () => { avatarFailed.value = false })
 const route = useRoute()
 const router = useRouter()
 const expandedItems = ref([])
 const signingOut = ref(false)
 
 const displayName = computed(() => {
+  if (authStore.currentRole === 'Student' && studentProfile.preferredDisplayName) {
+    return studentProfile.preferredDisplayName
+  }
   const profile = authStore.currentUser?.profile
   return (
     [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
@@ -170,7 +173,7 @@ const logout = async () => {
     <footer class="sidebar-footer">
       <div class="sidebar-user" aria-label="Signed in user">
         <span class="sidebar-avatar">
-          <img v-if="studentProfile.avatarUrl && !avatarFailed" :key="studentProfile.avatarUrl" :src="studentProfile.avatarUrl" alt="Profile picture" @error="avatarFailed = true" />
+          <img v-if="studentProfile.avatarUrl && !avatarFailed" :key="studentProfile.revision" :src="studentProfile.avatarUrl" alt="Profile picture" @error="avatarFailed = true" />
           <template v-else>{{ initials }}</template>
         </span>
         <div class="user-copy">
