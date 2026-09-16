@@ -1,0 +1,51 @@
+/* Registrar-only tokens. Root scope also reaches dialogs teleported to body.
+   The class is a presentation hook on DashboardLayout, not application state. */
+:root:has(.registrar-portal-shell) {
+  --registrar-primary: #106a2e;
+  --registrar-primary-hover: #0d5826;
+  --registrar-primary-soft: #edf4ef;
+  --registrar-neutral-0: #ffffff;
+  --registrar-neutral-50: #fafafa;
+  --registrar-neutral-100: #f5f5f5;
+  --registrar-neutral-200: #e2e2e2;
+  --registrar-neutral-400: #a3a3a3;
+  --registrar-neutral-500: #737373;
+  --registrar-neutral-600: #525252;
+  --registrar-neutral-900: #262626;
+
+  --registrar-surface: var(--registrar-neutral-0);
+  --registrar-background: var(--registrar-neutral-50);
+  --registrar-surface-muted: var(--registrar-neutral-100);
+  --registrar-border: var(--registrar-neutral-200);
+  --registrar-text: var(--registrar-neutral-900);
+  --registrar-text-secondary: var(--registrar-neutral-600);
+  --registrar-text-muted: var(--registrar-neutral-500);
+  --registrar-success: #356247;
+  --registrar-success-bg: #edf4ef;
+  --registrar-info: #3e5e7b;
+  --registrar-info-bg: #eef2f6;
+  --registrar-warning: #9a4312;
+  --registrar-warning-bg: #fff1e8;
+  --registrar-danger: #b42318;
+  --registrar-danger-bg: #fef0ee;
+  --registrar-radius: 8px;
+  --registrar-control-radius: 6px;
+  --registrar-shadow: 0 1px 3px rgb(0 0 0 / 4%);
+  --registrar-focus: 0 0 0 3px rgb(16 106 46 / 15%);
+  --registrar-title-size: clamp(1.5rem, 2.4vw, 1.875rem);
+  --registrar-section-size: 1.125rem;
+  --registrar-label-size: 0.75rem;
+
+  /* Compatibility aliases keep existing shared components on one palette.
+     The legacy yellow name resolves to primary; it is no longer an accent. */
+  --color-dartmouth-green: var(--registrar-primary);
+  --color-dark-spring-green: var(--registrar-primary);
+  --color-naples-yellow: var(--registrar-primary);
+  --color-eerie-black: var(--registrar-text);
+  --color-anti-flash-white: var(--registrar-background);
+  --color-surface: var(--registrar-surface);
+  --color-muted: var(--registrar-text-secondary);
+  --color-border: var(--registrar-border);
+  --color-green-tint: var(--registrar-primary-soft);
+  --shadow-soft: var(--registrar-shadow);
+}

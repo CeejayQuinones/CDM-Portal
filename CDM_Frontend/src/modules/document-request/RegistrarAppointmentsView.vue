@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useAppointmentAvailabilityState } from './appointmentAvailabilityState'
 import { documentRequestService as api } from './documentRequestService'
+import { documentRequestErrorMessage as requestError } from './documentRequestErrors'
 
 const appointments = ref([]), loading = ref(false), error = ref(''), message = ref('')
 const code = ref(''), verifying = ref(false), verifiedRequest = ref(null), finalizing = ref(false), cancellationReason = ref('')
@@ -14,7 +15,6 @@ const holidayDraft = ref({ date: '', name: '' })
 const plannerBusy = computed(() => savingAvailability.value || savingCapacity.value || calendarLoading.value)
 let calendarRequest = 0
 const today = () => new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Manila' }).format(new Date())
-const requestError = (err) => Object.values(err.response?.data?.errors || {}).flat()[0] || err.response?.data?.message || 'The request could not be completed.'
 const formatDate = (value) => value ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'long', timeZone: 'Asia/Manila' }).format(new Date(`${String(value).slice(0, 10)}T00:00:00+08:00`)) : 'Not assigned'
 const formatStatus = (value) => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const profileOf = (item) => item?.student?.user?.profile || item?.student?.user_profile

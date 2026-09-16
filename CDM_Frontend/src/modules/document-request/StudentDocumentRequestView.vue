@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { requestReference } from './documentRequestPresentation'
 import { documentRequestService as api } from './documentRequestService'
+import { documentRequestErrorMessage as requestError } from './documentRequestErrors'
 
 const route = useRoute()
 const router = useRouter()
@@ -60,12 +61,6 @@ const activeRequestStatuses = ['pending', 'approved']
 const activeAppointmentStatuses = ['pending', 'confirmed']
 const terminalRequestStatuses = ['completed', 'rejected', 'cancelled']
 const terminalAppointmentStatuses = ['completed', 'cancelled', 'no_show']
-
-const requestError = (err) => {
-  const validationMessage = Object.values(err.response?.data?.errors || {}).flat()[0]
-
-  return validationMessage || err.response?.data?.message || 'The request could not be completed.'
-}
 
 const activeRequests = computed(() => requests.value.filter((item) => activeRequestStatuses.includes(item.status)))
 const allAppointments = computed(() =>

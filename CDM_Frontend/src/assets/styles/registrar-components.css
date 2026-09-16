@@ -1,0 +1,441 @@
+/* Shared Registrar component skin. The root selector intentionally outranks
+   legacy Vue scoped styles, including lazy-loaded views. Layout and behavior
+   stay in the components; colors, emphasis and typography live here. */
+:root:has(.registrar-portal-shell) body {
+  color: var(--registrar-text);
+  background: var(--registrar-background);
+}
+
+/* Three heading tiers; uppercase is reserved for existing eyebrow labels. */
+:root:has(.registrar-portal-shell) body :is(.main-content h1, .page-title) {
+  color: var(--registrar-text);
+  font-size: var(--registrar-title-size);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+:root:has(.registrar-portal-shell) body :is(h2, h3) {
+  color: var(--registrar-text);
+  font-size: var(--registrar-section-size);
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+:root:has(.registrar-portal-shell) body :is(label, dt, th, [role='columnheader'], .types-head strong, .table-heading) {
+  color: var(--registrar-text-secondary);
+  font-size: var(--registrar-label-size);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+:root:has(.registrar-portal-shell) body :is(.page-kicker, .section-kicker, .eyebrow, .record-eyebrow, .id-label, .step-up-kicker, .modal-kicker, .workspace-selector-eyebrow, .request-detail-header p) {
+  color: var(--registrar-text-muted);
+  font-size: var(--registrar-label-size);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+/* Shared neutral controls. Primary and selected controls opt in below. */
+:root:has(.registrar-portal-shell) body :is(button, .button, .primary-button, .secondary-button) {
+  background: var(--registrar-surface);
+  border: 1px solid var(--registrar-border);
+  color: var(--registrar-text-secondary);
+  border-radius: var(--registrar-control-radius);
+  box-shadow: none;
+  font-weight: 500;
+  text-shadow: none;
+}
+
+/* Navigation: quiet surfaces and a single, structural selected indicator. */
+:root:has(.registrar-portal-shell) body .sidebar {
+  background: var(--registrar-surface);
+  border-right: 1px solid var(--registrar-border);
+  box-shadow: none;
+  color: var(--registrar-text);
+}
+
+:root:has(.registrar-portal-shell) body :is(.brand, .sidebar-footer, .brand-mark, .navbar) {
+  border-color: var(--registrar-border);
+  box-shadow: none;
+}
+
+:root:has(.registrar-portal-shell) body :is(.brand strong, .sidebar-user strong) {
+  color: var(--registrar-text);
+}
+
+:root:has(.registrar-portal-shell) body :is(.sidebar-user small, .sign-out-button, .nav-link) {
+  color: var(--registrar-text-secondary);
+}
+
+:root:has(.registrar-portal-shell) body .nav-link {
+  background: transparent;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0 var(--registrar-control-radius) var(--registrar-control-radius) 0;
+  box-shadow: none;
+  font-weight: 500;
+}
+
+:root:has(.registrar-portal-shell) body .nav-link:is(:hover, .is-active, .router-link-active) {
+  background: var(--registrar-surface-muted);
+  color: var(--registrar-text);
+  box-shadow: none;
+}
+
+:root:has(.registrar-portal-shell) body .nav-link:is(.is-active, .router-link-active) {
+  border-left-color: var(--registrar-primary);
+  color: var(--registrar-primary);
+}
+
+:root:has(.registrar-portal-shell) body .nav-link::before {
+  content: none;
+}
+
+:root:has(.registrar-portal-shell) body :is(.sidebar-avatar, .summary-card .card-icon, .action-icon, .photo-placeholder, .request-student-avatar) {
+  background: var(--registrar-surface-muted);
+  border: 1px solid var(--registrar-border);
+  color: var(--registrar-text-secondary);
+}
+
+:root:has(.registrar-portal-shell) body .contextual-nav-item.active {
+  border-bottom-color: var(--registrar-primary);
+  color: var(--registrar-primary);
+}
+
+/* Shared cards and dialogs: neutral outlines replace decorative color. */
+:root:has(.registrar-portal-shell) body :is(
+  .dr-panel, .dashboard-panel, .summary-card, .student-records-panel,
+  .records-panel, .cabinet-card, .student-record-card, .record-card, .student-id-card,
+  .capacity-editor, .capacity-calendar, .settings-card, .settings-panel,
+  .confirmation-modal, .request-detail-modal, .appointment-details-modal,
+  .slot-records-modal, .slot-edit-modal, .workflow-reason-dialog, .history-details, .step-up-modal
+) {
+  background: var(--registrar-surface);
+  border: 1px solid var(--registrar-border);
+  border-radius: var(--registrar-radius);
+  box-shadow: var(--registrar-shadow);
+  color: var(--registrar-text);
+}
+
+:root:has(.registrar-portal-shell) body :is(.history-details, .request-detail-modal, .appointment-details-modal, .slot-records-modal) {
+  box-shadow: 0 12px 40px rgb(0 0 0 / 12%);
+}
+
+:root:has(.registrar-portal-shell) body .history-details {
+  border-radius: 0;
+}
+
+:root:has(.registrar-portal-shell) body :is(.summary-card, .panel-heading, .request-detail-header)::after {
+  content: none;
+}
+
+:root:has(.registrar-portal-shell) body :is(
+  .panel-heading, .request-detail-header, .appointment-details-header,
+  .slot-records-header, .student-summary, .bulk-toolbar, .history-details-header,
+  .request-student-hero, .request-notes, .slot-description, .security-note,
+  .request-detail-footer, .appointment-details-footer, .release-queue-header,
+  .request-detail-section, .appointment-detail-section, .planner-section,
+  .id-card-banner, .id-card-body, .id-facts > div, .record-check,
+  .physical-location-check, .request-purpose, .capacity-editor-stats > div
+) {
+  background: var(--registrar-surface);
+  border-color: var(--registrar-border);
+  border-width: 1px;
+  box-shadow: none;
+  color: var(--registrar-text);
+}
+
+:root:has(.registrar-portal-shell) body :is(
+  .table-heading, .types-head, .history-column-head .history-record,
+  thead, .request-section-heading > span, .capacity-summary > div,
+  .storage-summary > div, .slot-metadata > div, .location-summary > div,
+  .student-facts > div, .physical-record-fact
+) {
+  background: var(--registrar-surface-muted);
+  border-color: var(--registrar-border);
+  border-width: 1px;
+  color: var(--registrar-text-secondary);
+  box-shadow: none;
+}
+
+:root:has(.registrar-portal-shell) body :is(
+  .activity-list, .appointment-list, .activity-item, .appointment-item,
+  .recent-activity-item, .request-card, .queue-item, .history-record,
+  .history-records, .history-detail-section, .types-row, .release-request-row,
+  .quick-action, .record-alert, .compact-appointment-row, .slot-drawer
+) {
+  background: var(--registrar-surface);
+  border-color: var(--registrar-border);
+  border-width: 1px;
+  color: var(--registrar-text);
+  box-shadow: none;
+}
+
+:root:has(.registrar-portal-shell) body :is(
+  .quick-action, .record-alert, .activity-item, .appointment-item,
+  .recent-activity-item, .student-record-link, .slot-drawer
+):hover {
+  background: var(--registrar-surface-muted);
+  border-color: var(--registrar-border);
+}
+
+:root:has(.registrar-portal-shell) body :is(.slot-drawer.selected, .registrar-workspace-selector-card.is-selected) {
+  background: var(--registrar-primary-soft);
+  border-color: var(--registrar-primary);
+  box-shadow: none;
+}
+
+:root:has(.registrar-portal-shell) body .registrar-workspace-selector-card.is-selected::after {
+  background: var(--registrar-primary);
+}
+
+:root:has(.registrar-portal-shell) body :is(
+  .summary-card strong, .quick-action strong, .record-alert strong,
+  .activity-copy strong, .history-record strong, .history-workspace,
+  .registrar-workspace-selector-card > span, .capacity-summary dd,
+  .storage-summary dd, .slot-metadata dd, .slot-records-header h2,
+  .id-card-banner strong, .location-summary strong, .request-facts dd, .student-facts dd,
+  .calendar-day-number, .calendar-booked
+) {
+  color: var(--registrar-text);
+}
+
+:root:has(.registrar-portal-shell) body :is(
+  .summary-card div > span, .quick-action small, .record-alert small,
+  .activity-copy span, .activity-copy small, .activity-item time, .arrow,
+  .history-count, .history-student > span, .history-document > span,
+  .history-dates > span, .history-reason, .history-muted, .history-timeline time,
+  .registrar-workspace-selector-card > strong, .slot-records-header .eyebrow
+) {
+  color: var(--registrar-text-secondary);
+}
+
+/* Semantic badges share geometry and muted tones. Type is informational;
+   it never carries a warning color. Inactive/cancelled are neutral states. */
+:root:has(.registrar-portal-shell) body :is(
+  .badge, .status-badge, .history-status, .document-type-chip,
+  .capacity-status-badge, .slot-status-badge, .slot-status,
+  .work-queue-count, .appointment-section-count, .schedule-control-count,
+  .holiday-blocked-status
+) {
+  --badge-background: var(--registrar-surface-muted);
+  --badge-text: var(--registrar-text-secondary);
+  background: var(--badge-background);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--badge-text);
+  box-shadow: none;
+  font-size: var(--registrar-label-size);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+:root:has(.registrar-portal-shell) body :is(.badge, .status-badge, .history-status, .capacity-status-badge):is(
+  .active, .approved, .verified, .completed, .released, .ready_for_release, .available
+) {
+  --badge-background: var(--registrar-success-bg);
+  --badge-text: var(--registrar-success);
+}
+
+:root:has(.registrar-portal-shell) body :is(.badge, .status-badge):is(.confirmed, .scheduled, .processing) {
+  --badge-background: var(--registrar-info-bg);
+  --badge-text: var(--registrar-info);
+}
+
+:root:has(.registrar-portal-shell) body :is(.badge, .status-badge, .history-status):is(.rejected, .error, .no_show),
+:root:has(.registrar-portal-shell) body .capacity-status-badge.full {
+  --badge-background: var(--registrar-danger-bg);
+  --badge-text: var(--registrar-danger);
+}
+
+:root:has(.registrar-portal-shell) body .capacity-status-badge.nearly-full {
+  --badge-background: var(--registrar-warning-bg);
+  --badge-text: var(--registrar-warning);
+}
+
+:root:has(.registrar-portal-shell) body :is(.notice.success, .planner-message) {
+  background: var(--registrar-success-bg);
+  border-color: var(--registrar-border);
+  color: var(--registrar-success);
+}
+
+:root:has(.registrar-portal-shell) body :is(.notice.error, .dashboard-error, .alert-count.danger) {
+  background: var(--registrar-danger-bg);
+  border-color: var(--registrar-border);
+  color: var(--registrar-danger);
+}
+
+:root:has(.registrar-portal-shell) body :is(.notice.warning, .alert-count.warning, .record-warning, .request-detail-warning) {
+  background: var(--registrar-warning-bg);
+  border-color: var(--registrar-border);
+  color: var(--registrar-warning);
+}
+
+/* Primary actions use the same brand tone as selected filters and Go. */
+:root:has(.registrar-portal-shell) body :is(
+  .primary-action, .primary-button, .button-primary,
+  .save-capacity, .location-save, .retry-button, .verify-button, .history-state button,
+  .form-grid > .actions.wide > button:not(.secondary),
+  .verification-panel > .toolbar > button, .workflow-reason-dialog button[type='submit']
+) {
+  background: var(--registrar-primary);
+  border: 1px solid var(--registrar-primary);
+  color: var(--registrar-neutral-0);
+}
+
+:root:has(.registrar-portal-shell) body :is(
+  .primary-action, .primary-button, .button-primary,
+  .save-capacity, .retry-button, .go-button,
+  .form-grid > .actions.wide > button:not(.secondary),
+  .verification-panel > .toolbar > button
+):hover:not(:disabled) {
+  background: var(--registrar-primary-hover);
+  border-color: var(--registrar-primary-hover);
+  color: var(--registrar-neutral-0);
+}
+
+:root:has(.registrar-portal-shell) body :is(.danger-action, button.danger) {
+  background: transparent;
+  border: 1px solid var(--registrar-border);
+  color: var(--registrar-danger);
+}
+
+:root:has(.registrar-portal-shell) body :is([role='row'], tbody tr, .release-request-row, .queue-item, .request-row) :is(button, .view-button):hover:not(:disabled) {
+  background: var(--registrar-surface-muted);
+  border-color: transparent;
+  color: var(--registrar-primary);
+}
+
+:root:has(.registrar-portal-shell) body :is([role='row'], tbody tr) button.danger {
+  border-color: transparent;
+  color: var(--registrar-danger);
+}
+
+:root:has(.registrar-portal-shell) body .history-timeline li {
+  border-color: var(--registrar-border);
+}
+
+:root:has(.registrar-portal-shell) body .history-timeline li::before {
+  background: var(--registrar-neutral-400);
+}
+
+:root:has(.registrar-portal-shell) body button:not(:disabled):is(:hover, :active) {
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+
+:root:has(.registrar-portal-shell) body :is(input, select, textarea) {
+  background: var(--registrar-surface);
+  border-color: var(--registrar-border);
+  border-radius: var(--registrar-control-radius);
+  color: var(--registrar-text);
+  accent-color: var(--registrar-primary);
+}
+
+:root:has(.registrar-portal-shell) body :is(input, select, textarea):focus {
+  border-color: var(--registrar-primary);
+  box-shadow: var(--registrar-focus);
+}
+
+:root:has(.registrar-portal-shell) body :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--registrar-primary);
+  outline-offset: 3px;
+}
+
+:root:has(.registrar-portal-shell) body :is(.group-tabs, .time-filter-tabs, .schedule-section-controls) button {
+  background: var(--registrar-surface);
+  border: 1px solid var(--registrar-border);
+  color: var(--registrar-text-secondary);
+  box-shadow: none;
+}
+
+:root:has(.registrar-portal-shell) body :is(.group-tabs, .time-filter-tabs, .schedule-section-controls) button:is(.active, [aria-pressed='true']),
+:root:has(.registrar-portal-shell) body .pagination-controls .go-button {
+  background: var(--registrar-primary);
+  border: 1px solid var(--registrar-primary);
+  color: var(--registrar-neutral-0);
+  box-shadow: none;
+}
+
+/* Row actions retain their visible labels and accessible hit areas. */
+:root:has(.registrar-portal-shell) body :is([role='row'], tbody tr, .release-request-row, .queue-item, .request-row) :is(button, .view-button) {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--registrar-text-secondary);
+  box-shadow: none;
+}
+
+/* Activity markers are neutral chronology markers, not status indicators. */
+:root:has(.registrar-portal-shell) body :is(.activity-marker, .activity-dot) {
+  background: var(--registrar-neutral-400);
+  border: 0;
+  box-shadow: none;
+}
+
+/* Calendar uses the same semantic palette as its existing, labeled legend. */
+:root:has(.registrar-portal-shell) body :is(.capacity-calendar-grid, .capacity-editor header, .date-block-controls, .holiday-list li) {
+  border-color: var(--registrar-border);
+}
+
+:root:has(.registrar-portal-shell) body :is(.calendar-blank, .appointment-calendar-day.is-unavailable) {
+  background: var(--registrar-surface-muted);
+  border-color: var(--registrar-border);
+  color: var(--registrar-text-secondary);
+}
+
+:root:has(.registrar-portal-shell) body .appointment-calendar-day.selected {
+  border-color: var(--registrar-primary);
+  box-shadow: inset 0 0 0 2px var(--registrar-primary);
+}
+
+:root:has(.registrar-portal-shell) body :is(.calendar-progress, .drawer-progress) {
+  background: var(--registrar-surface-muted);
+}
+
+:root:has(.registrar-portal-shell) body :is(.calendar-progress i, .legend-dot.available, .drawer-progress i) {
+  background: var(--registrar-success);
+}
+
+:root:has(.registrar-portal-shell) body :is(.nearly-full .calendar-progress i, .legend-dot.nearly-full, .slot-drawer.nearly-full .drawer-progress i, .slot-drawer.filling-up .drawer-progress i) {
+  background: var(--registrar-warning);
+}
+
+:root:has(.registrar-portal-shell) body :is(.full .calendar-progress i, .legend-dot.full, .slot-drawer.full .drawer-progress i) {
+  background: var(--registrar-danger);
+}
+
+:root:has(.registrar-portal-shell) body :is(.legend-dot.closed, .legend-dot.holiday, .legend-dot.blocked-date) {
+  background: var(--registrar-neutral-400);
+}
+
+:root:has(.registrar-portal-shell) body .appointment-calendar-day.full {
+  background: var(--registrar-danger-bg);
+  color: var(--registrar-danger);
+}
+
+:root:has(.registrar-portal-shell) body .weekend-toggle input {
+  background: var(--registrar-neutral-200);
+  border-radius: 999px;
+}
+
+:root:has(.registrar-portal-shell) body .weekend-toggle input:checked {
+  background: var(--registrar-primary);
+  border-color: var(--registrar-primary);
+}
+
+:root:has(.registrar-portal-shell) body .history-timeline li:last-child {
+  border-left-color: transparent;
+}
+
+/* Creating a cabinet makes the form submit the primary action; its opener
+   remains available as a neutral toggle while that form is visible. */
+:root:has(.registrar-portal-shell) body .physical-records-header:has(~ .records-panel .cabinet-form) .primary-button {
+  background: var(--registrar-surface);
+  border-color: var(--registrar-border);
+  color: var(--registrar-text-secondary);
+}
