@@ -86,7 +86,7 @@ class RegistrarDocumentRequestController extends Controller
             'request_status' => ['nullable', 'in:completed,cancelled,rejected'],
             'appointment_status' => ['nullable', 'in:cancelled,completed,no_show'],
             'search' => ['nullable', 'string', 'max:100'],
-            'time_filter' => ['nullable', Rule::in(self::TIME_FILTERS)],
+            'time_filter' => ['nullable', Rule::in([...self::TIME_FILTERS, 'this_week'])],
             'request_id' => ['nullable', 'integer', 'min:1'],
             'appointment_id' => ['nullable', 'integer', 'min:1'],
             'section' => ['nullable', Rule::in(['requests', 'appointments'])],
@@ -94,11 +94,12 @@ class RegistrarDocumentRequestController extends Controller
             'appointment_page' => ['nullable', 'integer', 'min:1'],
         ]);
 
+        $finalizedTimestamp = "COALESCE(CASE status WHEN 'completed' THEN completed_at WHEN 'rejected' THEN rejected_at WHEN 'cancelled' THEN cancelled_at END, updated_at, created_at, request_date)";
         $query = $this->summaryQuery()
             ->select([
                 'id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'status',
                 'request_date', 'release_date', 'remarks', 'approved_at', 'completed_at',
-                'rejected_at', 'cancelled_at', 'code_verified_at', 'created_at', 'updated_at',
+                'rejected_at', 'cancelled_at', 'cancellation_reason', 'code_verified_at', 'created_at', 'updated_at',
             ])
             ->with(['latestAppointment' => fn ($appointments) => $appointments->select([
                 'appointments.id',
@@ -107,7 +108,7 @@ class RegistrarDocumentRequestController extends Controller
                 'appointments.appointment_time',
                 'appointments.status',
             ])])
-            ->latest('updated_at')
+            ->orderByRaw($finalizedTimestamp.' DESC')
             ->latest('id');
 
         if ($status = $request->input('request_status')) {
@@ -118,7 +119,10 @@ class RegistrarDocumentRequestController extends Controller
 
         $this->applySearch($query, $request->input('search'));
         $this->applyExactRequestId($query, $request->input('request_id'));
-        $this->applyTimeFilter($query, 'updated_at', $request->input('time_filter'));
+        $bounds = $this->timeBounds($request->input('time_filter'));
+        if ($bounds !== null) {
+            $query->whereBetween(DB::raw($finalizedTimestamp), $bounds);
+        }
 
         if ($request->filled('appointment_id')) {
             $query->whereHas('appointments', fn (Builder $appointmentQuery) => $appointmentQuery->whereKey($request->integer('appointment_id')));
@@ -514,6 +518,7 @@ class RegistrarDocumentRequestController extends Controller
             'yesterday' => [$now->copy()->subDay()->startOfDay(), $now->copy()->subDay()->endOfDay()],
             'last_7_days' => [$now->copy()->subDays(6)->startOfDay(), $now->copy()->endOfDay()],
             'this_month' => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()],
+            'this_week' => [$now->copy()->startOfWeek(Carbon::MONDAY), $now->copy()->endOfWeek(Carbon::SUNDAY)],
             default => null,
         };
 
@@ -663,7 +668,7 @@ class RegistrarDocumentRequestController extends Controller
             'student.documents.documentType:id,document_name',
             'student.physicalRecordLocation.cabinetSlot.cabinet:id,cabinet_code,description,rows,columns',
             'documentType:id,document_name,requires_appointment',
-            'appointments:id,document_request_id,registrar_staff_id,appointment_date,appointment_time,status,remarks,completed_at,cancelled_at,updated_at',
+            'appointments:id,document_request_id,registrar_staff_id,appointment_date,appointment_time,status,remarks,completed_at,cancelled_at,created_at,updated_at',
             'statusChanges:id,document_request_id,registrar_staff_id,actor_type,from_status,to_status,action,reason,created_at',
             'statusChanges.registrarStaff:id,user_id,employee_number',
             'statusChanges.registrarStaff.user:id',

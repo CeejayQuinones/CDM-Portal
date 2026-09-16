@@ -69,6 +69,12 @@ class AppointmentAvailabilityController extends Controller
 
         return response()->json(['success' => true, 'message' => 'Appointment calendar retrieved successfully.', 'data' => [
             ...$availability,
+            'holidays' => DB::table('holidays')
+                ->where('is_active', true)
+                ->where('holiday_date', '>=', $start->toDateString())
+                ->where('holiday_date', '<', $end->toDateString())
+                ->orderBy('holiday_date')
+                ->get(['holiday_date as date', 'name']),
             'days' => collect(range(0, $start->daysInMonth - 1))->map(function ($offset) use ($counts, $overrides, $start): array {
                 $date = $start->addDays($offset)->toDateString();
                 $capacity = (int) ($overrides[$date] ?? DocumentRequestWorkflowService::DEFAULT_CAPACITY);

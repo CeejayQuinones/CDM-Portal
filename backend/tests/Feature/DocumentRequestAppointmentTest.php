@@ -166,6 +166,62 @@ class DocumentRequestAppointmentTest extends TestCase
             ->assertJsonPath('message', 'This date is unavailable due to College Foundation Day.');
     }
 
+    public function test_planner_weekend_settings_persist_and_control_assignment(): void
+    {
+        $request = $this->requestFor($this->createStudent('26-11001'));
+        Sanctum::actingAs($this->createRegistrar()->user);
+
+        $this->patchJson('/api/registrar/appointment-availability/settings', ['block_saturday' => true, 'block_sunday' => true])->assertOk();
+        foreach (['2026-09-12', '2026-09-13'] as $date) {
+            $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => $date])->assertUnprocessable();
+        }
+        $this->patchJson('/api/registrar/appointment-availability/settings', ['block_saturday' => false, 'block_sunday' => true])->assertOk();
+        $this->getJson('/api/registrar/appointment-availability/calendar?month=2026-09')->assertOk()
+            ->assertJsonPath('data.settings.block_saturday', false)->assertJsonPath('data.settings.block_sunday', true);
+        $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-12'])->assertOk();
+        $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-13'])->assertUnprocessable();
+        $this->patchJson('/api/registrar/appointment-availability/settings', ['block_saturday' => false, 'block_sunday' => false])->assertOk();
+        $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-13'])->assertOk();
+    }
+
+    public function test_planner_includes_active_registry_and_managed_holidays_for_the_month(): void
+    {
+        Sanctum::actingAs($this->createRegistrar()->user);
+        foreach ([['2026-09-09', 'Foundation Day', true], ['2026-09-10', 'Inactive Holiday', false], ['2026-10-01', 'Next Month', true]] as [$date, $name, $active]) {
+            DB::table('holidays')->insert(['holiday_date' => $date, 'name' => $name, 'is_active' => $active, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $managed = $this->postJson('/api/registrar/appointment-blocked-dates', [
+            'blocked_date' => '2026-09-11', 'type' => 'holiday', 'reason' => 'Local Holiday',
+        ])->assertCreated()->json('data.id');
+        $calendar = $this->getJson('/api/registrar/appointment-availability/calendar?month=2026-09')->assertOk();
+        $calendar->assertJsonCount(1, 'data.holidays')->assertJsonPath('data.holidays.0.date', '2026-09-09')
+            ->assertJsonPath('data.holidays.0.name', 'Foundation Day')
+            ->assertJsonFragment(['id' => $managed, 'date' => '2026-09-11', 'type' => 'holiday', 'reason' => 'Local Holiday']);
+        $request = $this->requestFor($this->createStudent('26-11002'));
+        foreach (['2026-09-09', '2026-09-11'] as $date) {
+            $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => $date])->assertUnprocessable();
+        }
+        $this->patchJson("/api/registrar/appointment-blocked-dates/{$managed}", ['is_active' => false])->assertOk();
+        $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-11'])->assertOk();
+    }
+
+    public function test_planner_manual_block_and_unblock_preserve_capacity_override(): void
+    {
+        $request = $this->requestFor($this->createStudent('26-11003'));
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->putJson('/api/registrar/appointment-availability/capacity/2026-09-10', ['capacity' => 8])->assertOk();
+        $block = $this->postJson('/api/registrar/appointment-blocked-dates', [
+            'blocked_date' => '2026-09-10', 'type' => 'office_closure', 'reason' => 'Staff training',
+        ])->assertCreated()->json('data.id');
+        $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-10'])->assertUnprocessable();
+        $this->getJson('/api/registrar/appointment-availability/calendar?month=2026-09')->assertOk()
+            ->assertJsonPath('data.days.9.capacity', 8)->assertJsonPath('data.days.9.has_custom_capacity', true);
+        $this->patchJson("/api/registrar/appointment-blocked-dates/{$block}", ['is_active' => false])->assertOk();
+        $this->getJson('/api/registrar/appointment-availability/calendar?month=2026-09')->assertOk()
+            ->assertJsonCount(0, 'data.blocked_dates');
+        $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-10'])->assertOk();
+    }
+
     public function test_no_show_leaves_today_verified_and_terminal_requests_unchanged(): void
     {
         $student = $this->createStudent('26-10009');
@@ -207,6 +263,44 @@ class DocumentRequestAppointmentTest extends TestCase
         Sanctum::actingAs($student->user);
         $this->getJson('/api/document-requests')->assertOk()->assertJsonMissing(['id' => $otherRequest->id]);
         $this->getJson("/api/document-requests/{$otherRequest->id}")->assertForbidden();
+    }
+
+    public function test_history_sorts_and_filters_by_finalized_date_and_includes_final_reasons(): void
+    {
+        $student = $this->createStudent('26-12001');
+        $older = $this->requestFor($student);
+        $cancelled = $this->requestFor($student);
+        $completed = $this->requestFor($student);
+        $older->forceFill(['status' => 'rejected', 'rejected_at' => '2026-09-06 12:00:00', 'updated_at' => '2026-09-10 00:00:00'])->save();
+        $cancelled->forceFill(['status' => 'cancelled', 'cancelled_at' => '2026-09-07 00:00:00', 'cancellation_reason' => 'Student did not attend.', 'updated_at' => '2026-09-08 00:00:00'])->save();
+        $completed->forceFill(['status' => 'completed', 'completed_at' => '2026-09-07 01:00:00', 'updated_at' => '2026-09-07 01:00:00'])->save();
+        Sanctum::actingAs($this->createRegistrar()->user);
+
+        $all = $this->getJson('/api/registrar/document-requests/history?section=requests')->assertOk();
+        $this->assertSame([$completed->id, $cancelled->id, $older->id], array_column($all->json('data.requests.data'), 'id'));
+        foreach (['today', 'this_week'] as $period) {
+            $response = $this->getJson('/api/registrar/document-requests/history?section=requests&time_filter='.$period)->assertOk();
+            $this->assertSame([$completed->id, $cancelled->id], array_column($response->json('data.requests.data'), 'id'));
+        }
+        $this->getJson('/api/registrar/document-requests/history?section=requests&request_status=cancelled&search=26-12001')
+            ->assertOk()->assertJsonPath('data.requests.total', 1)
+            ->assertJsonPath('data.requests.data.0.cancellation_reason', 'Student did not attend.');
+        $this->getJson('/api/registrar/document-requests/history?section=requests&time_filter=this_month&search=Transcript')
+            ->assertOk()->assertJsonPath('data.requests.total', 3);
+        $this->getJson('/api/registrar/document-requests/history?section=requests&search=Student')
+            ->assertOk()->assertJsonPath('data.requests.total', 3);
+        $this->assertSame('rejected', $older->fresh()->status);
+    }
+
+    public function test_history_details_include_assignment_time_but_not_claim_secrets(): void
+    {
+        $request = $this->requestFor($student = $this->createStudent('26-12002'));
+        $request->update(['status' => 'completed', 'completed_at' => now(), 'verification_code_hash' => 'secret', 'verification_code_lookup' => 'lookup']);
+        Appointment::create(['student_id' => $student->id, 'document_request_id' => $request->id, 'appointment_date' => '2026-09-07', 'appointment_time' => '09:00', 'purpose' => 'Claim', 'status' => 'completed']);
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->getJson("/api/registrar/document-requests/{$request->id}")->assertOk()
+            ->assertJsonStructure(['data' => ['appointments' => [['created_at']]]])
+            ->assertJsonMissingPath('data.verification_code_hash')->assertJsonMissingPath('data.verification_code_lookup');
     }
 
     public function test_verification_endpoint_throttles_brute_force_attempts(): void
