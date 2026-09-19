@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { admissionRoutes } from '../modules/admission/routes.js'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
 import { performanceMonitor } from '../services/performance/performanceMonitor'
@@ -13,7 +14,6 @@ const GuestDashboardView = () => import('../views/GuestDashboardView.vue')
 const RoleDashboardView = () => import('../views/RoleDashboardView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const ComingSoonView = () => import('../views/ComingSoonView.vue')
-const AdmissionView = () => import('../modules/admission/AdmissionView.vue')
 const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
 const GradingView = () => import('../modules/grading/GradingView.vue')
 const MonitoringView = () => import('../modules/monitoring/MonitoringView.vue')
@@ -158,12 +158,7 @@ const routes = [
           roles: ROUTE_ROLES['activate-student-account'],
         },
       }),
-      protectedRoute({
-        path: 'admission',
-        name: 'admission',
-        component: AdmissionView,
-        meta: { title: 'Admission', roles: ROUTE_ROLES.admission },
-      }),
+      ...admissionRoutes.map(protectedRoute),
       protectedRoute({
         path: 'enrollment',
         name: 'enrollment',

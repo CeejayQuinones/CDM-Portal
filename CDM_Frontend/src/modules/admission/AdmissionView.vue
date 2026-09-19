@@ -1,7 +1,9 @@
 <script setup>
-import EmptyPage from '../../components/EmptyPage.vue'
+import AdmissionPlaceholder from './components/AdmissionPlaceholder.vue'
+
+defineProps({ title: { type: String, required: true } })
 </script>
 
 <template>
-  <EmptyPage />
+  <AdmissionPlaceholder :title="title" />
 </template>
