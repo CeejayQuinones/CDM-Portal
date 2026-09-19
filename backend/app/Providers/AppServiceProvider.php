@@ -2,11 +2,16 @@
 
 namespace App\Providers;
 
+use App\Models\Admission\AdmissionApplicant;
+use App\Models\Admission\AdmissionCycle;
 use App\Models\StudentDocument;
 use App\Observers\StudentDocumentObserver;
+use App\Policies\Admission\AdmissionApplicantPolicy;
+use App\Policies\Admission\AdmissionCyclePolicy;
 use App\Services\Ai\Analyzers\GeminiDocumentAnalyzer;
 use App\Services\Ai\Analyzers\MockDocumentAnalyzer;
 use App\Services\Ai\Contracts\DocumentAnalyzer;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
 
@@ -35,6 +40,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::policy(AdmissionApplicant::class, AdmissionApplicantPolicy::class);
+        Gate::policy(AdmissionCycle::class, AdmissionCyclePolicy::class);
+
         StudentDocument::observe(StudentDocumentObserver::class);
     }
 

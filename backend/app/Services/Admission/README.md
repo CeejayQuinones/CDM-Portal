@@ -1,7 +1,12 @@
 # Admission service boundary
 
-Future Admission services belong in `App\Services\Admission`.
-No exam, publication, recommendation, or import behavior is implemented in Step 1.
-Resolve applicant identity and schema ownership in Step 2 before adding models or services.
-Reuse existing portal users and roles; do not copy the source authentication systems.
-See `docs/ADMISSION_INTEGRATION.md` at the repository root.
+`AdmissionIdentityService` owns Step 3 application identity creation and lookup.
+It accepts an existing User and cycle, not request attributes. It rechecks the
+persisted active Guest role, profile, lack of an academic Student record and open
+intake window. User/cycle locks, database uniqueness and bounded UUID collision
+retries protect creation. Use this service for future identity entry points.
+
+No endpoints are exposed. Registrar decisions, exams, results, recommendations,
+conversion and imports remain unimplemented. Existing portal auth owns credentials.
+See `docs/ADMISSION_IDENTITY_FOUNDATION.md` at the repository root for validation,
+authorization and the exact schema scope.

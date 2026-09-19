@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Admission\AdmissionApplicant;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -81,6 +82,11 @@ class User extends Authenticatable
     public function profile(): HasOne
     {
         return $this->hasOne(UserProfile::class);
+    }
+
+    public function admissionApplications(): HasMany
+    {
+        return $this->hasMany(AdmissionApplicant::class);
     }
 
     public function student(): HasOne
