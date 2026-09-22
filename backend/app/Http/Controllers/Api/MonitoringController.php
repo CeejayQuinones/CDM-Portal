@@ -373,6 +373,85 @@ class MonitoringController extends Controller
         return $this->ok($this->notification($record->fresh()));
     }
 
+    public function studentStudyStudio(Request $request): JsonResponse
+    {
+        if ($response = $this->requireStudent($request)) {
+            return $response;
+        }
+
+        $studentId = (int) Student::query()->where('user_id', $request->user()->id)->value('id');
+        $context = $this->ai->studentStudyContext($studentId);
+        $weekPlan = ($context['assessment'] ?? null)
+            ? $this->warnings->generateStudyPlan($context['assessment'])
+            : null;
+
+        return $this->ok([
+            'topics' => $context['topics'],
+            'records' => $context['records'],
+            'risk' => $context['assessment'],
+            'week_plan' => $weekPlan,
+            'live_ai_configured' => $this->ai->isLiveAiConfigured(),
+        ]);
+    }
+
+    public function generateStudentFlashcards(Request $request): JsonResponse
+    {
+        if ($response = $this->requireStudent($request)) {
+            return $response;
+        }
+
+        $validated = $request->validate([
+            'topic' => ['nullable', 'string', 'max:180'],
+        ]);
+
+        $studentId = (int) Student::query()->where('user_id', $request->user()->id)->value('id');
+
+        return $this->ok($this->ai->generateFlashcards($studentId, $validated['topic'] ?? null));
+    }
+
+    public function generateStudentQuiz(Request $request): JsonResponse
+    {
+        if ($response = $this->requireStudent($request)) {
+            return $response;
+        }
+
+        $validated = $request->validate([
+            'topic' => ['nullable', 'string', 'max:180'],
+        ]);
+
+        $studentId = (int) Student::query()->where('user_id', $request->user()->id)->value('id');
+
+        return $this->ok($this->ai->generateSampleQuiz($studentId, $validated['topic'] ?? null));
+    }
+
+    public function generateStudentStudioPlan(Request $request): JsonResponse
+    {
+        if ($response = $this->requireStudent($request)) {
+            return $response;
+        }
+
+        $validated = $request->validate([
+            'topic' => ['nullable', 'string', 'max:180'],
+        ]);
+
+        $studentId = (int) Student::query()->where('user_id', $request->user()->id)->value('id');
+
+        return $this->ok($this->ai->generateStudentStudioPlan($studentId, $validated['topic'] ?? null));
+    }
+
+    private function requireStudent(Request $request): ?JsonResponse
+    {
+        if ($request->user()->role?->role_name !== Role::STUDENT) {
+            return $this->forbidden('Study studio tools are available on student accounts only.');
+        }
+
+        if (! Student::query()->where('user_id', $request->user()->id)->exists()) {
+            return $this->forbidden('No student profile is linked to this account.');
+        }
+
+        return null;
+    }
+
     private function authorizeStudent(Request $request, int $student): ?JsonResponse
     {
         $role = $request->user()->role?->role_name;

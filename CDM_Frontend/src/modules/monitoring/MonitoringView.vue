@@ -12,6 +12,7 @@ import {
 } from './services/monitoringApi'
 import AiHelpChatbot from './components/AiHelpChatbot.vue'
 import ProfessorRecordPanel from './components/ProfessorRecordPanel.vue'
+import StudentStudyStudio from './components/StudentStudyStudio.vue'
 
 const auth = useAuthStore()
 const data = ref(null)
@@ -112,7 +113,7 @@ onMounted(load)
         <p class="lead">
           {{
             isStudent
-              ? 'Check your standing and study plans. Use AI Help anytime.'
+              ? 'Study Studio: flashcards, practice quizzes, and AI study plans from your weak topics.'
               : isProfessor
                 ? 'Review assigned students, log weak topics, and send AI study plans.'
                 : 'Browse students by department, course, and section.'
@@ -205,6 +206,8 @@ onMounted(load)
             </article>
             <p v-if="!sentPlans.length" class="muted">No study plans yet.</p>
           </div>
+
+          <StudentStudyStudio v-if="isStudent" />
 
           <ProfessorRecordPanel
             v-if="isProfessor"

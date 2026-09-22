@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\MonitoringPerformanceRecord;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -429,6 +430,322 @@ PROMPT;
             'title' => "Study plan: {$assessmentName} · {$topic}",
             'reply' => $fallback,
             'source' => 'cdm-coach',
+        ];
+    }
+
+    /**
+     * @return array{assessment: ?array<string, mixed>, topics: list<array<string, mixed>>, records: list<array<string, mixed>>}
+     */
+    public function studentStudyContext(int $studentId): array
+    {
+        $assessment = $this->earlyWarningService->assessByStudentId($studentId);
+        $records = MonitoringPerformanceRecord::query()
+            ->where('student_id', $studentId)
+            ->latest()
+            ->limit(30)
+            ->get()
+            ->map(fn (MonitoringPerformanceRecord $record) => [
+                'id' => $record->id,
+                'subject_code' => $record->subject_code,
+                'subject_name' => $record->subject_name,
+                'assessment_name' => $record->assessment_name,
+                'topic' => $record->topic,
+                'score' => $record->score,
+                'max_score' => $record->max_score,
+                'notes' => $record->notes,
+                'percent' => $record->max_score > 0 ? round(($record->score / $record->max_score) * 100, 1) : null,
+            ])
+            ->all();
+
+        $topics = [];
+        foreach ($records as $record) {
+            $key = mb_strtolower(trim(($record['subject_code'] ?? '').'|'.($record['topic'] ?? '')));
+            if ($key === '|' || isset($topics[$key])) {
+                continue;
+            }
+            $topics[$key] = [
+                'topic' => $record['topic'],
+                'subject_code' => $record['subject_code'],
+                'subject_name' => $record['subject_name'],
+                'assessment_name' => $record['assessment_name'],
+                'score' => $record['score'],
+                'max_score' => $record['max_score'],
+                'percent' => $record['percent'],
+                'source' => 'professor',
+            ];
+        }
+
+        foreach (($assessment['subjects'] ?? []) as $subject) {
+            if (! in_array($subject['risk_level'] ?? '', ['high', 'moderate'], true)) {
+                continue;
+            }
+            $key = mb_strtolower(trim(($subject['subject_code'] ?? '').'|grade-focus'));
+            if (isset($topics[$key])) {
+                continue;
+            }
+            $topics[$key] = [
+                'topic' => ($subject['subject_name'] ?? $subject['subject_code'] ?? 'Subject').' fundamentals',
+                'subject_code' => $subject['subject_code'] ?? null,
+                'subject_name' => $subject['subject_name'] ?? null,
+                'assessment_name' => 'Grade trend',
+                'score' => $subject['average_grade'] ?? null,
+                'max_score' => 100,
+                'percent' => $subject['average_grade'] ?? null,
+                'source' => 'grades',
+            ];
+        }
+
+        return [
+            'assessment' => $assessment,
+            'topics' => array_values($topics),
+            'records' => $records,
+        ];
+    }
+
+    /**
+     * @return array{topic: string, cards: list<array{front: string, back: string}>, source: string}
+     */
+    public function generateFlashcards(int $studentId, ?string $topic = null): array
+    {
+        $context = $this->studentStudyContext($studentId);
+        $focus = $this->resolveFocusTopic($context, $topic);
+        $prompt = 'Create exactly 8 study flashcards as JSON only (no markdown) with this shape: '
+            .'{"cards":[{"front":"term or question","back":"short clear answer"}]}. '
+            ."Focus topic: {$focus}. Help a college student recover weak mastery. Keep answers concise.";
+
+        $parsed = $this->askJsonStudyTools($context['assessment'] ?? [], $prompt, 'flashcards');
+        $cards = collect($parsed['cards'] ?? [])
+            ->filter(fn ($card) => is_array($card) && filled($card['front'] ?? null) && filled($card['back'] ?? null))
+            ->map(fn ($card) => [
+                'front' => trim((string) $card['front']),
+                'back' => trim((string) $card['back']),
+            ])
+            ->take(10)
+            ->values()
+            ->all();
+
+        if ($cards === []) {
+            $cards = $this->fallbackFlashcards($focus);
+        }
+
+        return [
+            'topic' => $focus,
+            'cards' => $cards,
+            'source' => $parsed['source'] ?? 'cdm-coach',
+        ];
+    }
+
+    /**
+     * @return array{topic: string, questions: list<array{prompt: string, choices: list<string>, answer_index: int, explanation: string}>, source: string}
+     */
+    public function generateSampleQuiz(int $studentId, ?string $topic = null): array
+    {
+        $context = $this->studentStudyContext($studentId);
+        $focus = $this->resolveFocusTopic($context, $topic);
+        $prompt = 'Create exactly 5 multiple-choice practice questions as JSON only (no markdown) with this shape: '
+            .'{"questions":[{"prompt":"...","choices":["A","B","C","D"],"answer_index":0,"explanation":"..."}]}. '
+            ."Focus topic: {$focus}. College level. answer_index is 0-based.";
+
+        $parsed = $this->askJsonStudyTools($context['assessment'] ?? [], $prompt, 'quiz');
+        $questions = collect($parsed['questions'] ?? [])
+            ->filter(fn ($q) => is_array($q) && filled($q['prompt'] ?? null) && is_array($q['choices'] ?? null))
+            ->map(function (array $q) {
+                $choices = array_values(array_map('strval', array_slice($q['choices'], 0, 4)));
+                while (count($choices) < 4) {
+                    $choices[] = 'None of the above';
+                }
+                $answer = (int) ($q['answer_index'] ?? 0);
+                if ($answer < 0 || $answer > 3) {
+                    $answer = 0;
+                }
+
+                return [
+                    'prompt' => trim((string) $q['prompt']),
+                    'choices' => $choices,
+                    'answer_index' => $answer,
+                    'explanation' => trim((string) ($q['explanation'] ?? 'Review class notes on this topic.')),
+                ];
+            })
+            ->take(5)
+            ->values()
+            ->all();
+
+        if ($questions === []) {
+            $questions = $this->fallbackQuiz($focus);
+        }
+
+        return [
+            'topic' => $focus,
+            'questions' => $questions,
+            'source' => $parsed['source'] ?? 'cdm-coach',
+        ];
+    }
+
+    /**
+     * @return array{topic: string, title: string, plan: string, week: list<array{day: string, focus: string, minutes: int}>, source: string}
+     */
+    public function generateStudentStudioPlan(int $studentId, ?string $topic = null): array
+    {
+        $context = $this->studentStudyContext($studentId);
+        $focus = $this->resolveFocusTopic($context, $topic);
+        $base = $this->earlyWarningService->generateStudyPlan($context['assessment'] ?? [
+            'student_id' => $studentId,
+            'risk_level' => 'moderate',
+            'subjects' => [],
+        ]);
+
+        if ($this->isLiveAiConfigured() && ($context['assessment'] ?? null)) {
+            try {
+                $raw = $this->callProvider(
+                    $context['assessment'],
+                    [],
+                    "Write a friendly 5-day recovery study plan for the weak topic: {$focus}. "
+                    .'Include daily goals and practice tips. Plain text, no markdown tables.',
+                );
+                $parsed = $this->parseAiResponse($raw, $context['assessment'], true, $focus);
+
+                return [
+                    'topic' => $focus,
+                    'title' => "Study plan · {$focus}",
+                    'plan' => $parsed['reply'],
+                    'week' => $base['week'] ?? [],
+                    'source' => $parsed['provider'] === 'cdm-coach' ? 'cdm-coach' : 'gemini',
+                ];
+            } catch (Throwable $exception) {
+                Log::warning('Student studio plan AI failed; using fallback.', [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        $plan = "Focus: {$focus}\n\n"
+            ."Day 1: Review notes and mark confusing parts.\n"
+            ."Day 2: Make 8 flashcards and practice them twice.\n"
+            ."Day 3: Answer a short practice quiz and check explanations.\n"
+            ."Day 4: Rework the weakest items from your instructor feedback.\n"
+            ."Day 5: Teach the topic out loud and list questions for your professor.";
+
+        return [
+            'topic' => $focus,
+            'title' => "Study plan · {$focus}",
+            'plan' => $plan,
+            'week' => $base['week'] ?? [],
+            'source' => 'cdm-coach',
+        ];
+    }
+
+    /**
+     * @param  array{assessment: ?array<string, mixed>, topics: list<array<string, mixed>>, records: list<array<string, mixed>>}  $context
+     */
+    private function resolveFocusTopic(array $context, ?string $topic): string
+    {
+        $topic = trim((string) $topic);
+        if ($topic !== '') {
+            return mb_substr($topic, 0, 180);
+        }
+
+        $first = $context['topics'][0]['topic'] ?? null;
+        if (filled($first)) {
+            return (string) $first;
+        }
+
+        return 'General academic recovery';
+    }
+
+    /**
+     * @param  array<string, mixed>  $assessment
+     * @return array<string, mixed>
+     */
+    private function askJsonStudyTools(array $assessment, string $prompt, string $mode): array
+    {
+        if ($assessment !== [] && $this->isLiveAiConfigured()) {
+            try {
+                $raw = $this->callProvider($assessment, [], $prompt."\nReturn JSON only.");
+                $json = $this->extractJsonObject($raw);
+                if (is_array($json)) {
+                    $json['source'] = 'gemini';
+
+                    return $json;
+                }
+            } catch (Throwable $exception) {
+                Log::warning("Student {$mode} AI failed; using fallback.", [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        return ['source' => 'cdm-coach'];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function extractJsonObject(string $raw): ?array
+    {
+        $raw = trim($raw);
+        if (preg_match('/\{.*\}/s', $raw, $matches) === 1) {
+            $decoded = json_decode($matches[0], true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<array{front: string, back: string}>
+     */
+    private function fallbackFlashcards(string $topic): array
+    {
+        return [
+            ['front' => "What is the core idea of {$topic}?", 'back' => "State the main definition/rule in one sentence, then give one example."],
+            ['front' => "Common mistake in {$topic}", 'back' => 'Skipping prerequisites or mixing similar terms. Recheck definitions first.'],
+            ['front' => "How do I practice {$topic} today?", 'back' => 'Do 3 short problems, then explain your solution out loud.'],
+            ['front' => "When is {$topic} used?", 'back' => 'In class activities, quizzes, and follow-up graded work for this subject.'],
+            ['front' => "Quick check", 'back' => "If you cannot explain {$topic} without notes, review flashcards again."],
+            ['front' => 'Ask your professor', 'back' => "Which part of {$topic} matters most for the next assessment?"],
+            ['front' => 'Memory tip', 'back' => 'Link the idea to a real campus example so it sticks longer.'],
+            ['front' => 'Next step', 'back' => 'Take a 5-question practice quiz on this topic after one review pass.'],
+        ];
+    }
+
+    /**
+     * @return list<array{prompt: string, choices: list<string>, answer_index: int, explanation: string}>
+     */
+    private function fallbackQuiz(string $topic): array
+    {
+        return [
+            [
+                'prompt' => "Best first step when studying {$topic}?",
+                'choices' => ['Memorize random facts', 'Review key definitions', 'Skip to the hardest item', 'Ignore instructor notes'],
+                'answer_index' => 1,
+                'explanation' => 'Start with clear definitions before harder practice.',
+            ],
+            [
+                'prompt' => "Why did your instructor flag {$topic}?",
+                'choices' => ['It is already mastered', 'It is a weak area to recover', 'It is optional forever', 'It replaces all grades'],
+                'answer_index' => 1,
+                'explanation' => 'Professor topic logs highlight where support is needed.',
+            ],
+            [
+                'prompt' => 'Most effective practice loop?',
+                'choices' => ['Read once only', 'Flashcards → quiz → review misses', 'Only watch videos', 'Avoid practice questions'],
+                'answer_index' => 1,
+                'explanation' => 'Active recall plus checking mistakes builds mastery.',
+            ],
+            [
+                'prompt' => 'What should you bring to consultation?',
+                'choices' => ['No questions', 'Specific confusing steps', 'Only final answers', 'Unrelated topics'],
+                'answer_index' => 1,
+                'explanation' => 'Specific questions help instructors coach faster.',
+            ],
+            [
+                'prompt' => 'When is a topic ready?',
+                'choices' => ['You can explain and solve without notes', 'You recognized the title', 'A friend said it is easy', 'You opened the file once'],
+                'answer_index' => 0,
+                'explanation' => 'True readiness means you can teach and apply it.',
+            ],
         ];
     }
 }

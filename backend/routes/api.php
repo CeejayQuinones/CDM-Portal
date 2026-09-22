@@ -46,6 +46,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/monitoring/students/{student}/sent-plans', [MonitoringController::class, 'listSentPlans']);
         Route::get('/monitoring/my-sent-plans', [MonitoringController::class, 'mySentPlans']);
         Route::patch('/monitoring/sent-plans/{plan}/read', [MonitoringController::class, 'markSentPlanRead']);
+        Route::get('/monitoring/study-studio', [MonitoringController::class, 'studentStudyStudio']);
+        Route::post('/monitoring/study-studio/flashcards', [MonitoringController::class, 'generateStudentFlashcards'])->middleware('throttle:8,1');
+        Route::post('/monitoring/study-studio/quiz', [MonitoringController::class, 'generateStudentQuiz'])->middleware('throttle:8,1');
+        Route::post('/monitoring/study-studio/plan', [MonitoringController::class, 'generateStudentStudioPlan'])->middleware('throttle:8,1');
         Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification']);
         Route::get('/monitoring/my-risk-notifications', [MonitoringController::class, 'myRiskNotifications']);
         Route::patch('/monitoring/risk-notifications/{notification}/read', [MonitoringController::class, 'markRiskNotificationRead']);

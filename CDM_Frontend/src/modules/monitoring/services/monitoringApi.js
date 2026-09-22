@@ -45,3 +45,14 @@ export const fetchStudentSentPlans = (studentId) =>
 export const fetchMySentPlans = () => unwrap(apiClient.get('/monitoring/my-sent-plans'))
 
 export const markSentPlanRead = (planId) => unwrap(apiClient.patch(`/monitoring/sent-plans/${planId}/read`))
+
+export const fetchStudyStudio = () => unwrap(apiClient.get('/monitoring/study-studio'))
+
+export const generateStudyFlashcards = (topic) =>
+  unwrap(apiClient.post('/monitoring/study-studio/flashcards', { topic: topic || null }))
+
+export const generateStudyQuiz = (topic) =>
+  unwrap(apiClient.post('/monitoring/study-studio/quiz', { topic: topic || null }))
+
+export const generateStudyStudioPlan = (topic) =>
+  unwrap(apiClient.post('/monitoring/study-studio/plan', { topic: topic || null }))
