@@ -10,6 +10,7 @@ import {
 const props = defineProps({
   studentId: { type: Number, required: true },
   subjects: { type: Array, default: () => [] },
+  viewerRole: { type: String, default: 'professor' }, // professor | student | staff
 })
 
 const emit = defineEmits(['sent'])
@@ -157,13 +158,16 @@ async function sendPlan(record) {
   <section class="record-panel">
     <header>
       <div>
-        <p class="kicker">Instructor records</p>
-        <h3>Quiz / topic interventions</h3>
+        <p class="kicker">{{ viewerRole === 'student' ? 'My files & weak quizzes' : 'Monitoring files' }}</p>
+        <h3>{{ viewerRole === 'student' ? 'Upload low-score quizzes and notes' : 'Quiz / topic files & interventions' }}</h3>
       </div>
     </header>
     <p class="lead">
-      Log a weak assessment (example: Quiz 2 on loops). Gemini uses that topic to draft a study plan you can send to the
-      student.
+      {{
+        viewerRole === 'student'
+          ? 'Upload quiz papers or notes for topics you find hard. These feed your Study Studio flashcards and practice.'
+          : 'Log a weak assessment and optionally attach the quiz/file. AI can draft a study plan for the student.'
+      }}
     </p>
 
     <form class="record-form" @submit.prevent="saveRecord">
@@ -221,11 +225,12 @@ async function sendPlan(record) {
         </header>
         <p v-if="record.notes">{{ record.notes }}</p>
         <p v-if="record.has_attachment" class="muted">Attachment: {{ record.attachment_name }}</p>
-        <div class="actions">
+        <div v-if="viewerRole !== 'student'" class="actions">
           <button type="button" :disabled="generatingId === record.id" @click="generatePlan(record)">
             {{ generatingId === record.id ? 'Generating…' : 'Generate AI plan' }}
           </button>
           <button
+            v-if="viewerRole === 'professor'"
             type="button"
             class="primary"
             :disabled="!draftPlans[record.id] || sendingId === record.id"
@@ -235,7 +240,7 @@ async function sendPlan(record) {
           </button>
         </div>
         <textarea
-          v-if="draftPlans[record.id]"
+          v-if="viewerRole !== 'student' && draftPlans[record.id]"
           v-model="draftPlans[record.id].plan_body"
           rows="8"
           aria-label="Draft study plan"

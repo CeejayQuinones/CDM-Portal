@@ -1,6 +1,10 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import {
+  askAiHelp,
+  fetchMyRisk,
+  fetchMySentPlans,
+  fetchPerformanceRecords,
   fetchStudyStudio,
   generateStudyFlashcards,
   generateStudyQuiz,
@@ -11,7 +15,7 @@ const tab = ref('flashcards')
 const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
-const studio = ref({ topics: [], records: [], week_plan: null, live_ai_configured: false })
+const studio = ref({ topics: [], records: [], week_plan: null, live_ai_configured: false, risk: null })
 const selectedTopic = ref('')
 const cards = ref([])
 const cardIndex = ref(0)
@@ -24,15 +28,157 @@ const quizDone = ref(false)
 const revealed = ref(false)
 const plan = ref(null)
 
-const focusTopic = computed(() => selectedTopic.value || studio.value.topics?.[0]?.topic || '')
+const focusTopic = computed(() => selectedTopic.value || studio.value.topics?.[0]?.topic || 'General academic recovery')
 const currentCard = computed(() => cards.value[cardIndex.value] || null)
 const currentQuestion = computed(() => quiz.value[quizIndex.value] || null)
+const studentId = computed(() => studio.value.risk?.student_id || studio.value.risk?.students?.[0]?.student_id || null)
+
+function extractJson(text) {
+  const match = String(text || '').match(/\{[\s\S]*\}/)
+  if (!match) return null
+  try {
+    return JSON.parse(match[0])
+  } catch {
+    return null
+  }
+}
+
+function localFlashcards(topic) {
+  return [
+    { front: `What is the core idea of ${topic}?`, back: 'State the main definition in one sentence, then give one example.' },
+    { front: `Common mistake in ${topic}`, back: 'Skipping prerequisites or mixing similar terms. Recheck definitions first.' },
+    { front: `How do I practice ${topic} today?`, back: 'Do 3 short problems, then explain your solution out loud.' },
+    { front: `When is ${topic} used?`, back: 'In class activities, quizzes, and follow-up graded work.' },
+    { front: 'Quick check', back: `If you cannot explain ${topic} without notes, review again.` },
+    { front: 'Ask your professor', back: `Which part of ${topic} matters most for the next assessment?` },
+    { front: 'Memory tip', back: 'Link the idea to a real example so it sticks longer.' },
+    { front: 'Next step', back: 'Take a short practice quiz after one flashcard pass.' },
+  ]
+}
+
+function localQuiz(topic) {
+  return [
+    {
+      prompt: `Best first step when studying ${topic}?`,
+      choices: ['Memorize random facts', 'Review key definitions', 'Skip to hardest item', 'Ignore instructor notes'],
+      answer_index: 1,
+      explanation: 'Start with clear definitions before harder practice.',
+    },
+    {
+      prompt: `Why was ${topic} flagged?`,
+      choices: ['Already mastered', 'Weak area to recover', 'Optional forever', 'Replaces all grades'],
+      answer_index: 1,
+      explanation: 'Professor topic logs highlight where support is needed.',
+    },
+    {
+      prompt: 'Most effective practice loop?',
+      choices: ['Read once only', 'Flashcards → quiz → review misses', 'Only watch videos', 'Avoid practice'],
+      answer_index: 1,
+      explanation: 'Active recall plus checking mistakes builds mastery.',
+    },
+    {
+      prompt: 'What should you bring to consultation?',
+      choices: ['No questions', 'Specific confusing steps', 'Only final answers', 'Unrelated topics'],
+      answer_index: 1,
+      explanation: 'Specific questions help instructors coach faster.',
+    },
+    {
+      prompt: 'When is a topic ready?',
+      choices: ['You can explain and solve without notes', 'You recognized the title', 'A friend said it is easy', 'You opened the file once'],
+      answer_index: 0,
+      explanation: 'True readiness means you can teach and apply it.',
+    },
+  ]
+}
+
+function localPlan(topic) {
+  return {
+    title: `Study plan · ${topic}`,
+    plan: `Focus: ${topic}\n\nDay 1: Review notes and mark confusing parts.\nDay 2: Make flashcards and practice them twice.\nDay 3: Answer a short practice quiz and check explanations.\nDay 4: Rework the weakest items from instructor feedback.\nDay 5: Teach the topic out loud and list questions for your professor.`,
+    week: [],
+    source: 'local-coach',
+  }
+}
+
+function buildTopicsFromLegacy(riskPayload, records, sentPlans) {
+  const topics = []
+  const seen = new Set()
+  for (const record of records || []) {
+    const key = `${record.subject_code}|${record.topic}`.toLowerCase()
+    if (seen.has(key) || !record.topic) continue
+    seen.add(key)
+    topics.push({
+      topic: record.topic,
+      subject_code: record.subject_code,
+      subject_name: record.subject_name,
+      assessment_name: record.assessment_name,
+      percent: record.max_score > 0 ? Math.round((Number(record.score) / Number(record.max_score)) * 1000) / 10 : null,
+      source: 'professor',
+    })
+  }
+  for (const planItem of sentPlans || []) {
+    const key = `${planItem.subject_code}|${planItem.topic}`.toLowerCase()
+    if (!planItem.topic || seen.has(key)) continue
+    seen.add(key)
+    topics.push({ topic: planItem.topic, subject_code: planItem.subject_code, source: 'professor' })
+  }
+  const student = riskPayload?.students?.[0]
+  for (const subject of student?.subjects || []) {
+    if (!['high', 'moderate'].includes(subject.risk_level)) continue
+    const key = `${subject.subject_code}|grade-focus`.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    topics.push({
+      topic: `${subject.subject_name || subject.subject_code} fundamentals`,
+      subject_code: subject.subject_code,
+      subject_name: subject.subject_name,
+      percent: subject.average_grade,
+      source: 'grades',
+    })
+  }
+  return { topics, student }
+}
+
+async function loadLegacyStudio() {
+  const risk = await fetchMyRisk()
+  const student = risk.students?.[0]
+  let records = []
+  let sentPlans = []
+  if (student?.student_id) {
+    try {
+      records = (await fetchPerformanceRecords(student.student_id)).records || []
+    } catch {
+      records = []
+    }
+  }
+  try {
+    sentPlans = (await fetchMySentPlans()).plans || []
+  } catch {
+    sentPlans = []
+  }
+  const built = buildTopicsFromLegacy(risk, records, sentPlans)
+  return {
+    topics: built.topics,
+    records,
+    risk: built.student || student || null,
+    week_plan: null,
+    live_ai_configured: true,
+  }
+}
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    studio.value = await fetchStudyStudio()
+    try {
+      const data = await fetchStudyStudio()
+      studio.value = {
+        ...data,
+        risk: data.risk?.students?.[0] || data.risk || null,
+      }
+    } catch {
+      studio.value = await loadLegacyStudio()
+    }
     if (!selectedTopic.value && studio.value.topics?.[0]?.topic) {
       selectedTopic.value = studio.value.topics[0].topic
     }
@@ -43,17 +189,35 @@ async function load() {
   }
 }
 
+async function askStructured(prompt) {
+  if (!studentId.value) throw new Error('No student profile linked. Run the demo seed script first.')
+  const help = await askAiHelp(studentId.value, prompt)
+  return help?.reply || help?.advice || ''
+}
+
 async function makeFlashcards() {
   busy.value = true
   error.value = ''
   try {
-    const data = await generateStudyFlashcards(focusTopic.value)
-    cards.value = data.cards || []
+    try {
+      const data = await generateStudyFlashcards(focusTopic.value)
+      cards.value = data.cards || []
+    } catch {
+      try {
+        const reply = await askStructured(
+          `Create exactly 8 study flashcards as JSON only with shape {"cards":[{"front":"...","back":"..."}]} for topic: ${focusTopic.value}. No markdown.`,
+        )
+        const parsed = extractJson(reply)
+        cards.value = Array.isArray(parsed?.cards) && parsed.cards.length ? parsed.cards : localFlashcards(focusTopic.value)
+      } catch {
+        cards.value = localFlashcards(focusTopic.value)
+      }
+    }
     cardIndex.value = 0
     flipped.value = false
     tab.value = 'flashcards'
   } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to generate flashcards.'
+    error.value = err.response?.data?.message || err.message || 'Unable to generate flashcards.'
   } finally {
     busy.value = false
   }
@@ -63,8 +227,20 @@ async function makeQuiz() {
   busy.value = true
   error.value = ''
   try {
-    const data = await generateStudyQuiz(focusTopic.value)
-    quiz.value = data.questions || []
+    try {
+      const data = await generateStudyQuiz(focusTopic.value)
+      quiz.value = data.questions || []
+    } catch {
+      try {
+        const reply = await askStructured(
+          `Create exactly 5 multiple-choice questions as JSON only {"questions":[{"prompt":"...","choices":["A","B","C","D"],"answer_index":0,"explanation":"..."}]} for topic: ${focusTopic.value}. No markdown.`,
+        )
+        const parsed = extractJson(reply)
+        quiz.value = Array.isArray(parsed?.questions) && parsed.questions.length ? parsed.questions : localQuiz(focusTopic.value)
+      } catch {
+        quiz.value = localQuiz(focusTopic.value)
+      }
+    }
     quizIndex.value = 0
     quizChoice.value = null
     quizScore.value = 0
@@ -72,7 +248,7 @@ async function makeQuiz() {
     revealed.value = false
     tab.value = 'quiz'
   } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to generate quiz.'
+    error.value = err.response?.data?.message || err.message || 'Unable to generate quiz.'
   } finally {
     busy.value = false
   }
@@ -82,10 +258,26 @@ async function makePlan() {
   busy.value = true
   error.value = ''
   try {
-    plan.value = await generateStudyStudioPlan(focusTopic.value)
+    try {
+      plan.value = await generateStudyStudioPlan(focusTopic.value)
+    } catch {
+      try {
+        const reply = await askStructured(
+          `Write a friendly 5-day recovery study plan for weak topic: ${focusTopic.value}. Plain text.`,
+        )
+        plan.value = {
+          title: `Study plan · ${focusTopic.value}`,
+          plan: reply || localPlan(focusTopic.value).plan,
+          week: [],
+          source: 'ai-help',
+        }
+      } catch {
+        plan.value = localPlan(focusTopic.value)
+      }
+    }
     tab.value = 'plan'
   } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to generate study plan.'
+    error.value = err.response?.data?.message || err.message || 'Unable to generate study plan.'
   } finally {
     busy.value = false
   }

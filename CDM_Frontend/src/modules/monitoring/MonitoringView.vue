@@ -210,9 +210,10 @@ onMounted(load)
           <StudentStudyStudio v-if="isStudent" />
 
           <ProfessorRecordPanel
-            v-if="isProfessor"
+            v-if="selected && (isProfessor || isAdmin || isStudent)"
             :student-id="selected.student_id"
             :subjects="selected.subjects || []"
+            :viewer-role="isStudent ? 'student' : isProfessor ? 'professor' : 'staff'"
             @sent="loadPlans(selected.student_id)"
           />
         </section>

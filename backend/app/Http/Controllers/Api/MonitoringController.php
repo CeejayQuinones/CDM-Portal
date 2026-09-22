@@ -12,7 +12,9 @@ use App\Services\EarlyWarningService;
 use App\Services\MonitoringAiHelpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MonitoringController extends Controller
 {
@@ -138,11 +140,20 @@ class MonitoringController extends Controller
     public function storePerformanceRecord(Request $request, int $student): JsonResponse
     {
         $role = $request->user()->role?->role_name;
-        if ($role !== Role::PROFESSOR) {
-            return $this->forbidden('Only professors can add performance records.');
+        $allowed = [Role::PROFESSOR, Role::STUDENT, Role::ADMIN, Role::REGISTRAR_STAFF];
+        if (! in_array($role, $allowed, true)) {
+            return $this->forbidden('You cannot add monitoring files/records with this account.');
         }
-        if (! $this->warnings->professorCanAccessStudent($request->user()->id, $student)) {
-            return $this->forbidden('You can only add records for students in your assigned subjects.');
+
+        if ($role === Role::STUDENT) {
+            $ownId = Student::query()->where('user_id', $request->user()->id)->value('id');
+            if ((int) $ownId !== (int) $student) {
+                return $this->forbidden('Students can only upload files to their own monitoring record.');
+            }
+        } elseif ($role === Role::PROFESSOR) {
+            if (! $this->warnings->professorCanAccessStudent($request->user()->id, $student)) {
+                return $this->forbidden('You can only add records for students in your assigned subjects.');
+            }
         }
 
         $data = $request->validate([
@@ -153,7 +164,7 @@ class MonitoringController extends Controller
             'score' => ['nullable', 'numeric', 'min:0', 'max:9999'],
             'max_score' => ['nullable', 'numeric', 'min:0', 'max:9999'],
             'notes' => ['nullable', 'string', 'max:2000'],
-            'attachment' => ['nullable', 'file', 'max:5120', 'mimes:pdf,doc,docx,txt,csv,xlsx,xls,png,jpg,jpeg'],
+            'attachment' => ['nullable', 'file', 'max:10240', 'mimes:pdf,doc,docx,txt,csv,xlsx,xls,png,jpg,jpeg'],
         ]);
 
         $path = null;
@@ -179,6 +190,34 @@ class MonitoringController extends Controller
         ]);
 
         return response()->json(['success' => true, 'data' => $this->performanceRecord($record)], 201);
+    }
+
+    public function downloadPerformanceAttachment(Request $request, int $record): StreamedResponse|JsonResponse
+    {
+        $performance = MonitoringPerformanceRecord::query()->find($record);
+        if (! $performance || ! $performance->attachment_path) {
+            return $this->notFound('Attachment not found.');
+        }
+
+        if ($response = $this->authorizeStudent($request, (int) $performance->student_id)) {
+            return $response;
+        }
+
+        $role = $request->user()->role?->role_name;
+        if ($role === Role::PROFESSOR
+            && (int) $performance->professor_user_id !== (int) $request->user()->id
+            && ! $this->warnings->professorCanAccessStudent($request->user()->id, (int) $performance->student_id)) {
+            return $this->forbidden('You can only download files for your assigned students.');
+        }
+
+        if (! Storage::disk('local')->exists($performance->attachment_path)) {
+            return $this->notFound('Attachment file is missing on storage.');
+        }
+
+        return Storage::disk('local')->download(
+            $performance->attachment_path,
+            $performance->attachment_name ?: 'monitoring-file',
+        );
     }
 
     public function generateRecordStudyPlan(Request $request, int $student, int $record): JsonResponse
