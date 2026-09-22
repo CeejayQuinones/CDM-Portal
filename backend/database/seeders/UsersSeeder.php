@@ -29,57 +29,27 @@ class UsersSeeder extends Seeder
             }
         }
 
-        DB::table('users')->insert([
-            [
-                'username' => 'ken',
-                'password' => Hash::make('ken123!'),
-                'role_id' => $roleIds['Guest'],
-                'status' => 'active',
-                'last_login' => null,
-                'is_first_login' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'username' => 'admin',
-                'password' => Hash::make('Admin123!'),
-                'role_id' => $roleIds['Admin'],
-                'status' => 'active',
-                'last_login' => null,
-                'is_first_login' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'username' => 'registrar1',
-                'password' => Hash::make('Registrar123!'),
-                'role_id' => $roleIds['Registrar Staff'],
-                'status' => 'active',
-                'last_login' => null,
-                'is_first_login' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'username' => 'professor1',
-                'password' => Hash::make('Professor123!'),
-                'role_id' => $roleIds['Professor'],
-                'status' => 'active',
-                'last_login' => null,
-                'is_first_login' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'username' => 'student1',
-                'password' => Hash::make('Student123!'),
-                'role_id' => $roleIds['Student'],
-                'status' => 'active',
-                'last_login' => null,
-                'is_first_login' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-        ]);
+        $users = [
+            ['username' => 'ken', 'password' => 'ken123!', 'role' => 'Guest'],
+            ['username' => 'admin', 'password' => 'Admin123!', 'role' => 'Admin'],
+            ['username' => 'registrar1', 'password' => 'Registrar123!', 'role' => 'Registrar Staff'],
+            ['username' => 'professor1', 'password' => 'Professor123!', 'role' => 'Professor'],
+            ['username' => 'student1', 'password' => 'Student123!', 'role' => 'Student'],
+        ];
+
+        foreach ($users as $user) {
+            DB::table('users')->updateOrInsert(
+                ['username' => $user['username']],
+                [
+                    'password' => Hash::make($user['password']),
+                    'role_id' => $roleIds[$user['role']],
+                    'status' => 'active',
+                    'last_login' => null,
+                    'is_first_login' => true,
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ],
+            );
+        }
     }
 }
