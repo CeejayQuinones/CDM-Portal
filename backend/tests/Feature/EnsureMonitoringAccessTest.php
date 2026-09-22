@@ -22,7 +22,7 @@ class EnsureMonitoringAccessTest extends TestCase
     }
 
     #[DataProvider('deniedRoles')]
-    public function test_guest_and_admin_cannot_enter_monitoring(string $roleName): void
+    public function test_guest_cannot_enter_monitoring(string $roleName): void
     {
         try {
             $this->runMiddleware($roleName);
@@ -34,12 +34,12 @@ class EnsureMonitoringAccessTest extends TestCase
 
     public static function allowedRoles(): array
     {
-        return [[Role::STUDENT], [Role::PROFESSOR], [Role::REGISTRAR_STAFF]];
+        return [[Role::STUDENT], [Role::PROFESSOR], [Role::REGISTRAR_STAFF], [Role::ADMIN]];
     }
 
     public static function deniedRoles(): array
     {
-        return [[Role::GUEST], [Role::ADMIN]];
+        return [[Role::GUEST]];
     }
 
     private function runMiddleware(string $roleName): Response

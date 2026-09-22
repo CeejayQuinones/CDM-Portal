@@ -4,11 +4,10 @@ import test from 'node:test'
 
 const source = async (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
-test('monitoring navigation permits only students, professors, and registrar staff', async () => {
+test('monitoring navigation permits students, professors, registrar staff, and admins', async () => {
   const access = await source('src/config/accessControl.js')
-  assert.match(access, /monitoring: \[ROLES\.STUDENT, ROLES\.PROFESSOR, ROLES\.REGISTRAR_STAFF\]/)
+  assert.match(access, /monitoring: \[ROLES\.STUDENT, ROLES\.PROFESSOR, ROLES\.REGISTRAR_STAFF, ROLES\.ADMIN\]/)
   assert.doesNotMatch(access, /monitoring: \[[^\]]*ROLES\.GUEST/)
-  assert.doesNotMatch(access, /monitoring: \[[^\]]*ROLES\.ADMIN/)
 })
 
 test('monitoring API uses scoped backend monitoring endpoints', async () => {

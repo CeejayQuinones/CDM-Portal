@@ -2,8 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig({
-  base: './',
+export default defineConfig(({ mode }) => ({
+  // Relative base for Capacitor/Electron; absolute root for Vercel/web hosting.
+  base: mode === 'vercel' || mode === 'production' ? '/' : './',
   plugins: [
     vue(),
     VitePWA({
@@ -46,4 +47,4 @@ export default defineConfig({
       },
     }),
   ],
-})
+}))

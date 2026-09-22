@@ -1,7 +1,7 @@
 <script setup>
-import EmptyPage from '../components/EmptyPage.vue'
+import RoleDashboardView from './RoleDashboardView.vue'
 </script>
 
 <template>
-  <EmptyPage />
+  <RoleDashboardView role="Guest" />
 </template>

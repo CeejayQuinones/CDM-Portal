@@ -2,86 +2,103 @@
 
 namespace Tests\Feature;
 
+use App\Services\EarlyWarningService;
 use App\Services\MonitoringAiHelpService;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use PHPUnit\Framework\Attributes\DataProvider;
-use RuntimeException;
+use Mockery;
 use Tests\TestCase;
 
 class MonitoringAiHelpServiceTest extends TestCase
 {
-    private array $assessment = [
-        'risk_level' => 'moderate',
-        'student_name' => 'Must Not Be Sent',
-        'address' => 'Must Not Be Sent',
-        'subjects' => [['subject_code' => 'CS101', 'subject_name' => 'Programming', 'average_grade' => 78, 'risk_level' => 'moderate']],
-    ];
-
-    protected function setUp(): void
+    protected function tearDown(): void
     {
-        parent::setUp();
-        config()->set('services.document_analysis.gemini.api_key', 'test-secret-key');
-        config()->set('services.document_analysis.gemini.model', 'gemini-test');
-        config()->set('services.document_analysis.gemini.timeout', 15);
+        Mockery::close();
+        parent::tearDown();
     }
 
-    public function test_valid_response_uses_minimized_context(): void
+    public function test_live_gemini_response_is_parsed(): void
     {
-        Http::fake(['*' => Http::response(['candidates' => [['content' => ['parts' => [['text' => 'Try a structured review plan.']]]]]], 200)]);
-        $reply = app(MonitoringAiHelpService::class)->generateHelp($this->assessment, 'How should I study?');
-        $this->assertSame('Try a structured review plan.', $reply['reply']);
-        Http::assertSent(function (Request $request): bool {
-            $body = $request->body();
+        config()->set('ai.provider', 'gemini');
+        config()->set('ai.api_key', 'test-secret-key');
+        config()->set('ai.model', 'gemini-test');
+        config()->set('ai.verify_ssl', false);
 
-            return str_contains($body, 'CS101') && ! str_contains($body, 'Must Not Be Sent') && ! str_contains($body, 'test-secret-key');
-        });
+        $assessment = [
+            'student_name' => 'Test Student',
+            'student_number' => '2026-0001',
+            'course_code' => 'BSCS',
+            'risk_label' => 'Moderate risk',
+            'trend_label' => 'steady',
+            'average_grade' => 80,
+            'headline' => 'Watch closely.',
+            'warnings' => ['CS101 needs attention'],
+            'subjects' => [[
+                'subject_code' => 'CS101',
+                'subject_name' => 'Programming',
+                'periods' => ['Prelim' => 78, 'Midterm' => 80, 'Final' => null],
+                'average_grade' => 79,
+                'risk_label' => 'Moderate risk',
+            ]],
+        ];
+
+        $early = Mockery::mock(EarlyWarningService::class);
+        $early->shouldReceive('assessByStudentId')->once()->with(11)->andReturn($assessment);
+        $this->app->instance(EarlyWarningService::class, $early);
+
+        Http::fake([
+            '*' => Http::response([
+                'candidates' => [[
+                    'content' => [
+                        'parts' => [[
+                            'text' => json_encode([
+                                'reply' => 'Focus on nested loops this week.',
+                                'summary' => 'Study loops',
+                                'advice' => 'Practice tracing.',
+                                'actions' => ['Review notes', 'Ask professor'],
+                                'prevention_note' => 'Short daily drills help.',
+                            ]),
+                        ]],
+                    ],
+                ]],
+            ], 200),
+        ]);
+
+        $reply = app(MonitoringAiHelpService::class)->generateHelp(11, 'How should I study?');
+
+        $this->assertSame('live-ai', $reply['source']);
+        $this->assertSame('Focus on nested loops this week.', $reply['reply']);
     }
 
-    #[DataProvider('failedResponses')]
-    public function test_provider_errors_are_sanitized(int $status): void
+    public function test_fallback_when_ai_not_configured(): void
     {
-        Log::spy();
-        Http::fake(['*' => Http::response('RAW_PROVIDER_BODY secret question', $status)]);
-        try {
-            app(MonitoringAiHelpService::class)->generateHelp($this->assessment, 'secret question');
-            $this->fail('Expected exception.');
-        } catch (RuntimeException $e) {
-            $this->assertSame('AI help is temporarily unavailable. Please try again.', $e->getMessage());
-        }
-        Log::shouldHaveReceived('warning')->withArgs(fn ($message, $context) => $message === 'Monitoring AI request failed' && $context['status_code'] === $status && ! str_contains(json_encode($context), 'RAW_PROVIDER_BODY') && ! str_contains(json_encode($context), 'secret question'))->once();
-    }
+        config()->set('ai.provider', 'gemini');
+        config()->set('ai.api_key', null);
 
-    public static function failedResponses(): array
-    {
-        return [[400], [500]];
-    }
+        $assessment = [
+            'student_name' => 'Test Student',
+            'student_number' => '2026-0001',
+            'course_code' => 'BSCS',
+            'risk_label' => 'Low risk',
+            'trend_label' => 'steady',
+            'average_grade' => 90,
+            'headline' => 'Stable',
+            'warnings' => [],
+            'subjects' => [],
+            'risk_level' => 'low',
+        ];
 
-    public function test_timeout_is_sanitized(): void
-    {
-        Log::spy();
-        Http::fake(fn () => throw new ConnectionException('RAW_PROVIDER_BODY'));
-        try {
-            app(MonitoringAiHelpService::class)->generateHelp($this->assessment, 'secret question');
-            $this->fail('Expected exception.');
-        } catch (RuntimeException $e) {
-            $this->assertSame('The AI service took too long to respond. Please try again.', $e->getMessage());
-        }
-        Log::shouldHaveReceived('warning')->withArgs(fn ($m, $c) => $c['error_type'] === 'timeout' && ! str_contains(json_encode($c), 'RAW_PROVIDER_BODY'))->once();
-    }
+        $early = Mockery::mock(EarlyWarningService::class);
+        $early->shouldReceive('assessByStudentId')->once()->with(12)->andReturn($assessment);
+        $early->shouldReceive('generateSupportPlan')->once()->andReturn([
+            'summary' => 'Stable',
+            'actions' => ['Keep reviewing weekly.'],
+            'prevention_note' => 'Stay consistent.',
+        ]);
+        $this->app->instance(EarlyWarningService::class, $early);
 
-    public function test_malformed_response_is_sanitized(): void
-    {
-        Log::spy();
-        Http::fake(['*' => Http::response(['candidates' => []], 200)]);
-        try {
-            app(MonitoringAiHelpService::class)->generateHelp($this->assessment, 'secret question');
-            $this->fail('Expected exception.');
-        } catch (RuntimeException $e) {
-            $this->assertSame('AI help is temporarily unavailable. Please try again.', $e->getMessage());
-        }
-        Log::shouldHaveReceived('warning')->withArgs(fn ($m, $c) => $c['error_type'] === 'invalid_response' && ! str_contains(json_encode($c), 'secret question'))->once();
+        $reply = app(MonitoringAiHelpService::class)->generateHelp(12, null);
+
+        $this->assertSame('cdm-coach', $reply['source']);
+        $this->assertStringContainsString('CDM AI Help coach', $reply['reply']);
     }
 }

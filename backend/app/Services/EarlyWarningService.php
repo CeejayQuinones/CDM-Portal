@@ -9,21 +9,36 @@ use Illuminate\Support\Collection;
 
 class EarlyWarningService
 {
-    /** @return array{summary: array<string,int>, students: list<array<string,mixed>>} */
-    public function overview(?int $professorUserId = null): array
+    /** @return array{summary: array<string,int>, students: list<array<string,mixed>>, filters?: array<string,mixed>} */
+    public function overview(?int $professorUserId = null, array $filters = []): array
     {
-        $query = $this->studentsWithGrades();
+        $query = $professorUserId === null ? $this->studentDetails() : $this->studentsWithGrades();
         if ($professorUserId !== null) {
             $professorId = Professor::query()->where('user_id', $professorUserId)->value('id');
             if (! $professorId) {
-                return ['summary' => $this->summary(collect()), 'students' => []];
+                return ['summary' => $this->summary(collect()), 'students' => [], 'filters' => $this->filterOptions(collect())];
             }
             $query->whereHas('enrollments.enrollmentSubjects', fn (Builder $q) => $q->where('professor_id', $professorId));
         }
+
+        if ($department = trim((string) ($filters['department'] ?? ''))) {
+            $query->whereHas('course.department', fn (Builder $q) => $q->where('department_code', $department)->orWhere('department_name', 'like', "%{$department}%"));
+        }
+        if ($course = trim((string) ($filters['course'] ?? ''))) {
+            $query->whereHas('course', fn (Builder $q) => $q->where('course_code', $course)->orWhere('course_name', 'like', "%{$course}%"));
+        }
+        if ($section = trim((string) ($filters['section'] ?? ''))) {
+            $query->whereHas('enrollments.section', fn (Builder $q) => $q->where('section_name', $section)->orWhere('section_name', 'like', "%{$section}%"));
+        }
+
         $students = $query->orderBy('student_number')->get()->map(fn (Student $student) => $this->assessment($student))
             ->sortByDesc(fn (array $a) => ['high' => 3, 'moderate' => 2, 'low' => 1][$a['risk_level']])->values();
 
-        return ['summary' => $this->summary($students), 'students' => $students->all()];
+        return [
+            'summary' => $this->summary($students),
+            'students' => $students->all(),
+            'filters' => $this->filterOptions($students),
+        ];
     }
 
     /** @return array{summary: array<string,int>, students: list<array<string,mixed>>} */
@@ -96,7 +111,14 @@ class EarlyWarningService
 
     private function studentDetails(): Builder
     {
-        return Student::query()->with(['userProfile', 'course', 'enrollments.enrollmentSubjects.subject', 'enrollments.enrollmentSubjects.grades' => fn ($q) => $q->where('status', 'approved'), 'enrollments.enrollmentSubjects.grades.gradingPeriod']);
+        return Student::query()->with([
+            'userProfile',
+            'course.department',
+            'enrollments.section',
+            'enrollments.enrollmentSubjects.subject',
+            'enrollments.enrollmentSubjects.grades' => fn ($q) => $q->where('status', 'approved'),
+            'enrollments.enrollmentSubjects.grades.gradingPeriod',
+        ]);
     }
 
     /** @return array<string,mixed> */
@@ -104,6 +126,7 @@ class EarlyWarningService
     {
         $subjects = [];
         $scores = [];
+        $latestEnrollment = $student->enrollments->sortByDesc('enrollment_date')->first();
         foreach ($student->enrollments as $enrollment) {
             foreach ($enrollment->enrollmentSubjects as $record) {
                 $periods = ['Prelim' => null, 'Midterm' => null, 'Final' => null];
@@ -119,7 +142,15 @@ class EarlyWarningService
                 }
                 $average = round(array_sum($values) / count($values), 2);
                 $level = $record->remarks === 'Failed' || $average < 75 ? 'high' : ($record->remarks === 'Incomplete' || $average < 82 ? 'moderate' : 'low');
-                $subjects[] = ['subject_code' => $record->subject?->subject_code ?? 'N/A', 'subject_name' => $record->subject?->subject_name ?? 'Subject', 'periods' => $periods, 'average_grade' => $average, 'risk_level' => $level, 'status' => $record->remarks];
+                $subjects[] = [
+                    'subject_code' => $record->subject?->subject_code ?? 'N/A',
+                    'subject_name' => $record->subject?->subject_name ?? 'Subject',
+                    'periods' => $periods,
+                    'average_grade' => $average,
+                    'risk_level' => $level,
+                    'risk_label' => ucfirst($level).' risk',
+                    'status' => $record->remarks,
+                ];
             }
         }
         $average = $scores ? round(array_sum($scores) / count($scores), 2) : null;
@@ -130,7 +161,38 @@ class EarlyWarningService
         $name = trim(implode(' ', array_filter([$student->userProfile?->first_name, $student->userProfile?->last_name]))) ?: 'Student';
         $warnings = collect($subjects)->whereIn('risk_level', ['high', 'moderate'])->map(fn ($s) => "{$s['subject_code']} needs attention (average {$s['average_grade']}).")->values()->all();
 
-        return ['student_id' => $student->id, 'student_number' => $student->student_number, 'student_name' => $name, 'course_code' => $student->course?->course_code, 'average_grade' => $average, 'risk_level' => $level, 'risk_label' => ucfirst($level).' risk', 'trend' => $trend, 'headline' => $level === 'low' ? 'Grades are currently stable.' : 'Early warning: academic intervention is recommended.', 'warnings' => $warnings ?: ['No critical early-warning signals right now.'], 'subjects' => $subjects];
+        return [
+            'student_id' => $student->id,
+            'student_number' => $student->student_number,
+            'student_name' => $name,
+            'course_code' => $student->course?->course_code,
+            'course_name' => $student->course?->course_name,
+            'department_code' => $student->course?->department?->department_code,
+            'department_name' => $student->course?->department?->department_name,
+            'section_name' => $latestEnrollment?->section?->section_name,
+            'year_level' => $student->year_level ?? $latestEnrollment?->section?->year_level,
+            'average_grade' => $average,
+            'risk_level' => $level,
+            'risk_label' => ucfirst($level).' risk',
+            'trend' => $trend,
+            'trend_label' => match ($trend) {
+                'declining' => 'declining',
+                default => 'steady',
+            },
+            'headline' => $level === 'low' ? 'Grades are currently stable.' : 'Early warning: academic intervention is recommended.',
+            'warnings' => $warnings ?: ['No critical early-warning signals right now.'],
+            'subjects' => $subjects,
+        ];
+    }
+
+    /** @param Collection<int,array<string,mixed>> $students @return array<string,list<string>> */
+    private function filterOptions(Collection $students): array
+    {
+        return [
+            'departments' => $students->pluck('department_name')->filter()->unique()->sort()->values()->all(),
+            'courses' => $students->map(fn ($s) => $s['course_code'] ?: null)->filter()->unique()->sort()->values()->all(),
+            'sections' => $students->pluck('section_name')->filter()->unique()->sort()->values()->all(),
+        ];
     }
 
     /** @param Collection<int,array<string,mixed>> $students @return array<string,int> */

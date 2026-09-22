@@ -11,6 +11,7 @@ const PublicLegalView = () => import('../views/PublicLegalView.vue')
 const UnauthorizedView = () => import('../views/UnauthorizedView.vue')
 const GuestDashboardView = () => import('../views/GuestDashboardView.vue')
 const RoleDashboardView = () => import('../views/RoleDashboardView.vue')
+const StudentDashboardView = () => import('../views/StudentDashboardView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const ComingSoonView = () => import('../views/ComingSoonView.vue')
 const AdmissionView = () => import('../modules/admission/AdmissionView.vue')
@@ -98,8 +99,7 @@ const routes = [
       protectedRoute({
         path: 'student-dashboard',
         name: 'student-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.STUDENT },
+        component: StudentDashboardView,
         meta: {
           title: 'Student Dashboard',
           roles: ROUTE_ROLES['student-dashboard'],
@@ -207,7 +207,7 @@ const routes = [
         path: 'monitoring/adviser-alerts',
         name: 'monitoring-adviser-alerts',
         component: AdviserAlertsView,
-        meta: { title: 'Adviser Alerts', roles: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF] },
+        meta: { title: 'Adviser Alerts', roles: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN] },
       }),
       protectedRoute({
         path: 'monitoring/study-plans',
