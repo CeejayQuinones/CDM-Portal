@@ -1,0 +1,9 @@
+# Ignore local vendor if copied by mistake into build context helpers
+vendor/
+node_modules/
+.env
+.phpunit.result.cache
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
