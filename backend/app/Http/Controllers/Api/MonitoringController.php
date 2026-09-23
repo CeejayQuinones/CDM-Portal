@@ -103,8 +103,8 @@ class MonitoringController extends Controller
         }
 
         $validated = $request->validate([
-            'question' => ['nullable', 'string', 'max:1000'],
-            'messages' => ['nullable', 'array', 'max:20'],
+            'question' => ['nullable', 'string', 'max:2000'],
+            'messages' => ['nullable', 'array', 'max:24'],
             'messages.*.role' => ['required_with:messages', 'string', 'in:user,assistant'],
             'messages.*.content' => ['required_with:messages', 'string', 'max:2000'],
         ]);

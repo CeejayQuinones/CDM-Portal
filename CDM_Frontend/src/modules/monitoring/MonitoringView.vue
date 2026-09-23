@@ -226,6 +226,9 @@ onMounted(load)
       :student-id="selected?.student_id || null"
       :student-name="selected?.student_name || (isStudent ? 'You' : 'Student')"
       :risk-label="selected?.risk_label || ''"
+      :average-grade="selected?.average_grade ?? null"
+      :trend-label="selected?.trend_label || ''"
+      :subjects="selected?.subjects || []"
       :live-configured="Boolean(aiStatus.live_ai_configured)"
       :provider="aiStatus.provider || 'gemini'"
     />

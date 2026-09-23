@@ -1,11 +1,15 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { askAiHelp } from '../services/monitoringApi'
+import { buildLocalCoachReply, isWeakCoachReply } from '../services/localAiCoach'
 
 const props = defineProps({
   studentId: { type: Number, default: null },
   studentName: { type: String, default: 'Student' },
   riskLabel: { type: String, default: '' },
+  averageGrade: { type: [Number, String], default: null },
+  trendLabel: { type: String, default: '' },
+  subjects: { type: Array, default: () => [] },
   liveConfigured: { type: Boolean, default: false },
   provider: { type: String, default: 'cdm-coach' },
 })
@@ -28,8 +32,17 @@ const suggestions = [
   'Paano ako magprepare sa next quiz?',
 ]
 
+const coachContext = computed(() => ({
+  studentName: props.studentName,
+  riskLabel: props.riskLabel,
+  averageGrade: props.averageGrade,
+  trendLabel: props.trendLabel,
+  subjects: props.subjects,
+}))
+
 const badge = computed(() => {
   if (lastSource.value === 'live-ai') return `Live AI · ${props.provider}`
+  if (lastSource.value === 'local-coach') return 'Local free-form coach'
   if (props.liveConfigured) return 'Live AI ready'
   return 'CDM AI Coach'
 })
@@ -52,7 +65,7 @@ const seedWelcome = () => {
     id: `sys-${Date.now()}`,
     role: 'assistant',
     content: props.studentId
-      ? `Hi! I'm your CDM AI Help coach for ${props.studentName}${props.riskLabel ? ` (${props.riskLabel})` : ''}. Ask me about grades, recovery steps, or what to study first.`
+      ? `Hi! I'm your CDM AI Help coach for ${props.studentName}${props.riskLabel ? ` (${props.riskLabel})` : ''}. Magtanong ka ng kahit ano — free-form chat, hindi limited sa suggested questions.`
       : 'Select a student first, then I can coach based on their grade risk.',
     pending: false,
   }]
@@ -83,6 +96,28 @@ const toggleChat = () => {
   else openChat()
 }
 
+const applyReply = (pendingId, reply) => {
+  lastSource.value = reply.source || ''
+  const content = reply.reply || reply.advice || reply.summary || 'Walang sagot mula sa AI Help.'
+  const idx = messages.value.findIndex((msg) => msg.id === pendingId)
+  if (idx >= 0) {
+    messages.value[idx] = {
+      id: pendingId,
+      role: 'assistant',
+      content,
+      pending: false,
+      actions: reply.actions || [],
+    }
+  }
+  if (reply.actions?.length) {
+    emit('plan-from-chat', {
+      summary: reply.summary,
+      actions: reply.actions,
+      prevention_note: reply.prevention_note,
+    })
+  }
+}
+
 const sendMessage = async (text) => {
   const question = (text ?? draft.value).trim()
   if (!question || sending.value || !props.studentId) return
@@ -106,31 +141,22 @@ const sendMessage = async (text) => {
   sending.value = true
   await scrollToBottom()
 
+  const prior = historyPayload.value.slice(0, -1)
+
   try {
-    const prior = historyPayload.value.slice(0, -1)
     const reply = await askAiHelp(props.studentId, question, prior)
-    lastSource.value = reply.source || ''
-    const content = reply.reply || reply.advice || reply.summary || 'Walang sagot mula sa AI Help.'
-    const idx = messages.value.findIndex((msg) => msg.id === pendingId)
-    if (idx >= 0) {
-      messages.value[idx] = {
-        id: pendingId,
-        role: 'assistant',
-        content,
-        pending: false,
-        actions: reply.actions || [],
-      }
-    }
-    if (reply.actions?.length) {
-      emit('plan-from-chat', {
-        summary: reply.summary,
-        actions: reply.actions,
-        prevention_note: reply.prevention_note,
-      })
+    if (isWeakCoachReply(reply?.reply || reply?.advice, question)) {
+      applyReply(pendingId, buildLocalCoachReply(question, coachContext.value, prior))
+    } else {
+      applyReply(pendingId, reply)
     }
   } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to get AI Help right now.'
-    messages.value = messages.value.filter((msg) => msg.id !== pendingId)
+    // Always answer free-form locally so chat never depends on premade chips or API uptime.
+    error.value = ''
+    applyReply(pendingId, buildLocalCoachReply(question, coachContext.value, prior))
+    if (err.response?.status && err.response.status !== 404) {
+      error.value = 'Live AI unavailable — answered with local free-form coach.'
+    }
   } finally {
     sending.value = false
     await scrollToBottom()
@@ -236,7 +262,7 @@ watch(
           v-model="draft"
           rows="2"
           :disabled="sending || !canChat"
-          placeholder="Type a message…"
+          placeholder="Type anything — free-form, not only suggestions…"
           @keydown="onKeydown"
         />
         <button type="submit" class="send-btn" :disabled="sending || !canChat || !draft.trim()">

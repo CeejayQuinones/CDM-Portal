@@ -113,7 +113,15 @@ class MonitoringAiHelpService
         return <<<PROMPT
 You are CDM Portal AI Help, a friendly academic chatbot coach for Colegio de Montalban.
 Chat naturally like a helpful tutor/adviser. Be practical, kind, and specific.
-Focus on preventing failing grades. You may reply in Filipino, English, or Taglish to match the user.
+You may reply in Filipino, English, or Taglish to match the user.
+
+CRITICAL RULES:
+- Answer ANY free-form message the student types — not only preset chips or sample prompts.
+- Directly address their actual question first. Do not ignore custom chat.
+- Help with study strategies, subject tutoring, exam/quiz prep, time management, motivation, grade risk, recovery plans, and campus academic guidance.
+- If the topic is outside academics, answer briefly then offer related study help.
+- Never say you only answer premade/suggested questions.
+- Use the student grade context below when it is relevant.
 
 Student context (always use this):
 Student: {$assessment['student_name']} ({$assessment['student_number']})
@@ -313,10 +321,23 @@ PROMPT;
     private function parseAiResponse(string $raw, array $assessment, bool $live, ?string $question): array
     {
         $cleaned = trim($raw);
-        $cleaned = preg_replace('/^```json\s*|\s*```$/', '', $cleaned) ?? $cleaned;
+        $cleaned = preg_replace('/^```json\s*|\s*```$/m', '', $cleaned) ?? $cleaned;
         $decoded = json_decode($cleaned, true);
 
         if (! is_array($decoded)) {
+            // Live models sometimes return plain text — still treat it as a real answer.
+            if (mb_strlen($cleaned) >= 24 && ! str_starts_with(ltrim($cleaned), '{')) {
+                return [
+                    'source' => $live ? 'live-ai' : 'cdm-coach',
+                    'provider' => $live ? (string) config('ai.provider') : 'cdm-coach',
+                    'reply' => $cleaned,
+                    'summary' => (string) ($assessment['headline'] ?? 'AI Help reply'),
+                    'advice' => $cleaned,
+                    'actions' => [],
+                    'prevention_note' => '',
+                ];
+            }
+
             return $this->coachFallback($assessment, $question, []);
         }
 
@@ -353,37 +374,208 @@ PROMPT;
     private function coachFallback(array $assessment, ?string $question, array $history): array
     {
         $support = $this->earlyWarningService->generateSupportPlan($assessment);
-        $risky = collect($assessment['subjects'] ?? [])
-            ->filter(fn (array $subject) => in_array($subject['risk_level'], ['high', 'moderate'], true))
-            ->pluck('subject_code')
-            ->all();
+        $subjects = collect($assessment['subjects'] ?? []);
+        $risky = $subjects
+            ->filter(fn (array $subject) => in_array($subject['risk_level'] ?? '', ['high', 'moderate'], true))
+            ->values();
+        $riskyCodes = $risky->pluck('subject_code')->filter()->all();
+        $focus = $riskyCodes ? implode(', ', $riskyCodes) : 'your heaviest subjects';
+        $name = (string) ($assessment['student_name'] ?? 'student');
+        $risk = (string) ($assessment['risk_label'] ?? 'unknown risk');
+        $trend = (string) ($assessment['trend_label'] ?? 'steady');
+        $avg = (string) ($assessment['average_grade'] ?? 'n/a');
+        $q = trim((string) $question);
+        $lower = mb_strtolower($q);
 
-        $focus = $risky ? implode(', ', $risky) : 'your heaviest subjects';
-        $turn = count($history) + ($question ? 1 : 0);
-
-        if (! $question) {
-            $reply = "Hi! I'm your CDM AI Help coach for {$assessment['student_name']}.\n\n"
-                ."Right now the signal is {$assessment['risk_label']} with a {$assessment['trend_label']} trend (avg {$assessment['average_grade']}). "
-                ."Best focus first: {$focus}.\n\n"
-                .'Ask me anything — study plan for this week, how to recover a subject, or what to do before the next exam.';
-        } elseif ($turn > 2 && str_contains(mb_strtolower($question), 'salamat')) {
-            $reply = "Walang anuman! Keep checking your grades weekly and message me again if a subject dips. You've got this.";
+        if ($q === '') {
+            $reply = "Hi {$name}! Ako ang CDM AI Help coach mo.\n\n"
+                ."Standing mo ngayon: {$risk} ({$trend}, avg {$avg}). Unahin: {$focus}.\n\n"
+                .'Pwede kang magtanong ng kahit ano — study plan, quiz prep, subject recovery, time management, o clarifications. Type freely; hindi limited sa suggested chips.';
         } else {
-            $reply = "Got it — about “{$question}”.\n\n"
-                ."Based on the current {$assessment['risk_label']} risk, prioritize {$focus}. "
-                ."Use short daily blocks (45–90 mins), clarify one topic with your professor this week, and track every quiz so the next graded activity isn't a surprise.\n\n"
-                .'Tell me which subject you want to tackle next and I’ll break it down.';
+            $reply = $this->composeFreeformCoachReply($q, $lower, $assessment, $risky, $focus, $name, $risk, $trend, $avg, $history);
+        }
+
+        $actions = $support['actions'] ?? [];
+        if ($this->matchesAny($lower, ['plan', 'aral', 'study', 'schedule', 'week', 'araw'])) {
+            $actions = [
+                "Block 45–90 minutes daily for {$focus}.",
+                'List the 3 weakest topics from your last quiz or notes.',
+                'Ask your professor one clarifying question this week.',
+                'Do a short self-quiz before the next graded activity.',
+            ];
         }
 
         return [
             'source' => 'cdm-coach',
             'provider' => 'cdm-coach',
             'reply' => $reply,
-            'summary' => $support['summary'],
+            'summary' => $support['summary'] ?? "Coaching for {$name}",
             'advice' => $reply,
-            'actions' => $support['actions'],
-            'prevention_note' => $support['prevention_note'],
+            'actions' => array_values(array_filter(array_map('strval', $actions))),
+            'prevention_note' => $support['prevention_note'] ?? 'Short daily review beats cramming before exams.',
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $assessment
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $risky
+     * @param  list<array{role: string, content: string}>  $history
+     */
+    private function composeFreeformCoachReply(
+        string $q,
+        string $lower,
+        array $assessment,
+        $risky,
+        string $focus,
+        string $name,
+        string $risk,
+        string $trend,
+        string $avg,
+        array $history,
+    ): string {
+        $matchedSubject = $this->detectSubjectMention($lower, $assessment['subjects'] ?? []);
+
+        if ($this->matchesAny($lower, ['salamat', 'thank', 'thanks', 'ty '])) {
+            return "Walang anuman, {$name}! Message mo ulit ako anytime — kahit ano pang tanong tungkol sa aral, grades, o prep.";
+        }
+
+        if ($this->matchesAny($lower, ['hello', 'hi', 'hey', 'kumusta', 'good morning', 'good evening', 'magandang'])) {
+            return "Hi {$name}! Ready ako tumulong.\n\n"
+                ."Current signal: {$risk} · {$trend} · avg {$avg}. Focus candidates: {$focus}.\n\n"
+                .'Ano ang gusto mong ayusin ngayon — study plan, isang subject, o quiz prep? Pwede mong i-type freely.';
+        }
+
+        if ($this->matchesAny($lower, ['fail', 'bagsak', 'maiiwasan', 'prevent', 'at risk', 'mataas ang risk'])) {
+            return "Para maiwasan mag-fail this week:\n\n"
+                ."1) Unahin ang {$focus} — diyan pinakamalakas ang risk signal ({$risk}).\n"
+                ."2) Mag-aral araw-araw ng 45–90 mins (active recall, hindi passive reread).\n"
+                ."3) I-clarify ang isang confusing topic sa professor ASAP.\n"
+                ."4) I-track ang quizzes/assignments para walang surprise.\n\n"
+                ."Average mo ngayon: {$avg}. Kung may specific subject, sabihin mo at i-break down natin.";
+        }
+
+        if ($this->matchesAny($lower, ['unahin', 'priority', 'first', 'weakest', 'pinakamahina', 'ano dapat'])) {
+            $lines = $risky->take(3)->map(function (array $subject) {
+                return sprintf(
+                    '- %s (%s): avg %s · %s',
+                    $subject['subject_code'] ?? 'Subject',
+                    $subject['subject_name'] ?? '',
+                    $subject['average_grade'] ?? 'n/a',
+                    $subject['risk_label'] ?? 'watch',
+                );
+            })->all();
+
+            $list = $lines ? implode("\n", $lines) : "- Focus on {$focus}";
+
+            return "Dapat unahin mo muna:\n{$list}\n\n"
+                ."Bakit: ito ang may pinakamataas na failing risk base sa grades/trend mo ({$trend}).\n"
+                .'Next: pick one subject and ask me “paano ko irecover ang [subject]?” — libre kang magtanong kahit paano.';
+        }
+
+        if ($this->matchesAny($lower, ['study plan', '3-day', '3 day', '5-day', 'plan', 'iskedyul', 'schedule', 'gawan'])) {
+            return "3-day study plan para sa’yo ({$risk}, focus: {$focus}):\n\n"
+                ."Day 1 — Diagnose: review notes/quizzes sa {$focus}; list 5 confusing points.\n"
+                ."Day 2 — Practice: 2× 45-min blocks (problems/flashcards), no phone.\n"
+                ."Day 3 — Prove: short self-quiz + explain the topic out loud; message professor about remaining gaps.\n\n"
+                .'Gusto mo bang i-customize ito sa isang subject? Type the subject code anytime.';
+        }
+
+        if ($this->matchesAny($lower, ['quiz', 'exam', 'midterm', 'final', 'prelim', 'test', 'magprepare', 'prepare'])) {
+            return "Prep checklist before your next quiz/exam:\n\n"
+                ."• Skim the syllabus topics covered since the last assessment.\n"
+                ."• Rework mistakes from {$focus} first.\n"
+                ."• Make 8–10 flashcards for formulas/definitions.\n"
+                ."• Do a timed 20-minute practice set the night before.\n"
+                ."• Sleep 7+ hours — cramming without rest hurts recall.\n\n"
+                ."Standing: {$risk} (avg {$avg}). Tell me the subject + date of the quiz for a tighter plan.";
+        }
+
+        if ($matchedSubject) {
+            $code = $matchedSubject['subject_code'] ?? 'that subject';
+            $label = $matchedSubject['risk_label'] ?? 'watch closely';
+            $subAvg = $matchedSubject['average_grade'] ?? 'n/a';
+
+            return "Tungkol sa {$code} ({$matchedSubject['subject_name'] ?? $code}):\n\n"
+                ."Status: {$label} · subject avg {$subAvg}. Overall mo: {$risk}.\n"
+                ."Recovery moves:\n"
+                ."1) Identify the last 2 weak topics from notes/quizzes.\n"
+                ."2) Study those topics in two focused blocks this week.\n"
+                ."3) Ask your {$code} professor one clarifying question.\n"
+                ."4) Retake a short practice set before the next graded work.\n\n"
+                ."Tanong mo: “{$q}” — kung may specific lesson (hal. loops, accounting equation), type it and I’ll coach step-by-step.";
+        }
+
+        if ($this->matchesAny($lower, ['grade', 'standing', 'risk', 'average', 'status', 'paano ako'])) {
+            return "Here’s your quick standing snapshot, {$name}:\n\n"
+                ."• Risk: {$risk}\n• Trend: {$trend}\n• Average: {$avg}\n• Focus subjects: {$focus}\n\n"
+                .'Ask me anything else — recovery tips, a plan, or how to study a topic. Free-form chat is fully supported.';
+        }
+
+        if ($this->matchesAny($lower, ['motivate', 'desmotiv', 'pagod', 'stress', 'anxious', 'overwhelm', 'ayoko na'])) {
+            return "Normal yan maramdaman, {$name}. Huwag mong bitawan nang biglaan.\n\n"
+                ."Start tiny: 25 minutes today on {$focus}, then break. Progress > perfection.\n"
+                ."Your signal is {$risk} — recoverable with consistent short sessions.\n\n"
+                .'Kapag ready ka, sabihin mo ang subject and I will map the next 3 steps.';
+        }
+
+        // Generic but still personal — answer the actual free-form question.
+        $historyHint = count($history) > 2
+            ? 'Continuing our chat: '
+            : '';
+
+        return "{$historyHint}Got your question: “{$q}”.\n\n"
+            ."Here’s practical coaching using your current record ({$risk}, avg {$avg}, focus {$focus}):\n"
+            ."• Break the ask into one clear outcome for today (e.g. finish one topic or 10 practice items).\n"
+            ."• Spend 45–90 focused minutes on {$focus} first if the question relates to grades/study.\n"
+            ."• Write what you already know vs what confuses you, then attack the gaps.\n"
+            ."• If you need a concept explained, reply with the topic name and I’ll teach it step-by-step.\n\n"
+            .'You can ask me anything in your own words — tips, plans, subject help, or prep. Not limited to suggested questions.';
+    }
+
+    /**
+     * @param  list<string>  $needles
+     */
+    private function matchesAny(string $haystack, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            $needle = mb_strtolower(trim((string) $needle));
+            if ($needle === '') {
+                continue;
+            }
+
+            if (mb_strlen($needle) <= 3) {
+                if (preg_match('/(?:^|\s|[?.!,])'.preg_quote($needle, '/').'(?:$|\s|[?.!,])/u', $haystack)) {
+                    return true;
+                }
+                continue;
+            }
+
+            if (str_contains($haystack, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $subjects
+     * @return array<string, mixed>|null
+     */
+    private function detectSubjectMention(string $lower, array $subjects): ?array
+    {
+        foreach ($subjects as $subject) {
+            $code = mb_strtolower(trim((string) ($subject['subject_code'] ?? '')));
+            $name = mb_strtolower(trim((string) ($subject['subject_name'] ?? '')));
+            if ($code !== '' && str_contains($lower, $code)) {
+                return $subject;
+            }
+            if ($name !== '' && mb_strlen($name) >= 4 && str_contains($lower, $name)) {
+                return $subject;
+            }
+        }
+
+        return null;
     }
 
     /**

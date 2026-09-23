@@ -101,4 +101,48 @@ class MonitoringAiHelpServiceTest extends TestCase
         $this->assertSame('cdm-coach', $reply['source']);
         $this->assertStringContainsString('CDM AI Help coach', $reply['reply']);
     }
+
+    public function test_fallback_answers_freeform_questions(): void
+    {
+        config()->set('ai.provider', 'gemini');
+        config()->set('ai.api_key', null);
+
+        $assessment = [
+            'student_name' => 'Freeform Student',
+            'student_number' => '2026-0099',
+            'course_code' => 'BSIT',
+            'risk_label' => 'Moderate risk',
+            'trend_label' => 'declining',
+            'average_grade' => 78,
+            'headline' => 'Needs attention',
+            'warnings' => ['CS101 dipping'],
+            'subjects' => [[
+                'subject_code' => 'CS101',
+                'subject_name' => 'Programming',
+                'periods' => ['Prelim' => 75, 'Midterm' => 70, 'Final' => null],
+                'average_grade' => 72.5,
+                'risk_level' => 'high',
+                'risk_label' => 'High risk',
+            ]],
+            'risk_level' => 'moderate',
+        ];
+
+        $early = Mockery::mock(EarlyWarningService::class);
+        $early->shouldReceive('assessByStudentId')->once()->with(99)->andReturn($assessment);
+        $early->shouldReceive('generateSupportPlan')->once()->andReturn([
+            'summary' => 'Needs attention',
+            'actions' => ['Review CS101 daily.'],
+            'prevention_note' => 'Stay consistent.',
+        ]);
+        $this->app->instance(EarlyWarningService::class, $early);
+
+        $reply = app(MonitoringAiHelpService::class)->generateHelp(
+            99,
+            'Pwede mo ba ako tulungan mag-review ng nested loops kahit wala sa suggestions?',
+        );
+
+        $this->assertSame('cdm-coach', $reply['source']);
+        $this->assertStringContainsString('nested loops', mb_strtolower($reply['reply']));
+        $this->assertStringNotContainsString('Use short daily blocks (45–90 mins), clarify one topic', $reply['reply']);
+    }
 }
