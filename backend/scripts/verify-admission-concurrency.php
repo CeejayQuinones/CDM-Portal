@@ -13,10 +13,12 @@ use App\Services\Admission\AdmissionIdentityService;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\Sanctum;
 use Ramsey\Uuid\Uuid;
 use Symfony\Component\Process\Process;
 
@@ -113,8 +115,21 @@ if (($argv[1] ?? '') === '--worker') {
     writeJson($prefix.'.ready', ['connection_id' => DB::selectOne('SELECT CONNECTION_ID() AS id')->id]);
     waitFor(fn () => file_exists($stateFile.'.go'), 'parent start gate');
     try {
-        $applicant = app(AdmissionIdentityService::class)->create($user, $cycle);
-        $result = ['status' => 'created', 'id' => $applicant->id, 'number' => $applicant->applicant_number];
+        if ($job['endpoint'] ?? false) {
+            // Real HTTP kernel; only authentication identity is supplied by the test.
+            config(['cache.default' => 'array']);
+            Sanctum::actingAs($user);
+            $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+            $request = Request::create('/api/admission/applications', 'POST', server: ['HTTP_ACCEPT' => 'application/json']);
+            $response = $kernel->handle($request);
+            $body = json_decode($response->getContent(), true, flags: JSON_THROW_ON_ERROR);
+            $result = ['status' => $response->getStatusCode(), 'code' => $body['code'] ?? null,
+                'number' => $body['data']['application']['applicant_number'] ?? null];
+            $kernel->terminate($request, $response);
+        } else {
+            $applicant = app(AdmissionIdentityService::class)->create($user, $cycle);
+            $result = ['status' => 'created', 'id' => $applicant->id, 'number' => $applicant->applicant_number];
+        }
     } catch (ValidationException $exception) {
         $result = ['status' => 'validation', 'errors' => $exception->errors()];
     } catch (UniqueConstraintViolationException) {
@@ -235,6 +250,26 @@ try {
 
         return $intake;
     };
+    $endpointCount = 0;
+    if (AdmissionCycle::query()->where('status', AdmissionCycle::OPEN)->where('opens_at', '<=', now())->where('closes_at', '>', now())->exists()) {
+        $report['endpoint_races'] = 'skipped: existing open cycle; never modify real cycle configuration';
+    } else {
+        $report['endpoint_races'] = [];
+        for ($round = 0; $round < 3; $round++) {
+            $account = $user();
+            $intake = $cycle();
+            $job = ['user_id' => $account->id, 'cycle_id' => $intake->id, 'endpoint' => true];
+            $results = $run([$job, $job], $account->id);
+            $statuses = array_column($results, 'status');
+            sort($statuses);
+            verify($statuses === [201, 409], 'Endpoint race did not return 201 and 409');
+            verify(collect($results)->firstWhere('status', 409)['code'] === 'application_exists', 'Unsafe endpoint conflict');
+            verify(AdmissionApplicant::query()->where('user_id', $account->id)->count() === 1, 'Endpoint duplicate row');
+            $report['endpoint_races'][] = ['statuses' => $statuses, 'overlapping_lock_waits_verified' => true];
+            $endpointCount++;
+            $intake->update(['status' => AdmissionCycle::CLOSED]);
+        }
+    }
     $report['same_user_races'] = [];
     for ($round = 0; $round < 3; $round++) {
         $account = $user();
@@ -296,15 +331,15 @@ try {
         }
     }
     $report['database_unique_constraints'] = 'passed';
-    verify(AdmissionApplicant::query()->whereIn('user_id', $userIds)->count() === 9, 'Unexpected total applicants');
-    verify(AdmissionAuditEvent::query()->whereIn('actor_user_id', $userIds)->count() === 9, 'Unexpected total audit events');
+    verify(AdmissionApplicant::query()->whereIn('user_id', $userIds)->count() === 9 + $endpointCount, 'Unexpected total applicants');
+    verify(AdmissionAuditEvent::query()->whereIn('actor_user_id', $userIds)->count() === 9 + $endpointCount, 'Unexpected total audit events');
     foreach (AdmissionApplicant::query()->whereIn('user_id', $userIds)->get() as $applicant) {
         verify($applicant->status === 'draft' && $applicant->converted_student_id === null && $applicant->converted_at === null, 'Invalid applicant row');
         $event = AdmissionAuditEvent::query()->where('applicant_id', $applicant->id)->sole();
         verify($event->actor_user_id === $applicant->user_id && $event->action === AdmissionAuditEvent::IDENTITY_CREATED, 'Invalid audit linkage');
         verify($event->metadata === ['cycle_id' => $applicant->cycle_id, 'status' => 'draft', 'version' => 1], 'Unexpected audit metadata');
     }
-    $report['atomic_audit'] = ['applicants' => 9, 'events' => 9];
+    $report['atomic_audit'] = ['applicants' => 9 + $endpointCount, 'events' => 9 + $endpointCount];
     $report['result'] = 'passed';
 } catch (Throwable $exception) {
     $report['result'] = 'failed';

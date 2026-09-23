@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ROLES } from '../../config/accessControl.js'
 import { useAuthStore } from '../../stores/authStore'
 import AdmissionPlaceholder from './components/AdmissionPlaceholder.vue'
-import { fetchAdmissionIdentity } from './services/admissionService.js'
+import { fetchAdmissionIdentity, fetchAdmissionAvailability, createAdmissionApplication, admissionCreationMessage } from './services/admissionService.js'
 
 defineProps({ title: { type: String, default: 'Admission Status' } })
 const auth = useAuthStore()
@@ -11,6 +11,10 @@ const canReadIdentity = computed(() => [ROLES.GUEST, ROLES.STUDENT].includes(aut
 const application = ref(null)
 const loading = ref(true)
 const failed = ref(false)
+const availability = ref(null)
+const confirming = ref(false)
+const submitting = ref(false)
+const creationMessage = ref('')
 let requestVersion = 0
 
 const statuses = {
@@ -33,6 +37,10 @@ const formatDate = (value) => {
 async function loadIdentity() {
   const version = ++requestVersion
   application.value = null
+  availability.value = null
+  confirming.value = false
+  creationMessage.value = ''
+  submitting.value = false
   failed.value = false
   loading.value = true
   if (!canReadIdentity.value) {
@@ -41,11 +49,45 @@ async function loadIdentity() {
   }
   try {
     const identity = await fetchAdmissionIdentity()
-    if (version === requestVersion) application.value = identity.application
+    if (version !== requestVersion) return
+    application.value = identity.application
+    if (!identity.application && auth.currentRole === ROLES.GUEST) {
+      try {
+        const value = await fetchAdmissionAvailability()
+        if (version === requestVersion) availability.value = value
+      } catch {
+        if (version === requestVersion) availability.value = { allowed: false, reason: 'cycle_unavailable' }
+      }
+    }
   } catch {
     if (version === requestVersion) failed.value = true
   } finally {
     if (version === requestVersion) loading.value = false
+  }
+}
+
+async function createApplication() {
+  if (submitting.value || !confirming.value || !availability.value?.allowed || auth.currentRole !== ROLES.GUEST) return
+  const version = requestVersion
+  submitting.value = true
+  creationMessage.value = ''
+  try {
+    const identity = await createAdmissionApplication()
+    if (version !== requestVersion) return
+    application.value = identity.application
+    confirming.value = false
+    availability.value = null
+  } catch (error) {
+    if (version !== requestVersion) return
+    const message = admissionCreationMessage(error)
+    confirming.value = false
+    if (error?.response?.status === 409) {
+      await loadIdentity()
+      if (requestVersion !== version + 1) return
+    }
+    creationMessage.value = message
+  } finally {
+    if (version === requestVersion) submitting.value = false
   }
 }
 
@@ -72,7 +114,11 @@ onBeforeUnmount(() => { requestVersion++ })
       </div>
       <div v-else-if="!application">
         <h2>No admission application yet</h2>
-        <p>No admission application is linked to your account. This page displays existing applications only.</p>
+        <p>No admission application is linked to your account. Start an application when an admission cycle is open.</p>
+        <template v-if="auth.currentRole === ROLES.GUEST">
+          <button v-if="availability?.allowed" class="admission-retry" type="button" :disabled="submitting" @click="confirming = true">Start Admission Application</button>
+          <p v-else-if="availability" role="status">{{ admissionCreationMessage(availability.reason) }}</p>
+        </template>
       </div>
       <div v-else>
         <dl class="admission-details">
@@ -85,11 +131,20 @@ onBeforeUnmount(() => { requestVersion++ })
         </dl>
         <p class="admission-guidance">{{ status[1] }}</p>
       </div>
+      <p v-if="creationMessage" role="alert">{{ creationMessage }}</p>
+      <dialog v-if="confirming" open aria-labelledby="admission-confirm-title" class="admission-confirm" @cancel.prevent="!submitting && (confirming = false)">
+        <h2 id="admission-confirm-title">Start your admission application?</h2>
+        <p>An applicant number will be generated using your existing portal profile. Your application will be saved as a draft.</p>
+        <button class="admission-retry" type="button" :disabled="submitting" @click="confirming = false">Cancel</button>
+        <button class="admission-retry" type="button" :disabled="submitting" @click="createApplication">{{ submitting ? 'Creating...' : 'Confirm application' }}</button>
+      </dialog>
     </div>
   </section>
 </template>
 
 <style scoped>
+.admission-confirm { position: fixed; inset: 0; margin: auto; max-width: min(440px, 90vw); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; background: var(--color-surface); color: inherit; z-index: 20; }
+.admission-retry:disabled { opacity: 0.6; cursor: wait; }
 .admission-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin: 0; }
 .admission-details dt { color: var(--color-muted); font-size: 0.85rem; margin-bottom: 8px; }
 .admission-details dd { margin: 0; overflow-wrap: anywhere; font-weight: 600; }

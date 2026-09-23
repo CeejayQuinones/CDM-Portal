@@ -57,7 +57,10 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
           builder.onResolve({ filter: /services\/apiClient$/ }, () => ({ path: 'api', namespace: 'test-api' }))
           builder.onLoad({ filter: /.*/, namespace: 'test-api' }, () => ({
             contents: `export const apiState = { calls: [], handler: async () => ({ data: { success: true, data: { has_application: false, application: null } } }) };
-              export const apiClient = { get(path) { apiState.calls.push(path); return apiState.handler(); } };`,
+              export const apiClient = {
+                get(path) { apiState.calls.push(path); return path.endsWith('/availability') ? Promise.resolve({ data: { success: true, data: apiState.availability || { allowed: false, reason: 'no_open_cycle' } } }) : apiState.handler(); },
+                post(path) { apiState.calls.push(path); return apiState.postHandler(); }
+              };`,
           }))
           builder.onLoad({ filter: /\.vue$/ }, async ({ path: filename }) => {
             if (!filename.includes('/modules/admission/')) return { contents: 'export default { render() { return null } }' }
@@ -175,7 +178,91 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         findButton(root).props.onClick()
         await settle()
         assert.match(textOf(root), /No admission application yet/)
-        assert.deepEqual(apiState.calls, ['/admission/me', '/admission/me'])
+        assert.deepEqual(apiState.calls, ['/admission/me', '/admission/me', '/admission/applications/availability'])
+      } finally { app.unmount() }
+    })
+
+    const findButtonByText = (node, label) => node.tag === 'button' && textOf(node).includes(label) ? node : (node.children || []).map(child => findButtonByText(child, label)).find(Boolean)
+    await t.test('eligible Guest confirms once, prevents duplicate submits and immediately sees identity', async () => {
+      apiState.availability = { allowed: true, reason: null }
+      apiState.handler = async () => response(null)
+      apiState.calls.length = 0
+      let resolve
+      apiState.postHandler = () => new Promise(done => { resolve = done })
+      const { root, app } = mount()
+      try {
+        await settle()
+        findButtonByText(root, 'Start Admission').props.onClick()
+        await nextTick()
+        assert.match(textOf(root), /applicant number will be generated/)
+        assert.equal(apiState.calls.includes('/admission/applications'), false)
+        const confirm = findButtonByText(root, 'Confirm application')
+        confirm.props.onClick()
+        confirm.props.onClick()
+        await nextTick()
+        assert.equal(confirm.props.disabled, true)
+        assert.equal(apiState.calls.filter(path => path === '/admission/applications').length, 1)
+        resolve(response(record))
+        await settle()
+        assert.match(textOf(root), /APP-test-identity/)
+        assert.equal(findButtonByText(root, 'Start Admission'), undefined)
+      } finally { app.unmount(); apiState.availability = null }
+    })
+
+    await t.test('cancel does not create and late creation cannot leak across accounts', async () => {
+      apiState.availability = { allowed: true }
+      apiState.handler = async () => response(null)
+      apiState.calls.length = 0
+      let resolve
+      apiState.postHandler = () => new Promise(done => { resolve = done })
+      const { root, app } = mount()
+      try {
+        await settle()
+        findButtonByText(root, 'Start Admission').props.onClick()
+        await nextTick()
+        findButtonByText(root, 'Cancel').props.onClick()
+        await nextTick()
+        assert.equal(apiState.calls.includes('/admission/applications'), false)
+        findButtonByText(root, 'Start Admission').props.onClick()
+        await nextTick()
+        findButtonByText(root, 'Confirm application').props.onClick()
+        auth.currentUser = { id: 99 }
+        await settle()
+        resolve(response(record))
+        await settle()
+        assert.doesNotMatch(textOf(root), /APP-test-identity/)
+      } finally { app.unmount(); apiState.availability = null }
+    })
+    await t.test('creation errors are safe and duplicate refreshes the existing application', async () => {
+      for (const [status, code, message] of [[409, 'application_exists', /already exists/], [422, 'no_open_cycle', /No admission cycle/], [403, '', /permission/], [429, '', /Too many/], [503, '', /Unable to create/]]) {
+        apiState.availability = { allowed: true }
+        apiState.handler = async () => response(null)
+        apiState.postHandler = async () => {
+          if (status === 409) apiState.handler = async () => response(record)
+          throw { response: { status, data: { code, message: 'SQLSTATE secret' } } }
+        }
+        const { root, app } = mount()
+        try {
+          await settle()
+          findButtonByText(root, 'Start Admission').props.onClick()
+          await nextTick()
+          findButtonByText(root, 'Confirm application').props.onClick()
+          await settle()
+          assert.match(textOf(root), message)
+          assert.doesNotMatch(textOf(root), /SQLSTATE|secret/)
+          if (status === 409) assert.match(textOf(root), /APP-test-identity/)
+        } finally { app.unmount(); apiState.availability = null }
+      }
+    })
+    await t.test('Student never sees creation and no-cycle Guest sees explanation', async () => {
+      apiState.handler = async () => response(null)
+      const { root, app } = mount()
+      try {
+        await settle()
+        assert.match(textOf(root), /No admission cycle/)
+        auth.currentRole = ROLES.STUDENT
+        await settle()
+        assert.equal(findButtonByText(root, 'Start Admission'), undefined)
       } finally { app.unmount() }
     })
     await t.test('mounted future pages and staff legacy home do not call the identity API', async () => {

@@ -22,6 +22,49 @@ class AdmissionIdentityService
         return $actor->admissionApplications()->where('cycle_id', $cycle->id)->first();
     }
 
+    public function creationAvailability(User $user): array
+    {
+        $actor = $user->fresh('role');
+        if (! Gate::forUser($actor)->allows('create', AdmissionApplicant::class)) {
+            return ['allowed' => false, 'reason' => 'permission_denied'];
+        }
+        if (! $actor->profile()->exists()) {
+            return ['allowed' => false, 'reason' => 'profile_required'];
+        }
+        $cycles = AdmissionCycle::query()->where('status', AdmissionCycle::OPEN)
+            ->where('opens_at', '<=', now())->where('closes_at', '>', now())->limit(2)->get();
+        if ($cycles->count() !== 1) {
+            return ['allowed' => false, 'reason' => $cycles->isEmpty() ? 'no_open_cycle' : 'cycle_unavailable'];
+        }
+        if ($actor->admissionApplications()->where(function ($query) use ($cycles) {
+            $query->where('cycle_id', $cycles->first()->id)->orWhereIn('status', AdmissionApplicant::ACTIVE_STATUSES);
+        })->exists()) {
+            return ['allowed' => false, 'reason' => 'application_exists'];
+        }
+
+        return ['allowed' => true, 'reason' => null];
+    }
+
+    public function createForOpenCycle(User $user): AdmissionApplicant
+    {
+        return DB::transaction(function () use ($user) {
+            $actor = User::query()->with('role')->lockForUpdate()->findOrFail($user->id);
+            Gate::forUser($actor)->authorize('create', AdmissionApplicant::class);
+            $availability = $this->creationAvailability($actor);
+            if (! $availability['allowed']) {
+                throw ValidationException::withMessages(['creation' => $availability['reason']]);
+            }
+            $cycles = AdmissionCycle::query()->where('status', AdmissionCycle::OPEN)
+                ->where('opens_at', '<=', now())->where('closes_at', '>', now())
+                ->orderBy('id')->lockForUpdate()->get();
+            if ($cycles->count() !== 1) {
+                throw ValidationException::withMessages(['creation' => 'cycle_unavailable']);
+            }
+
+            return $this->create($actor, $cycles->first());
+        }, 3);
+    }
+
     public function create(User $user, AdmissionCycle $cycle): AdmissionApplicant
     {
         // Retry only a random-number collision; ownership conflicts are not retries.

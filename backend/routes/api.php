@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Admission\AdmissionApplicationController;
 use App\Http\Controllers\Api\Admission\AdmissionIdentityController;
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
@@ -26,6 +27,8 @@ Route::post('/registration/email-verification/verify', [AuthController::class, '
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('/admission/me', AdmissionIdentityController::class);
+    Route::get('/admission/applications/availability', [AdmissionApplicationController::class, 'availability']);
+    Route::post('/admission/applications', [AdmissionApplicationController::class, 'store'])->middleware('throttle:5,1');
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
