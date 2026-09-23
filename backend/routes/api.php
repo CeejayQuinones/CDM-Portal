@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdminUserDirectoryController;
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\HolidayController;
@@ -54,6 +55,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification']);
         Route::get('/monitoring/my-risk-notifications', [MonitoringController::class, 'myRiskNotifications']);
         Route::patch('/monitoring/risk-notifications/{notification}/read', [MonitoringController::class, 'markRiskNotificationRead']);
+    });
+
+    Route::middleware('role.admin')->group(function (): void {
+        Route::get('/admin/users', AdminUserDirectoryController::class);
     });
 
     Route::middleware('role.registrar-or-admin')->group(function (): void {

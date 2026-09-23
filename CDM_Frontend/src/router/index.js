@@ -32,6 +32,7 @@ const StudentDocumentsView = () => import('../modules/student-management/Student
 const PhysicalRecordsView = () => import('../modules/student-management/PhysicalRecordsView.vue')
 const EventAttendanceView = () => import('../modules/event-attendance/EventAttendanceView.vue')
 const RegistrarDashboardView = () => import('../modules/registrar-dashboard/RegistrarDashboardView.vue')
+const AdminDashboardView = () => import('../modules/admin-dashboard/AdminDashboardView.vue')
 
 const protectedRoute = (route) => ({
   ...route,
@@ -127,8 +128,7 @@ const routes = [
       protectedRoute({
         path: 'admin-dashboard',
         name: 'admin-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.ADMIN },
+        component: AdminDashboardView,
         meta: {
           title: 'Admin Dashboard',
           roles: ROUTE_ROLES['admin-dashboard'],
