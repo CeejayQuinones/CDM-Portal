@@ -1,9 +1,10 @@
 # Admission HTTP boundary
 
-Future Admission controllers belong in `App\Http\Controllers\Api\Admission`.
-Reuse the portal authentication and role middleware. Delegate Admission work to
-`App\Services\Admission`; enforce authorization and applicant ownership on the server.
+`AdmissionIdentityController` serves only `GET /api/admission/me` under the existing
+Sanctum authentication. The Admission viewOwn policy restricts it to active Guest
+and Student accounts; the query is scoped to the authenticated User relationship.
+It never calls identity creation or accepts caller-selected ownership identifiers.
 
-Step 1 registers no endpoints, controllers, models, or database tables. Existing
-Student, Registrar, Document Request, and Monitoring controllers remain unchanged.
-See `docs/ADMISSION_INTEGRATION.md` at the repository root for scope and source findings.
+The endpoint returns an explicit safe payload, not a serialized model. Missing
+Step 3 tables return generic HTTP 503 without applying migrations. Future staff
+and mutation endpoints require separately authorized work.

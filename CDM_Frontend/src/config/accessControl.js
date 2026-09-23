@@ -32,8 +32,8 @@ export const ROUTE_ROLES = Object.freeze({
   'registrar-document-request-history': [ROLES.REGISTRAR_STAFF],
   'activate-student-account': [ROLES.GUEST],
   settings: [ROLES.STUDENT],
-  // Keep the existing staff landing URL accessible while adding student admission.
-  admission: [ROLES.STUDENT, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
+  // Keep the existing staff landing URL; Guest access is limited to identity viewing.
+  admission: [ROLES.GUEST, ROLES.STUDENT, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'student-admission-exam': [ROLES.STUDENT],
   'student-admission-result': [ROLES.STUDENT],
   'student-admission-recommendation': [ROLES.STUDENT],
@@ -150,7 +150,7 @@ export const NAVIGATION_ITEMS = Object.freeze([
         name: 'admission',
         label: 'Admission Status',
         path: '/admission',
-        roles: [ROLES.STUDENT],
+        roles: [ROLES.GUEST, ROLES.STUDENT],
       },
       {
         name: 'student-admission-exam',

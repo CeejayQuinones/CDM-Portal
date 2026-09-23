@@ -1,6 +1,7 @@
 import { ROUTE_ROLES } from '../../config/accessControl.js'
 
 const AdmissionView = () => import('./AdmissionView.vue')
+const AdmissionPlaceholder = () => import('./components/AdmissionPlaceholder.vue')
 
 // Paths are relative to the existing authenticated DashboardLayout.
 export const admissionRoutes = [
@@ -17,7 +18,7 @@ export const admissionRoutes = [
 ].map(({ name, path, title }) => ({
   name,
   path,
-  component: AdmissionView,
+  component: name === 'admission' ? AdmissionView : AdmissionPlaceholder,
   props: { title },
   meta: { title, roles: ROUTE_ROLES[name] },
 }))

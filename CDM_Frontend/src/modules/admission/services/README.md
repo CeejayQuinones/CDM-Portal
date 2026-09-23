@@ -1,5 +1,6 @@
 # Admission API boundary
 
-Future Admission API adapters belong here and must use the portal's existing
-shared API client and authentication. Step 1 intentionally makes no Admission API
-requests and creates no fake data or service implementations.
+`admissionService.js` uses the existing portal apiClient for the read-only
+`GET /admission/me` endpoint. It does not create an Axios instance, persist identity
+responses, or send mutation requests. Invalid responses throw so the page presents
+a generic error instead of treating unavailable data as an empty application.
