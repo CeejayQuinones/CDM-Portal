@@ -12,6 +12,8 @@ use Illuminate\Validation\ValidationException;
 
 class AdmissionIdentityService
 {
+    public function __construct(private readonly AdmissionAuditWriter $audit) {}
+
     public function findForCycle(User $user, AdmissionCycle $cycle): ?AdmissionApplicant
     {
         $actor = User::query()->with('role')->findOrFail($user->id);
@@ -49,6 +51,7 @@ class AdmissionIdentityService
                     $applicant->user()->associate($actor);
                     $applicant->cycle()->associate($currentCycle);
                     $applicant->save();
+                    $this->audit->identityCreated($actor, $applicant);
 
                     return $applicant;
                 }, 3);
