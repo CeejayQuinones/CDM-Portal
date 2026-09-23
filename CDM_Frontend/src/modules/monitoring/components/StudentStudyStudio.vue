@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  askAiHelp,
   fetchMyRisk,
   fetchMySentPlans,
   fetchPerformanceRecords,
@@ -11,15 +10,17 @@ import {
   generateStudyStudioPlan,
 } from '../services/monitoringApi'
 
-const tab = ref('flashcards')
+const mode = ref('home') // home | flashcards | learn | test | guide
 const loading = ref(true)
-const busy = ref(false)
 const error = ref('')
+const topicQuery = ref('')
 const studio = ref({ topics: [], records: [], week_plan: null, live_ai_configured: false, risk: null })
 const selectedTopic = ref('')
 const cards = ref([])
 const cardIndex = ref(0)
 const flipped = ref(false)
+const knownIds = ref([])
+const learningIds = ref([])
 const quiz = ref([])
 const quizIndex = ref(0)
 const quizChoice = ref(null)
@@ -27,21 +28,63 @@ const quizScore = ref(0)
 const quizDone = ref(false)
 const revealed = ref(false)
 const plan = ref(null)
+const matchPairs = ref([])
+const matchSelected = ref(null)
+const matchSolved = ref([])
+const matchDone = ref(false)
 
 const focusTopic = computed(() => selectedTopic.value || studio.value.topics?.[0]?.topic || 'General academic recovery')
 const currentCard = computed(() => cards.value[cardIndex.value] || null)
 const currentQuestion = computed(() => quiz.value[quizIndex.value] || null)
-const studentId = computed(() => studio.value.risk?.student_id || studio.value.risk?.students?.[0]?.student_id || null)
 
-function extractJson(text) {
-  const match = String(text || '').match(/\{[\s\S]*\}/)
-  if (!match) return null
-  try {
-    return JSON.parse(match[0])
-  } catch {
-    return null
-  }
-}
+const filteredTopics = computed(() => {
+  const q = topicQuery.value.trim().toLowerCase()
+  const list = studio.value.topics || []
+  if (!q) return list
+  return list.filter((item) =>
+    [item.topic, item.subject_code, item.subject_name, item.assessment_name]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(q)),
+  )
+})
+
+const progressPct = computed(() => {
+  if (!cards.value.length) return 0
+  return Math.round((knownIds.value.length / cards.value.length) * 100)
+})
+
+const modes = [
+  {
+    id: 'flashcards',
+    title: 'Flashcards',
+    blurb: 'Flip terms and definitions — classic Quizlet feel.',
+    icon: 'M4 5h16v14H4zM8 9h8M8 13h5',
+  },
+  {
+    id: 'learn',
+    title: 'Learn',
+    blurb: 'Mark Knew it / Still learning to track mastery.',
+    icon: 'M12 3l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V7l8-4z',
+  },
+  {
+    id: 'test',
+    title: 'Test',
+    blurb: 'Practice quiz with instant feedback.',
+    icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+  },
+  {
+    id: 'match',
+    title: 'Match',
+    blurb: 'Tap matching term ↔ definition pairs.',
+    icon: 'M8 7h3M13 7h3M8 12h8M8 17h5M5 5h14v14H5z',
+  },
+  {
+    id: 'guide',
+    title: 'Study guide',
+    blurb: 'AI recovery plan from your weak topics.',
+    icon: 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
+  },
+]
 
 function localFlashcards(topic) {
   return [
@@ -93,9 +136,15 @@ function localQuiz(topic) {
 
 function localPlan(topic) {
   return {
-    title: `Study plan · ${topic}`,
-    plan: `Focus: ${topic}\n\nDay 1: Review notes and mark confusing parts.\nDay 2: Make flashcards and practice them twice.\nDay 3: Answer a short practice quiz and check explanations.\nDay 4: Rework the weakest items from instructor feedback.\nDay 5: Teach the topic out loud and list questions for your professor.`,
-    week: [],
+    title: `Study guide · ${topic}`,
+    plan: `Focus: ${topic}\n\nDay 1: Review notes and mark confusing parts.\nDay 2: Flip flashcards twice and note misses.\nDay 3: Take a practice test and check explanations.\nDay 4: Rework the weakest items from instructor feedback.\nDay 5: Teach the topic out loud and list questions for your professor.`,
+    week: [
+      { day: 'Day 1', focus: 'Diagnose gaps', minutes: 45 },
+      { day: 'Day 2', focus: 'Flashcard reps', minutes: 60 },
+      { day: 'Day 3', focus: 'Practice test', minutes: 45 },
+      { day: 'Day 4', focus: 'Fix misses', minutes: 60 },
+      { day: 'Day 5', focus: 'Teach & ask', minutes: 40 },
+    ],
     source: 'local-coach',
   }
 }
@@ -114,13 +163,14 @@ function buildTopicsFromLegacy(riskPayload, records, sentPlans) {
       assessment_name: record.assessment_name,
       percent: record.max_score > 0 ? Math.round((Number(record.score) / Number(record.max_score)) * 1000) / 10 : null,
       source: 'professor',
+      terms: 8,
     })
   }
   for (const planItem of sentPlans || []) {
     const key = `${planItem.subject_code}|${planItem.topic}`.toLowerCase()
     if (!planItem.topic || seen.has(key)) continue
     seen.add(key)
-    topics.push({ topic: planItem.topic, subject_code: planItem.subject_code, source: 'professor' })
+    topics.push({ topic: planItem.topic, subject_code: planItem.subject_code, source: 'professor', terms: 8 })
   }
   const student = riskPayload?.students?.[0]
   for (const subject of student?.subjects || []) {
@@ -134,6 +184,7 @@ function buildTopicsFromLegacy(riskPayload, records, sentPlans) {
       subject_name: subject.subject_name,
       percent: subject.average_grade,
       source: 'grades',
+      terms: 8,
     })
   }
   return { topics, student }
@@ -189,104 +240,107 @@ async function load() {
   }
 }
 
-async function askStructured(prompt) {
-  if (!studentId.value) throw new Error('No student profile linked. Run the demo seed script first.')
-  const help = await askAiHelp(studentId.value, prompt)
-  return help?.reply || help?.advice || ''
+function withTimeout(promise, ms = 8000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('timeout')), ms)
+    }),
+  ])
 }
 
-async function makeFlashcards() {
-  busy.value = true
-  error.value = ''
+async function refreshFlashcards() {
   try {
-    try {
-      const data = await generateStudyFlashcards(focusTopic.value)
-      cards.value = data.cards || []
-    } catch {
-      try {
-        const reply = await askStructured(
-          `Create exactly 8 study flashcards as JSON only with shape {"cards":[{"front":"...","back":"..."}]} for topic: ${focusTopic.value}. No markdown.`,
-        )
-        const parsed = extractJson(reply)
-        cards.value = Array.isArray(parsed?.cards) && parsed.cards.length ? parsed.cards : localFlashcards(focusTopic.value)
-      } catch {
-        cards.value = localFlashcards(focusTopic.value)
-      }
+    const data = await withTimeout(generateStudyFlashcards(focusTopic.value))
+    if (Array.isArray(data?.cards) && data.cards.length) {
+      cards.value = data.cards
+      if (mode.value === 'match') buildMatchBoard(cards.value)
+      return
     }
-    cardIndex.value = 0
-    flipped.value = false
-    tab.value = 'flashcards'
-  } catch (err) {
-    error.value = err.response?.data?.message || err.message || 'Unable to generate flashcards.'
-  } finally {
-    busy.value = false
+  } catch {
+    /* keep the local set already on screen */
   }
 }
 
-async function makeQuiz() {
-  busy.value = true
-  error.value = ''
+async function refreshQuiz() {
   try {
-    try {
-      const data = await generateStudyQuiz(focusTopic.value)
-      quiz.value = data.questions || []
-    } catch {
-      try {
-        const reply = await askStructured(
-          `Create exactly 5 multiple-choice questions as JSON only {"questions":[{"prompt":"...","choices":["A","B","C","D"],"answer_index":0,"explanation":"..."}]} for topic: ${focusTopic.value}. No markdown.`,
-        )
-        const parsed = extractJson(reply)
-        quiz.value = Array.isArray(parsed?.questions) && parsed.questions.length ? parsed.questions : localQuiz(focusTopic.value)
-      } catch {
-        quiz.value = localQuiz(focusTopic.value)
-      }
+    const data = await withTimeout(generateStudyQuiz(focusTopic.value))
+    if (Array.isArray(data?.questions) && data.questions.length) {
+      quiz.value = data.questions
     }
+  } catch {
+    /* keep the local quiz already on screen */
+  }
+}
+
+async function openMode(nextMode) {
+  if (!focusTopic.value) {
+    error.value = 'Pick a study set / topic first.'
+    return
+  }
+  error.value = ''
+  if (nextMode === 'flashcards' || nextMode === 'learn' || nextMode === 'match') {
+    if (!cards.value.length) cards.value = localFlashcards(focusTopic.value)
+    cardIndex.value = 0
+    flipped.value = false
+    knownIds.value = []
+    learningIds.value = []
+    if (nextMode === 'match') buildMatchBoard(cards.value)
+    mode.value = nextMode
+    refreshFlashcards()
+    return
+  }
+  if (nextMode === 'test') {
+    quiz.value = localQuiz(focusTopic.value)
     quizIndex.value = 0
     quizChoice.value = null
     quizScore.value = 0
     quizDone.value = false
     revealed.value = false
-    tab.value = 'quiz'
-  } catch (err) {
-    error.value = err.response?.data?.message || err.message || 'Unable to generate quiz.'
-  } finally {
-    busy.value = false
+    mode.value = 'test'
+    refreshQuiz()
+    return
+  }
+  if (nextMode === 'guide') {
+    plan.value = localPlan(focusTopic.value)
+    mode.value = 'guide'
+    try {
+      const data = await withTimeout(generateStudyStudioPlan(focusTopic.value))
+      if (data?.plan) plan.value = data
+    } catch {
+      /* local guide stays */
+    }
   }
 }
 
-async function makePlan() {
-  busy.value = true
-  error.value = ''
-  try {
-    try {
-      plan.value = await generateStudyStudioPlan(focusTopic.value)
-    } catch {
-      try {
-        const reply = await askStructured(
-          `Write a friendly 5-day recovery study plan for weak topic: ${focusTopic.value}. Plain text.`,
-        )
-        plan.value = {
-          title: `Study plan · ${focusTopic.value}`,
-          plan: reply || localPlan(focusTopic.value).plan,
-          week: [],
-          source: 'ai-help',
-        }
-      } catch {
-        plan.value = localPlan(focusTopic.value)
-      }
-    }
-    tab.value = 'plan'
-  } catch (err) {
-    error.value = err.response?.data?.message || err.message || 'Unable to generate study plan.'
-  } finally {
-    busy.value = false
-  }
+function buildMatchBoard(list) {
+  const slice = list.slice(0, 6)
+  const terms = slice.map((c, i) => ({ id: `t-${i}`, pair: i, text: c.front, kind: 'term' }))
+  const defs = slice.map((c, i) => ({ id: `d-${i}`, pair: i, text: c.back, kind: 'def' }))
+  matchPairs.value = [...terms, ...defs].sort(() => Math.random() - 0.5)
+  matchSelected.value = null
+  matchSolved.value = []
+  matchDone.value = false
+}
+
+function goHome() {
+  mode.value = 'home'
 }
 
 function nextCard(delta) {
   if (!cards.value.length) return
   cardIndex.value = (cardIndex.value + delta + cards.value.length) % cards.value.length
   flipped.value = false
+}
+
+function markCard(knewIt) {
+  const id = cardIndex.value
+  knownIds.value = knownIds.value.filter((x) => x !== id)
+  learningIds.value = learningIds.value.filter((x) => x !== id)
+  if (knewIt) knownIds.value = [...knownIds.value, id]
+  else learningIds.value = [...learningIds.value, id]
+  if (cardIndex.value < cards.value.length - 1) nextCard(1)
+  else flipped.value = false
 }
 
 function selectChoice(index) {
@@ -306,349 +360,799 @@ function nextQuestion() {
   revealed.value = false
 }
 
+function onMatchTap(tile) {
+  if (matchDone.value || matchSolved.value.includes(tile.pair)) return
+  if (!matchSelected.value) {
+    matchSelected.value = tile
+    return
+  }
+  if (matchSelected.value.id === tile.id) {
+    matchSelected.value = null
+    return
+  }
+  if (matchSelected.value.pair === tile.pair && matchSelected.value.kind !== tile.kind) {
+    matchSolved.value = [...matchSolved.value, tile.pair]
+    matchSelected.value = null
+    if (matchSolved.value.length >= Math.min(6, cards.value.length || 6)) matchDone.value = true
+    return
+  }
+  matchSelected.value = tile
+}
+
 watch(selectedTopic, () => {
   cards.value = []
   quiz.value = []
   plan.value = null
   flipped.value = false
   quizDone.value = false
+  knownIds.value = []
+  learningIds.value = []
+  matchPairs.value = []
+  mode.value = 'home'
 })
 
 onMounted(load)
 </script>
 
 <template>
-  <section class="studio">
-    <header class="studio-head">
-      <div>
-        <p class="eyebrow">Study Studio</p>
-        <h3>Learn like Quizlet — built from your weak topics</h3>
-        <p class="sub">
-          AI turns instructor feedback and low areas into flashcards, practice quizzes, and a study plan.
-          {{ studio.live_ai_configured ? 'Live AI is on.' : 'Coach mode is available if AI is offline.' }}
+  <section class="quizlet-studio">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">CDM Study Studio</p>
+        <h2>How do you want to study?</h2>
+        <p class="lead">
+          Quizlet-style practice from your weak topics — flashcards, learn, test, match, and an AI study guide.
         </p>
+      </div>
+      <div class="hero-meta">
+        <span class="chip">{{ studio.topics?.length || 0 }} study sets</span>
+        <span class="chip soft">{{ studio.live_ai_configured ? 'Live AI ready' : 'Coach mode' }}</span>
       </div>
     </header>
 
-    <p v-if="error" class="alert">{{ error }}</p>
-    <p v-if="loading" class="muted">Loading your study topics…</p>
+    <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <p v-if="loading" class="muted">Loading your study sets…</p>
 
     <template v-else>
-      <div class="topics">
+      <div class="search-row">
+        <label class="search">
+          <span class="sr-only">Search topics</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.5-3.5" stroke-linecap="round" />
+          </svg>
+          <input v-model="topicQuery" type="search" placeholder="Search for a topic or subject…" />
+        </label>
+      </div>
+
+      <div class="sets">
         <button
-          v-for="item in studio.topics"
+          v-for="item in filteredTopics"
           :key="`${item.subject_code}-${item.topic}`"
           type="button"
-          class="topic"
+          class="set"
           :class="{ active: selectedTopic === item.topic }"
           @click="selectedTopic = item.topic"
         >
-          <strong>{{ item.topic }}</strong>
-          <span>{{ item.subject_code || 'General' }} · {{ item.source === 'professor' ? 'From professor' : 'From grades' }}</span>
-          <em v-if="item.percent != null">{{ item.percent }}%</em>
+          <div>
+            <strong>{{ item.topic }}</strong>
+            <span>{{ item.subject_code || 'General' }} · {{ item.source === 'professor' ? 'From professor' : 'From grades' }}</span>
+          </div>
+          <em>{{ item.percent != null ? `${item.percent}%` : `${item.terms || 8} terms` }}</em>
         </button>
-        <p v-if="!studio.topics?.length" class="muted empty">
-          No weak topics yet. When your professor logs quiz/topic results — or grades show risk — they appear here.
+        <p v-if="!filteredTopics.length" class="muted empty">
+          No study sets yet. When your professor logs quiz topics — or grades show risk — they appear here.
         </p>
       </div>
 
-      <div class="actions">
-        <button type="button" class="btn primary" :disabled="busy" @click="makeFlashcards">
-          {{ busy && tab === 'flashcards' ? 'Generating…' : 'Generate flashcards' }}
-        </button>
-        <button type="button" class="btn" :disabled="busy" @click="makeQuiz">
-          {{ busy && tab === 'quiz' ? 'Generating…' : 'Practice quiz' }}
-        </button>
-        <button type="button" class="btn" :disabled="busy" @click="makePlan">
-          {{ busy && tab === 'plan' ? 'Generating…' : 'Build study plan' }}
+      <!-- HOME: mode picker -->
+      <div v-if="mode === 'home'" class="modes" aria-label="Study modes">
+        <button
+          v-for="item in modes"
+          :key="item.id"
+          type="button"
+          class="mode"
+          :disabled="!focusTopic"
+          @click="openMode(item.id)"
+        >
+          <span class="mode-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path :d="item.icon" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+          <strong>{{ item.title }}</strong>
+          <small>{{ item.blurb }}</small>
         </button>
       </div>
 
-      <nav class="tabs">
-        <button type="button" :class="{ on: tab === 'flashcards' }" @click="tab = 'flashcards'">Flashcards</button>
-        <button type="button" :class="{ on: tab === 'quiz' }" @click="tab = 'quiz'">Quiz</button>
-        <button type="button" :class="{ on: tab === 'plan' }" @click="tab = 'plan'">Study plan</button>
-      </nav>
+      <!-- STUDY SESSION SHELL -->
+      <div v-else class="session">
+        <div class="session-bar">
+          <button type="button" class="ghost" @click="goHome">← Study modes</button>
+          <div class="session-title">
+            <strong>{{ modes.find((m) => m.id === mode)?.title }}</strong>
+            <span>{{ focusTopic }}</span>
+          </div>
+          <div v-if="mode === 'learn' || mode === 'flashcards'" class="progress-pill">
+            <span class="bar"><i :style="{ width: `${progressPct}%` }" /></span>
+            <em>{{ knownIds.length }}/{{ cards.length || 0 }} known</em>
+          </div>
+        </div>
 
-      <div v-if="tab === 'flashcards'" class="panel">
-        <p v-if="!cards.length" class="muted">Pick a topic, then generate flashcards to flip and review.</p>
-        <template v-else>
-          <p class="progress">Card {{ cardIndex + 1 }} / {{ cards.length }} · {{ focusTopic }}</p>
-          <button type="button" class="flash" :class="{ flipped }" @click="flipped = !flipped">
-            <span class="face front">{{ currentCard?.front }}</span>
-            <span class="face back">{{ currentCard?.back }}</span>
+        <!-- FLASHCARDS -->
+        <div v-if="mode === 'flashcards' || mode === 'learn'" class="stage">
+          <p class="progress-label">Card {{ cardIndex + 1 }} / {{ cards.length }}</p>
+          <button
+            type="button"
+            class="flip-card"
+            :class="{ flipped }"
+            :aria-pressed="flipped"
+            @click="flipped = !flipped"
+          >
+            <span class="inner">
+              <span class="face front">
+                <small>Term</small>
+                <strong>{{ currentCard?.front }}</strong>
+                <em>Tap to flip</em>
+              </span>
+              <span class="face back">
+                <small>Definition</small>
+                <strong>{{ currentCard?.back }}</strong>
+                <em>Tap to flip back</em>
+              </span>
+            </span>
           </button>
-          <p class="hint">Tap card to flip</p>
-          <div class="nav-row">
-            <button type="button" class="btn" @click="nextCard(-1)">Previous</button>
-            <button type="button" class="btn" @click="nextCard(1)">Next</button>
-          </div>
-        </template>
-      </div>
 
-      <div v-else-if="tab === 'quiz'" class="panel">
-        <p v-if="!quiz.length" class="muted">Generate a sample quiz to practice the selected weak topic.</p>
-        <template v-else-if="quizDone">
-          <div class="score">
-            <strong>{{ quizScore }} / {{ quiz.length }}</strong>
-            <p>Nice work. Review misses with flashcards, then try again.</p>
-            <button type="button" class="btn primary" @click="makeQuiz">Retake quiz</button>
+          <div class="controls">
+            <button type="button" class="round" @click="nextCard(-1)" aria-label="Previous">‹</button>
+            <template v-if="mode === 'learn'">
+              <button type="button" class="pill danger" @click="markCard(false)">Still learning</button>
+              <button type="button" class="pill ok" @click="markCard(true)">Knew it</button>
+            </template>
+            <button type="button" class="round" @click="nextCard(1)" aria-label="Next">›</button>
           </div>
-        </template>
-        <template v-else>
-          <p class="progress">Question {{ quizIndex + 1 }} / {{ quiz.length }}</p>
-          <h4 class="q">{{ currentQuestion?.prompt }}</h4>
-          <div class="choices">
+        </div>
+
+        <!-- TEST -->
+        <div v-else-if="mode === 'test'" class="stage test-stage">
+          <template v-if="quizDone">
+            <div class="scoreboard">
+              <p class="eyebrow">Results</p>
+              <strong>{{ quizScore }} / {{ quiz.length }}</strong>
+              <p>Nice work. Review misses in Flashcards or Learn, then retake.</p>
+              <div class="row-actions">
+                <button type="button" class="pill ok" @click="openMode('test')">Retake test</button>
+                <button type="button" class="ghost" @click="openMode('flashcards')">Review flashcards</button>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <p class="progress-label">Question {{ quizIndex + 1 }} / {{ quiz.length }}</p>
+            <h3 class="prompt">{{ currentQuestion?.prompt }}</h3>
+            <div class="choices">
+              <button
+                v-for="(choice, index) in currentQuestion?.choices || []"
+                :key="index"
+                type="button"
+                class="choice"
+                :class="{
+                  selected: quizChoice === index,
+                  correct: revealed && index === currentQuestion.answer_index,
+                  wrong: revealed && quizChoice === index && index !== currentQuestion.answer_index,
+                }"
+                @click="selectChoice(index)"
+              >
+                <span class="letter">{{ String.fromCharCode(65 + index) }}</span>
+                {{ choice }}
+              </button>
+            </div>
+            <p v-if="revealed" class="explain">{{ currentQuestion?.explanation }}</p>
+            <button v-if="revealed" type="button" class="pill ok" @click="nextQuestion">
+              {{ quizIndex >= quiz.length - 1 ? 'See score' : 'Next question' }}
+            </button>
+          </template>
+        </div>
+
+        <!-- MATCH -->
+        <div v-else-if="mode === 'match'" class="stage">
+          <p v-if="matchDone" class="scoreboard">
+            <strong>Set matched!</strong>
+            <button type="button" class="pill ok" @click="buildMatchBoard(cards)">Play again</button>
+          </p>
+          <p v-else class="progress-label">Tap a term, then its definition</p>
+          <div class="match-grid">
             <button
-              v-for="(choice, index) in currentQuestion?.choices || []"
-              :key="index"
+              v-for="tile in matchPairs"
+              :key="tile.id"
               type="button"
-              class="choice"
+              class="match-tile"
               :class="{
-                selected: quizChoice === index,
-                correct: revealed && index === currentQuestion.answer_index,
-                wrong: revealed && quizChoice === index && index !== currentQuestion.answer_index,
+                selected: matchSelected?.id === tile.id,
+                solved: matchSolved.includes(tile.pair),
+                def: tile.kind === 'def',
               }"
-              @click="selectChoice(index)"
+              :disabled="matchSolved.includes(tile.pair)"
+              @click="onMatchTap(tile)"
             >
-              {{ choice }}
+              {{ tile.text }}
             </button>
           </div>
-          <p v-if="revealed" class="explain">{{ currentQuestion?.explanation }}</p>
-          <button v-if="revealed" type="button" class="btn primary" @click="nextQuestion">
-            {{ quizIndex >= quiz.length - 1 ? 'See score' : 'Next question' }}
-          </button>
-        </template>
-      </div>
+        </div>
 
-      <div v-else class="panel">
-        <p v-if="!plan" class="muted">Generate a recovery study plan focused on your weak topic.</p>
-        <template v-else>
-          <h4>{{ plan.title }}</h4>
-          <pre class="plan-body">{{ plan.plan }}</pre>
-          <ul v-if="plan.week?.length" class="week">
+        <!-- STUDY GUIDE -->
+        <div v-else class="stage guide-stage">
+          <h3>{{ plan?.title || 'Study guide' }}</h3>
+          <pre class="guide-body">{{ plan?.plan }}</pre>
+          <ul v-if="plan?.week?.length" class="week">
             <li v-for="day in plan.week" :key="day.day">
               <strong>{{ day.day }}</strong>
               <span>{{ day.focus }} · {{ day.minutes || day.duration_minutes || 60 }} min</span>
             </li>
           </ul>
-        </template>
+        </div>
       </div>
     </template>
   </section>
 </template>
 
 <style scoped>
-.studio {
-  --ink: #14231c;
-  --muted: #5f6d66;
-  --line: #d7e0da;
-  --soft: #f3f7f4;
-  --accent: #0f6b3c;
-  --accent-2: #1f8f55;
+.quizlet-studio {
+  --ink: #0f1720;
+  --muted: #5b6570;
+  --line: #e3e8ee;
+  --soft: #f4f7fb;
+  --accent: #0d7856;
+  --accent-deep: #065f46;
+  --ok: #0f9f6e;
+  --danger: #e11d48;
+  --shadow: 0 14px 40px rgba(15, 23, 32, 0.08);
+  animation: enter 320ms ease both;
   background:
-    radial-gradient(circle at top right, rgba(31, 143, 85, 0.12), transparent 40%),
-    linear-gradient(180deg, #fbfcfb, #f4f8f5);
+    radial-gradient(circle at 12% 0%, rgba(13, 120, 86, 0.1), transparent 42%),
+    linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
   border: 1px solid var(--line);
-  border-radius: 22px;
-  padding: 1.1rem;
+  border-radius: 24px;
   display: grid;
-  gap: 0.9rem;
+  gap: 1rem;
+  padding: 1.25rem;
 }
-.studio-head h3 {
-  margin: 0.15rem 0;
-  font-size: 1.35rem;
-  letter-spacing: -0.02em;
-  color: var(--ink);
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
+
+.hero {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
 .eyebrow {
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-  font-weight: 700;
   color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
 }
-.sub,
-.muted,
-.hint,
-.progress,
-.explain {
-  color: var(--muted);
-  margin: 0;
-}
-.alert {
-  margin: 0;
-  padding: 0.7rem 0.85rem;
-  border-radius: 12px;
-  background: #fdecec;
-  color: #8a1f1f;
-}
-.topics {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 0.55rem;
-}
-.topic {
-  text-align: left;
-  border: 1px solid var(--line);
-  background: #fff;
-  border-radius: 14px;
-  padding: 0.75rem;
-  display: grid;
-  gap: 0.2rem;
-  cursor: pointer;
-}
-.topic.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(15, 107, 60, 0.12);
-}
-.topic strong {
+
+.hero h2 {
   color: var(--ink);
+  font-size: clamp(1.55rem, 3vw, 2.1rem);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin: 0;
 }
-.topic span,
-.topic em {
-  font-size: 0.82rem;
+
+.lead,
+.muted,
+.progress-label,
+.explain,
+.busy {
   color: var(--muted);
-  font-style: normal;
+  margin: 0;
 }
-.actions,
-.nav-row,
-.tabs {
+
+.lead {
+  margin-top: 0.45rem;
+  max-width: 46ch;
+}
+
+.hero-meta,
+.row-actions,
+.controls {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-.btn {
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
+
+.chip {
+  background: #e7f6ef;
   border-radius: 999px;
-  padding: 0.55rem 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
+  color: var(--accent-deep);
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.4rem 0.75rem;
 }
-.btn.primary,
-.tabs button.on {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #fff;
-  border-color: transparent;
-}
-.btn:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-.tabs button {
-  border: 0;
-  background: transparent;
+
+.chip.soft {
+  background: var(--soft);
   color: var(--muted);
-  font-weight: 700;
-  padding: 0.45rem 0.8rem;
-  border-radius: 999px;
-  cursor: pointer;
 }
-.panel {
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: 1rem;
-  display: grid;
-  gap: 0.75rem;
-}
-.flash {
-  position: relative;
-  min-height: 220px;
-  border: 0;
-  border-radius: 18px;
-  background: linear-gradient(160deg, #123525, #1d6b45);
-  color: #fff;
-  cursor: pointer;
-  perspective: 1000px;
-  overflow: hidden;
-}
-.face {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 1.4rem;
-  text-align: center;
-  font-size: 1.15rem;
-  font-weight: 650;
-  line-height: 1.4;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-.front {
-  opacity: 1;
-}
-.back {
-  opacity: 0;
-  transform: translateY(8px);
-}
-.flash.flipped .front {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-.flash.flipped .back {
-  opacity: 1;
-  transform: none;
-}
-.q {
+
+.alert {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 14px;
+  color: #9f1239;
   margin: 0;
-  color: var(--ink);
-}
-.choices {
-  display: grid;
-  gap: 0.45rem;
-}
-.choice {
-  text-align: left;
-  border: 1px solid var(--line);
-  background: #fff;
-  border-radius: 12px;
   padding: 0.75rem 0.9rem;
-  cursor: pointer;
 }
-.choice.correct {
-  border-color: #1f8f55;
-  background: #e8f7ef;
+
+.search {
+  align-items: center;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 0.55rem;
+  padding: 0.7rem 1rem;
 }
-.choice.wrong {
-  border-color: #c44;
-  background: #fdecec;
+
+.search svg {
+  color: var(--muted);
+  height: 18px;
+  width: 18px;
 }
-.score {
+
+.search input {
+  border: 0;
+  flex: 1;
+  font: inherit;
+  min-width: 0;
+  outline: none;
+}
+
+.sr-only {
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.sets {
   display: grid;
   gap: 0.55rem;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.set {
+  align-items: start;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 8px 18px rgba(15, 23, 32, 0.04);
+  cursor: pointer;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.set:hover,
+.set.active {
+  border-color: var(--accent);
+  box-shadow: 0 12px 28px rgba(13, 120, 86, 0.12);
+  transform: translateY(-2px);
+}
+
+.set strong {
+  color: var(--ink);
+  display: block;
+}
+
+.set span,
+.set em {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: normal;
+}
+
+.modes {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.mode {
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 18px;
+  cursor: pointer;
+  display: grid;
+  gap: 0.35rem;
   justify-items: start;
+  min-height: 148px;
+  padding: 1rem;
+  text-align: left;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
-.score strong {
-  font-size: 2rem;
-  color: var(--accent);
+
+.mode:hover:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+  transform: translateY(-3px);
 }
-.plan-body {
-  margin: 0;
-  white-space: pre-wrap;
-  font-family: inherit;
-  line-height: 1.5;
+
+.mode:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.mode-icon {
+  align-items: center;
+  background: #e8f7f0;
+  border-radius: 14px;
+  color: var(--accent-deep);
+  display: grid;
+  height: 42px;
+  place-items: center;
+  width: 42px;
+}
+
+.mode-icon svg {
+  height: 22px;
+  width: 22px;
+}
+
+.mode strong {
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.mode small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.session {
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.session-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.session-title {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.session-title strong {
   color: var(--ink);
 }
+
+.session-title span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.progress-pill {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
+}
+
+.progress-pill .bar {
+  background: #e8eef2;
+  border-radius: 999px;
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  width: 110px;
+}
+
+.progress-pill .bar i {
+  background: linear-gradient(90deg, var(--accent), #34d399);
+  display: block;
+  height: 100%;
+  transition: width 220ms ease;
+}
+
+.progress-pill em {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.ghost,
+.pill,
+.round {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.ghost {
+  background: transparent;
+  color: var(--accent-deep);
+  padding: 0.35rem 0.2rem;
+}
+
+.pill {
+  background: var(--soft);
+  border-radius: 999px;
+  color: var(--ink);
+  padding: 0.7rem 1.05rem;
+}
+
+.pill.ok {
+  background: var(--accent);
+  color: #fff;
+}
+
+.pill.danger {
+  background: #ffe4e6;
+  color: var(--danger);
+}
+
+.round {
+  align-items: center;
+  background: var(--soft);
+  border-radius: 999px;
+  color: var(--ink);
+  display: grid;
+  font-size: 1.4rem;
+  height: 46px;
+  place-items: center;
+  width: 46px;
+}
+
+.stage {
+  display: grid;
+  gap: 0.9rem;
+  justify-items: center;
+  padding: 0.35rem 0 0.5rem;
+}
+
+.flip-card {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  max-width: 560px;
+  perspective: 1400px;
+  width: min(100%, 560px);
+}
+
+.inner {
+  display: block;
+  min-height: 280px;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 480ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  width: 100%;
+}
+
+.flip-card.flipped .inner {
+  transform: rotateY(180deg);
+}
+
+.face {
+  align-content: center;
+  backface-visibility: hidden;
+  background: linear-gradient(160deg, #064e3b, #0d7856 55%, #059669);
+  border-radius: 22px;
+  box-shadow: 0 18px 40px rgba(6, 78, 59, 0.28);
+  color: #fff;
+  display: grid;
+  gap: 0.65rem;
+  inset: 0;
+  justify-items: center;
+  padding: 1.6rem;
+  place-content: center;
+  position: absolute;
+  text-align: center;
+}
+
+.face.back {
+  background: linear-gradient(160deg, #0b3b2e, #116b4d 50%, #1f8f66);
+  transform: rotateY(180deg);
+}
+
+.face small,
+.face em {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+  text-transform: uppercase;
+}
+
+.face strong {
+  font-size: clamp(1.15rem, 2.6vw, 1.55rem);
+  font-weight: 750;
+  line-height: 1.35;
+  max-width: 28ch;
+}
+
+.test-stage,
+.guide-stage {
+  justify-items: stretch;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.prompt {
+  color: var(--ink);
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.choices {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.choice {
+  align-items: center;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.choice:hover {
+  border-color: #9ad4bb;
+}
+
+.choice .letter {
+  align-items: center;
+  background: var(--soft);
+  border-radius: 999px;
+  display: grid;
+  flex: 0 0 auto;
+  font-weight: 800;
+  height: 28px;
+  place-items: center;
+  width: 28px;
+}
+
+.choice.correct {
+  background: #ecfdf5;
+  border-color: var(--ok);
+}
+
+.choice.wrong {
+  background: #fff1f2;
+  border-color: var(--danger);
+}
+
+.scoreboard {
+  display: grid;
+  gap: 0.65rem;
+  justify-items: start;
+  padding: 0.5rem 0;
+}
+
+.scoreboard strong {
+  color: var(--accent-deep);
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.match-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  width: 100%;
+}
+
+.match-tile {
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+  min-height: 88px;
+  padding: 0.75rem;
+  text-align: left;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.match-tile.def {
+  background: var(--soft);
+}
+
+.match-tile.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(13, 120, 86, 0.15);
+  transform: scale(1.02);
+}
+
+.match-tile.solved {
+  background: #ecfdf5;
+  border-color: var(--ok);
+  opacity: 0.7;
+}
+
+.guide-body {
+  background: var(--soft);
+  border-radius: 16px;
+  color: var(--ink);
+  font-family: inherit;
+  line-height: 1.55;
+  margin: 0;
+  padding: 1rem;
+  white-space: pre-wrap;
+}
+
 .week {
+  display: grid;
+  gap: 0.45rem;
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 0.4rem;
 }
+
 .week li {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   display: flex;
-  justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: 10px;
-  background: var(--soft);
+  justify-content: space-between;
+  padding: 0.7rem 0.85rem;
 }
+
 .empty {
   grid-column: 1 / -1;
+}
+
+.busy {
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .quizlet-studio {
+    padding: 1rem;
+  }
+
+  .face {
+    min-height: 240px;
+  }
+
+  .inner {
+    min-height: 240px;
+  }
 }
 </style>
