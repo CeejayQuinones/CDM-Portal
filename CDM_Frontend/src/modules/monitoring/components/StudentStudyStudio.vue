@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
   fetchMyRisk,
   fetchMySentPlans,
@@ -240,6 +240,23 @@ async function load() {
   }
 }
 
+function usableCards(list) {
+  return (Array.isArray(list) ? list : []).filter(
+    (card) => card && String(card.front || '').trim() && String(card.back || '').trim(),
+  )
+}
+
+function usableQuestions(list) {
+  return (Array.isArray(list) ? list : []).filter(
+    (question) => question && String(question.prompt || '').trim() && Array.isArray(question.choices) && question.choices.length,
+  )
+}
+
+async function revealSession() {
+  await nextTick()
+  document.querySelector('.quizlet-studio .session')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 function withTimeout(promise, ms = 8000) {
   return Promise.race([
     promise,
@@ -252,8 +269,9 @@ function withTimeout(promise, ms = 8000) {
 async function refreshFlashcards() {
   try {
     const data = await withTimeout(generateStudyFlashcards(focusTopic.value))
-    if (Array.isArray(data?.cards) && data.cards.length) {
-      cards.value = data.cards
+    const incoming = usableCards(data?.cards)
+    if (incoming.length) {
+      cards.value = incoming
       if (mode.value === 'match') buildMatchBoard(cards.value)
       return
     }
@@ -265,9 +283,8 @@ async function refreshFlashcards() {
 async function refreshQuiz() {
   try {
     const data = await withTimeout(generateStudyQuiz(focusTopic.value))
-    if (Array.isArray(data?.questions) && data.questions.length) {
-      quiz.value = data.questions
-    }
+    const incoming = usableQuestions(data?.questions)
+    if (incoming.length) quiz.value = incoming
   } catch {
     /* keep the local quiz already on screen */
   }
@@ -280,24 +297,26 @@ async function openMode(nextMode) {
   }
   error.value = ''
   if (nextMode === 'flashcards' || nextMode === 'learn' || nextMode === 'match') {
-    if (!cards.value.length) cards.value = localFlashcards(focusTopic.value)
+    cards.value = usableCards(cards.value).length ? cards.value : localFlashcards(focusTopic.value)
     cardIndex.value = 0
     flipped.value = false
     knownIds.value = []
     learningIds.value = []
     if (nextMode === 'match') buildMatchBoard(cards.value)
     mode.value = nextMode
+    revealSession()
     refreshFlashcards()
     return
   }
   if (nextMode === 'test') {
-    quiz.value = localQuiz(focusTopic.value)
+    quiz.value = usableQuestions(quiz.value).length ? quiz.value : localQuiz(focusTopic.value)
     quizIndex.value = 0
     quizChoice.value = null
     quizScore.value = 0
     quizDone.value = false
     revealed.value = false
     mode.value = 'test'
+    revealSession()
     refreshQuiz()
     return
   }
@@ -482,26 +501,21 @@ onMounted(load)
         <!-- FLASHCARDS -->
         <div v-if="mode === 'flashcards' || mode === 'learn'" class="stage">
           <p class="progress-label">Card {{ cardIndex + 1 }} / {{ cards.length }}</p>
-          <button
-            type="button"
-            class="flip-card"
-            :class="{ flipped }"
-            :aria-pressed="flipped"
-            @click="flipped = !flipped"
-          >
-            <span class="inner">
-              <span class="face front">
-                <small>Term</small>
-                <strong>{{ currentCard?.front }}</strong>
-                <em>Tap to flip</em>
-              </span>
-              <span class="face back">
-                <small>Definition</small>
-                <strong>{{ currentCard?.back }}</strong>
-                <em>Tap to flip back</em>
-              </span>
-            </span>
-          </button>
+          <article class="study-card">
+            <p class="card-kicker">{{ flipped ? 'Definition' : 'Term' }} · {{ cardIndex + 1 }} / {{ cards.length }}</p>
+            <h3>{{ flipped ? currentCard?.back : currentCard?.front }}</h3>
+            <button type="button" class="pill ok" @click="flipped = !flipped">
+              {{ flipped ? 'Show term' : 'Show answer' }}
+            </button>
+          </article>
+          <ul class="card-list">
+            <li v-for="(card, index) in cards" :key="index" :class="{ on: index === cardIndex }">
+              <button type="button" @click="cardIndex = index; flipped = false">
+                <strong>{{ card.front }}</strong>
+                <span>{{ card.back }}</span>
+              </button>
+            </li>
+          </ul>
 
           <div class="controls">
             <button type="button" class="round" @click="nextCard(-1)" aria-label="Previous">‹</button>
@@ -938,6 +952,71 @@ onMounted(load)
   gap: 0.9rem;
   justify-items: center;
   padding: 0.35rem 0 0.5rem;
+  width: 100%;
+}
+
+.study-card {
+  background: linear-gradient(160deg, #064e3b, #0d7856 58%, #059669);
+  border-radius: 22px;
+  box-shadow: 0 18px 40px rgba(6, 78, 59, 0.22);
+  color: #fff;
+  display: grid;
+  gap: 0.85rem;
+  justify-items: start;
+  min-height: 220px;
+  padding: 1.4rem 1.5rem;
+  width: min(100%, 640px);
+}
+
+.study-card h3 {
+  color: #fff;
+  font-size: clamp(1.2rem, 2.4vw, 1.6rem);
+  line-height: 1.35;
+  margin: 0;
+}
+
+.card-kicker {
+  letter-spacing: 0.08em;
+  margin: 0;
+  opacity: 0.8;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.card-list {
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: min(100%, 640px);
+}
+
+.card-list button {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  width: 100%;
+}
+
+.card-list li.on button {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(13, 120, 86, 0.15);
+}
+
+.card-list strong {
+  color: var(--ink);
+}
+
+.card-list span {
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .flip-card {
