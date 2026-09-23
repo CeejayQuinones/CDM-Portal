@@ -180,9 +180,39 @@ onMounted(load)
             </div>
             <div class="right">
               <span class="pill" :class="selected.risk_level">{{ selected.risk_label }}</span>
+              <p v-if="selected.risk_score != null">Score <strong>{{ selected.risk_score }}/100</strong></p>
               <p>Avg <strong>{{ selected.average_grade ?? '—' }}</strong></p>
               <p>Trend <strong>{{ selected.trend_label || selected.trend }}</strong></p>
             </div>
+          </div>
+
+          <div v-if="selected.signals" class="card">
+            <h3>Early warning signals</h3>
+            <div class="subjects">
+              <article>
+                <strong>Grades</strong>
+                <span>How far averages sit from a safe standing</span>
+                <em>{{ selected.signals.grade_risk }}</em>
+              </article>
+              <article>
+                <strong>Trend</strong>
+                <span>Drops and missing midterms</span>
+                <em>{{ selected.signals.trend_drop }}</em>
+              </article>
+              <article>
+                <strong>Quizzes</strong>
+                <span>{{ selected.signals.weak_quiz_count || 0 }} weak topic records</span>
+                <em>{{ selected.signals.weak_quizzes }}</em>
+              </article>
+              <article>
+                <strong>Gaps</strong>
+                <span>Failed, incomplete, or missing work</span>
+                <em>{{ selected.signals.incomplete }}</em>
+              </article>
+            </div>
+            <ul v-if="selected.warnings?.length" class="warnings">
+              <li v-for="warning in selected.warnings" :key="warning">{{ warning }}</li>
+            </ul>
           </div>
 
           <div class="card">
@@ -468,6 +498,14 @@ em.low,
 .subjects strong,
 .plan strong {
   display: block;
+}
+
+.warnings {
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 0;
+  padding-left: 18px;
 }
 
 .plan {

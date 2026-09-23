@@ -118,7 +118,41 @@ class EarlyWarningService
             'enrollments.enrollmentSubjects.subject',
             'enrollments.enrollmentSubjects.grades' => fn ($q) => $q->where('status', 'approved'),
             'enrollments.enrollmentSubjects.grades.gradingPeriod',
+            'performanceRecords',
         ]);
+    }
+
+    /**
+     * Combine signal components into a 0–100 risk score.
+     *
+     * @param  array{grade_risk: float|int, trend_drop: float|int, weak_quizzes: float|int, incomplete: float|int, force_high?: bool, force_moderate?: bool}  $parts
+     * @return array{risk_score: int, risk_level: string, risk_label: string}
+     */
+    public function composeRisk(array $parts): array
+    {
+        $weights = config('monitoring.weights');
+        $raw = ((float) $parts['grade_risk'] * (float) $weights['grade'])
+            + ((float) $parts['trend_drop'] * (float) $weights['trend'])
+            + ((float) $parts['weak_quizzes'] * (float) $weights['quizzes'])
+            + ((float) $parts['incomplete'] * (float) $weights['incomplete']);
+
+        $score = (int) round(max(0, min(100, $raw)));
+        $high = (int) config('monitoring.bands.high', 70);
+        $moderate = (int) config('monitoring.bands.moderate', 40);
+
+        if (! empty($parts['force_high'])) {
+            $score = max($score, $high);
+        } elseif (! empty($parts['force_moderate'])) {
+            $score = max($score, $moderate);
+        }
+
+        $level = $score >= $high ? 'high' : ($score >= $moderate ? 'moderate' : 'low');
+
+        return [
+            'risk_score' => $score,
+            'risk_level' => $level,
+            'risk_label' => ucfirst($level).' risk',
+        ];
     }
 
     /** @return array<string,mixed> */
@@ -141,7 +175,17 @@ class EarlyWarningService
                     continue;
                 }
                 $average = round(array_sum($values) / count($values), 2);
-                $level = $record->remarks === 'Failed' || $average < 75 ? 'high' : ($record->remarks === 'Incomplete' || $average < 82 ? 'moderate' : 'low');
+                $level = $record->remarks === 'Failed' || $average < (float) config('monitoring.failing_average', 75)
+                    ? 'high'
+                    : ($record->remarks === 'Incomplete' || $average < (float) config('monitoring.watch_average', 82) ? 'moderate' : 'low');
+                $prelimGrade = $periods['Prelim'];
+                $midtermGrade = $periods['Midterm'];
+                $subjectTrend = ($prelimGrade !== null && $midtermGrade !== null && $midtermGrade <= $prelimGrade - (float) config('monitoring.decline_points', 3))
+                    ? 'declining'
+                    : 'steady';
+                if ($subjectTrend === 'declining' && $level === 'low') {
+                    $level = 'moderate';
+                }
                 $subjects[] = [
                     'subject_code' => $record->subject?->subject_code ?? 'N/A',
                     'subject_name' => $record->subject?->subject_name ?? 'Subject',
@@ -150,16 +194,85 @@ class EarlyWarningService
                     'risk_level' => $level,
                     'risk_label' => ucfirst($level).' risk',
                     'status' => $record->remarks,
+                    'trend' => $subjectTrend,
+                    'missing_midterm' => $prelimGrade !== null && $midtermGrade === null,
                 ];
             }
         }
         $average = $scores ? round(array_sum($scores) / count($scores), 2) : null;
         $prelim = collect($subjects)->pluck('periods.Prelim')->filter();
         $midterm = collect($subjects)->pluck('periods.Midterm')->filter();
-        $trend = $prelim->isNotEmpty() && $midterm->isNotEmpty() && $midterm->avg() <= $prelim->avg() - 3 ? 'declining' : 'steady';
-        $level = collect($subjects)->contains('risk_level', 'high') || ($average !== null && $average < 75) ? 'high' : (collect($subjects)->contains('risk_level', 'moderate') || $trend === 'declining' || ($average !== null && $average < 82) ? 'moderate' : 'low');
+        $trend = $prelim->isNotEmpty() && $midterm->isNotEmpty() && $midterm->avg() <= $prelim->avg() - (float) config('monitoring.decline_points', 3) ? 'declining' : 'steady';
+
+        $quizPercents = $student->performanceRecords
+            ->filter(fn ($record) => (float) $record->max_score > 0)
+            ->map(fn ($record) => ((float) $record->score / (float) $record->max_score) * 100)
+            ->values();
+        $weakLine = (float) config('monitoring.quiz_weak_percent', 75);
+        $criticalLine = (float) config('monitoring.quiz_critical_percent', 60);
+        $weakQuizCount = $quizPercents->filter(fn (float $percent) => $percent < $weakLine)->count();
+        $weakQuizzes = $quizPercents->isNotEmpty() ? ($weakQuizCount / $quizPercents->count()) * 100 : 0;
+        if ($quizPercents->contains(fn (float $percent) => $percent < $criticalLine)) {
+            $weakQuizzes = max($weakQuizzes, 80);
+        }
+
+        $missingMidterms = collect($subjects)->where('missing_midterm', true)->count();
+        $subjectDeclines = collect($subjects)->where('trend', 'declining')->count();
+        $failedOrIncomplete = collect($subjects)->filter(fn (array $subject) => in_array($subject['status'], ['Failed', 'Incomplete'], true))->count();
+        $subjectCount = max(1, count($subjects));
+
+        $failing = (float) config('monitoring.failing_average', 75);
+        $watch = (float) config('monitoring.watch_average', 82);
+        if ($average === null) {
+            $gradeRisk = $quizPercents->isNotEmpty() ? min(60, $weakQuizzes * 0.6) : 0;
+        } elseif ($average < $failing) {
+            $gradeRisk = min(100, 85 + ($failing - $average));
+        } elseif ($average < $watch) {
+            $gradeRisk = 45 + (($watch - $average) / max(1, $watch - $failing)) * 35;
+        } else {
+            $gradeRisk = max(0, (90 - $average) * 2);
+        }
+        if (collect($subjects)->contains(fn (array $subject) => $subject['status'] === 'Failed' || $subject['average_grade'] < $failing)) {
+            $gradeRisk = max($gradeRisk, 90);
+        }
+
+        $trendDrop = $trend === 'declining' ? 70 : 0;
+        $trendDrop = min(100, $trendDrop + ($subjectDeclines * 15) + min(40, $missingMidterms * 20));
+
+        $incomplete = ($failedOrIncomplete / $subjectCount) * 100;
+        if ($missingMidterms > 0) {
+            $incomplete = min(100, $incomplete + min(30, $missingMidterms * 15));
+        }
+
+        $forceHigh = collect($subjects)->contains('risk_level', 'high') || ($average !== null && $average < $failing);
+        $forceModerate = ! $forceHigh && (
+            collect($subjects)->contains('risk_level', 'moderate')
+            || $trend === 'declining'
+            || ($average !== null && $average < $watch)
+            || $weakQuizCount > 0
+            || $missingMidterms > 0
+        );
+
+        $composed = $this->composeRisk([
+            'grade_risk' => $gradeRisk,
+            'trend_drop' => $trendDrop,
+            'weak_quizzes' => $weakQuizzes,
+            'incomplete' => $incomplete,
+            'force_high' => $forceHigh,
+            'force_moderate' => $forceModerate,
+        ]);
+
         $name = trim(implode(' ', array_filter([$student->userProfile?->first_name, $student->userProfile?->last_name]))) ?: 'Student';
-        $warnings = collect($subjects)->whereIn('risk_level', ['high', 'moderate'])->map(fn ($s) => "{$s['subject_code']} needs attention (average {$s['average_grade']}).")->values()->all();
+        $warnings = collect($subjects)->whereIn('risk_level', ['high', 'moderate'])->map(fn ($s) => "{$s['subject_code']} needs attention (average {$s['average_grade']}".($s['trend'] === 'declining' ? ', declining' : '').').')->values();
+        if ($weakQuizCount > 0) {
+            $warnings->push("{$weakQuizCount} quiz/topic record".($weakQuizCount === 1 ? '' : 's')." below {$weakLine}%.");
+        }
+        if ($missingMidterms > 0) {
+            $warnings->push("{$missingMidterms} subject".($missingMidterms === 1 ? '' : 's').' still missing a midterm after prelim.');
+        }
+        if ($subjectDeclines > 0) {
+            $warnings->push("{$subjectDeclines} subject".($subjectDeclines === 1 ? '' : 's').' dropped from prelim to midterm.');
+        }
 
         return [
             'student_id' => $student->id,
@@ -172,15 +285,27 @@ class EarlyWarningService
             'section_name' => $latestEnrollment?->section?->section_name,
             'year_level' => $student->year_level ?? $latestEnrollment?->section?->year_level,
             'average_grade' => $average,
-            'risk_level' => $level,
-            'risk_label' => ucfirst($level).' risk',
+            'risk_score' => $composed['risk_score'],
+            'risk_level' => $composed['risk_level'],
+            'risk_label' => $composed['risk_label'],
+            'signals' => [
+                'grade_risk' => (int) round($gradeRisk),
+                'trend_drop' => (int) round($trendDrop),
+                'weak_quizzes' => (int) round($weakQuizzes),
+                'incomplete' => (int) round($incomplete),
+                'weak_quiz_count' => $weakQuizCount,
+                'missing_midterms' => $missingMidterms,
+                'declining_subjects' => $subjectDeclines,
+            ],
             'trend' => $trend,
             'trend_label' => match ($trend) {
                 'declining' => 'declining',
                 default => 'steady',
             },
-            'headline' => $level === 'low' ? 'Grades are currently stable.' : 'Early warning: academic intervention is recommended.',
-            'warnings' => $warnings ?: ['No critical early-warning signals right now.'],
+            'headline' => $composed['risk_level'] === 'low'
+                ? 'Grades are currently stable.'
+                : "Early warning: risk score {$composed['risk_score']}/100 — intervention is recommended.",
+            'warnings' => $warnings->isNotEmpty() ? $warnings->all() : ['No critical early-warning signals right now.'],
             'subjects' => $subjects,
         ];
     }
