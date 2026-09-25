@@ -110,3 +110,5 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::patch('/appointments/{appointment}', [RegistrarDocumentRequestController::class, 'updateAppointment']);
     });
 });
+
+require __DIR__.'/admission.php';

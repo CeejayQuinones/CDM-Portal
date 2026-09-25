@@ -32,15 +32,16 @@ export const ROUTE_ROLES = Object.freeze({
   'registrar-document-request-history': [ROLES.REGISTRAR_STAFF],
   'activate-student-account': [ROLES.GUEST],
   settings: [ROLES.STUDENT],
-  // Keep the existing staff landing URL; Guest access is limited to identity viewing.
+  // Preserve the legacy staff landing URL alongside role-specific Admission workflows.
   admission: [ROLES.GUEST, ROLES.STUDENT, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
-  'student-admission-exam': [ROLES.STUDENT],
-  'student-admission-result': [ROLES.STUDENT],
-  'student-admission-recommendation': [ROLES.STUDENT],
+  'student-admission-exam': [ROLES.GUEST, ROLES.STUDENT],
+  'student-admission-result': [ROLES.GUEST, ROLES.STUDENT],
+  'student-admission-recommendation': [ROLES.GUEST, ROLES.STUDENT],
   'registrar-admissions': [ROLES.REGISTRAR_STAFF],
   'registrar-admission-results': [ROLES.REGISTRAR_STAFF],
   'registrar-admission-review': [ROLES.REGISTRAR_STAFF],
   'registrar-admission-history': [ROLES.REGISTRAR_STAFF],
+  'admin-admission-cycles': [ROLES.ADMIN],
   'admin-admission-questions': [ROLES.ADMIN],
   'admin-admission-programs': [ROLES.ADMIN],
   enrollment: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
@@ -193,6 +194,12 @@ export const NAVIGATION_ITEMS = Object.freeze([
         label: 'Admission History',
         path: '/registrar/admissions/history',
         roles: ROUTE_ROLES['registrar-admission-history'],
+      },
+      {
+        name: 'admin-admission-cycles',
+        label: 'Admission Cycles',
+        path: '/admin/admissions/cycles',
+        roles: ROUTE_ROLES['admin-admission-cycles'],
       },
       {
         name: 'admin-admission-questions',

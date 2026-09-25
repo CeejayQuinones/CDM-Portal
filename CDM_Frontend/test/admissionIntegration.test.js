@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
 import { build } from 'esbuild'
 import { compileScript, parse } from '@vue/compiler-sfc'
-import { createRenderer, createSSRApp, h, nextTick } from 'vue'
+import { createRenderer, createSSRApp, h, nextTick, ref } from 'vue'
 import 'vue-router'
 import { renderToString } from '@vue/server-renderer'
 import { createPinia, setActivePinia } from 'pinia'
@@ -13,10 +13,10 @@ import { ROLES } from '../src/config/accessControl.js'
 
 const frontend = fileURLToPath(new URL('../', import.meta.url))
 const groups = {
-  [ROLES.GUEST]: ['/admission'],
+  [ROLES.GUEST]: ['/admission', '/admission/exam', '/admission/result', '/admission/recommendation'],
   [ROLES.STUDENT]: ['/admission', '/admission/exam', '/admission/result', '/admission/recommendation'],
   [ROLES.REGISTRAR_STAFF]: ['/registrar/admissions', '/registrar/admissions/results', '/registrar/admissions/review', '/registrar/admissions/history'],
-  [ROLES.ADMIN]: ['/admin/admissions/questions', '/admin/admissions/programs'],
+  [ROLES.ADMIN]: ['/admin/admissions/cycles', '/admin/admissions/questions', '/admin/admissions/programs'],
 }
 
 test('Admission uses the portal guard, navigation store, and rendered placeholders', async (t) => {
@@ -31,6 +31,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         contents: `export { default as router } from './src/router/index.js';
           export { useNavigationStore } from './src/stores/navigation.js';
           export { auth } from './src/stores/authStore';
+          export { default as AdmissionConversionPanel } from './src/modules/admission/components/AdmissionConversionPanel.vue';
           export { default as AdmissionView } from './src/modules/admission/AdmissionView.vue';
           export { apiState } from './src/services/apiClient';`,
         resolveDir: frontend,
@@ -59,7 +60,8 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
             contents: `export const apiState = { calls: [], handler: async () => ({ data: { success: true, data: { has_application: false, application: null } } }) };
               export const apiClient = {
                 get(path) { apiState.calls.push(path); return path.endsWith('/availability') ? Promise.resolve({ data: { success: true, data: apiState.availability || { allowed: false, reason: 'no_open_cycle' } } }) : apiState.handler(); },
-                post(path) { apiState.calls.push(path); return apiState.postHandler(); }
+                post(path) { apiState.calls.push(path); return apiState.postHandler(); },
+                async request(config) { apiState.calls.push(config.url); const data = await apiState.workflow(config); return { data: { success: true, data } }; }
               };`,
           }))
           builder.onLoad({ filter: /\.vue$/ }, async ({ path: filename }) => {
@@ -70,7 +72,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         },
       }],
     })
-    const { router, auth, useNavigationStore, AdmissionView, apiState } = await import(pathToFileURL(path.join(temporary, 'harness.mjs')))
+    const { router, auth, useNavigationStore, AdmissionView, AdmissionConversionPanel, apiState } = await import(pathToFileURL(path.join(temporary, 'harness.mjs')))
     setActivePinia(createPinia())
     const navigation = useNavigationStore()
     for (const role of Object.values(ROLES)) {
@@ -87,22 +89,23 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
           if (allowed) {
             assert.equal(router.currentRoute.value.path, target)
             const record = router.currentRoute.value.matched.at(-1)
-            const html = await renderToString(createSSRApp({ render: () => h(record.components.default, record.props.default) }))
+            const html = await renderToString(createSSRApp({ render: () => h(record.components.default, record.props.default) }).use(router))
             assert.ok(html.includes(router.currentRoute.value.meta.title))
             if (target === '/admission' && [ROLES.GUEST, ROLES.STUDENT].includes(role)) {
               assert.match(html, /Loading admission information/)
             } else {
-              assert.match(html, /Coming soon/)
-              assert.match(html, /not available yet/)
+              if (target === '/admission') { assert.match(html, /Coming soon/); assert.match(html, /not available yet/) }
             }
-            assert.doesNotMatch(html, /<button|<form|<input/)
+            if (target === '/admission') assert.doesNotMatch(html, /<button|<form|<input/)
           }
         }
       })
     }
     assert.deepEqual(apiState.calls, [], 'SSR and placeholder routes do not fetch or create applications')
     const renderer = createRenderer({
-      createElement: (tag) => ({ tag, children: [], props: {} }),
+      createElement: (tag) => ({ tag, tagName: tag.toUpperCase(), children: [], props: {}, listeners: {},
+        addEventListener(name, handler) { this.listeners[name] = handler }, removeEventListener() {},
+        get options() { return this.children }, setAttribute() {}, removeAttribute() {} }),
       createText: (text) => ({ text }), createComment: () => ({ text: '' }),
       setText: (node, text) => { node.text = text },
       setElementText: (node, text) => { node.text = text; node.children = [] },
@@ -124,11 +127,34 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
       auth.currentUser = { id: 1 }
       const root = { children: [] }
       const app = renderer.createApp(AdmissionView)
-      app.mount(root)
+      app.use(router); app.mount(root)
       return { root, app }
     }
     const response = (application) => ({ data: { success: true, data: { has_application: Boolean(application), application } } })
     const record = { applicant_number: 'APP-test-identity', status: 'under_review', cycle: { code: '2026', name: 'September intake' }, created_at: '2026-09-19T08:30:00+08:00', submitted_at: '2026-09-19T09:00:00+08:00', is_converted: false, converted_at: null }
+
+    await t.test('home offers only the next permitted workflow action', async () => {
+      for (const [exam, result, expected] of [
+        [{ eligible: true }, { published: false }, 'Take Entrance Exam'],
+        [{ session: { exam_completed: false } }, { published: false }, 'Resume Exam'],
+        [{ reason: 'awaiting_publication' }, { published: false }, 'Waiting for Registrar Review'],
+        [{ eligible: true }, { published: true, result: { retake_eligible: true } }, 'Take Retake'],
+        [{ eligible: false }, { published: true, result: { retake_eligible: false } }, 'View Recommendation'],
+        [{ reason: 'bank_incomplete' }, { published: false }, 'not available yet'],
+      ]) {
+        apiState.handler = async () => response(record)
+        apiState.workflow = async ({url}) => url.endsWith('/exam') ? exam : result
+        const {root, app} = mount()
+        try {
+          await settle()
+          const text = textOf(root)
+          assert.match(text, new RegExp(expected))
+          for (const label of ['Take Entrance Exam','Resume Exam','Take Retake','View Recommendation']) {
+            if (label !== expected) assert.ok(!text.includes(label), label + ' must not be offered')
+          }
+        } finally { app.unmount() }
+      }
+    })
 
     await t.test('page calls the real Admission service and renders loading then safe identity', async () => {
       let resolve
@@ -265,28 +291,127 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         assert.equal(findButtonByText(root, 'Start Admission'), undefined)
       } finally { app.unmount() }
     })
-    await t.test('mounted future pages and staff legacy home do not call the identity API', async () => {
-      apiState.calls.length = 0
-      for (const target of ['/admission/exam', '/admission/result', '/admission/recommendation']) {
-        auth.currentRole = ROLES.STUDENT
-        await router.push(target)
-        const route = router.currentRoute.value.matched.at(-1)
-        const root = { children: [] }
-        const app = renderer.createApp(route.components.default, route.props.default)
-        app.mount(root)
-        await settle()
-        assert.match(textOf(root), /Coming soon/)
-        app.unmount()
+
+    await t.test('all Admission workflow pages load with empty states through the portal API', async () => {
+      apiState.workflow = async ({ url }) => {
+        if (url.endsWith('/exam')) return { eligible: true, reason: null, attempts_submitted: 0, session: null }
+        if (url.endsWith('/result')) return { published: false, result: null }
+        if (url.endsWith('/recommendation')) return { recommendation: { status: 'insufficient_evidence', ranked_programs: [], message: 'No evidence yet' }, interests: {} }
+        if (url.endsWith('/cycles')) return { cycles: [], academic_years: [{ id: 1, school_year: '2026-2027' }] }
+        if (url.endsWith('/questions')) return { questions: { data: [], last_page: 1 }, counts: {} }
+        if (url.endsWith('/programs')) return { courses: [], settings: [] }
+        if (url.endsWith('/history')) return { decisions: { data: [], last_page: 1 }, events: [] }
+        return { data: [], last_page: 1 }
       }
-      auth.currentRole = ROLES.REGISTRAR_STAFF
-      const root = { children: [] }
-      const app = renderer.createApp(AdmissionView)
-      app.mount(root)
-      await settle()
-      assert.match(textOf(root), /Coming soon/)
-      app.unmount()
-      assert.deepEqual(apiState.calls, [])
+      const previousWindow = globalThis.window
+      globalThis.window = { addEventListener() {}, removeEventListener() {} }
+      try {
+        for (const [role, paths] of Object.entries(groups)) for (const target of paths.filter(p => p !== '/admission')) {
+          auth.currentRole = role
+          await router.push(target)
+          const route = router.currentRoute.value.matched.at(-1)
+          const root = { children: [] }
+          const app = renderer.createApp(route.components.default, route.props.default)
+          app.use(router); app.mount(root)
+          await settle()
+          assert.doesNotMatch(textOf(root), /Coming soon|temporarily unavailable/)
+          assert.ok(apiState.calls.some(path => path.startsWith('/admission/')))
+          if (target === '/admission/exam') assert.match(textOf(root), /120 minutes/)
+          app.unmount()
+        }
+      } finally { globalThis.window = previousWindow }
     })
+    await t.test('switching Admin pages clears the previous payload before rendering form controls', async () => {
+      auth.currentRole = ROLES.ADMIN
+      apiState.workflow = async ({ url }) => url.endsWith('/cycles') ? { cycles: [], academic_years: [] } : { questions: { data: [], last_page: 1 }, counts: {} }
+      await router.push('/admin/admissions/cycles')
+      const component = router.currentRoute.value.matched.at(-1).components.default
+      const mode = ref('cycles'), errors = []
+      const root = { children: [] }
+      const app = renderer.createApp({ render: () => h(component, { mode: mode.value, title: 'Admin Admission' }) })
+      app.config.errorHandler = error => errors.push(error.message)
+      app.use(router); app.mount(root)
+      try {
+        await settle()
+        mode.value = 'questions'
+        await settle()
+        assert.deepEqual(errors, [])
+        assert.match(textOf(root), /20 active questions per topic/)
+      } finally { app.unmount() }
+    })
+    await t.test('exam starts and confirms submission using the server session', async () => {
+      auth.currentRole = ROLES.GUEST
+      const previousWindow = globalThis.window
+      globalThis.window = { addEventListener() {}, removeEventListener() {} }
+      const questions = Array.from({length:100}, (_,i) => ({ id:i+1, topic:'Science', question_text:'Assigned question '+(i+1), options:{ A:'Answer A', B:'Answer B' } }))
+      const saved = { session_id:'session', revision:0, position:0, attempt_number:1, deadline:new Date(Date.now()+7200000).toISOString(), server_now:new Date().toISOString(), questions, answers:Object.fromEntries(questions.map(q=>[q.id,null])), exam_completed:false }
+      const writes=[]
+      apiState.workflow=async config => {
+        if(config.url.endsWith('/exam')) return {eligible:true,attempts_submitted:0,session:null}
+        if(config.url.endsWith('/start')) return structuredClone(saved)
+        writes.push(config)
+        return { ...structuredClone(saved), revision:1, exam_completed:config.url.endsWith('/submit') }
+      }
+      await router.push('/admission/exam')
+      const route=router.currentRoute.value.matched.at(-1)
+      const root={children:[]}; const app=renderer.createApp(route.components.default,route.props.default); app.use(router); app.mount(root)
+      try {
+        await settle()
+        findButtonByText(root,'Start Exam').props.onClick(); await settle()
+        assert.match(textOf(root),/Assigned question 1/)
+        findButtonByText(root,'Submit exam').props.onClick(); await nextTick()
+        assert.equal(writes.length,0)
+        findButtonByText(root,'Confirm submission').props.onClick(); await settle()
+        assert.equal(writes.length,1)
+        assert.match(textOf(root),/Exam submitted/)
+      } finally { app.unmount(); globalThis.window=previousWindow }
+    })
+    await t.test('conversion hides ineligible actions and requires final confirmation', async () => {
+      const base = { id: 5, version: 2, applicant_number: 'APP-conversion', name: 'Applicant Example',
+        result_id: 8, result_version: 3, course_id: 1, curriculum_id: 2,
+        courses: [{id:1,course_name:'Information Technology'}], curriculums: [{id:2,course_id:1,curriculum_code:'IT-2026'}] }
+      const find = (node, tag) => node.tag === tag ? node : (node.children || []).map(child => find(child, tag)).find(Boolean)
+      for (const eligible of [false, true]) {
+        let converted = false
+        const writes = []
+        apiState.workflow = async config => {
+          if (config.method === 'post') { writes.push(config); converted = true; return {converted:true} }
+          return { ...base, can_accept: eligible, can_convert: eligible, reason: eligible ? null : 'Latest result must be published.',
+            student: converted ? {student_number:'26-01234',admission_date:'2026-09-25',year_level:1,student_status:'regular'} : null }
+        }
+        const root = {children:[]}, app = renderer.createApp(AdmissionConversionPanel,{applicantId:5})
+        app.use(router); app.mount(root)
+        try {
+          await settle()
+          if (!eligible) {
+            assert.equal(findButtonByText(root,'Convert to Student'), undefined)
+            assert.match(textOf(root), /Latest result must be published/)
+          } else {
+            assert.ok(findButtonByText(root,'Convert to Student'))
+            find(root,'form').props.onSubmit({preventDefault(){}})
+            await nextTick()
+            assert.match(textOf(root), /Confirm final conversion/)
+            assert.equal(writes.length,0)
+            findButtonByText(root,'Cancel').props.onClick()
+            await nextTick()
+            assert.equal(writes.length,0)
+            find(root,'form').props.onSubmit({preventDefault(){}})
+            await nextTick()
+            const button = findButtonByText(root,'Confirm conversion')
+            button.props.onClick(); button.props.onClick()
+            await settle()
+            assert.equal(writes.length,1)
+            assert.equal(writes[0].url,'/admission/registrar/applicants/5/convert')
+            assert.equal(writes[0].data.confirmed,true)
+            assert.equal(writes[0].data.result_version,3)
+            assert.match(textOf(root), /Converted to Student/)
+            assert.match(textOf(root), /26-01234/)
+            assert.equal(findButtonByText(root,'Convert to Student'),undefined)
+          }
+        } finally { app.unmount() }
+      }
+    })
+
     await t.test('late response from a previous user cannot replace the current identity', async () => {
       const pending = []
       apiState.handler = () => new Promise(resolve => pending.push(resolve))

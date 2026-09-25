@@ -13,6 +13,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -33,6 +34,21 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (Throwable $exception, Request $request) {
+            if (! $request->is('api/admission/*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
+                return null;
+            }
+            if ($exception instanceof HttpExceptionInterface) {
+                $status = $exception->getStatusCode();
+
+                return response()->json(['success' => false, 'message' => $status >= 500 ? 'Admission is temporarily unavailable.' : $exception->getMessage()], $status)
+                    ->header('Cache-Control', 'private, no-store');
+            }
+
+            return response()->json(['success' => false, 'message' => 'Admission is temporarily unavailable. Please reload and try again.'], 503)
+                ->header('Cache-Control', 'private, no-store');
+        });
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );

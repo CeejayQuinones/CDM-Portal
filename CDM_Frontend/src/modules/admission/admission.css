@@ -1,0 +1,55 @@
+.admission-workflow { max-width: 1160px; margin: auto; }
+.admission-workflow h1 { font-size: 1.65rem; }
+.admission-workflow h2 { font-size: 1.15rem; }
+.admission-workflow .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 20px; margin: 16px 0; }
+.admission-workflow .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+.admission-workflow button, .admission-workflow .link-button { padding: 9px 14px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-dartmouth-green); font: inherit; cursor: pointer; }
+.admission-workflow button.primary { background: var(--color-dartmouth-green); color: white; }
+.admission-workflow button:disabled { opacity: .55; cursor: default; }
+.admission-workflow input:not([type=radio]):not([type=checkbox]), .admission-workflow select, .admission-workflow textarea { padding: 9px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: inherit; font: inherit; max-width: 100%; }
+.admission-workflow label { display: grid; gap: 6px; margin: 12px 0; }
+.admission-workflow .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.admission-workflow .table-wrap { overflow: auto; }
+.admission-workflow table { width: 100%; border-collapse: collapse; }
+.admission-workflow th, .admission-workflow td { padding: 12px; text-align: left; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+.admission-workflow [role=alert] { border-left: 4px solid #b33; padding: 12px; }
+.admission-workflow .muted { color: var(--color-muted); }
+.admission-workflow .question-nav { display:flex; flex-wrap:wrap; gap:5px; }
+.admission-workflow .question-nav button { min-width: 42px; }
+.admission-workflow .answered { background: #e5f2e9; }
+.admission-workflow .selected { outline: 2px solid var(--color-dartmouth-green); }
+.admission-workflow .answer { display:flex; gap:12px; padding:12px; border:1px solid var(--color-border); border-radius:8px; }
+.admission-workflow .timer { font-variant-numeric:tabular-nums; font-weight:bold; }
+.admission-workflow dialog[open] { position:fixed; inset:0; margin:auto; width:min(460px,90vw); background:var(--color-surface); color:inherit; border:1px solid var(--color-border); border-radius:12px; padding:24px; z-index:30; }
+.admission-workflow { min-width: 0; overflow-wrap: anywhere; }
+.admission-workflow .link-button { display: inline-block; text-decoration: none; }
+.admission-workflow .primary { background: var(--color-dartmouth-green); color: white; }
+.admission-workflow .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; background: var(--color-anti-flash-white, #f2f4f3); border: 1px solid var(--color-border); text-transform: capitalize; font-size: .85rem; }
+.admission-workflow .positive, .admission-workflow .complete { background: #e5f2e9; color: #165833; }
+.admission-workflow .progress-steps { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 24px 0; }
+.admission-workflow .progress-steps li { flex: 1 1 120px; padding: 10px; border-bottom: 3px solid var(--color-border); }
+.admission-workflow .progress-steps .current { border-color: var(--color-dartmouth-green); font-weight: 700; }
+.admission-workflow .next-step, .admission-workflow .top-program { border-left: 4px solid var(--color-dartmouth-green); }
+.admission-workflow .summary-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: 20px; }
+.admission-workflow dt { color: var(--color-muted); font-size: .9rem; }
+.admission-workflow dd { margin: 8px 0; font-weight: 600; }
+.admission-workflow .result-outcome { font-size: 2rem; margin: 16px 0; }
+.admission-workflow .exam-status { position: sticky; top: 8px; z-index: 5; box-shadow: 0 3px 12px #0001; }
+.admission-workflow .timer { font-size: 1.3rem; margin-right: auto; }
+.admission-workflow .answer:has(input:checked) { border-color: var(--color-dartmouth-green); font-weight: 600; }
+.admission-workflow .submit-panel { border-top: 3px solid var(--color-border); }
+.admission-workflow .readiness { padding: 12px; border: 1px solid var(--color-border); border-radius: 8px; }
+.admission-workflow .field-error { color: #a22424; }
+.admission-workflow .history-change { display: grid; gap: 4px; margin: 12px 0; }
+.admission-workflow summary { cursor: pointer; padding: 8px 0; }
+.admission-workflow button:focus-visible, .admission-workflow a:focus-visible { outline: 2px solid var(--color-dartmouth-green); outline-offset: 3px; }
+.admission-workflow dialog[open] { max-height: 85dvh; overflow-y: auto; box-sizing: border-box; box-shadow: 0 0 0 100vmax #0006; }
+@media (max-width: 600px) {
+  .admission-workflow .grid { grid-template-columns: minmax(0,1fr); }
+  .admission-workflow .panel { padding: 14px; }
+  .admission-workflow .table-wrap { padding: 0; }
+  .admission-workflow th, .admission-workflow td { min-width: 110px; }
+  .admission-workflow .exam-status { gap: 8px; top: 0; }
+  .admission-workflow .exam-status > span[role=status] { flex-basis: 100%; }
+  .admission-workflow .toolbar > input { min-width: 0; width: 100%; }
+}
