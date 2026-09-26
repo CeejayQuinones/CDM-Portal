@@ -73,6 +73,60 @@ class AdmissionConfigurationService
         });
     }
 
+    public function exam(User $user, int $id, array $data): array
+    {
+        return $this->locked($user, function ($actor) use ($id, $data) {
+            $cycle = AdmissionCycle::lockForUpdate()->findOrFail($id);
+            $rules = [
+                'version' => 'required|integer|min:1', 'title' => 'required|string|max:255',
+                'status' => 'required|in:draft,active,inactive',
+                'duration_minutes' => 'required|integer|between:1,240',
+                'passing_score' => 'required|integer|between:1,100',
+                'max_attempts' => 'required|integer|between:1,2',
+                'category_counts' => ['required', 'array:'.implode(',', ProgramMatcher::INTEREST_CATEGORIES)],
+            ];
+            foreach (ProgramMatcher::INTEREST_CATEGORIES as $topic) {
+                $rules['category_counts.'.$topic] = 'required|integer|between:1,100';
+            }
+            $data = Validator::make($data, $rules)->validate();
+            abort_unless($data['version'] === $cycle->policy_version, 409, 'Exam configuration changed. Reload.');
+            unset($data['version']);
+            $cycle->forceFill(['exam_policy' => AdmissionExamPolicy::normalize($data), 'policy_version' => $cycle->policy_version + 1,
+                'updated_by_user_id' => $actor->id]);
+            if ($cycle->updated_at->gte(now()->startOfSecond())) {
+                $cycle->updated_at = $cycle->updated_at->addSecond();
+            }
+            $cycle->save();
+            $this->audit->workflow($actor, 'admission.exam_configured', 'cycle', $cycle->id, metadata: ['version' => $cycle->policy_version]);
+
+            return AdmissionExamPolicy::configuration($cycle);
+        });
+    }
+
+    public function course(User $user, array $data, ?int $id = null): Course
+    {
+        return $this->locked($user, function ($actor) use ($id, $data) {
+            $course = $id ? Course::lockForUpdate()->findOrFail($id) : new Course;
+            $data = Validator::make($data, [
+                'course_code' => ['required', 'string', 'max:20', Rule::unique('courses')->ignore($id)],
+                'course_name' => 'required|string|max:150', 'department_id' => 'required|integer|exists:departments,id',
+                'years' => 'required|integer|between:1,255', 'status' => 'required|in:active,inactive',
+                'expected_updated_at' => $id ? 'required|string' : 'nullable',
+            ])->validate();
+            if ($id) {
+                abort_unless($data['expected_updated_at'] === $course->updated_at->toISOString(), 409, 'Program changed. Reload.');
+                if ($course->updated_at->gte(now()->startOfSecond())) {
+                    $course->updated_at = $course->updated_at->addSecond();
+                }
+            }
+            unset($data['expected_updated_at']);
+            $course->fill($data)->save();
+            $this->audit->workflow($actor, 'admission.course_'.($id ? 'updated' : 'created'), 'program', $course->id, metadata: ['status' => $course->status]);
+
+            return $course;
+        });
+    }
+
     public function question(User $user, array $data, ?int $id = null): AdmissionExamQuestion
     {
         return $this->locked($user, function ($actor) use ($data, $id) {
@@ -88,6 +142,8 @@ class AdmissionConfigurationService
             if ($id) {
                 abort_unless($question->version === $data['version'], 409, 'Question changed. Reload before editing.');
             }
+            abort_if($id && str_starts_with($question->question_code, 'DEV-MVP-') && ! str_starts_with($data['question_code'], 'DEV-MVP-'),
+                422, 'Development questions must retain their development marker.');
             unset($data['version']);
             $question->fill($data);
             $question->version = $id ? $question->version + 1 : 1;

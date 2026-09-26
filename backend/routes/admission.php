@@ -5,6 +5,10 @@ use App\Http\Middleware\AdmissionBoundary;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', AdmissionBoundary::class.':configure'])->prefix('admission/admin')->group(function () {
+    Route::get('exams', [Workflow::class, 'exams']);
+    Route::put('exams/{id}', [Workflow::class, 'saveExam'])->whereNumber('id');
+    Route::post('programs', [Workflow::class, 'saveCourse']);
+    Route::put('programs/{id}/academic', [Workflow::class, 'saveCourse'])->whereNumber('id');
     Route::get('cycles', [Workflow::class, 'cycles']);
     Route::post('cycles', [Workflow::class, 'saveCycle']);
     Route::put('cycles/{id}', [Workflow::class, 'saveCycle'])->whereNumber('id');
@@ -30,6 +34,8 @@ Route::middleware(['auth:sanctum', AdmissionBoundary::class.':review'])->prefix(
     Route::get('applicants/{id}/conversion', [Workflow::class, 'conversion'])->whereNumber('id');
     Route::post('applicants/{id}/accept', [Workflow::class, 'acceptApplicant'])->whereNumber('id')->middleware(['step-up', 'throttle:10,1']);
     Route::post('applicants/{id}/convert', [Workflow::class, 'convertApplicant'])->whereNumber('id')->middleware(['step-up', 'throttle:10,1']);
+    Route::get('cycles', [Workflow::class, 'registrarCycles']);
+    Route::get('applicants/{id}', [Workflow::class, 'applicant'])->whereNumber('id');
     Route::get('applicants', [Workflow::class, 'applicants']);
     Route::get('results', [Workflow::class, 'results']);
     Route::get('history', [Workflow::class, 'history']);

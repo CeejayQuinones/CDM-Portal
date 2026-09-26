@@ -1,5 +1,9 @@
 # Admission MVP implementation
 
+Current staff navigation and configurable-exam behavior are documented in
+[Admission staff restructure](ADMISSION_STAFF_RESTRUCTURE.md). That document
+supersedes the original staff URLs and fixed-policy descriptions below.
+
 The Admission MVP extends Step 7 inside the existing portal. Users authenticate
 through existing Sanctum User accounts. Guests remain Guests throughout Admission;
 no academic Student creation, role conversion, course assignment, or enrollment is

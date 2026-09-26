@@ -117,7 +117,7 @@ onBeforeUnmount(() => { generation++; navbarObserver?.disconnect(); clearInterva
       </div>
     </template>
     <div v-else-if="state && !loading" class="placeholder-panel panel">
-      <template v-if="state.eligible"><h2>Exam instructions</h2><p>100 questions, five topics, 120 minutes. The timer continues through refreshes, sign-outs, or a disconnected device.</p>
+      <template v-if="state.eligible"><h2>Exam instructions</h2><p>{{ state.question_count }} questions, five topics, {{ state.time_limit }} minutes. The timer continues through refreshes, sign-outs, or a disconnected device.</p>
       <p>Answers save while connected. Keep this page open until the save indicator confirms success. Only answers received before the deadline count. Use one tab at a time.</p>
       <p>Maximum two attempts. A second attempt requires a published first failure.</p></template><h2 v-if="!state.eligible">{{ state.reason === 'awaiting_publication' ? 'Waiting for Registrar Review' : 'Exam status' }}</h2><p>{{ state.attempts_submitted }} submitted attempt(s).</p>
       <p v-if="state.reason">{{ reasons[state.reason] || 'The exam is currently unavailable.' }}</p>

@@ -18,7 +18,7 @@ class AdmissionAuditWriter
             'admission.application_accepted', 'admission.student_converted',
             'admission.cycle_created', 'admission.cycle_updated', 'admission.cycle_opened', 'admission.cycle_closed',
             'admission.question_created', 'admission.question_updated', 'admission.question_deleted',
-            'admission.program_updated', 'admission.exam_started', 'admission.exam_submitted', 'admission.exam_expired',
+            'admission.exam_configured', 'admission.course_created', 'admission.course_updated', 'admission.program_updated', 'admission.exam_started', 'admission.exam_submitted', 'admission.exam_expired',
             'admission.result_approved', 'admission.result_published', 'admission.result_corrected', 'admission.registrar_pass',
         ];
         if (DB::transactionLevel() < 1 || ! in_array($action, $allowed, true)

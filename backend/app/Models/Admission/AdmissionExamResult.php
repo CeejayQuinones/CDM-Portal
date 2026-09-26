@@ -2,6 +2,7 @@
 
 namespace App\Models\Admission;
 
+use App\Services\Admission\AdmissionExamPolicy;
 use Illuminate\Database\Eloquent\Model;
 
 class AdmissionExamResult extends Model
@@ -23,10 +24,10 @@ class AdmissionExamResult extends Model
         if ($this->official_status !== 'published') {
             return strtoupper($this->official_status);
         }
-        if ($this->registrar_pass || $this->official_score >= 75) {
+        if ($this->registrar_pass || $this->official_score >= AdmissionExamPolicy::normalize($this->session->policy_snapshot)['passing_score']) {
             return 'PASSED';
         }
 
-        return $this->session->attempt_number >= 2 ? 'FAILED' : 'RETAKE';
+        return $this->session->attempt_number >= AdmissionExamPolicy::normalize($this->session->policy_snapshot)['max_attempts'] ? 'FAILED' : 'RETAKE';
     }
 }

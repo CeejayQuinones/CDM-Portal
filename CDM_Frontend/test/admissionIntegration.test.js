@@ -15,8 +15,8 @@ const frontend = fileURLToPath(new URL('../', import.meta.url))
 const groups = {
   [ROLES.GUEST]: ['/admission', '/admission/exam', '/admission/result', '/admission/recommendation'],
   [ROLES.STUDENT]: ['/admission', '/admission/exam', '/admission/result', '/admission/recommendation'],
-  [ROLES.REGISTRAR_STAFF]: ['/registrar/admissions', '/registrar/admissions/results', '/registrar/admissions/review', '/registrar/admissions/history'],
-  [ROLES.ADMIN]: ['/admin/admissions/cycles', '/admin/admissions/questions', '/admin/admissions/programs'],
+  [ROLES.REGISTRAR_STAFF]: ['/registrar/admissions', '/registrar/admissions/results', '/registrar/admissions/history'],
+  [ROLES.ADMIN]: ['/admin/admissions/programs', '/admin/admissions/exams', '/admin/admissions/questions'],
 }
 
 test('Admission uses the portal guard, navigation store, and rendered placeholders', async (t) => {
@@ -295,9 +295,10 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
 
     await t.test('all Admission workflow pages load with empty states through the portal API', async () => {
       apiState.workflow = async ({ url }) => {
-        if (url.endsWith('/exam')) return { eligible: true, reason: null, attempts_submitted: 0, session: null }
+        if (url.endsWith('/exam')) return { eligible: true, reason: null, attempts_submitted: 0, session: null, question_count: 100, time_limit: 120 }
         if (url.endsWith('/result')) return { published: false, result: null }
         if (url.endsWith('/recommendation')) return { recommendation: { status: 'insufficient_evidence', ranked_programs: [], message: 'No evidence yet' }, interests: {} }
+        if (url.endsWith('/exams')) return { exams: [] }
         if (url.endsWith('/cycles')) return { cycles: [], academic_years: [{ id: 1, school_year: '2026-2027' }] }
         if (url.endsWith('/questions')) return { questions: { data: [], last_page: 1 }, counts: {} }
         if (url.endsWith('/programs')) return { courses: [], settings: [] }
@@ -325,7 +326,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
     await t.test('switching Admin pages clears the previous payload before rendering form controls', async () => {
       auth.currentRole = ROLES.ADMIN
       apiState.workflow = async ({ url }) => url.endsWith('/cycles') ? { cycles: [], academic_years: [] } : { questions: { data: [], last_page: 1 }, counts: {} }
-      await router.push('/admin/admissions/cycles')
+      await router.push('/admin/admissions/questions')
       const component = router.currentRoute.value.matched.at(-1).components.default
       const mode = ref('cycles'), errors = []
       const root = { children: [] }
@@ -337,9 +338,110 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         mode.value = 'questions'
         await settle()
         assert.deepEqual(errors, [])
-        assert.match(textOf(root), /20 active questions per topic/)
+        assert.match(textOf(root), /General exam readiness/)
       } finally { app.unmount() }
     })
+    await t.test('legacy staff URLs redirect to the single role-owned workflow', async () => {
+      for (const [role, oldPath, newPath] of [
+        [ROLES.ADMIN, '/admin/admissions/cycles', '/admin/admissions/exams'],
+        [ROLES.REGISTRAR_STAFF, '/registrar/admissions/review', '/registrar/admissions/results'],
+      ]) {
+        auth.currentRole = role; await router.push(oldPath)
+        assert.equal(router.currentRoute.value.path, newPath)
+        auth.currentRole = ROLES.GUEST; await router.push('/admission'); await router.push(oldPath)
+        assert.equal(router.currentRoute.value.name, 'unauthorized')
+      }
+    })
+    await t.test('merged Results tabs and server-permitted actions drive confirmation', async () => {
+      auth.currentRole = ROLES.REGISTRAR_STAFF
+      const calls = []
+      let row = { id: 1, version: 1, name: 'Example Applicant', applicant_number: 'APP-1', cycle: 'Intake', attempt_number: 1,
+        official_status: 'pending', system_percentage: 40, system_passed: false, outcome: 'PENDING', category_scores: { Science: 8 }, category_maximums: { Science: 20 }, allowed_actions: ['approve'] }
+      apiState.workflow = async config => {
+        calls.push(config)
+        if (config.url.endsWith('/cycles')) return [{id: 1, name: 'Intake'}]
+        if (config.method === 'post') { row = {...row, version: 2, official_status: 'approved', allowed_actions: ['approve','publish']}; return {updated:1} }
+        return {data:[row], last_page:1}
+      }
+      await router.push('/registrar/admissions/results')
+      const route = router.currentRoute.value.matched.at(-1), root = {children:[]}
+      const app = renderer.createApp(route.components.default,route.props.default); app.use(router); app.mount(root)
+      const findForm = node => node.tag === 'form' ? node : (node.children || []).map(findForm).find(Boolean)
+      const exactButton = (node, label) => node.tag === 'button' && textOf(node).trim() === label ? node : (node.children || []).map(child => exactButton(child, label)).find(Boolean)
+      try {
+        await settle()
+        for (const label of ['All Results','Pending Review','Ready to Publish','Published','Retake']) {
+          findButtonByText(root,label).props.onClick(); await settle()
+        }
+        assert.equal(calls.filter(c=>c.method === 'get' && c.url.endsWith('/results')).at(-1).params.tab,'retake')
+        assert.equal(findButtonByText(root,'Exceptional Pass'),undefined)
+        assert.equal(findButtonByText(root,'Correct result'),undefined)
+        findButtonByText(root,'Inspect').props.onClick(); await nextTick()
+        assert.match(textOf(root),/Science: 8 \/ 20/)
+        findButtonByText(root,'Close').props.onClick(); await nextTick()
+        exactButton(root,'Approve').props.onClick(); await nextTick()
+        assert.equal(calls.filter(c=>c.method === 'post').length,0)
+        findForm(root).props.onSubmit({preventDefault(){}}); await settle()
+        assert.equal(calls.find(c=>c.method === 'post').url,'/admission/registrar/results/approve')
+        assert.deepEqual(calls.find(c=>c.method === 'post').data.results,[{id:1,version:1}])
+        assert.ok(findButtonByText(root,'Publish'))
+      } finally { app.unmount() }
+    })
+    await t.test('Programs edits academic fields separately and Exams saves cycle policy', async () => {
+      auth.currentRole = ROLES.ADMIN
+      const topics = ['General Mathematics','Science','Reading Comprehension','Logical Reasoning','Digital Literacy']
+      const writes = []
+      apiState.workflow = async config => {
+        if (config.method !== 'get') { writes.push(config); return {} }
+        if (config.url.endsWith('/programs')) return {courses:[{id:1,course_code:'BSIT',course_name:'Information Technology',years:4,status:'active',department_id:1,updated_at:'stamp'}],settings:[],departments:[{id:1,department_name:'Computing'}]}
+        if (config.url.endsWith('/exams')) return {exams:[{cycle_id:1,cycle:'Intake',version:1,policy:{title:'General Entrance Exam',status:'active',duration_minutes:120,passing_score:75,max_attempts:2,category_counts:Object.fromEntries(topics.map(t=>[t,20]))},readiness:{ready:true,counts:Object.fromEntries(topics.map(t=>[t,20]))}}]}
+        return {cycles:[],academic_years:[]}
+      }
+      const findForm = node => node.tag === 'form' ? node : (node.children || []).map(findForm).find(Boolean)
+      for (const target of ['/admin/admissions/programs','/admin/admissions/exams']) {
+        await router.push(target)
+        const route = router.currentRoute.value.matched.at(-1), root = {children:[]}
+        const app = renderer.createApp(route.components.default,route.props.default); app.use(router); app.mount(root)
+        try {
+          await settle()
+          if (target.endsWith('/programs')) {
+            assert.ok(findButtonByText(root,'Add program'))
+            findButtonByText(root,'Edit program').props.onClick(); await nextTick()
+          } else { assert.match(textOf(root),/100 questions/); assert.match(textOf(root),/READY/) }
+          findForm(root).props.onSubmit({preventDefault(){}}); await settle()
+        } finally { app.unmount() }
+      }
+      assert.equal(writes[0].url,'/admission/admin/programs/1/academic')
+      assert.equal(writes[0].data.expected_updated_at,'stamp')
+      assert.equal(writes[1].url,'/admission/admin/exams/1')
+      assert.equal(writes[1].data.version,1)
+    })
+    await t.test('History renders readable timeline and Applicants loads inspection before conversion', async () => {
+      auth.currentRole = ROLES.REGISTRAR_STAFF
+      const applicant = {id:1,name:'Example Applicant',applicant_number:'APP-1',cycle:'Intake',status:'draft',exam_status:'finalized',latest_result:'RETAKE',acceptance_status:'not_accepted',conversion_status:'not_converted',attempts:[{attempt_number:1,status:'finalized',outcome:'RETAKE'}]}
+      apiState.workflow = async config => {
+        if (config.url.endsWith('/history')) return {timeline:{data:[{id:'event-1',action:'Application created',actor:'Example Applicant',subject:'Example Applicant',applicant_number:'APP-1',cycle:'Intake',summary:'Application created recorded for APP-1.',created_at:'2026-09-26'}],last_page:1}}
+        if (config.url.endsWith('/cycles')) return []
+        if (config.url.endsWith('/conversion')) return {can_accept:false,can_convert:false,reason:'Latest result must be passed.',courses:[],curriculums:[]}
+        if (config.url.endsWith('/applicants/1')) return applicant
+        return {data:[applicant],last_page:1}
+      }
+      for (const target of ['/registrar/admissions/history','/registrar/admissions']) {
+        await router.push(target)
+        const route = router.currentRoute.value.matched.at(-1), root = {children:[]}
+        const app = renderer.createApp(route.components.default,route.props.default); app.use(router); app.mount(root)
+        try {
+          await settle()
+          if (target.endsWith('/history')) { assert.match(textOf(root),/Application created/); assert.match(textOf(root),/By Example Applicant/) }
+          else {
+            findButtonByText(root,'Inspect applicant').props.onClick(); await settle()
+            assert.match(textOf(root),/Exam attempts/); assert.match(textOf(root),/RETAKE/)
+            assert.equal(findButtonByText(root,'Convert to Student'),undefined)
+          }
+        } finally { app.unmount() }
+      }
+    })
+
     await t.test('exam starts and confirms submission using the server session', async () => {
       auth.currentRole = ROLES.GUEST
       const previousWindow = globalThis.window

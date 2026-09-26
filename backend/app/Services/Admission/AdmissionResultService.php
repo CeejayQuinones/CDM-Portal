@@ -35,6 +35,7 @@ class AdmissionResultService
                 $owner = $application->user;
                 $latest = $this->exams->sessions($owner)->orderByDesc('attempt_number')->first();
                 abort_unless($latest?->id === $session->id && ! $this->exams->sessions($owner)->where('status', 'active')->exists(), 409, 'Only the latest completed attempt can be changed; no retake may be active.');
+                abort_unless(in_array($action, $this->allowedActions($result), true), in_array($action, ['correct', 'override'], true) ? 422 : 409, 'This action is unavailable for the current result.');
                 $before = $this->projection($result);
                 if ($action === 'approve') {
                     abort_if($result->official_status === 'published' || $result->registrar_pass, 409, 'Published results require correction.');
@@ -59,7 +60,7 @@ class AdmissionResultService
                 } elseif ($action === 'override') {
                     $first = $this->exams->sessions($owner)->where('attempt_number', 1)->with('result')->first()?->result;
                     abort_unless($session->attempt_number === 2 && ! $result->system_passed && ! $result->registrar_pass
-                        && ($result->official_score === null || $result->official_score < 75) && $first?->outcome() === 'RETAKE'
+                        && ($result->official_score === null || $result->official_score < AdmissionExamPolicy::normalize($session->policy_snapshot)['passing_score']) && $first?->outcome() === 'RETAKE'
                         && trim($reason ?? '') !== '', 422, 'Registrar pass requires an eligible second failure and an internal reason.');
                     $result->registrar_pass = true;
                     $result->internal_reason = $reason;
@@ -86,6 +87,35 @@ class AdmissionResultService
 
             return ['updated' => $results->count()];
         }, 3);
+    }
+
+    public function allowedActions(AdmissionExamResult $result): array
+    {
+        $session = $result->session;
+        $owner = $session->applicant->user;
+        $latest = $this->exams->sessions($owner)->orderByDesc('attempt_number')->first();
+        if ($session->applicant->status === 'converted' || $latest?->id !== $session->id
+            || $this->exams->sessions($owner)->where('status', 'active')->exists()) {
+            return [];
+        }
+        $actions = [];
+        if ($result->official_status !== 'published' && ! $result->registrar_pass) {
+            $actions[] = 'approve';
+        }
+        if ($result->official_status === 'approved' && $result->official_score !== null) {
+            $actions[] = 'publish';
+        }
+        if ($result->official_status === 'published') {
+            $actions[] = 'correct';
+        }
+        $first = $this->exams->sessions($owner)->where('attempt_number', 1)->with('result')->first()?->result;
+        if ($session->attempt_number === 2 && ! $result->system_passed && ! $result->registrar_pass
+            && ($result->official_score === null || $result->official_score < AdmissionExamPolicy::normalize($session->policy_snapshot)['passing_score'])
+            && $first?->outcome() === 'RETAKE') {
+            $actions[] = 'override';
+        }
+
+        return $actions;
     }
 
     private function projection(AdmissionExamResult $result): array

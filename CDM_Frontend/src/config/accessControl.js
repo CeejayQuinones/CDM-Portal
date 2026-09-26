@@ -42,6 +42,7 @@ export const ROUTE_ROLES = Object.freeze({
   'registrar-admission-review': [ROLES.REGISTRAR_STAFF],
   'registrar-admission-history': [ROLES.REGISTRAR_STAFF],
   'admin-admission-cycles': [ROLES.ADMIN],
+  'admin-admission-exams': [ROLES.ADMIN],
   'admin-admission-questions': [ROLES.ADMIN],
   'admin-admission-programs': [ROLES.ADMIN],
   enrollment: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
@@ -179,15 +180,9 @@ export const NAVIGATION_ITEMS = Object.freeze([
       },
       {
         name: 'registrar-admission-results',
-        label: 'Exam Results',
+        label: 'Results',
         path: '/registrar/admissions/results',
         roles: ROUTE_ROLES['registrar-admission-results'],
-      },
-      {
-        name: 'registrar-admission-review',
-        label: 'Review / Publish',
-        path: '/registrar/admissions/review',
-        roles: ROUTE_ROLES['registrar-admission-review'],
       },
       {
         name: 'registrar-admission-history',
@@ -196,23 +191,24 @@ export const NAVIGATION_ITEMS = Object.freeze([
         roles: ROUTE_ROLES['registrar-admission-history'],
       },
       {
-        name: 'admin-admission-cycles',
-        label: 'Admission Cycles',
-        path: '/admin/admissions/cycles',
-        roles: ROUTE_ROLES['admin-admission-cycles'],
-      },
-      {
-        name: 'admin-admission-questions',
-        label: 'Question Bank',
-        path: '/admin/admissions/questions',
-        roles: ROUTE_ROLES['admin-admission-questions'],
-      },
-      {
         name: 'admin-admission-programs',
-        label: 'Program Configuration',
+        label: 'Programs',
         path: '/admin/admissions/programs',
         roles: ROUTE_ROLES['admin-admission-programs'],
       },
+      {
+        name: 'admin-admission-exams',
+        label: 'Exams',
+        path: '/admin/admissions/exams',
+        roles: ROUTE_ROLES['admin-admission-exams'],
+      },
+      {
+        name: 'admin-admission-questions',
+        label: 'Exam Questions',
+        path: '/admin/admissions/questions',
+        roles: ROUTE_ROLES['admin-admission-questions'],
+      },
+
     ],
   },
   {

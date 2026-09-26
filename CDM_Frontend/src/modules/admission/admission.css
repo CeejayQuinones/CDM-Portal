@@ -112,3 +112,11 @@
 @media (prefers-reduced-motion: reduce) {
   .admission-workflow *, .admission-workflow *::before, .admission-workflow *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.admission-workflow .admission-timeline {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.admission-workflow .admission-timeline time { color: var(--text-secondary); }

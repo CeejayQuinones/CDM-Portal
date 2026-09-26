@@ -4,7 +4,6 @@ namespace App\Services\Admission;
 
 use App\Models\Admission\AdmissionApplicant;
 use App\Models\Admission\AdmissionExamAnswer;
-use App\Models\Admission\AdmissionExamQuestion;
 use App\Models\Admission\AdmissionExamResult;
 use App\Models\Admission\AdmissionExamSession;
 use App\Models\Admission\AdmissionExamSessionQuestion;
@@ -44,15 +43,24 @@ class AdmissionExamService
             $latest = $this->sessions($actor)->orderByDesc('started_at')->orderByDesc('id')->with('result')->first();
             $applicant = $actor->admissionApplications()->latest('id')->first();
             $reason = $this->eligibility($actor, $applicant);
+            $policy = $this->policy($actor, $applicant);
 
             return [
                 'eligible' => $reason === null, 'reason' => $reason,
                 'attempts_submitted' => $this->sessions($actor)->where('status', 'finalized')->count(),
-                'max_attempts' => 2, 'time_limit' => 120, 'categories' => ProgramMatcher::INTEREST_CATEGORIES, 'question_count' => 100,
+                'max_attempts' => $policy['max_attempts'], 'time_limit' => $policy['duration_minutes'], 'categories' => $policy['categories'], 'question_count' => $policy['question_count'],
                 'session' => $active ? $this->payload($active) : null,
                 'latest_completed' => $latest?->status === 'finalized',
             ];
         });
+    }
+
+    private function policy(User $actor, ?AdmissionApplicant $applicant): array
+    {
+        // Retakes retain the policy promised at the person's first attempt.
+        $first = $this->sessions($actor)->orderBy('attempt_number')->first();
+
+        return AdmissionExamPolicy::normalize($first ? $first->policy_snapshot : $applicant?->cycle?->exam_policy);
     }
 
     private function eligibility(User $actor, ?AdmissionApplicant $applicant): ?string
@@ -68,7 +76,8 @@ class AdmissionExamService
         }
         // Source policy counts attempts per person. Cross-cycle reset is not enabled.
         $sessions = $this->sessions($actor)->with('result')->orderByDesc('attempt_number')->get();
-        if ($sessions->count() >= 2) {
+        $policy = $this->policy($actor, $applicant);
+        if ($sessions->count() >= $policy['max_attempts']) {
             return 'attempts_exhausted';
         }
         if ($sessions->isNotEmpty()) {
@@ -80,9 +89,12 @@ class AdmissionExamService
                 return 'retake_unavailable';
             }
         }
-        $counts = AdmissionExamQuestion::where('status', 'active')->when(app()->environment('production'), fn ($q) => $q->where('question_code', 'not like', 'DEV-MVP-%'))->selectRaw('topic, count(*) as total')->groupBy('topic')->pluck('total', 'topic');
+        if (AdmissionExamPolicy::normalize($applicant->cycle->exam_policy)['status'] !== 'active') {
+            return 'exam_inactive';
+        }
+        $counts = AdmissionExamPolicy::readiness($policy)['counts'];
         foreach (ProgramMatcher::INTEREST_CATEGORIES as $topic) {
-            if (($counts[$topic] ?? 0) < 20) {
+            if (($counts[$topic] ?? 0) < $policy['category_counts'][$topic]) {
                 return 'bank_incomplete';
             }
         }
@@ -106,16 +118,17 @@ class AdmissionExamService
             // Match configuration lock order before reading the bank.
             Role::where('role_name', Role::ADMIN)->lockForUpdate()->firstOrFail();
             $reason = $this->eligibility($actor, $applicant);
+            $policy = $this->policy($actor, $applicant);
             abort_if($reason !== null, 409, 'Exam unavailable: '.$reason);
-            $bank = AdmissionExamQuestion::where('status', 'active')->when(app()->environment('production'), fn ($q) => $q->where('question_code', 'not like', 'DEV-MVP-%'))->orderBy('id')->lockForUpdate()->get()->groupBy('topic');
-            $questions = collect(ProgramMatcher::INTEREST_CATEGORIES)->shuffle()->flatMap(fn ($topic) => $bank[$topic]->shuffle()->take(20))->values();
-            abort_unless($questions->count() === 100, 409, 'The exam bank is incomplete.');
+            $bank = AdmissionExamPolicy::bank()->orderBy('id')->lockForUpdate()->get()->groupBy('topic');
+            $questions = collect(ProgramMatcher::INTEREST_CATEGORIES)->shuffle()->flatMap(fn ($topic) => $bank[$topic]->shuffle()->take($policy['category_counts'][$topic]))->values();
+            abort_unless($questions->count() === $policy['question_count'], 409, 'The exam bank is incomplete.');
             $session = new AdmissionExamSession;
             $session->id = (string) Str::uuid();
             $session->fill(['applicant_id' => $applicant->id, 'attempt_number' => $this->sessions($actor)->count() + 1,
                 'status' => 'active', 'bank_version' => hash('sha256', $questions->toJson()),
-                'policy_snapshot' => ['duration_minutes' => 120, 'questions_per_topic' => 20, 'max_attempts' => 2, 'passing_score' => 75, 'categories' => ProgramMatcher::INTEREST_CATEGORIES],
-                'started_at' => now(), 'deadline_at' => now()->addMinutes(120), 'revision' => 0, 'position' => 0]);
+                'policy_snapshot' => $policy,
+                'started_at' => now(), 'deadline_at' => now()->addMinutes($policy['duration_minutes']), 'revision' => 0, 'position' => 0]);
             $session->save();
             foreach ($questions as $position => $question) {
                 $snapshot = AdmissionExamSessionQuestion::create([
@@ -147,6 +160,7 @@ class AdmissionExamService
             abort_unless($session->revision === $data['revision'], 409, 'This exam changed in another tab or device. Reload saved answers.');
             $ids = $session->questions()->pluck('id')->map(fn ($id) => (string) $id)->all();
             abort_if(count($data['answers']) !== count($ids) || array_diff(array_keys($data['answers']), $ids), 422, 'Answers must match this assigned exam.');
+            abort_unless($data['position'] >= 0 && $data['position'] < count($ids), 422, 'Position must match this assigned exam.');
             foreach ($data['answers'] as $questionId => $answer) {
                 AdmissionExamAnswer::where('session_question_id', $questionId)->update([
                     'selected_option' => $answer, 'accepted_revision' => $session->revision + 1, 'saved_at' => now(), 'updated_at' => now(),
@@ -181,8 +195,8 @@ class AdmissionExamService
         $percentage = round($correct / $questions->count() * 100, 2);
         $result = AdmissionExamResult::create([
             'session_id' => $session->id, 'raw_correct_count' => $correct, 'question_count' => $questions->count(),
-            'system_percentage' => $percentage, 'system_passed' => $percentage >= 75, 'category_scores' => $scores, 'category_maximums' => $maximums,
-            'time_spent_seconds' => min(7200, max(0, now()->timestamp - $session->started_at->timestamp)),
+            'system_percentage' => $percentage, 'system_passed' => $percentage >= AdmissionExamPolicy::normalize($session->policy_snapshot)['passing_score'], 'category_scores' => $scores, 'category_maximums' => $maximums,
+            'time_spent_seconds' => min(AdmissionExamPolicy::normalize($session->policy_snapshot)['duration_minutes'] * 60, max(0, now()->timestamp - $session->started_at->timestamp)),
             'finalized_at' => now(), 'finalization_cause' => $cause, 'official_status' => 'pending', 'version' => 1,
         ]);
         $session->update(['status' => 'finalized', 'finalized_at' => now()]);
@@ -234,6 +248,7 @@ class AdmissionExamService
 
         return ['published' => true, 'result' => [
             'id' => $result->id, 'version' => $result->version, 'attempt_number' => $latest->attempt_number, 'outcome' => $result->outcome(),
+            'max_attempts' => AdmissionExamPolicy::normalize($latest->policy_snapshot)['max_attempts'],
             'score' => $result->registrar_pass ? null : $result->official_score,
             'published_at' => $result->published_at->toIso8601String(),
             'retake_eligible' => $user->fresh('role')->role->role_name === Role::GUEST && $result->outcome() === 'RETAKE',
