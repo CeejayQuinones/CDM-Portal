@@ -1,4 +1,5 @@
 <script setup>
+import AdmissionStaffWorkspace from './components/AdmissionStaffWorkspace.vue'
 import { computed, onMounted, ref } from 'vue'
 import AdmissionAdminView from './AdmissionAdminView.vue'
 import { admissionApi, admissionError, topics } from './services/workflowService'
@@ -22,8 +23,7 @@ async function save() {
 onMounted(load)
 </script>
 <template>
-<section class="admission-workflow">
-  <header class="page-header"><p class="page-kicker">Admission</p><h1 class="page-title">Exams</h1><p class="page-description">One general entrance exam per cycle. Every program uses the same general question bank.</p></header>
+<AdmissionStaffWorkspace title="Exams" description="One general entrance exam per cycle. Every program uses the same general question bank.">
   <p v-if="error" role="alert" class="placeholder-panel panel">{{ error }}</p><p v-if="saved" role="status" class="placeholder-panel panel">{{ saved }}</p>
   <div class="toolbar"><label>Admission cycle<select v-model="selected" :disabled="busy" @change="edit"><option v-for="exam in exams" :key="exam.cycle_id" :value="exam.cycle_id">{{ exam.cycle }} · {{ exam.cycle_status }}</option></select></label><button :disabled="busy" @click="load">Reload</button></div>
   <p v-if="!busy && !exams.length" class="placeholder-panel panel">Create an Admission cycle below to configure its exam.</p>
@@ -35,6 +35,6 @@ onMounted(load)
     <button class="primary" :disabled="busy">Save exam configuration</button>
   </form>
   <details class="placeholder-panel panel"><summary>Manage Admission cycles</summary><AdmissionAdminView title="Admission cycles" mode="cycles" embedded @saved="load" /></details>
-</section>
+</AdmissionStaffWorkspace>
 </template>
 <style src="./admission.css"></style>

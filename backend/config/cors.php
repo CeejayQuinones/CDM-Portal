@@ -3,6 +3,8 @@
 $localOrigins = implode(',', [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
     'http://localhost',
     'capacitor://localhost',
 ]);
@@ -26,6 +28,7 @@ return [
     'allowed_origins_patterns' => [
         '#^http://localhost:\d+$#',
         '#^http://127\.0\.0\.1:\d+$#',
+        '#^https://[a-z0-9-]+\.trycloudflare\.com$#',
     ],
 
     'allowed_headers' => ['*'],

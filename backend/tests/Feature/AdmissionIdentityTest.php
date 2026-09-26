@@ -169,8 +169,8 @@ class AdmissionIdentityTest extends TestCase
         foreach ([Role::STUDENT, Role::PROFESSOR, Role::REGISTRAR_STAFF, Role::ADMIN] as $role) {
             $user = $this->user($role);
             $this->assertFalse(Gate::forUser($user)->allows('create', AdmissionApplicant::class));
-            $this->assertSame($role === Role::REGISTRAR_STAFF, Gate::forUser($user)->allows('view', $application));
-            $this->assertSame($role === Role::ADMIN, Gate::forUser($user)->allows('configure', AdmissionCycle::class));
+            $this->assertSame(in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true), Gate::forUser($user)->allows('view', $application));
+            $this->assertSame(in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true), Gate::forUser($user)->allows('configure', AdmissionCycle::class));
             try {
                 app(AdmissionIdentityService::class)->create($user, $cycle);
                 $this->fail('Unauthorized creation succeeded.');

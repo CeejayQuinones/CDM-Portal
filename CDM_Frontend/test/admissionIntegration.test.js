@@ -15,8 +15,8 @@ const frontend = fileURLToPath(new URL('../', import.meta.url))
 const groups = {
   [ROLES.GUEST]: ['/admission', '/admission/exam', '/admission/result', '/admission/recommendation'],
   [ROLES.STUDENT]: ['/admission', '/admission/exam', '/admission/result', '/admission/recommendation'],
-  [ROLES.REGISTRAR_STAFF]: ['/registrar/admissions', '/registrar/admissions/results', '/registrar/admissions/history'],
-  [ROLES.ADMIN]: ['/admin/admissions/programs', '/admin/admissions/exams', '/admin/admissions/questions'],
+  [ROLES.REGISTRAR_STAFF]: ['/registrar/admissions', '/admin/admissions/programs', '/admin/admissions/exams', '/admin/admissions/questions', '/registrar/admissions/results', '/registrar/admissions/history'],
+  [ROLES.ADMIN]: ['/registrar/admissions', '/admin/admissions/programs', '/admin/admissions/exams', '/admin/admissions/questions', '/registrar/admissions/results', '/registrar/admissions/history'],
 }
 
 test('Admission uses the portal guard, navigation store, and rendered placeholders', async (t) => {
@@ -81,7 +81,13 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         auth.currentRole = role
         auth.isAuthenticated = true
         const visible = navigation.menuItemsForRole(role).find((item) => item.name === 'admission-menu')
-        assert.deepEqual(visible?.children.map((item) => item.path) || [], groups[role] || [])
+        if ([ROLES.ADMIN, ROLES.REGISTRAR_STAFF].includes(role)) {
+          assert.deepEqual(visible.children.map(item => item.label), ['Applicants','Programs','Exams','Exam Questions','Results','Admission History'])
+          assert.deepEqual(visible.children.filter(item => !item.disabled).map(item => item.path), groups[role])
+          assert.equal(visible.children.filter(item => item.disabled).length, 0)
+        } else {
+          assert.deepEqual(visible?.children.map(item => item.path) || [], groups[role] || [])
+        }
         for (const target of Object.values(groups).flat()) {
           await router.push(target)
           const legacyAccess = target === '/admission' && [ROLES.REGISTRAR_STAFF, ROLES.ADMIN].includes(role)
@@ -92,6 +98,13 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
             const record = router.currentRoute.value.matched.at(-1)
             const html = await renderToString(createSSRApp({ render: () => h(record.components.default, record.props.default) }).use(router))
             assert.ok(html.includes(router.currentRoute.value.meta.title))
+            if ([ROLES.ADMIN, ROLES.REGISTRAR_STAFF].includes(role) && target !== '/admission') {
+              assert.match(html, /aria-label="Admission workspace"/)
+              for (const label of ['Applicants','Programs','Exams','Exam Questions','Results','Admission History']) assert.ok(html.includes(label))
+              assert.equal((html.match(/aria-disabled="true"/g) || []).length, 0)
+              assert.doesNotMatch(html, /Admin access|Registrar access/)
+              for (const item of visible.children) assert.ok(html.includes('href="' + router.resolve(item.path).href + '"'), 'Every staff page must be an enabled link')
+            }
             if (target === '/admission' && [ROLES.GUEST, ROLES.STUDENT].includes(role)) {
               assert.match(html, /Loading admission information/)
             } else {

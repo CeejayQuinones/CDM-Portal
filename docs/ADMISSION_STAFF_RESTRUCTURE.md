@@ -6,24 +6,29 @@ Monitoring, Document Requests and unrelated academic workflows are unchanged.
 
 ## Navigation and authorization
 
+Admin and Registrar Staff now have equal access to all six Admission pages and
+their existing actions. This applies only to Admission. Active-account checks,
+authentication, version checks, workflow eligibility, password step-up and audit
+requirements are unchanged. The historical admin/registrar URL prefixes remain
+for compatibility; they no longer imply different Admission permissions.
+
 | Role | Menu | Browser hash route |
 | --- | --- | --- |
-| Admin | Programs | #/admin/admissions/programs |
-| Admin | Exams | #/admin/admissions/exams |
-| Admin | Exam Questions | #/admin/admissions/questions |
-| Registrar Staff | Applicants | #/registrar/admissions |
-| Registrar Staff | Results | #/registrar/admissions/results |
-| Registrar Staff | Admission History | #/registrar/admissions/history |
+| Admin / Registrar Staff | Programs | #/admin/admissions/programs |
+| Admin / Registrar Staff | Exams | #/admin/admissions/exams |
+| Admin / Registrar Staff | Exam Questions | #/admin/admissions/questions |
+| Admin / Registrar Staff | Applicants | #/registrar/admissions |
+| Admin / Registrar Staff | Results | #/registrar/admissions/results |
+| Admin / Registrar Staff | Admission History | #/registrar/admissions/history |
 
 Review / Publish redirects to Results. Admission Cycles redirects to Exams;
 cycle management remains inside “Manage Admission cycles”. Neither legacy route
-appears in the sidebar. Existing backend configure/review role boundaries remain
-authoritative. Guests and Students retain their own Admission routes. No new
+appears in the sidebar. Both backend configure/review capabilities allow Admin and Registrar Staff. Guests and Students retain their own Admission routes. No new
 role or separate frontend was introduced.
 
 ## Programs
 
-The existing academic courses table remains authoritative. Admin can list,
+The existing academic courses table remains authoritative. Both staff roles can list,
 search by name/code, add and edit course code/name, department, duration in years,
 and active/inactive status. Only existing fields are accepted. Database
 uniqueness prevents duplicate course codes. Academic updates use a row lock and
@@ -40,7 +45,7 @@ Program editing does not create curriculum, Student or enrollment relationships.
 ## One exam configuration per cycle
 
 The existing admission_cycles.exam_policy JSON and policy_version columns
-store the single configuration. No new table is required. Admin edits through
+store the single configuration. No new table is required. Either staff role edits through
 PUT /api/admission/admin/exams/{cycleId} with the expected policy version.
 Cycles without a policy retain the original defaults:
 
@@ -76,7 +81,7 @@ cannot be deleted; retiring preserves the assigned snapshot.
 
 Readiness and assignment use the same active-bank query. Production excludes
 DEV-MVP-prefixed questions. Editing cannot remove a development marker.
-This change adds no dummy questions or production bank. Keys remain Admin-only.
+This change adds no dummy questions or production bank. Keys remain restricted to authorized Admission staff.
 
 ## Results
 
@@ -107,8 +112,8 @@ start, submission/expiry, result decisions, acceptance and conversion, plus
 configuration events. It shows date/time, actor name (or system),
 applicant/subject, cycle where applicable, action and safe summary.
 No historical rows are rewritten. Keys, full answers and private reasons are
-absent from the timeline. The existing Registrar-only decisions response remains
-available for compatibility; private reasons remain restricted to that role.
+absent from the timeline. The existing Admission-staff-only decisions response remains
+available for compatibility; private reasons remain restricted to those roles.
 
 ## Exact browser walkthrough
 
@@ -182,3 +187,53 @@ two. No migration was needed or applied.
 Final validation: backend 214 tests / 1,740 assertions passed; Pint passed;
 frontend all 10 test files passed; production build passed; git diff --check
 passed. No schema migration was added or applied. No commit or push performed.
+
+## Shared staff access: final validation
+
+Admin and Registrar Staff have identical Admission access. All six links are
+enabled in the same order. Guest, Student, Professor, inactive staff and suspended
+staff remain denied staff operations. Applicant self-service is unchanged.
+
+Validation found and fixed an Admin step-up bypass: sensitive Admission routes
+now explicitly select the Admission scope in RequireStepUpAuthentication.
+Password verification is required for both roles on correction, exceptional
+pass, acceptance and conversion. Other modules retain their existing behavior.
+Tests use actual password verification for both roles, including successful
+conversion and batch approval/publication. Version, latest-attempt, eligibility,
+privacy, duplicate and transactional safeguards remain covered.
+
+Latest complete validation: 218 backend tests / 2,003 assertions passed;
+Pint passed; all 10 frontend test files passed; production build passed;
+git diff --check passed. No schema changes, features, commit or push.
+
+Changes made during this validation:
+- RequireStepUpAuthentication.php and routes/admission.php: Admission-specific
+  step-up enforcement for both staff roles.
+- admissionIntegration.test.js: use the test router's resolved href.
+- AdmissionWorkflowTest.php and AdmissionConversionTest.php: strengthen parity,
+  inactive/suspended blocking, real password grants, batch and conversion checks.
+- Existing vite.config.js and config/cors.php edits: whitespace/newline fixes
+  only, preserving their pre-existing settings.
+- This document: validation results.
+
+Current Admission change inventory (relative to repository root):
+- CDM_Frontend/src/config/accessControl.js
+- CDM_Frontend/src/modules/admission/AdmissionAdminView.vue
+- CDM_Frontend/src/modules/admission/AdmissionExamsView.vue
+- CDM_Frontend/src/modules/admission/AdmissionRegistrarView.vue
+- CDM_Frontend/src/modules/admission/components/AdmissionStaffWorkspace.vue
+- CDM_Frontend/src/modules/admission/admission.css
+- CDM_Frontend/test/admissionIntegration.test.js
+- backend/app/Http/Middleware/RequireStepUpAuthentication.php
+- backend/app/Policies/Admission/AdmissionApplicantPolicy.php
+- backend/app/Policies/Admission/AdmissionCyclePolicy.php
+- backend/app/Services/Admission/AdmissionAccess.php
+- backend/routes/admission.php
+- backend/tests/Feature/AdmissionConversionTest.php
+- backend/tests/Feature/AdmissionIdentityTest.php
+- backend/tests/Feature/AdmissionWorkflowTest.php
+- docs/ADMISSION_STAFF_RESTRUCTURE.md
+
+Separate pre-existing working-tree items: CDM_Frontend/vite.config.js,
+backend/config/cors.php, and untracked cloudflared.deb. Keep these separate from
+a scoped Admission commit; the archive was not modified.

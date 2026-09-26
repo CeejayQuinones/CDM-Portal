@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Admission\AdmissionApplicationController;
 use App\Http\Controllers\Api\Admission\AdmissionIdentityController;
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
@@ -26,6 +27,8 @@ Route::post('/registration/email-verification/verify', [AuthController::class, '
     ->middleware('throttle:5,1');
 
 Route::middleware('auth:sanctum')->group(function (): void {
+    Route::get('/enrollment/status', EnrollmentStatusController::class);
+    Route::get('/enrollment/eligibility', EnrollmentStatusController::class);
     Route::get('/admission/me', AdmissionIdentityController::class);
     Route::get('/admission/applications/availability', [AdmissionApplicationController::class, 'availability']);
     Route::post('/admission/applications', [AdmissionApplicationController::class, 'store'])->middleware('throttle:5,1');

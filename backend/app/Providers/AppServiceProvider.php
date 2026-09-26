@@ -11,6 +11,8 @@ use App\Policies\Admission\AdmissionCyclePolicy;
 use App\Services\Ai\Analyzers\GeminiDocumentAnalyzer;
 use App\Services\Ai\Analyzers\MockDocumentAnalyzer;
 use App\Services\Ai\Contracts\DocumentAnalyzer;
+use App\Services\Enrollment\EnrollmentPeriodResolver;
+use App\Services\Enrollment\UnconfiguredEnrollmentPeriods;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
@@ -22,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(EnrollmentPeriodResolver::class, UnconfiguredEnrollmentPeriods::class);
         $this->app->bind(DocumentAnalyzer::class, function (): DocumentAnalyzer {
             $driver = strtolower(trim((string) config('services.document_analysis.driver', 'mock')));
 

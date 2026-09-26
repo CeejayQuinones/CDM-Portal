@@ -160,6 +160,12 @@ const routes = [
       }),
       ...admissionRoutes.map(protectedRoute),
       protectedRoute({
+        path: 'enrollment/status',
+        name: 'enrollment-status',
+        component: EnrollmentView,
+        meta: { title: 'Enrollment status', roles: ROUTE_ROLES['enrollment-status'] },
+      }),
+      protectedRoute({
         path: 'enrollment',
         name: 'enrollment',
         component: EnrollmentView,

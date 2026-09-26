@@ -1,4 +1,5 @@
 <script setup>
+import AdmissionStaffWorkspace from './components/AdmissionStaffWorkspace.vue'
 import AdmissionDialog from './components/AdmissionDialog.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { admissionApi, admissionError, topics } from './services/workflowService'
@@ -78,8 +79,7 @@ watch(() => props.mode, () => { confirmation.value = null; academic.value = fals
 onMounted(load)
 </script>
 <template>
-  <section class="admission-workflow">
-    <header v-if="!embedded" class="page-header"><p class="page-kicker">Admission</p><h1 class="page-title">{{ title }}</h1></header>
+  <AdmissionStaffWorkspace :title="title" :embedded="embedded">
     <div class="toolbar filters">
       <button :disabled="busy" @click="load">Reload</button>
       <button class="primary" v-if="mode !== 'programs'" :disabled="busy || !data" @click="edit(null)">New {{ mode === 'cycles' ? 'cycle' : 'question' }}</button>
@@ -125,6 +125,6 @@ onMounted(load)
     </tbody></table></div>
     <div v-if="mode === 'questions' && data" class="toolbar"><button :disabled="busy || page <= 1" @click="page--; load()">Previous page</button><span>Page {{ page }} of {{ data.questions.last_page }}</span><button :disabled="busy || page >= data.questions.last_page" @click="page++; load()">Next page</button></div>
     <AdmissionDialog v-if="confirmation" labelledby="admin-admission-confirm" :busy="busy" @cancel="confirmation = null"><h2 id="admin-admission-confirm">{{ confirmation.kind === 'cycle' ? 'Confirm cycle status' : 'Delete unused question?' }}</h2><p>{{ confirmation.kind === 'cycle' ? 'Save ' + form.name + ' as ' + confirmation.status + '? This changes application availability.' : 'Assigned questions cannot be deleted. Retire them to preserve exam history.' }}</p><div class="toolbar"><button :disabled="busy" @click="confirmation = null">Cancel</button><button class="primary" :disabled="busy" @click="confirmChange">Confirm change</button></div></AdmissionDialog>
-  </section>
+  </AdmissionStaffWorkspace>
 </template>
 <style src="./admission.css"></style>

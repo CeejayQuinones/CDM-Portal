@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Admission\AdmissionAuditWriter;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\AdmissionConversionFixture;
 use Tests\TestCase;
 
@@ -49,8 +50,20 @@ class AdmissionConversionTest extends TestCase
         $this->postJson($this->path('accept'), $this->payload())->assertOk();
     }
 
-    public function test_conversion_reuses_identity_and_preserves_history_and_credentials(): void
+    public static function staffRoles(): array
     {
+        return [[Role::ADMIN], [Role::REGISTRAR_STAFF]];
+    }
+
+    #[DataProvider('staffRoles')]
+    public function test_conversion_reuses_identity_and_preserves_history_and_credentials(string $role): void
+    {
+        $actor = $role === Role::REGISTRAR_STAFF ? $this->fixture['registrar']
+            : User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => $role])->id]);
+        Sanctum::actingAs($actor);
+        $this->withMiddleware(RequireStepUpAuthentication::class);
+        $this->postJson($this->path('accept'), $this->payload())->assertStatus(428);
+        $this->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
         $user = $this->case['user'];
         $token = $user->createToken('old guest session');
         $original = $user->only(['id', 'username', 'password', 'status']);
@@ -207,11 +220,15 @@ class AdmissionConversionTest extends TestCase
         $this->assertSame(Role::GUEST, $this->case['user']->fresh('role')->role->role_name);
     }
 
-    public function test_only_registrar_with_step_up_may_confirm(): void
+    public function test_only_admission_staff_with_step_up_may_confirm(): void
     {
         $this->withMiddleware(RequireStepUpAuthentication::class);
         $this->postJson($this->path('convert'), $this->payload())->assertStatus(428);
-        foreach ([Role::GUEST, Role::STUDENT, Role::ADMIN, Role::PROFESSOR] as $role) {
+        Sanctum::actingAs(User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id]));
+        $this->getJson($this->path('conversion'))->assertOk();
+        $this->postJson($this->path('convert'), $this->payload())->assertStatus(428);
+        $this->postJson($this->path('accept'), $this->payload())->assertStatus(428);
+        foreach ([Role::GUEST, Role::STUDENT, Role::PROFESSOR] as $role) {
             Sanctum::actingAs(User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => $role])->id]));
             $this->postJson($this->path('convert'), $this->payload())->assertForbidden();
             $this->postJson($this->path('accept'), $this->payload())->assertForbidden();

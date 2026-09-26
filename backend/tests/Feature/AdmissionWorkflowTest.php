@@ -19,6 +19,7 @@ use App\Services\Admission\AdmissionIdentityService;
 use App\Services\Admission\ProgramMatcher;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class AdmissionWorkflowTest extends TestCase
@@ -149,7 +150,7 @@ class AdmissionWorkflowTest extends TestCase
         $this->putJson('/api/admission/admin/cycles/'.$this->cycle->id, $body)->assertStatus(409);
         $this->assertDatabaseHas('admission_workflow_events', ['action' => 'admission.cycle_closed']);
         Sanctum::actingAs($this->registrar);
-        $this->getJson('/api/admission/admin/cycles')->assertForbidden();
+        $this->getJson('/api/admission/admin/cycles')->assertOk();
     }
 
     public function test_start_resume_snapshot_order_and_stale_revision(): void
@@ -262,7 +263,7 @@ class AdmissionWorkflowTest extends TestCase
         Sanctum::actingAs($this->admin);
         $question = AdmissionExamSession::find($session['session_id'])->questions()->first()->question_id;
         $this->deleteJson('/api/admission/admin/questions/'.$question, ['version' => 1])->assertStatus(409);
-        foreach ([$this->guest, $this->registrar, $this->user(Role::PROFESSOR), $this->user(Role::STUDENT)] as $user) {
+        foreach ([$this->guest, $this->user(Role::PROFESSOR), $this->user(Role::STUDENT)] as $user) {
             Sanctum::actingAs($user);
             $this->getJson('/api/admission/admin/questions')->assertForbidden();
         }
@@ -277,7 +278,7 @@ class AdmissionWorkflowTest extends TestCase
         foreach ([Role::STUDENT, Role::PROFESSOR, Role::ADMIN, Role::REGISTRAR_STAFF] as $role) {
             Sanctum::actingAs($this->user($role));
             $this->postJson('/api/admission/exam/start')->assertForbidden();
-            $this->getJson('/api/admission/registrar/results')->assertStatus($role === Role::REGISTRAR_STAFF ? 200 : 403);
+            $this->getJson('/api/admission/registrar/results')->assertStatus(in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true) ? 200 : 403);
         }
         Sanctum::actingAs($this->guest);
         User::whereKey($this->guest->id)->update(['status' => 'suspended']);
@@ -357,7 +358,7 @@ class AdmissionWorkflowTest extends TestCase
         $this->assertDatabaseCount('courses', 1);
         $this->getJson('/api/admission/admin/programs?search=Computing')->assertJsonCount(1, 'data.courses')->assertJsonPath('data.courses.0.status', 'inactive');
         $this->getJson('/api/admission/admin/programs?search=missing')->assertJsonCount(0, 'data.courses');
-        foreach ([$this->guest, $this->registrar, $this->user(Role::PROFESSOR), $this->user(Role::STUDENT)] as $user) {
+        foreach ([$this->guest, $this->user(Role::PROFESSOR), $this->user(Role::STUDENT)] as $user) {
             Sanctum::actingAs($user);
             $this->postJson('/api/admission/admin/programs', $body)->assertForbidden();
             $this->putJson('/api/admission/admin/programs/'.$course['id'].'/academic', $body)->assertForbidden();
@@ -491,10 +492,95 @@ class AdmissionWorkflowTest extends TestCase
         $this->start();
         Sanctum::actingAs($this->registrar);
         $this->getJson('/api/admission/registrar/results?latest=0')->assertJsonPath('data.data.0.allowed_actions', []);
-        foreach ([$this->guest, $this->admin, $this->user(Role::PROFESSOR), $this->user(Role::STUDENT)] as $user) {
+        foreach ([$this->guest, $this->user(Role::PROFESSOR), $this->user(Role::STUDENT)] as $user) {
             Sanctum::actingAs($user);
             $this->getJson('/api/admission/registrar/history')->assertForbidden();
             $this->getJson('/api/admission/registrar/applicants/'.$a->id)->assertForbidden();
+        }
+    }
+
+    public static function admissionStaffRoles(): array
+    {
+        return [[Role::ADMIN], [Role::REGISTRAR_STAFF]];
+    }
+
+    #[DataProvider('admissionStaffRoles')]
+    public function test_both_staff_roles_can_configure_and_review_admission(string $role): void
+    {
+        $staff = $role === Role::ADMIN ? $this->admin : $this->registrar;
+        $this->registrar = $staff;
+        Sanctum::actingAs($staff);
+        $department = Department::create(['department_code' => 'SHARED', 'department_name' => 'Shared']);
+        $body = ['course_code' => 'SHARED', 'course_name' => 'Shared Program', 'department_id' => $department->id, 'years' => 4, 'status' => 'active'];
+        $course = $this->postJson('/api/admission/admin/programs', $body)->assertOk()->json('data');
+        $this->getJson('/api/admission/admin/programs?search=SHARED')->assertOk()->assertJsonCount(1, 'data.courses');
+        $this->putJson('/api/admission/admin/programs/'.$course['id'].'/academic', array_replace($body, ['status' => 'inactive', 'expected_updated_at' => $course['updated_at']]))->assertOk()->assertJsonPath('data.status', 'inactive');
+        $this->getJson('/api/admission/admin/exams')->assertOk();
+        $this->putJson('/api/admission/admin/exams/'.$this->cycle->id, $this->examPolicy())->assertOk();
+        $question = ['question_code' => 'SHARED-QUESTION', 'topic' => 'Science', 'question_text' => 'Shared staff question', 'option_a' => 'A', 'option_b' => 'B', 'option_c' => 'C', 'option_d' => 'D', 'correct_answer' => 'A', 'difficulty' => 'easy', 'status' => 'draft'];
+        $q = $this->postJson('/api/admission/admin/questions', $question)->assertOk()->json('data');
+        $this->getJson('/api/admission/admin/questions?search=Shared&status=draft')->assertOk()->assertJsonPath('data.questions.data.0.correct_answer', 'A');
+        $this->putJson('/api/admission/admin/questions/'.$q['id'], array_replace($question, ['version' => 1, 'status' => 'active']))->assertOk();
+        $this->putJson('/api/admission/admin/questions/'.$q['id'], array_replace($question, ['version' => 2, 'status' => 'retired']))->assertOk();
+        $this->deleteJson('/api/admission/admin/questions/'.$q['id'], ['version' => 3])->assertOk();
+        $this->bank();
+        $first = $this->submit($this->start(), 'B');
+        $this->act($first, 'approve');
+        $this->act($first, 'publish');
+        $a = $this->guest->admissionApplications()->first();
+        $this->getJson('/api/admission/registrar/applicants?search='.$a->applicant_number.'&status=draft&cycle_id='.$this->cycle->id)->assertOk()->assertJsonCount(1, 'data.data');
+        $this->getJson('/api/admission/registrar/applicants/'.$a->id)->assertOk();
+        $this->getJson('/api/admission/registrar/results')->assertOk();
+        $this->getJson('/api/admission/registrar/history?applicant_id='.$a->id)->assertOk();
+        $this->postJson('/api/admission/registrar/results/correct', ['results' => [['id' => $first->id, 'version' => $first->fresh()->version]], 'official_score' => 10, 'reason' => 'Verified'])->assertStatus(428);
+        $second = $this->submit($this->start(), 'B');
+        Sanctum::actingAs($staff);
+        $this->postJson('/api/admission/registrar/results/override', ['results' => [['id' => $second->id, 'version' => $second->version]], 'reason' => 'Verified'])->assertStatus(428);
+        $this->postJson('/api/step-up/verify', ['password' => 'wrong-password'])->assertUnprocessable();
+        $this->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
+        $this->act($second, 'override', ['reason' => 'Reviewed second failure']);
+        $this->assertSame('PASSED', $second->fresh()->outcome());
+        $this->act($second, 'correct', ['official_score' => 30, 'reason' => 'Verified correction']);
+        $this->assertSame('FAILED', $second->fresh()->outcome());
+        $this->assertDatabaseHas('admission_decisions', ['result_id' => $second->id, 'action' => 'result_corrected', 'actor_user_id' => $staff->id]);
+        $this->postJson('/api/admission/registrar/results/correct', ['results' => [['id' => $first->id, 'version' => $first->fresh()->version]], 'official_score' => 80, 'reason' => 'Older attempt'])->assertConflict();
+        $items = [];
+        for ($i = 0; $i < 2; $i++) {
+            $this->guest = $this->user(Role::GUEST);
+            app(AdmissionIdentityService::class)->create($this->guest, $this->cycle);
+            $r = $this->submit($this->start());
+            $items[] = ['id' => $r->id, 'version' => $r->version];
+        }
+        Sanctum::actingAs($staff);
+        $this->postJson('/api/admission/registrar/results/approve', ['results' => $items])->assertOk()->assertJsonPath('data.updated', 2);
+        $this->postJson('/api/admission/registrar/results/publish', ['results' => $items])->assertConflict();
+        $items = array_map(fn ($item) => ['id' => $item['id'], 'version' => $item['version'] + 1], $items);
+        $this->postJson('/api/admission/registrar/results/publish', ['results' => $items])->assertOk()->assertJsonPath('data.updated', 2);
+
+    }
+
+    public function test_staff_endpoints_require_authentication_and_active_staff_role(): void
+    {
+        $endpoints = [
+            ['get', 'admin/programs'], ['post', 'admin/programs'], ['put', 'admin/programs/1/academic'],
+            ['get', 'admin/exams'], ['put', 'admin/exams/1'],
+            ['get', 'admin/questions'], ['post', 'admin/questions'], ['put', 'admin/questions/1'], ['delete', 'admin/questions/1'],
+            ['get', 'registrar/applicants'], ['get', 'registrar/applicants/1'], ['get', 'registrar/results'], ['get', 'registrar/history'],
+            ['post', 'registrar/results/approve'], ['post', 'registrar/results/publish'], ['post', 'registrar/results/correct'], ['post', 'registrar/results/override'],
+        ];
+        foreach ($endpoints as [$method, $path]) {
+            $this->{$method.'Json'}('/api/admission/'.$path)->assertUnauthorized();
+        }
+        foreach ([Role::GUEST, Role::STUDENT, Role::PROFESSOR, Role::ADMIN, Role::REGISTRAR_STAFF] as $role) {
+            $user = $this->user($role);
+            $statuses = in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true) ? ['inactive', 'suspended'] : ['active'];
+            foreach ($statuses as $status) {
+                $user->update(['status' => $status]);
+                Sanctum::actingAs($user);
+                foreach ($endpoints as [$method, $path]) {
+                    $this->{$method.'Json'}('/api/admission/'.$path)->assertForbidden();
+                }
+            }
         }
     }
 }

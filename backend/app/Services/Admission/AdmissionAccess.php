@@ -7,12 +7,13 @@ use App\Models\User;
 
 class AdmissionAccess
 {
+    public const STAFF_ROLES = [Role::ADMIN, Role::REGISTRAR_STAFF];
+
     public static function require(User $user, string $capability): User
     {
         $actor = $user->fresh('role');
         $roles = match ($capability) {
-            'configure' => [Role::ADMIN],
-            'review' => [Role::REGISTRAR_STAFF],
+            'configure', 'review' => self::STAFF_ROLES,
             'read' => [Role::GUEST, Role::STUDENT],
             'write' => [Role::GUEST],
         };

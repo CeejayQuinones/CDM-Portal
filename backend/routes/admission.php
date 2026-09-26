@@ -32,8 +32,8 @@ Route::middleware(['auth:sanctum', AdmissionBoundary::class.':write'])->prefix('
 });
 Route::middleware(['auth:sanctum', AdmissionBoundary::class.':review'])->prefix('admission/registrar')->group(function () {
     Route::get('applicants/{id}/conversion', [Workflow::class, 'conversion'])->whereNumber('id');
-    Route::post('applicants/{id}/accept', [Workflow::class, 'acceptApplicant'])->whereNumber('id')->middleware(['step-up', 'throttle:10,1']);
-    Route::post('applicants/{id}/convert', [Workflow::class, 'convertApplicant'])->whereNumber('id')->middleware(['step-up', 'throttle:10,1']);
+    Route::post('applicants/{id}/accept', [Workflow::class, 'acceptApplicant'])->whereNumber('id')->middleware(['step-up:admission', 'throttle:10,1']);
+    Route::post('applicants/{id}/convert', [Workflow::class, 'convertApplicant'])->whereNumber('id')->middleware(['step-up:admission', 'throttle:10,1']);
     Route::get('cycles', [Workflow::class, 'registrarCycles']);
     Route::get('applicants/{id}', [Workflow::class, 'applicant'])->whereNumber('id');
     Route::get('applicants', [Workflow::class, 'applicants']);
@@ -42,7 +42,7 @@ Route::middleware(['auth:sanctum', AdmissionBoundary::class.':review'])->prefix(
     foreach (['approve', 'publish', 'correct', 'override'] as $action) {
         $route = Route::post('results/'.$action, [Workflow::class, 'review'])->defaults('action', $action);
         if (in_array($action, ['correct', 'override'], true)) {
-            $route->middleware('step-up');
+            $route->middleware('step-up:admission');
         }
     }
 });

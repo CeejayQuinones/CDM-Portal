@@ -5,6 +5,7 @@ namespace App\Policies\Admission;
 use App\Models\Admission\AdmissionApplicant;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Admission\AdmissionAccess;
 
 class AdmissionApplicantPolicy
 {
@@ -21,7 +22,7 @@ class AdmissionApplicantPolicy
 
     public function viewAny(User $user): bool
     {
-        return $user->status === 'active' && $user->role?->role_name === Role::REGISTRAR_STAFF;
+        return $user->status === 'active' && in_array($user->role?->role_name, AdmissionAccess::STAFF_ROLES, true);
     }
 
     public function view(User $user, AdmissionApplicant $applicant): bool
