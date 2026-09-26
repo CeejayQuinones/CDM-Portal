@@ -1,4 +1,5 @@
 <script setup>
+import AdmissionDialog from './components/AdmissionDialog.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { admissionApi, admissionError, topics } from './services/workflowService'
 const props = defineProps({ title: String, mode: String })
@@ -6,6 +7,7 @@ const data = ref(null), error = ref(''), busy = ref(false), form = ref(null), se
 const topicFilter = ref(''), fieldErrors = ref({})
 const dateLabel = value => value ? new Date(value).toLocaleString() : 'Not set'
 const programStatus = row => data.value?.settings?.find(s => s.course_id === row.id)?.status || 'Not configured'
+const confirmation = ref(null)
 const programSubjects = ref(''), programCareers = ref('')
 const rows = computed(() => props.mode === 'cycles' ? data.value?.cycles || [] : props.mode === 'questions' ? data.value?.questions?.data || [] : data.value?.courses || [])
 async function load() {
@@ -33,9 +35,9 @@ function edit(row) {
     programCareers.value = form.value.career_paths?.join('\n') || ''
   }
 }
-async function save() {
+async function save(confirmed = false) {
   if (busy.value) return
-  if (props.mode === 'cycles' && ['open','closed'].includes(form.value.status) && !window.confirm('Save this cycle as ' + form.value.status + '? This changes application availability.')) return
+  if (props.mode === 'cycles' && ['open','closed'].includes(form.value.status) && confirmed !== true) { confirmation.value = { kind: 'cycle', status: form.value.status }; return }
   busy.value = true; error.value = ''; fieldErrors.value = {}
   try {
     const body = { ...form.value }
@@ -51,28 +53,35 @@ async function save() {
   } catch (e) { error.value = admissionError(e); fieldErrors.value = e?.response?.status === 422 ? e.response.data?.errors || {} : {} }
   finally { busy.value = false }
 }
-async function remove(row) {
-  if (busy.value || !window.confirm('Delete this unused question? Assigned questions must be retired instead.')) return
+async function remove(row, confirmed = false) {
+  if (busy.value) return
+  if (!confirmed) { confirmation.value = { kind: 'delete', row }; return }
   busy.value = true
   try { await admissionApi('delete', 'admin/questions/' + row.id, { version: row.version }); await load() }
   catch (e) { error.value = admissionError(e) }
   finally { busy.value = false }
 }
+async function confirmChange() {
+  if (busy.value || !confirmation.value) return
+  const pending = confirmation.value; confirmation.value = null
+  if (pending.kind === 'cycle') await save(true)
+  else await remove(pending.row, true)
+}
 async function changeStatus(row, status) { edit(row); form.value.status = status; await save() }
-watch(() => props.mode, () => { topicFilter.value = ''; search.value = ''; fieldErrors.value = {}; data.value = null; form.value = null; page.value = 1; load() })
+watch(() => props.mode, () => { confirmation.value = null; topicFilter.value = ''; search.value = ''; fieldErrors.value = {}; data.value = null; form.value = null; page.value = 1; load() })
 onMounted(load)
 </script>
 <template>
   <section class="admission-workflow">
-    <h1>{{ title }}</h1>
-    <div class="toolbar">
+    <header class="page-header"><p class="page-kicker">Admission</p><h1 class="page-title">{{ title }}</h1></header>
+    <div class="toolbar filters">
       <button :disabled="busy" @click="load">Reload</button>
-      <button v-if="mode !== 'programs'" :disabled="busy || !data" @click="edit(null)">New {{ mode === 'cycles' ? 'cycle' : 'question' }}</button>
+      <button class="primary" v-if="mode !== 'programs'" :disabled="busy || !data" @click="edit(null)">New {{ mode === 'cycles' ? 'cycle' : 'question' }}</button>
       <template v-if="mode === 'questions'"><input v-model="search" aria-label="Search questions" placeholder="Search questions"><select v-model="topicFilter" aria-label="Filter by topic"><option value="">All topics</option><option v-for="topic in topics" :key="topic">{{ topic }}</option></select><button :disabled="busy" @click="page = 1; load()">Search</button></template>
     </div>
-    <p v-if="busy" role="status">Loading or saving...</p><p v-if="error" role="alert">{{ error }}</p>
-    <div v-if="mode === 'questions' && data" class="panel"><h2>Exam readiness: 20 active questions per topic required</h2><p v-if="topics.some(topic => (data.counts[topic] || 0) < 20)" role="status">Not exam-ready. Each topic needs at least 20 active questions before applicants can start.</p><div class="grid"><div v-for="topic in topics" :key="topic" class="readiness"><strong>{{ topic }}</strong><p>{{ data.counts[topic] || 0 }} / 20 active</p><span class="badge">{{ (data.counts[topic] || 0) >= 20 ? 'Ready' : 'Needs questions' }}</span></div></div></div>
-    <form v-if="form" class="panel" @submit.prevent="save">
+    <p v-if="busy" class="placeholder-panel panel status-block" role="status">Loading or saving...</p><p v-if="error" class="placeholder-panel panel status-block" role="alert">{{ error }}</p>
+    <div v-if="mode === 'questions' && data" class="placeholder-panel panel"><h2>Exam readiness: 20 active questions per topic required</h2><p v-if="topics.some(topic => (data.counts[topic] || 0) < 20)" role="status">Not exam-ready. Each topic needs at least 20 active questions before applicants can start.</p><div class="grid"><div v-for="topic in topics" :key="topic" class="readiness"><strong>{{ topic }}</strong><p>{{ data.counts[topic] || 0 }} / 20 active</p><span class="badge">{{ (data.counts[topic] || 0) >= 20 ? 'Ready' : 'Needs questions' }}</span></div></div></div>
+    <form v-if="form" class="placeholder-panel panel" @submit.prevent="save">
       <h2>{{ form.id ? 'Edit' : 'Configure' }} {{ mode }}</h2>
       <template v-if="mode === 'cycles'">
         <div class="grid">
@@ -100,11 +109,12 @@ onMounted(load)
       </template>
       <div class="toolbar"><button class="primary" :disabled="busy">Save</button><button type="button" :disabled="busy" @click="form = null">Cancel</button></div>
     </form>
-    <div class="panel table-wrap"><table><thead><tr><th>Code</th><th>{{ mode === 'questions' ? 'Question / topic' : 'Name' }}</th><th>Status</th><th v-if="mode === 'cycles'">Application dates</th><th>Actions</th></tr></thead><tbody>
+    <div class="placeholder-panel panel table-wrap" tabindex="0" role="region" :aria-label="title + ' table, scroll horizontally for more columns'"><table><thead><tr><th>Code</th><th>{{ mode === 'questions' ? 'Question / topic' : 'Name' }}</th><th>Status</th><th v-if="mode === 'cycles'">Application dates</th><th>Actions</th></tr></thead><tbody>
       <tr v-for="row in rows" :key="row.id"><td>{{ row.code || row.question_code || row.course_code }}</td><td>{{ row.name || row.question_text || row.course_name }}<p v-if="row.topic" class="muted">{{ row.topic }}</p></td><td><span class="badge" :class="{ positive: row.status === 'open' || row.status === 'active' }">{{ mode === 'programs' ? programStatus(row) : row.status }}</span></td><td v-if="mode === 'cycles'">Opens: {{ dateLabel(row.opens_at) }}<br>Closes: {{ dateLabel(row.closes_at) }}<br>Confirmation: {{ dateLabel(row.confirmation_closes_at) }}</td><td><button :disabled="busy" @click="edit(row)">Edit</button> <button v-if="mode === 'cycles' && ['draft','closed'].includes(row.status)" :disabled="busy" @click="changeStatus(row, 'open')">Open</button><button v-if="mode === 'cycles' && row.status === 'open'" :disabled="busy" @click="changeStatus(row, 'closed')">Close</button> <button v-if="mode === 'questions'" :disabled="busy" @click="remove(row)">Delete</button></td></tr>
       <tr v-if="!busy && !error && !rows.length"><td colspan="4">No records yet.</td></tr>
     </tbody></table></div>
     <div v-if="mode === 'questions' && data" class="toolbar"><button :disabled="busy || page <= 1" @click="page--; load()">Previous page</button><span>Page {{ page }} of {{ data.questions.last_page }}</span><button :disabled="busy || page >= data.questions.last_page" @click="page++; load()">Next page</button></div>
+    <AdmissionDialog v-if="confirmation" labelledby="admin-admission-confirm" :busy="busy" @cancel="confirmation = null"><h2 id="admin-admission-confirm">{{ confirmation.kind === 'cycle' ? 'Confirm cycle status' : 'Delete unused question?' }}</h2><p>{{ confirmation.kind === 'cycle' ? 'Save ' + form.name + ' as ' + confirmation.status + '? This changes application availability.' : 'Assigned questions cannot be deleted. Retire them to preserve exam history.' }}</p><div class="toolbar"><button :disabled="busy" @click="confirmation = null">Cancel</button><button class="primary" :disabled="busy" @click="confirmChange">Confirm change</button></div></AdmissionDialog>
   </section>
 </template>
 <style src="./admission.css"></style>

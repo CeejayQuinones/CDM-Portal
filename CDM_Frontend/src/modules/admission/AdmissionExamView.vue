@@ -1,9 +1,12 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import AdmissionDialog from './components/AdmissionDialog.vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAuthStore } from '../../stores/authStore'
 import { admissionApi, admissionError } from './services/workflowService'
 const auth = useAuthStore()
 const state = ref(null), session = ref(null), loading = ref(true), busy = ref(false), error = ref(''), saveState = ref(''), confirming = ref(false), conflict = ref(false)
+const examRoot = ref(null), questionHeading = ref(null)
+let navbarObserver
 const position = ref(0), clock = ref(Date.now())
 let clockOffset = 0, timer, saveTimer, generation = 0, dirty = false
 const question = computed(() => session.value?.questions[position.value])
@@ -62,9 +65,17 @@ async function save(submit = false) {
     if (e?.response?.status === 409) conflict.value = true
   } finally { busy.value = false }
 }
-function move(index) { position.value = index; changed() }
+function move(index) {
+  position.value = index; changed()
+  nextTick(() => { questionHeading.value?.focus?.({ preventScroll: true }); questionHeading.value?.scrollIntoView?.({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }) })
+}
 function leave(event) { if (dirty) { event.preventDefault(); event.returnValue = '' } }
 onMounted(() => {
+  const navbar = examRoot.value?.closest?.('.shell-content')?.querySelector('.navbar')
+  if (navbar && typeof ResizeObserver !== 'undefined') {
+    navbarObserver = new ResizeObserver(() => examRoot.value?.style.setProperty('--admission-navbar-height', navbar.getBoundingClientRect().height + 'px'))
+    navbarObserver.observe(navbar)
+  }
   mountedOwner = owner(); load()
   window.addEventListener('beforeunload', leave)
   timer = setInterval(() => {
@@ -73,24 +84,39 @@ onMounted(() => {
     if (session.value && !session.value.exam_completed && seconds.value === 0 && !busy.value && !loading.value) load()
   }, 1000)
 })
-onBeforeUnmount(() => { generation++; clearInterval(timer); clearTimeout(saveTimer); window.removeEventListener('beforeunload',leave) })
+onBeforeUnmount(() => { generation++; navbarObserver?.disconnect(); clearInterval(timer); clearTimeout(saveTimer); window.removeEventListener('beforeunload',leave) })
 </script>
 <template>
-  <section class="admission-workflow">
-    <p><router-link to="/admission">Admission home</router-link></p><h1>Entrance Exam</h1><p v-if="loading" role="status">Loading exam status...</p><p v-if="error" role="alert">{{ error }}</p>
+  <section ref="examRoot" class="admission-workflow admission-applicant">
+    <header class="page-header"><p class="page-kicker"><router-link to="/admission">Admission home</router-link></p><h1 class="page-title">Entrance Exam</h1><p class="page-description">Read each question carefully. Your answers save while connected.</p></header><p v-if="loading" class="placeholder-panel panel status-block" role="status">Loading exam status...</p><p v-if="error" class="placeholder-panel panel status-block" role="alert">{{ error }}</p>
     <button v-if="error || conflict" :disabled="busy" @click="load">Reload saved answers</button>
-    <div v-if="session?.exam_completed" class="panel"><h2>{{ session.expired ? 'Exam expired' : 'Exam submitted' }}</h2><p>Your saved answers have been submitted. Results will appear after Registrar publication.</p><router-link to="/admission/result">View result status</router-link></div>
+    <div v-if="session?.exam_completed" class="placeholder-panel panel"><h2>{{ session.expired ? 'Exam expired' : 'Exam submitted' }}</h2><p>Your saved answers have been submitted. Results will appear after Registrar publication.</p><router-link to="/admission/result">View result status</router-link></div>
     <template v-else-if="session && question">
-      <div class="panel toolbar exam-status"><strong>Attempt {{ session.attempt_number }} of 2</strong><span class="timer" role="timer">{{ time }} remaining</span><span role="status">{{ saveState }}</span><span>{{ session.questions.length - unanswered }} answered · {{ unanswered }} unanswered</span></div>
-      <div class="panel">
-        <p>{{ question.topic }} · Question {{ position + 1 }} of {{ session.questions.length }}</p><h2>{{ question.question_text }}</h2>
-        <label v-for="(text,key) in question.options" :key="key" class="answer" :class="{ answered: session.answers[question.id] === key }"><input v-model="session.answers[question.id]" type="radio" :name="'question-'+question.id" :value="key" :disabled="busy || conflict || seconds === 0" @change="changed">{{ key }}. {{ text }}</label>
-        <div class="toolbar"><button :disabled="busy || conflict || position === 0" @click="move(position-1)">Previous</button><button :disabled="busy || conflict || position === session.questions.length - 1" @click="move(position+1)">Next</button><button :disabled="busy || conflict" @click="save(false)">Save answers</button></div>
+      <div class="placeholder-panel panel exam-status" aria-label="Exam progress">
+        <div><strong>Attempt {{ session.attempt_number }} of 2</strong><span class="exam-position">Question {{ position + 1 }} / {{ session.questions.length }}</span></div>
+        <span class="timer" role="timer" aria-label="Time remaining">{{ time }} <small>remaining</small></span>
+        <div class="exam-save"><span :key="saveState" class="save-message" role="status">{{ saveState }}</span><span>{{ session.questions.length - unanswered }} answered · {{ unanswered }} unanswered</span></div>
       </div>
-      <div class="panel submit-panel"><h2>Finished reviewing?</h2><p>Check unanswered questions before submitting. You cannot change answers afterward.</p><button class="primary" :disabled="busy || conflict" @click="confirming = true">Submit exam</button></div>
-      <details class="panel"><summary>Question navigation — shaded questions are answered</summary><div class="question-nav"><button v-for="(q,index) in session.questions" :key="q.id" :class="{ answered: session.answers[q.id], selected: index === position }" :disabled="busy || conflict" :aria-label="'Question '+(index+1)+(session.answers[q.id] ? ', answered' : ', unanswered')" @click="move(index)">{{ index+1 }}</button></div></details>
+      <div class="exam-layout">
+        <div class="exam-main">
+          <div class="placeholder-panel panel question-card">
+            <div :key="question.id" class="question-content">
+              <p class="page-kicker">{{ question.topic }} · Question {{ position + 1 }} of {{ session.questions.length }}</p>
+              <h2 ref="questionHeading" tabindex="-1" id="exam-question">{{ question.question_text }}</h2>
+              <fieldset class="answer-options" aria-labelledby="exam-question"><legend class="visually-hidden">Choose one answer</legend>
+                <label v-for="(text,key) in question.options" :key="key" class="answer" :class="{ answered: session.answers[question.id] === key, 'answer-disabled': busy || conflict || seconds === 0 }"><input v-model="session.answers[question.id]" type="radio" :name="'question-'+question.id" :value="key" :disabled="busy || conflict || seconds === 0" @change="changed"><span><strong>{{ key }}.</strong> {{ text }}</span></label>
+              </fieldset>
+            </div>
+          </div>
+          <nav class="placeholder-panel panel exam-controls" aria-label="Exam question controls"><button :disabled="busy || conflict || position === 0" @click="move(position-1)">Previous</button><button class="primary" :disabled="busy || conflict || position === session.questions.length - 1" @click="move(position+1)">Next</button><button :disabled="busy || conflict" @click="save(false)">Save answers</button></nav>
+        </div>
+        <aside class="exam-sidebar" aria-label="Question navigator and submission">
+          <details class="placeholder-panel panel question-navigator"><summary>Question navigation — shaded questions are answered</summary><div class="question-nav"><button v-for="(q,index) in session.questions" :key="q.id" :class="{ answered: session.answers[q.id], selected: index === position }" :disabled="busy || conflict" :aria-current="index === position ? 'step' : undefined" :aria-label="'Question '+(index+1)+(session.answers[q.id] ? ', answered' : ', unanswered')" @click="move(index)">{{ index+1 }}</button></div></details>
+          <div class="placeholder-panel panel submit-panel"><h2>Finished reviewing?</h2><p>Check unanswered questions before submitting. You cannot change answers afterward.</p><button :disabled="busy || conflict" @click="confirming = true">Submit exam</button></div>
+        </aside>
+      </div>
     </template>
-    <div v-else-if="state && !loading" class="panel">
+    <div v-else-if="state && !loading" class="placeholder-panel panel">
       <template v-if="state.eligible"><h2>Exam instructions</h2><p>100 questions, five topics, 120 minutes. The timer continues through refreshes, sign-outs, or a disconnected device.</p>
       <p>Answers save while connected. Keep this page open until the save indicator confirms success. Only answers received before the deadline count. Use one tab at a time.</p>
       <p>Maximum two attempts. A second attempt requires a published first failure.</p></template><h2 v-if="!state.eligible">{{ state.reason === 'awaiting_publication' ? 'Waiting for Registrar Review' : 'Exam status' }}</h2><p>{{ state.attempts_submitted }} submitted attempt(s).</p>
@@ -98,7 +124,7 @@ onBeforeUnmount(() => { generation++; clearInterval(timer); clearTimeout(saveTim
       <button v-if="state.eligible" class="primary" :disabled="busy" @click="start">{{ state.attempts_submitted ? 'Start retake' : 'Start Exam' }}</button>
       <button :disabled="busy" @click="load">Refresh eligibility</button>
     </div>
-    <dialog v-if="confirming" open aria-labelledby="exam-confirm" @cancel.prevent="!busy && (confirming = false)"><h2 id="exam-confirm">Submit this attempt?</h2><p>{{ unanswered }} questions are unanswered. Submission is final.</p><div class="toolbar"><button :disabled="busy" @click="confirming = false">Cancel</button><button :disabled="busy" @click="save(true)">Confirm submission</button></div></dialog>
+    <AdmissionDialog v-if="confirming" labelledby="exam-confirm" :busy="busy" @cancel="confirming = false"><h2 id="exam-confirm">Submit this attempt?</h2><p>{{ unanswered }} questions are unanswered. Submission is final.</p><div class="toolbar"><button :disabled="busy" @click="confirming = false">Cancel</button><button :disabled="busy" @click="save(true)">Confirm submission</button></div></AdmissionDialog>
   </section>
 </template>
 <style src="./admission.css"></style>

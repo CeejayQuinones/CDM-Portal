@@ -1,4 +1,5 @@
 <script setup>
+import AdmissionDialog from './AdmissionDialog.vue'
 import { computed, ref, watch } from 'vue'
 import { admissionApi, admissionError } from '../services/workflowService'
 import { useStepUpAuth } from '../../../composables/useStepUpAuth'
@@ -47,7 +48,7 @@ watch(() => props.applicantId, () => { studentNumber.value = ''; admissionDate.v
     <p v-if="loading" role="status">Checking acceptance and conversion eligibility...</p>
     <p v-if="error" role="alert">{{ error }}</p><button v-if="error" :disabled="loading || saving" @click="load">Refresh eligibility</button>
     <template v-if="data && !loading">
-      <div v-if="data.student" class="panel"><h3>Converted to Student</h3><p>{{ course?.course_name || 'Program ID: ' + data.student.course_id }} · {{ curriculum?.curriculum_code || 'Curriculum ID: ' + data.student.curriculum_id }}</p><p>Official student number: <strong>{{ data.student.student_number }}</strong></p><p>Admission date: {{ data.student.admission_date }} · Year {{ data.student.year_level }} · {{ data.student.student_status }}</p><p>The same account and password continue to work. The student should sign in again to load Student navigation. Admission history remains available read-only.</p></div>
+      <div v-if="data.student" class="placeholder-panel panel"><h3>Converted to Student</h3><p>{{ course?.course_name || 'Program ID: ' + data.student.course_id }} · {{ curriculum?.curriculum_code || 'Curriculum ID: ' + data.student.curriculum_id }}</p><p>Official student number: <strong>{{ data.student.student_number }}</strong></p><p>Admission date: {{ data.student.admission_date }} · Year {{ data.student.year_level }} · {{ data.student.student_status }}</p><p>The same account and password continue to work. The student should sign in again to load Student navigation. Admission history remains available read-only.</p></div>
       <template v-else>
         <p v-if="data.reason" role="status">{{ data.reason }}</p>
         <form v-if="data.can_accept" @submit.prevent="prepare">
@@ -64,12 +65,12 @@ watch(() => props.applicantId, () => { studentNumber.value = ''; admissionDate.v
         </form>
       </template>
     </template>
-    <dialog v-if="confirmation" open aria-labelledby="conversion-confirm" @cancel.prevent="!saving && (confirmation = null)">
+    <AdmissionDialog v-if="confirmation" labelledby="conversion-confirm" :busy="saving" @cancel="confirmation = null">
       <h2 id="conversion-confirm">{{ confirmation === 'convert' ? 'Confirm final conversion' : 'Confirm admission acceptance' }}</h2>
       <p><strong>{{ data.name }}</strong><br>{{ data.applicant_number }}</p><p>{{ course?.course_name }}<br>{{ curriculum?.curriculum_code }}</p>
       <p v-if="confirmation === 'convert'">Official student number: <strong>{{ studentNumber }}</strong><br>Admission date: {{ admissionDate }}<br>Year 1 · Regular</p>
       <p>{{ confirmation === 'convert' ? 'This creates the academic Student record and grants Student access to the existing account. No new login or password is created.' : 'I have reviewed the applicant profile and current published pass, and approve admission to this program and curriculum.' }}</p>
       <div class="toolbar"><button :disabled="saving" @click="confirmation = null">Cancel</button><button class="primary" :disabled="saving" @click="confirm">{{ saving ? 'Saving...' : 'Confirm ' + (confirmation === 'convert' ? 'conversion' : 'acceptance') }}</button></div>
-    </dialog>
+    </AdmissionDialog>
   </section>
 </template>

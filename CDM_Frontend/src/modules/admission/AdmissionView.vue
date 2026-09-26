@@ -1,4 +1,5 @@
 <script setup>
+import AdmissionDialog from './components/AdmissionDialog.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { admissionApi } from './services/workflowService'
 import { ROLES } from '../../config/accessControl.js'
@@ -124,63 +125,52 @@ onBeforeUnmount(() => { requestVersion++ })
 <template>
   <!-- Preserve staff's legacy landing URL without calling the self-service API. -->
   <AdmissionPlaceholder v-if="!canReadIdentity" :title="title" />
-  <section v-else class="admission-workflow" aria-labelledby="admission-page-title" :aria-busy="loading">
+  <section v-else class="admission-workflow admission-applicant" aria-labelledby="admission-page-title" :aria-busy="loading">
     <header class="page-header">
       <p class="page-kicker">Admission</p>
       <h1 id="admission-page-title" class="page-title">{{ title }}</h1>
       <p class="page-description">Your application, exam, and next steps in one place.</p>
     </header>
-    <div class="placeholder-panel">
-      <p v-if="loading" role="status">Loading admission information...</p>
-      <div v-else-if="failed" role="alert">
+    <div class="admission-home-content">
+      <p v-if="loading" class="placeholder-panel panel status-block" role="status">Loading admission information...</p>
+      <div v-else-if="failed" class="placeholder-panel panel status-block" role="alert">
         <h2>Unable to load admission information</h2>
         <p>Please try again later.</p>
-        <button class="admission-retry" type="button" @click="loadIdentity">Try again</button>
+        <button class="primary" type="button" @click="loadIdentity">Try again</button>
       </div>
-      <div v-else-if="!application">
+      <div v-else-if="!application" class="placeholder-panel panel status-block">
         <h2>No admission application yet</h2>
         <p>No admission application is linked to your account. Start an application when an admission cycle is open.</p>
         <template v-if="auth.currentRole === ROLES.GUEST">
-          <button v-if="availability?.allowed" class="admission-retry" type="button" :disabled="submitting" @click="confirming = true">Start Admission Application</button>
+          <button v-if="availability?.allowed" class="primary" type="button" :disabled="submitting" @click="confirming = true">Start Admission Application</button>
           <p v-else-if="availability" role="status">{{ admissionCreationMessage(availability.reason) }}</p>
         </template>
       </div>
       <div v-else>
-        <dl class="admission-details">
+        <div class="placeholder-panel panel identity-card"><h2>Your application</h2><dl class="admission-details">
           <div><dt>Applicant Number</dt><dd>{{ application.applicant_number }}</dd></div>
           <div><dt>Admission Cycle</dt><dd>{{ application.cycle.name }} <span class="admission-cycle-code">({{ application.cycle.code }})</span></dd></div>
-          <div><dt>Application record status</dt><dd><span class="admission-status">{{ status[0] }}</span></dd></div>
+          <div><dt>Application record status</dt><dd><span class="badge">{{ status[0] }}</span></dd></div>
+        </dl></div>
+        <ol class="progress-steps" aria-label="Admission progress"><li v-for="(step,index) in ['Application','Exam','Review','Result','Recommendation']" :key="step" :aria-current="index === nextStep.stage ? 'step' : undefined" :class="{ current: index === nextStep.stage, complete: index < nextStep.stage }"><span class="step-number" aria-hidden="true">{{ index < nextStep.stage ? '✓' : index + 1 }}</span><span>{{ step }}<small>{{ index < nextStep.stage ? 'Completed' : index === nextStep.stage ? 'Current step' : 'Upcoming' }}</small></span></li></ol>
+        <div class="placeholder-panel panel next-step"><h2>Your next step</h2><p role="status">{{ nextStep.text }}</p><router-link v-if="nextStep.label" class="link-button primary" :to="nextStep.to">{{ nextStep.label }}</router-link><button v-else type="button" @click="loadIdentity">Refresh status</button><p v-if="result?.published"><router-link to="/admission/result">View published result</router-link></p></div>
+        <details class="placeholder-panel panel"><summary>Application details</summary><dl class="admission-details">
           <div><dt>Exam</dt><dd>{{ exam?.session && !exam.session.exam_completed ? 'In progress' : exam?.attempts_submitted ? exam.attempts_submitted + ' of 2 attempts submitted' : 'Not started' }}</dd></div>
           <div><dt>Result</dt><dd>{{ workflowFailed ? 'Status unavailable' : result?.published ? (result.result.outcome === 'PASSED' ? 'Published · Passed' : 'Published · Not Passed') : 'Not published' }}</dd></div>
           <div><dt>Created</dt><dd>{{ formatDate(application.created_at) }}</dd></div>
           <div v-if="application.submitted_at"><dt>Submitted</dt><dd>{{ formatDate(application.submitted_at) }}</dd></div>
           <div v-if="application.is_converted && application.converted_at"><dt>Converted</dt><dd>{{ formatDate(application.converted_at) }}</dd></div>
-        </dl>
-        <ol class="progress-steps" aria-label="Admission progress"><li v-for="(step,index) in ['Application','Exam','Review','Result','Recommendation']" :key="step" :aria-current="index === nextStep.stage ? 'step' : undefined" :class="{ current: index === nextStep.stage, complete: index < nextStep.stage }">{{ step }}</li></ol>
-        <div class="panel next-step"><h2>Your next step</h2><p role="status">{{ nextStep.text }}</p><router-link v-if="nextStep.label" class="link-button primary" :to="nextStep.to">{{ nextStep.label }}</router-link><button v-else type="button" @click="loadIdentity">Refresh status</button><p v-if="result?.published"><router-link to="/admission/result">View published result</router-link></p></div>
+        </dl></details>
       </div>
-      <p v-if="creationMessage" role="alert">{{ creationMessage }}</p>
-      <dialog v-if="confirming" open aria-labelledby="admission-confirm-title" class="admission-confirm" @cancel.prevent="!submitting && (confirming = false)">
+      <p v-if="creationMessage" class="placeholder-panel panel status-block" role="alert">{{ creationMessage }}</p>
+      <AdmissionDialog v-if="confirming" labelledby="admission-confirm-title" :busy="submitting" @cancel="confirming = false">
         <h2 id="admission-confirm-title">Start your admission application?</h2>
         <p>An applicant number will be generated using your existing portal profile. Your application will be saved as a draft.</p>
-        <button class="admission-retry" type="button" :disabled="submitting" @click="confirming = false">Cancel</button>
-        <button class="admission-retry" type="button" :disabled="submitting" @click="createApplication">{{ submitting ? 'Creating...' : 'Confirm application' }}</button>
-      </dialog>
+        <button type="button" :disabled="submitting" @click="confirming = false">Cancel</button>
+        <button class="primary" type="button" :disabled="submitting" @click="createApplication">{{ submitting ? 'Creating...' : 'Confirm application' }}</button>
+      </AdmissionDialog>
     </div>
   </section>
 </template>
 
 <style src="./admission.css"></style>
-<style scoped>
-.admission-confirm { position: fixed; inset: 0; margin: auto; max-width: min(440px, 90vw); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; background: var(--color-surface); color: inherit; z-index: 20; }
-.admission-retry:disabled { opacity: 0.6; cursor: wait; }
-.admission-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin: 0; }
-.admission-details dt { color: var(--color-muted); font-size: 0.85rem; margin-bottom: 8px; }
-.admission-details dd { margin: 0; overflow-wrap: anywhere; font-weight: 600; }
-.admission-cycle-code { color: var(--color-muted); font-weight: 400; }
-.admission-status { display: inline-block; padding: 5px 10px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-anti-flash-white); font-size: 0.85rem; }
-.admission-guidance { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--color-border); color: var(--color-muted); line-height: 1.6; }
-.admission-retry { padding: 8px 14px; background: var(--color-surface); color: var(--color-dartmouth-green); border: 1px solid var(--color-border); border-radius: 8px; font: inherit; }
-.admission-retry:focus-visible { outline: 2px solid var(--color-dartmouth-green); outline-offset: 3px; }
-@media (max-width: 600px) { .admission-details { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
-</style>

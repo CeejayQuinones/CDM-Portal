@@ -31,6 +31,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         contents: `export { default as router } from './src/router/index.js';
           export { useNavigationStore } from './src/stores/navigation.js';
           export { auth } from './src/stores/authStore';
+          export { default as AdmissionDialog } from './src/modules/admission/components/AdmissionDialog.vue';
           export { default as AdmissionConversionPanel } from './src/modules/admission/components/AdmissionConversionPanel.vue';
           export { default as AdmissionView } from './src/modules/admission/AdmissionView.vue';
           export { apiState } from './src/services/apiClient';`,
@@ -72,7 +73,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         },
       }],
     })
-    const { router, auth, useNavigationStore, AdmissionView, AdmissionConversionPanel, apiState } = await import(pathToFileURL(path.join(temporary, 'harness.mjs')))
+    const { router, auth, useNavigationStore, AdmissionView, AdmissionConversionPanel, AdmissionDialog, apiState } = await import(pathToFileURL(path.join(temporary, 'harness.mjs')))
     setActivePinia(createPinia())
     const navigation = useNavigationStore()
     for (const role of Object.values(ROLES)) {
@@ -359,6 +360,10 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         await settle()
         findButtonByText(root,'Start Exam').props.onClick(); await settle()
         assert.match(textOf(root),/Assigned question 1/)
+        assert.match(textOf(root),/Question 1 \/ 100/)
+        assert.match(textOf(root),/Choose one answer/)
+        assert.equal(findButtonByText(root,'Previous').props.disabled,true)
+        assert.equal(findButtonByText(root,'Next').props.disabled,false)
         findButtonByText(root,'Submit exam').props.onClick(); await nextTick()
         assert.equal(writes.length,0)
         findButtonByText(root,'Confirm submission').props.onClick(); await settle()
@@ -366,6 +371,42 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         assert.match(textOf(root),/Exam submitted/)
       } finally { app.unmount(); globalThis.window=previousWindow }
     })
+    await t.test('Admission confirmations restore focus, lock background scroll and handle Escape safely', async () => {
+      let restored = 0, cancelled = 0
+      const previousBody = document.body, previousActive = document.activeElement
+      document.body = {style:{overflow:'auto'}}
+      document.activeElement = {isConnected:true, focus(){restored++}}
+      const busy = ref(false), root = {children:[]}
+      const app = renderer.createApp({render:()=>h(AdmissionDialog,{labelledby:'test-dialog',busy:busy.value,onCancel:()=>cancelled++},{default:()=>h('h2',{id:'test-dialog'},'Confirm action')})})
+      app.mount(root)
+      try {
+        const findDialog = node => node.props?.role === 'dialog' ? node : (node.children || []).map(findDialog).find(Boolean)
+        const dialog = findDialog(root)
+        assert.equal(dialog.props['aria-modal'],'true')
+        assert.equal(document.body.style.overflow,'hidden')
+        const escape = {key:'Escape',preventDefault(){},stopPropagation(){}}
+        dialog.props.onKeydown(escape)
+        assert.equal(cancelled,1)
+        busy.value = true; await nextTick()
+        dialog.props.onKeydown(escape)
+        assert.equal(cancelled,1,'saving must not be dismissed by Escape')
+      } finally {
+        app.unmount()
+        assert.equal(restored,1)
+        assert.equal(document.body.style.overflow,'auto')
+        document.body = previousBody; document.activeElement = previousActive
+      }
+    })
+    await t.test('Admission responsive and reduced-motion styling remains isolated to Admission', async () => {
+      const css = await readFile(path.join(frontend,'src/modules/admission/admission.css'),'utf8')
+      assert.match(css, /@media \(prefers-reduced-motion: reduce\)/)
+      assert.match(css, /animation: none !important/)
+      assert.match(css, /transition: none !important/)
+      assert.match(css, /\.admission-workflow \.exam-controls/)
+      assert.match(css, /\.admission-workflow \.table-wrap[^}]*overflow-x: auto/)
+      assert.doesNotMatch(css, /(?:^|\n)(?:body|:root|\.sidebar|\.navbar)\s*\{/)
+    })
+
     await t.test('conversion hides ineligible actions and requires final confirmation', async () => {
       const base = { id: 5, version: 2, applicant_number: 'APP-conversion', name: 'Applicant Example',
         result_id: 8, result_version: 3, course_id: 1, curriculum_id: 2,
