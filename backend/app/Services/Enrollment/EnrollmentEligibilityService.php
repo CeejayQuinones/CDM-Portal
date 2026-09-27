@@ -5,6 +5,7 @@ namespace App\Services\Enrollment;
 use App\Enums\Enrollment\Classification;
 use App\Models\AcademicYear;
 use App\Models\Admission\AdmissionDecision;
+use App\Models\Enrollment\EnrollmentApplication;
 use App\Models\Role;
 use App\Models\Semester;
 use App\Models\Student;
@@ -14,14 +15,19 @@ class EnrollmentEligibilityService
 {
     public function __construct(private EnrollmentPeriodResolver $periods) {}
 
-    public function status(User $user): array
+    public function status(User $user, bool $lock = false): array
     {
-        $actor = $user->fresh(['role', 'student.userProfile', 'student.course', 'student.curriculum']);
+        $actor = User::with('role')->whereKey($user->id)->when($lock, fn ($q) => $q->lockForUpdate())->first();
         abort_unless($actor && $actor->status === 'active' && $actor->role?->role_name === Role::STUDENT, 403, 'Enrollment status is available only to active Students.');
-        $student = $actor->student;
-        $reason = $this->academicReason($actor, $student);
+        $student = $actor->student()->when($lock, fn ($q) => $q->lockForUpdate())->first();
+        if ($student) {
+            foreach (['userProfile', 'course', 'curriculum'] as $relation) {
+                $student->setRelation($relation, $student->{$relation}()->when($lock, fn ($q) => $q->lockForUpdate())->first());
+            }
+        }
+        $reason = $this->academicReason($actor, $student, $lock);
         $state = ['academic_ready' => $reason === null, 'eligible' => false, 'reason' => $reason,
-            'applications_enabled' => false, 'period' => null, 'student' => null, 'enrollments' => [],
+            'applications_enabled' => true, 'period' => null, 'student' => null, 'enrollments' => [],
             'classifications' => array_column(Classification::cases(), 'value')];
         if ($reason !== null) {
             return $state;
@@ -44,25 +50,26 @@ class EnrollmentEligibilityService
             return array_replace($state, ['reason' => 'enrollment_period_unavailable']);
         }
         if ($window->periodId < 1 || $window->opensAt->gte($window->closesAt)
-            || ! AcademicYear::whereKey($window->academicYearId)->where('status', 'active')->exists()
-            || ! Semester::whereKey($window->semesterId)->where('status', 'active')->exists()) {
+            || ! AcademicYear::whereKey($window->academicYearId)->where('status', 'active')->when($lock, fn ($q) => $q->lockForUpdate())->first(['id'])
+            || ! Semester::whereKey($window->semesterId)->where('status', 'active')->when($lock, fn ($q) => $q->lockForUpdate())->first(['id'])) {
             return array_replace($state, ['reason' => 'term_unavailable']);
         }
         $state['period'] = ['id' => $window->periodId, 'academic_year_id' => $window->academicYearId,
-            'semester_id' => $window->semesterId, 'opens_at' => $window->opensAt->toISOString(), 'closes_at' => $window->closesAt->toISOString()];
-        if (now()->lt($window->opensAt) || now()->gte($window->closesAt)) {
+            'semester_id' => $window->semesterId, 'academic_year' => AcademicYear::find($window->academicYearId)?->school_year, 'semester' => Semester::find($window->semesterId)?->semester_name, 'state' => ! $window->enabled || now()->gte($window->closesAt) ? 'closed' : (now()->lt($window->opensAt) ? 'upcoming' : 'open'), 'opens_at' => $window->opensAt->toISOString(), 'closes_at' => $window->closesAt->toISOString()];
+        $state['current_application'] = EnrollmentApplication::where('student_id', $student->id)->where('academic_year_id', $window->academicYearId)->where('semester_id', $window->semesterId)->first(['id', 'period_id', 'status']);
+        if (! $window->enabled || now()->lt($window->opensAt) || now()->gte($window->closesAt)) {
             return array_replace($state, ['reason' => 'enrollment_period_closed']);
         }
         // The database unique key includes every status. Cancelled rows cannot be bypassed.
-        if ($student->enrollments()->where('academic_year_id', $window->academicYearId)->where('semester_id', $window->semesterId)->exists()) {
+        if ($student->enrollments()->where('academic_year_id', $window->academicYearId)->where('semester_id', $window->semesterId)->when($lock, fn ($q) => $q->lockForUpdate())->first(['id'])) {
             return array_replace($state, ['reason' => 'term_enrollment_exists']);
         }
 
-        // Eligibility is advisory; application writes remain unavailable in foundation.
+        // Eligibility is advisory; writers revalidate within a transaction.
         return array_replace($state, ['eligible' => true, 'reason' => null]);
     }
 
-    private function academicReason(User $actor, ?Student $student): ?string
+    private function academicReason(User $actor, ?Student $student, bool $lock = false): ?string
     {
         if (! $student) {
             return 'student_record_required';
@@ -85,10 +92,10 @@ class EnrollmentEligibilityService
             || $student->curriculum->effective_year > now()->year) {
             return 'curriculum_invalid';
         }
-        if ($actor->admissionApplications()->exists()) {
+        if ($actor->admissionApplications()->when($lock, fn ($q) => $q->lockForUpdate())->first(['id'])) {
             $converted = $actor->admissionApplications()->where('status', 'converted')
-                ->where('converted_student_id', $student->id)->whereNotNull('converted_at')->latest('id')->first();
-            $decision = $converted ? AdmissionDecision::where('applicant_id', $converted->id)->where('action', 'student_converted')->latest('id')->first() : null;
+                ->where('converted_student_id', $student->id)->whereNotNull('converted_at')->latest('id')->when($lock, fn ($q) => $q->lockForUpdate())->first();
+            $decision = $converted ? AdmissionDecision::where('applicant_id', $converted->id)->where('action', 'student_converted')->latest('id')->when($lock, fn ($q) => $q->lockForUpdate())->first() : null;
             if (! $decision || ($decision->after['student_id'] ?? null) !== $student->id) {
                 return 'admission_conversion_incomplete';
             }

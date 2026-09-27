@@ -35,6 +35,15 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (Throwable $exception, Request $request) {
+            if (! $request->is('api/enrollment/*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
+                return null;
+            }
+            $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 503;
+            $message = $status >= 500 ? 'Enrollment is temporarily unavailable. Please reload and try again.' : ($status === 404 ? 'Enrollment record not found.' : $exception->getMessage());
+
+            return response()->json(['success' => false, 'message' => $message], $status)->header('Cache-Control', 'private, no-store');
+        });
+        $exceptions->render(function (Throwable $exception, Request $request) {
             if (! $request->is('api/admission/*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
                 return null;
             }

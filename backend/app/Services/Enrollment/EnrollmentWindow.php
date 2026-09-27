@@ -12,5 +12,6 @@ final readonly class EnrollmentWindow
         public int $semesterId,
         public CarbonImmutable $opensAt,
         public CarbonImmutable $closesAt,
+        public bool $enabled = true,
     ) {}
 }

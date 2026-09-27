@@ -47,6 +47,8 @@ export const ROUTE_ROLES = Object.freeze({
   'admin-admission-programs': [ROLES.ADMIN, ROLES.REGISTRAR_STAFF],
   enrollment: [ROLES.STUDENT, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'enrollment-status': [ROLES.STUDENT],
+  'enrollment-applications': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
+  'enrollment-periods': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   grading: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.ADMIN],
   monitoring: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF],
   'student-management': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
@@ -217,7 +219,12 @@ export const NAVIGATION_ITEMS = Object.freeze([
     path: '/enrollment',
     icon: 'EN',
     roles: ROUTE_ROLES.enrollment,
-    activeRoutes: ['enrollment-status'],
+    activeRoutes: ['enrollment-status', 'enrollment-applications', 'enrollment-periods'],
+    children: [
+      { name: 'enrollment-status', label: 'My Enrollment', path: '/enrollment/status', roles: ROUTE_ROLES['enrollment-status'] },
+      { name: 'enrollment-applications', label: 'Applications', path: '/enrollment/applications', roles: ROUTE_ROLES['enrollment-applications'] },
+      { name: 'enrollment-periods', label: 'Enrollment Periods', path: '/enrollment/periods', roles: ROUTE_ROLES['enrollment-periods'] },
+    ],
   },
   {
     name: 'grading',

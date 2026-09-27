@@ -86,7 +86,7 @@ class EnrollmentFoundationTest extends TestCase
             ->assertJsonPath('data.student.course.id', $this->fixture['course']->id)
             ->assertJsonPath('data.student.curriculum.id', $this->fixture['curriculum']->id);
         $this->window();
-        $this->getJson('/api/enrollment/eligibility')->assertOk()->assertJsonPath('data.eligible', true)->assertJsonPath('data.applications_enabled', false);
+        $this->getJson('/api/enrollment/eligibility')->assertOk()->assertJsonPath('data.eligible', true)->assertJsonPath('data.applications_enabled', true);
         foreach ($counts as $table => $count) {
             $this->assertDatabaseCount($table, $count);
         }

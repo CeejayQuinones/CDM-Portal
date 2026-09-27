@@ -1,5 +1,22 @@
 # Enrollment foundation and Admission handoff
 
+## Current status — Phase 2
+
+The foundation below is retained as the Phase 1 design/validation record.
+Phase 2 is now implemented; its authoritative behavior and schema are documented
+in [ENROLLMENT_WORKFLOW.md](ENROLLMENT_WORKFLOW.md). The historical statements below
+about no migrations, read-only endpoints and staff placeholders describe Phase 1,
+not current functionality. Phase 2 uses an additive period/application/document/
+event layer, enables Student drafts/submission, and gives Admin and Registrar the
+same period management and application review workspace. Admission identity and
+existing final academic enrollments remain unchanged.
+
+The implemented lifecycle supersedes the broader initial proposal below:
+`draft → submitted → under_review → approved`,
+`submitted/under_review → rejected`, and `draft → cancelled`.
+Approval does not mark a Student academically enrolled. Phase 3 alone will add
+subjects, sections, scheduling and COR/finalization.
+
 ## Architecture decision (Step 1)
 
 Reuse the existing academic tables. Add no migration or production data in this

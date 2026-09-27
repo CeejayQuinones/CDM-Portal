@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Admission\AdmissionIdentityController;
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
+use App\Http\Controllers\Api\Enrollment\EnrollmentWorkflowController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\Api\StepUpAuthenticationController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentDocumentRequestController;
 use App\Http\Controllers\Api\StudentSettingsController;
+use App\Http\Middleware\EnrollmentBoundary;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
@@ -29,6 +31,18 @@ Route::post('/registration/email-verification/verify', [AuthController::class, '
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('/enrollment/status', EnrollmentStatusController::class);
     Route::get('/enrollment/eligibility', EnrollmentStatusController::class);
+    Route::prefix('enrollment')->middleware(EnrollmentBoundary::class)->controller(EnrollmentWorkflowController::class)->group(function (): void {
+        Route::get('/periods', 'periods');
+        Route::post('/periods', 'savePeriod')->middleware('throttle:30,1');
+        Route::put('/periods/{id}', 'savePeriod')->whereNumber('id')->middleware('throttle:30,1');
+        Route::get('/applications/mine', 'mine');
+        Route::get('/applications', 'index');
+        Route::post('/applications', 'create')->middleware('throttle:20,1');
+        Route::get('/applications/{id}', 'show')->whereNumber('id');
+        Route::post('/applications/{id}/{action}', 'action')->whereNumber('id')->whereIn('action', ['save', 'submit', 'cancel', 'review', 'approve', 'reject'])->middleware('throttle:30,1');
+        Route::post('/applications/{id}/documents', 'upload')->whereNumber('id')->middleware('throttle:10,1');
+        Route::get('/applications/{id}/documents/{document}', 'download')->whereNumber(['id', 'document']);
+    });
     Route::get('/admission/me', AdmissionIdentityController::class);
     Route::get('/admission/applications/availability', [AdmissionApplicationController::class, 'availability']);
     Route::post('/admission/applications', [AdmissionApplicationController::class, 'store'])->middleware('throttle:5,1');

@@ -1,0 +1,28 @@
+.enrollment-workspace { max-width:1200px; margin:auto; min-width:0; overflow-wrap:anywhere; }
+.enrollment-workspace .en-card { background:var(--color-surface,#fff); border:1px solid var(--color-border,#dce5df); border-radius:16px; padding:24px; margin:18px 0; }
+.enrollment-workspace h2 { margin-bottom:12px; }
+.enrollment-workspace p { line-height:1.6; margin:10px 0; }
+.enrollment-workspace .en-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr)); gap:16px; }
+.enrollment-workspace label { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+.enrollment-workspace input,.enrollment-workspace select,.enrollment-workspace textarea { width:100%; min-height:44px; padding:10px; border:1px solid var(--color-border,#bccbc1); border-radius:8px; background:var(--color-surface,#fff); color:inherit; box-sizing:border-box; }
+.enrollment-workspace input[type=checkbox],.enrollment-workspace input[type=radio] { width:auto; min-height:20px; }
+.enrollment-workspace .en-check { flex-direction:row; align-items:center; }
+.enrollment-workspace button,.enrollment-workspace .en-link { min-height:44px; padding:10px 16px; border:1px solid var(--color-border,#cedbd1); border-radius:10px; background:var(--color-dartmouth-green,#006b3f); color:white; cursor:pointer; text-decoration:none; }
+.enrollment-workspace button:disabled { opacity:.5; cursor:default; }
+.enrollment-workspace :focus-visible { outline:3px solid #d7b32c; outline-offset:3px; }
+.enrollment-workspace .en-actions { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:16px; }
+.enrollment-workspace .en-secondary { background:transparent; color:inherit; }
+.enrollment-workspace .en-badge { display:inline-block; background:#e7f2e9; color:#185a35; border-radius:20px; padding:5px 12px; font-size:.85rem; font-weight:600; }
+.enrollment-workspace .en-badge[data-status=rejected],.enrollment-workspace [role=alert] { color:#9b2525; }
+.enrollment-workspace .en-badge[data-status=under_review],.enrollment-workspace .en-badge[data-status=upcoming] { background:#fff2c1; color:#66500b; }
+.enrollment-workspace .en-progress { display:flex; gap:12px; padding:0; list-style:none; flex-wrap:wrap; }
+.enrollment-workspace .en-progress li { border-bottom:3px solid #dce5df; padding:12px 4px; }
+.enrollment-workspace .en-progress [aria-current=step] { border-color:#d7b32c; font-weight:700; }
+.enrollment-workspace dt { color:var(--color-muted,#5f6c64); font-size:.85rem; }
+.enrollment-workspace dd { margin:6px 0 16px; font-weight:600; }
+.enrollment-workspace .en-table { overflow-x:auto; }
+.enrollment-workspace table { width:100%; border-collapse:collapse; text-align:left; }
+.enrollment-workspace th,.enrollment-workspace td { padding:12px; border-bottom:1px solid var(--color-border,#dce5df); }
+.enrollment-workspace .en-overlay { position:fixed; inset:0; z-index:1500; background:#001b1599; display:flex; align-items:center; justify-content:center; padding:16px; }
+.enrollment-workspace [role=dialog] { background:var(--color-surface,#fff); border-radius:16px; padding:24px; width:min(520px,100%); max-height:85vh; overflow:auto; }
+@media(max-width:600px) { .enrollment-workspace .en-card { padding:16px; }.enrollment-workspace .en-actions button { flex:1; } }
