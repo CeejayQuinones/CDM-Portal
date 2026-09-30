@@ -138,7 +138,7 @@ class RegistrarCabinetController extends Controller
                 ] : null,
                 'year_level' => $student->year_level,
                 'student_status' => $student->student_status,
-                'profile_photo' => $profile->profile_photo,
+                'profile_photo_url' => $profile->profile_photo_url,
                 'assigned_at' => $location->assigned_at?->toISOString(),
                 'location_remarks' => $location->remarks,
                 'documents' => $documents,

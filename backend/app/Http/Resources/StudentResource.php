@@ -80,7 +80,7 @@ class StudentResource extends JsonResource
                 'email' => $this->userProfile->email,
                 'contact_number' => $this->userProfile->contact_number,
                 'address' => $this->userProfile->address,
-                'profile_photo' => $this->userProfile->profile_photo,
+                'profile_photo_url' => $this->userProfile->profile_photo_url,
             ]),
             'account' => $this->whenLoaded('user', fn () => [
                 'username' => $this->user->username,

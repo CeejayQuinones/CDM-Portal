@@ -7,16 +7,23 @@ $localOrigins = implode(',', [
     'http://127.0.0.1:5174',
     'http://localhost',
     'capacitor://localhost',
+    'null', // Electron loads the packaged renderer from file:// in local development.
 ]);
+$isLocal = env('APP_ENV', 'production') === 'local';
 
 $configuredOrigins = env(
     'CORS_ALLOWED_ORIGINS',
-    env('APP_ENV', 'production') === 'local' ? $localOrigins : '',
+    $isLocal ? $localOrigins : '',
 );
 
 $allowedOrigins = array_values(array_filter(
     array_map('trim', explode(',', (string) $configuredOrigins)),
 ));
+
+if ($isLocal) {
+    $allowedOrigins[] = 'null';
+    $allowedOrigins = array_values(array_unique($allowedOrigins));
+}
 
 return [
     'paths' => ['api/*'],
@@ -25,11 +32,10 @@ return [
 
     'allowed_origins' => $allowedOrigins,
 
-    'allowed_origins_patterns' => [
+    'allowed_origins_patterns' => $isLocal ? [
         '#^http://localhost:\d+$#',
         '#^http://127\.0\.0\.1:\d+$#',
-        '#^https://[a-z0-9-]+\.trycloudflare\.com$#',
-    ],
+    ] : [],
 
     'allowed_headers' => ['*'],
 

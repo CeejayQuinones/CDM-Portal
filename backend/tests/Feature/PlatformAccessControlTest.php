@@ -50,7 +50,9 @@ class PlatformAccessControlTest extends TestCase
 
         $this->login($user, $client)
             ->assertForbidden()
-            ->assertJsonPath('message', $message);
+            ->assertJsonPath('message', $message)
+            ->assertJsonMissingPath('exception')
+            ->assertJsonMissingPath('trace');
 
         $this->assertSame(0, $user->tokens()->count());
         $this->assertNull($user->fresh()->last_login);
@@ -163,6 +165,17 @@ class PlatformAccessControlTest extends TestCase
             ->getJson('/api/students', [ClientPlatform::HEADER => ClientPlatform::WEB])
             ->assertForbidden()
             ->assertJsonPath('message', 'You are not authorized to perform this action.');
+    }
+
+    public function test_admission_routes_enforce_the_token_client_binding(): void
+    {
+        $admin = $this->user(Role::ADMIN);
+        $token = $this->login($admin, ClientPlatform::WEB)->assertOk()->json('data.token');
+
+        $this->withToken($token)
+            ->getJson('/api/admission/admin/programs', [ClientPlatform::HEADER => ClientPlatform::DESKTOP])
+            ->assertForbidden()
+            ->assertJsonPath('message', 'This session is not valid for the selected CDM client.');
     }
 
     private function user(string $roleName, string $status = 'active'): User

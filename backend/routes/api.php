@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDashboardController;
 use App\Http\Controllers\Api\RegistrarDocumentRequestController;
 use App\Http\Controllers\Api\RegistrarDocumentTypeController;
+use App\Http\Controllers\Api\RegistrarSettingsController;
 use App\Http\Controllers\Api\RegistrarStudentDocumentController;
 use App\Http\Controllers\Api\StepUpAuthenticationController;
 use App\Http\Controllers\Api\StudentController;
@@ -86,6 +87,11 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
     });
 
     Route::middleware('role.registrar-or-admin')->group(function (): void {
+        Route::get('/registrar/settings', [RegistrarSettingsController::class, 'show']);
+        Route::patch('/registrar/settings/profile', [RegistrarSettingsController::class, 'updateProfile']);
+        Route::patch('/registrar/settings/contact', [RegistrarSettingsController::class, 'updateContact']);
+        Route::post('/registrar/settings/avatar', [RegistrarSettingsController::class, 'updateAvatar']);
+        Route::delete('/registrar/settings/avatar', [RegistrarSettingsController::class, 'removeAvatar']);
         Route::get('/students', [StudentController::class, 'index']);
         Route::get('/students/bulk-options', [StudentController::class, 'bulkOptions']);
         Route::patch('/students/bulk', [StudentController::class, 'bulkUpdate'])->middleware('step-up');

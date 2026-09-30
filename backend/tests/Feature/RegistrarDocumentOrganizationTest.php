@@ -172,6 +172,44 @@ class RegistrarDocumentOrganizationTest extends TestCase
             ->assertJsonPath('data.appointments', null);
     }
 
+    public function test_history_filters_requests_and_appointments_by_document_type(): void
+    {
+        $student = $this->createStudent('26-02006');
+        $selectedType = $this->createDocumentType('Transcript of Records');
+        $otherType = $this->createDocumentType('Certificate of Enrollment');
+        $selectedRequest = $this->createRequest(
+            $student,
+            $selectedType,
+            'completed',
+            '2026-08-20 09:00:00',
+            '2026-08-25 10:00:00',
+            ['completed_at' => '2026-08-25 10:00:00'],
+        );
+        $otherRequest = $this->createRequest(
+            $student,
+            $otherType,
+            'completed',
+            '2026-08-20 10:00:00',
+            '2026-08-25 11:00:00',
+            ['completed_at' => '2026-08-25 11:00:00'],
+        );
+        $selectedAppointment = $this->createAppointment($selectedRequest, 'completed', '2026-08-24', '09:00', '2026-08-25 10:00:00');
+        $otherAppointment = $this->createAppointment($otherRequest, 'completed', '2026-08-24', '10:00', '2026-08-25 11:00:00');
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+
+        $this->getJson("/api/registrar/document-requests/history?document_type_id={$selectedType->id}")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.requests.data')
+            ->assertJsonPath('data.requests.data.0.id', $selectedRequest->id)
+            ->assertJsonCount(1, 'data.appointments.data')
+            ->assertJsonPath('data.appointments.data.0.id', $selectedAppointment->id)
+            ->assertJsonMissing(['id' => $otherRequest->id])
+            ->assertJsonMissing(['id' => $otherAppointment->id]);
+
+        $this->getJson('/api/registrar/document-requests/history?document_type_id=999999')->assertUnprocessable();
+    }
+
     public function test_page_omitted_appointment_array_is_limited_to_fifty_records(): void
     {
         $this->travelTo(Carbon::parse('2026-08-25 12:00:00'));
