@@ -22,7 +22,7 @@ class StepUpAuthenticationTest extends TestCase
         $registrar = $this->userWithRole(Role::REGISTRAR_STAFF);
         $student = $this->createStudent();
         $cabinet = $this->createCabinet();
-        $token = $registrar->createToken('read-only')->plainTextToken;
+        $token = $registrar->createToken('read-only', ['client:desktop'])->plainTextToken;
 
         $this->withToken($token)->getJson('/api/students')->assertOk();
         $this->withToken($token)->getJson("/api/students/{$student->id}")->assertOk();
@@ -35,7 +35,7 @@ class StepUpAuthenticationTest extends TestCase
     {
         $registrar = $this->userWithRole(Role::REGISTRAR_STAFF);
         $student = $this->createStudent();
-        $token = $registrar->createToken('student-edit')->plainTextToken;
+        $token = $registrar->createToken('student-edit', ['client:desktop'])->plainTextToken;
 
         $this->withToken($token)->patchJson("/api/students/{$student->id}", $this->updatePayload($student))
             ->assertStatus(428)
@@ -68,7 +68,7 @@ class StepUpAuthenticationTest extends TestCase
     {
         $registrar = $this->userWithRole(Role::REGISTRAR_STAFF);
         $student = $this->createStudent();
-        $token = $registrar->createToken('expiry')->plainTextToken;
+        $token = $registrar->createToken('expiry', ['client:desktop'])->plainTextToken;
 
         $this->withToken($token)->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
 
@@ -84,9 +84,9 @@ class StepUpAuthenticationTest extends TestCase
         $firstRegistrar = $this->userWithRole(Role::REGISTRAR_STAFF);
         $secondRegistrar = $this->userWithRole(Role::REGISTRAR_STAFF);
         $student = $this->createStudent();
-        $firstToken = $firstRegistrar->createToken('first')->plainTextToken;
-        $sameUserOtherToken = $firstRegistrar->createToken('first-other')->plainTextToken;
-        $secondToken = $secondRegistrar->createToken('second')->plainTextToken;
+        $firstToken = $firstRegistrar->createToken('first', ['client:desktop'])->plainTextToken;
+        $sameUserOtherToken = $firstRegistrar->createToken('first-other', ['client:desktop'])->plainTextToken;
+        $secondToken = $secondRegistrar->createToken('second', ['client:desktop'])->plainTextToken;
 
         $this->withToken($firstToken)->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
 
@@ -103,7 +103,7 @@ class StepUpAuthenticationTest extends TestCase
     {
         $studentRecord = $this->createStudent();
         $studentUser = $this->userWithRole(Role::STUDENT);
-        $studentToken = $studentUser->createToken('student')->plainTextToken;
+        $studentToken = $studentUser->createToken('student', ['client:web'])->plainTextToken;
 
         $this->withToken($studentToken)->patchJson(
             "/api/students/{$studentRecord->id}",
@@ -121,7 +121,7 @@ class StepUpAuthenticationTest extends TestCase
     {
         $studentRecord = $this->createStudent();
         $admin = $this->userWithRole(Role::ADMIN);
-        $adminToken = $admin->createToken('admin')->plainTextToken;
+        $adminToken = $admin->createToken('admin', ['client:web'])->plainTextToken;
 
         $this->withToken($adminToken)->patchJson(
             "/api/students/{$studentRecord->id}",
@@ -136,7 +136,7 @@ class StepUpAuthenticationTest extends TestCase
         $registrar = $this->userWithRole(Role::REGISTRAR_STAFF);
         $student = $this->createStudent();
         $slot = $this->createCabinet()->slots()->firstOrFail();
-        $token = $registrar->createToken('record-location')->plainTextToken;
+        $token = $registrar->createToken('record-location', ['client:desktop'])->plainTextToken;
         $endpoint = "/api/registrar/students/{$student->id}/record-location";
 
         $this->withToken($token)->putJson($endpoint, ['cabinet_slot_id' => $slot->id])

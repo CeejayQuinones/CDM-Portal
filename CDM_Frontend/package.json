@@ -12,15 +12,17 @@
     "build": "vite build",
     "demo": "vite --mode demo",
     "demo:build": "vite build --mode demo",
-    "demo:android": "npm run demo:build && npx cap sync android",
+    "demo:android": "vite build --mode demo-mobile && npx cap sync android",
     "preview": "vite preview",
-    "mobile:sync": "npm run build && npx cap sync",
+    "mobile:dev": "vite --mode mobile",
+    "mobile:build": "vite build --mode mobile",
+    "mobile:sync": "npm run mobile:build && npx cap sync",
     "mobile:add:android": "npx cap add android",
     "mobile:open:android": "npx cap open android",
     "mobile:add:ios": "npx cap add ios",
     "mobile:open:ios": "npx cap open ios",
-    "desktop:dev": "npm run build && electron .",
-    "desktop:build": "npm run build && electron-builder"
+    "desktop:dev": "vite build --mode desktop && electron .",
+    "desktop:build": "vite build --mode desktop && electron-builder"
   },
   "dependencies": {
     "@capacitor/core": "^7.4.4",

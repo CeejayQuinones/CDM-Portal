@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureAdminRole;
+use App\Http\Middleware\EnsureClientPlatformAccess;
 use App\Http\Middleware\EnsureMonitoringAccess;
 use App\Http\Middleware\EnsureProfessorRole;
 use App\Http\Middleware\EnsureRegistrarOrAdminRole;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'role.admin' => EnsureAdminRole::class,
+            'client.platform' => EnsureClientPlatformAccess::class,
             'role.registrar-staff' => EnsureRegistrarStaffRole::class,
             'role.professor' => EnsureProfessorRole::class,
             'role.student' => EnsureStudentRole::class,

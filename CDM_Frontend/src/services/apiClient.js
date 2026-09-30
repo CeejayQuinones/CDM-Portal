@@ -3,6 +3,7 @@ import { isOfflineDemo } from '../config/demoMode'
 import { createOfflineApiClient } from './offline/offlineApi'
 import { performanceMonitor } from './performance/performanceMonitor'
 import { resolveApiAssetUrl } from '../utils/apiAssetUrl'
+import { clientPlatform } from '../config/clientPlatform'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
 
@@ -11,6 +12,7 @@ const onlineApiClient = axios.create({
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
+    'X-CDM-Client': clientPlatform,
   },
 })
 

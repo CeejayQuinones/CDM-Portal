@@ -2,8 +2,19 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig({
+export const clientPlatformForMode = (mode) => {
+  if (mode === 'desktop') return 'desktop'
+  if (mode === 'mobile' || mode === 'demo-mobile') return 'mobile'
+  return 'web'
+}
+
+export default defineConfig(({ mode }) => ({
   base: './',
+
+  define: {
+    'import.meta.env.VITE_CDM_CLIENT': JSON.stringify(clientPlatformForMode(mode)),
+    ...(mode === 'demo-mobile' ? { 'import.meta.env.VITE_OFFLINE_DEMO': JSON.stringify('true') } : {}),
+  },
 
   server: {
     host: '0.0.0.0',
@@ -54,4 +65,4 @@ export default defineConfig({
       },
     }),
   ],
-})
+}))
