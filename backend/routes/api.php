@@ -29,7 +29,7 @@ Route::post('/registration/email-verification/send', [AuthController::class, 'se
 Route::post('/registration/email-verification/verify', [AuthController::class, 'verifyEmail'])
     ->middleware('throttle:5,1');
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void {
     Route::get('/enrollment/status', EnrollmentStatusController::class);
     Route::get('/enrollment/eligibility', EnrollmentStatusController::class);
     Route::prefix('enrollment')->middleware(EnrollmentBoundary::class)->controller(EnrollmentWorkflowController::class)->group(function (): void {

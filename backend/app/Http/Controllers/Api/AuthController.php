@@ -11,6 +11,7 @@ use App\Http\Requests\VerifyEmailCodeRequest;
 use App\Http\Resources\AuthResource;
 use App\Models\User;
 use App\Services\AuthenticationService;
+use App\Services\ClientPlatformAccessService;
 use App\Services\GuestRegistrationService;
 use App\Services\RegistrationEmailVerificationService;
 use App\Services\StepUpAuthenticationService;
@@ -21,6 +22,7 @@ class AuthController extends Controller
 {
     public function __construct(
         private readonly AuthenticationService $authenticationService,
+        private readonly ClientPlatformAccessService $clientAccess,
         private readonly GuestRegistrationService $guestRegistrationService,
         private readonly RegistrationEmailVerificationService $emailVerificationService,
         private readonly StepUpAuthenticationService $stepUpAuthentication,
@@ -77,7 +79,8 @@ class AuthController extends Controller
      */
     public function login(LoginRequest $request): JsonResponse
     {
-        $authenticated = $this->authenticationService->login($request->validated());
+        $client = $this->clientAccess->clientFrom($request);
+        $authenticated = $this->authenticationService->login($request->validated(), $client);
 
         return response()->json([
             'success' => true,
