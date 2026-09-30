@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -8,24 +8,37 @@ export const clientPlatformForMode = (mode) => {
   return 'web'
 }
 
-export default defineConfig(({ mode }) => ({
-  base: './',
+export const apiBaseUrlForMode = (mode, env) => {
+  if (mode === 'desktop') {
+    return env.VITE_DESKTOP_API_BASE_URL || 'http://127.0.0.1:8000/api'
+  }
 
-  define: {
-    'import.meta.env.VITE_CDM_CLIENT': JSON.stringify(clientPlatformForMode(mode)),
-    ...(mode === 'demo-mobile' ? { 'import.meta.env.VITE_OFFLINE_DEMO': JSON.stringify('true') } : {}),
-  },
+  return env.VITE_API_BASE_URL
+}
 
-  server: {
-    host: '0.0.0.0',
-    allowedHosts: [
-      'achieving-chair-ideal-clients.trycloudflare.com',
-    ],
-  },
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
+  const apiBaseUrl = apiBaseUrlForMode(mode, env)
 
-  plugins: [
-    vue(),
-    VitePWA({
+  return {
+    base: './',
+
+    define: {
+      'import.meta.env.VITE_CDM_CLIENT': JSON.stringify(clientPlatformForMode(mode)),
+      ...(apiBaseUrl ? { 'import.meta.env.VITE_API_BASE_URL': JSON.stringify(apiBaseUrl) } : {}),
+      ...(mode === 'demo-mobile' ? { 'import.meta.env.VITE_OFFLINE_DEMO': JSON.stringify('true') } : {}),
+    },
+
+    server: {
+      host: '0.0.0.0',
+      allowedHosts: [
+        'achieving-chair-ideal-clients.trycloudflare.com',
+      ],
+    },
+
+    plugins: [
+      vue(),
+      VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png'],
       manifest: {
@@ -63,6 +76,7 @@ export default defineConfig(({ mode }) => ({
         navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
       },
-    }),
-  ],
-}))
+      }),
+    ],
+  }
+})
