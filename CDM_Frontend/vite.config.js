@@ -4,6 +4,14 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   base: './',
+
+  server: {
+    host: '0.0.0.0',
+    allowedHosts: [
+      'achieving-chair-ideal-clients.trycloudflare.com',
+    ],
+  },
+
   plugins: [
     vue(),
     VitePWA({

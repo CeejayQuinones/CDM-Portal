@@ -15,7 +15,7 @@ class RequireStepUpAuthentication
     public function __construct(private readonly StepUpAuthenticationService $stepUpAuthentication) {}
 
     /** @param Closure(Request): Response $next */
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, ?string $scope = null): Response
     {
         $user = $request->user();
 
@@ -28,7 +28,7 @@ class RequireStepUpAuthentication
 
         $user->loadMissing('role');
 
-        if ($user->role?->role_name !== Role::REGISTRAR_STAFF) {
+        if ($scope !== 'admission' && $user->role?->role_name !== Role::REGISTRAR_STAFF) {
             return $next($request);
         }
 

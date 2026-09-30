@@ -1,0 +1,586 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Http\Middleware\RequireStepUpAuthentication;
+use App\Models\AcademicYear;
+use App\Models\Admission\AdmissionCycle;
+use App\Models\Admission\AdmissionExamQuestion;
+use App\Models\Admission\AdmissionExamResult;
+use App\Models\Admission\AdmissionExamSession;
+use App\Models\Course;
+use App\Models\Department;
+use App\Models\Role;
+use App\Models\User;
+use App\Services\Admission\AdmissionAuditWriter;
+use App\Services\Admission\AdmissionConfigurationService;
+use App\Services\Admission\AdmissionExamPolicy;
+use App\Services\Admission\AdmissionIdentityService;
+use App\Services\Admission\ProgramMatcher;
+use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\TestCase;
+
+class AdmissionWorkflowTest extends TestCase
+{
+    private User $admin;
+
+    private User $guest;
+
+    private User $registrar;
+
+    private AdmissionCycle $cycle;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->assertSame('sqlite', config('database.default'));
+        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
+        $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
+        $this->admin = $this->user(Role::ADMIN);
+        $this->guest = $this->user(Role::GUEST);
+        $this->registrar = $this->user(Role::REGISTRAR_STAFF);
+        $year = AcademicYear::create(['school_year' => '2026-2027', 'start_date' => '2026-06-01', 'end_date' => '2027-05-31', 'status' => 'active']);
+        $this->cycle = app(AdmissionConfigurationService::class)->cycle($this->admin, [
+            'code' => 'TEST', 'name' => 'Test intake', 'academic_year_id' => $year->id, 'status' => 'open',
+            'opens_at' => now()->subDay()->toIso8601String(), 'closes_at' => now()->addDay()->toIso8601String(), 'confirmation_closes_at' => now()->addDays(2)->toIso8601String(),
+        ]);
+        app(AdmissionIdentityService::class)->create($this->guest, $this->cycle);
+    }
+
+    public function test_dev_setup_is_manual_duplicate_safe_and_cleanup_preserves_real_records(): void
+    {
+        $this->cycle->update(['status' => 'closed']);
+        $students = DB::table('students')->count();
+        $this->artisan('admission:dev-setup')->assertExitCode(1);
+        $this->artisan('admission:dev-setup', ['--dummy-bank' => true])->assertExitCode(0);
+        $this->artisan('admission:dev-setup', ['--dummy-bank' => true])->assertExitCode(0);
+        $this->assertDatabaseCount('admission_exam_questions', 100);
+        $this->assertSame(1, AdmissionCycle::where('code', 'DEV-MVP')->count());
+        foreach (ProgramMatcher::INTEREST_CATEGORIES as $topic) {
+            $this->assertSame(20, AdmissionExamQuestion::where('topic', $topic)->where('status', 'active')->count());
+        }
+        $this->bank();
+        $this->artisan('admission:dev-setup', ['--dummy-bank' => true])->assertExitCode(1);
+        $this->artisan('admission:dev-setup', ['--cleanup' => true])->assertExitCode(0);
+        $this->assertSame(110, AdmissionExamQuestion::where('question_code', 'like', 'TEST-%')->count());
+        $this->assertSame(0, AdmissionExamQuestion::where('question_code', 'like', 'DEV-MVP-%')->count());
+        $this->assertDatabaseCount('students', $students);
+    }
+
+    public function test_production_refuses_dummy_setup_and_excludes_dummy_questions(): void
+    {
+        $this->cycle->update(['status' => 'closed']);
+        $this->artisan('admission:dev-setup', ['--dummy-bank' => true])->assertExitCode(0);
+        $this->app['env'] = 'production';
+        $this->artisan('admission:dev-setup', ['--dummy-bank' => true])->assertExitCode(1);
+        Sanctum::actingAs($this->guest);
+        $this->getJson('/api/admission/exam')->assertOk()->assertJsonPath('data.reason', 'bank_incomplete');
+        $this->postJson('/api/admission/exam/start')->assertStatus(409);
+        $this->assertDatabaseCount('admission_exam_sessions', 0);
+    }
+
+    public function test_same_day_overlap_from_browser_iso_dates_is_rejected(): void
+    {
+        $this->cycle->update(['opens_at' => '2026-10-01 08:00:00', 'closes_at' => '2026-10-01 18:00:00', 'confirmation_closes_at' => '2026-10-02 18:00:00']);
+        Sanctum::actingAs($this->admin);
+        $this->postJson('/api/admission/admin/cycles', [
+            'code' => 'OVERLAP', 'name' => 'Overlap', 'academic_year_id' => $this->cycle->academic_year_id, 'status' => 'open',
+            'opens_at' => '2026-10-01T09:00:00.000Z', 'closes_at' => '2026-10-01T17:00:00.000Z', 'confirmation_closes_at' => '2026-10-02T18:00:00.000Z',
+        ])->assertStatus(409);
+    }
+
+    private function user(string $role): User
+    {
+        $user = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => $role])->id]);
+        $user->profile()->create(['first_name' => 'Test', 'last_name' => 'Applicant', 'gender' => 'Prefer not to say']);
+
+        return $user;
+    }
+
+    private function bank(): void
+    {
+        foreach (ProgramMatcher::INTEREST_CATEGORIES as $index => $topic) {
+            for ($i = 0; $i < 22; $i++) {
+                AdmissionExamQuestion::create(['question_code' => 'TEST-'.$index.'-'.$i, 'topic' => $topic, 'question_text' => 'Test '.$index.'-'.$i,
+                    'option_a' => 'A', 'option_b' => 'B', 'option_c' => 'C', 'option_d' => 'D', 'correct_answer' => 'A', 'difficulty' => 'easy', 'status' => 'active', 'version' => 1,
+                    'created_by_user_id' => $this->admin->id, 'updated_by_user_id' => $this->admin->id]);
+            }
+        }
+    }
+
+    private function start(): array
+    {
+        Sanctum::actingAs($this->guest);
+
+        return $this->postJson('/api/admission/exam/start')->assertOk()->json('data');
+    }
+
+    private function answers(array $session, string $answer = 'A'): array
+    {
+        return ['revision' => $session['revision'], 'position' => 0, 'answers' => array_fill_keys(array_column($session['questions'], 'id'), $answer)];
+    }
+
+    private function submit(array $session, string $answer = 'A'): AdmissionExamResult
+    {
+        Sanctum::actingAs($this->guest);
+        $this->postJson('/api/admission/exam/'.$session['session_id'].'/submit', $this->answers($session, $answer))->assertOk()->assertJsonPath('data.exam_completed', true);
+
+        return AdmissionExamResult::where('session_id', $session['session_id'])->firstOrFail();
+    }
+
+    private function act(AdmissionExamResult $result, string $action, array $extra = []): void
+    {
+        Sanctum::actingAs($this->registrar);
+        $this->postJson('/api/admission/registrar/results/'.$action, ['results' => [['id' => $result->id, 'version' => $result->fresh()->version]]] + $extra)->assertOk();
+    }
+
+    public function test_cycle_dates_overlap_roles_versions_and_audit(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $body = $this->cycle->toArray();
+        $body['code'] = 'OTHER';
+        $this->postJson('/api/admission/admin/cycles', $body)->assertStatus(409);
+        $body['closes_at'] = $body['opens_at'];
+        $this->postJson('/api/admission/admin/cycles', $body)->assertStatus(422);
+        $body = $this->cycle->toArray() + ['expected_updated_at' => $this->cycle->updated_at->toISOString()];
+        $body['status'] = 'closed';
+        $this->putJson('/api/admission/admin/cycles/'.$this->cycle->id, $body)->assertOk();
+        $this->putJson('/api/admission/admin/cycles/'.$this->cycle->id, $body)->assertStatus(409);
+        $this->assertDatabaseHas('admission_workflow_events', ['action' => 'admission.cycle_closed']);
+        Sanctum::actingAs($this->registrar);
+        $this->getJson('/api/admission/admin/cycles')->assertOk();
+    }
+
+    public function test_start_resume_snapshot_order_and_stale_revision(): void
+    {
+        $this->freezeTime();
+        $this->bank();
+        $session = $this->start();
+        $this->assertCount(100, $session['questions']);
+        $this->assertSame(7200, strtotime($session['deadline']) - strtotime($session['server_now']));
+        foreach (array_count_values(array_column($session['questions'], 'topic')) as $count) {
+            $this->assertSame(20, $count);
+        }
+        $this->assertStringNotContainsString('correct_answer', json_encode($session));
+        AdmissionExamQuestion::query()->update(['question_text' => 'CHANGED', 'correct_answer' => 'D']);
+        $this->assertSame($session['questions'], $this->start()['questions']);
+        $this->assertSame($session['session_id'], $this->start()['session_id']);
+        $body = $this->answers($session);
+        $this->putJson('/api/admission/exam/'.$session['session_id'].'/answers', $body)->assertOk()->assertJsonPath('data.revision', 1);
+        $this->putJson('/api/admission/exam/'.$session['session_id'].'/answers', $body)->assertStatus(409);
+        $this->getJson('/api/admission/exam')->assertOk()->assertJsonPath('data.session.revision', 1);
+        $body['revision'] = 1;
+        $this->postJson('/api/admission/exam/'.$session['session_id'].'/submit', $body)->assertOk();
+        $this->assertSame(100, AdmissionExamResult::sole()->raw_correct_count);
+        $this->postJson('/api/admission/exam/'.$session['session_id'].'/submit', $body)->assertOk();
+        $this->assertDatabaseCount('admission_exam_results', 1);
+    }
+
+    public function test_expiry_ignores_late_answers_and_scheduler_is_idempotent(): void
+    {
+        $this->bank();
+        $session = $this->start();
+        $this->travel(121)->minutes();
+        $this->putJson('/api/admission/exam/'.$session['session_id'].'/answers', $this->answers($session))->assertOk()->assertJsonPath('data.expired', true);
+        $this->assertSame(0, AdmissionExamResult::sole()->raw_correct_count);
+        $this->artisan('admission:finalize-expired')->assertExitCode(0);
+        $this->assertDatabaseCount('admission_exam_results', 1);
+        $this->assertDatabaseHas('admission_workflow_events', ['action' => 'admission.exam_expired', 'actor_user_id' => null]);
+        $this->travelBack();
+    }
+
+    public function test_abandoned_session_is_finalized_by_scheduler(): void
+    {
+        $this->bank();
+        $this->start();
+        $this->travel(121)->minutes();
+        $this->artisan('admission:finalize-expired')->assertExitCode(0);
+        $this->assertSame('deadline', AdmissionExamResult::sole()->finalization_cause);
+        $this->travelBack();
+    }
+
+    public function test_publication_retake_limit_and_unpublished_visibility(): void
+    {
+        $this->bank();
+        $first = $this->start();
+        $result = $this->submit($first, 'B');
+        $this->getJson('/api/admission/result')->assertOk()->assertJsonPath('data.result', null);
+        $this->getJson('/api/admission/recommendation')->assertForbidden();
+        $this->postJson('/api/admission/exam/start')->assertStatus(409);
+        $this->act($result, 'approve');
+        Sanctum::actingAs($this->guest);
+        $this->getJson('/api/admission/result')->assertJsonPath('data.published', false);
+        $this->act($result, 'publish');
+        Sanctum::actingAs($this->guest);
+        $this->getJson('/api/admission/result')->assertJsonPath('data.result.outcome', 'RETAKE')->assertJsonPath('data.result.retake_eligible', true);
+        $second = $this->start();
+        $this->assertSame(2, $second['attempt_number']);
+        $this->assertNotSame(array_column($first['questions'], 'id'), array_column($second['questions'], 'id'));
+        $result2 = $this->submit($second, 'B');
+        $this->act($result2, 'approve');
+        $this->act($result2, 'publish');
+        Sanctum::actingAs($this->guest);
+        $this->getJson('/api/admission/result')->assertJsonPath('data.result.outcome', 'FAILED');
+        $this->postJson('/api/admission/exam/start')->assertStatus(409);
+        $this->assertDatabaseCount('admission_exam_sessions', 2);
+    }
+
+    public function test_review_stale_batch_rollback_correction_and_override_redaction(): void
+    {
+        $this->withoutMiddleware(RequireStepUpAuthentication::class);
+        $this->bank();
+        $result = $this->submit($this->start(), 'B');
+        $this->act($result, 'approve');
+        $this->act($result, 'publish');
+        Sanctum::actingAs($this->registrar);
+        $this->postJson('/api/admission/registrar/results/correct', ['results' => [['id' => $result->id, 'version' => 1]], 'official_score' => 80, 'reason' => 'Correction'])->assertStatus(409);
+        $second = $this->start();
+        Sanctum::actingAs($this->registrar);
+        $this->postJson('/api/admission/registrar/results/correct', ['results' => [['id' => $result->id, 'version' => $result->fresh()->version]], 'official_score' => 80, 'reason' => 'Correction'])->assertStatus(409);
+        $last = $this->submit($second, 'B');
+        $this->act($last, 'override', ['reason' => 'PRIVATE Registrar reason']);
+        Sanctum::actingAs($this->guest);
+        $response = $this->getJson('/api/admission/result')->assertJsonPath('data.result.outcome', 'PASSED')->assertJsonPath('data.result.score', null);
+        $this->assertStringNotContainsString('PRIVATE', $response->getContent());
+        $this->getJson('/api/admission/recommendation')->assertOk()->assertJsonMissingPath('data.recommendation.evidence');
+        $this->act($last, 'correct', ['official_score' => 40, 'reason' => 'Verified correction']);
+        $this->assertFalse($last->fresh()->registrar_pass);
+        $this->assertSame('FAILED', $last->fresh()->outcome());
+        $this->assertDatabaseHas('admission_decisions', ['action' => 'registrar_pass', 'internal_reason' => 'PRIVATE Registrar reason']);
+    }
+
+    public function test_configuration_questions_roles_and_safe_delete(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $body = ['question_code' => 'REAL-1', 'topic' => ProgramMatcher::INTEREST_CATEGORIES[0], 'question_text' => 'Question', 'option_a' => 'a', 'option_b' => 'b', 'option_c' => 'c', 'option_d' => 'd', 'correct_answer' => 'A', 'difficulty' => 'easy', 'status' => 'draft'];
+        $q = $this->postJson('/api/admission/admin/questions', $body)->assertOk()->json('data');
+        $this->putJson('/api/admission/admin/questions/'.$q['id'], $body + ['version' => 999])->assertStatus(409);
+        $this->deleteJson('/api/admission/admin/questions/'.$q['id'], ['version' => 1])->assertOk();
+        $this->bank();
+        $session = $this->start();
+        Sanctum::actingAs($this->admin);
+        $question = AdmissionExamSession::find($session['session_id'])->questions()->first()->question_id;
+        $this->deleteJson('/api/admission/admin/questions/'.$question, ['version' => 1])->assertStatus(409);
+        foreach ([$this->guest, $this->user(Role::PROFESSOR), $this->user(Role::STUDENT)] as $user) {
+            Sanctum::actingAs($user);
+            $this->getJson('/api/admission/admin/questions')->assertForbidden();
+        }
+    }
+
+    public function test_cross_user_and_student_mutations_are_denied(): void
+    {
+        $this->bank();
+        $session = $this->start();
+        Sanctum::actingAs($this->user(Role::GUEST));
+        $this->putJson('/api/admission/exam/'.$session['session_id'].'/answers', $this->answers($session))->assertNotFound();
+        foreach ([Role::STUDENT, Role::PROFESSOR, Role::ADMIN, Role::REGISTRAR_STAFF] as $role) {
+            Sanctum::actingAs($this->user($role));
+            $this->postJson('/api/admission/exam/start')->assertForbidden();
+            $this->getJson('/api/admission/registrar/results')->assertStatus(in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true) ? 200 : 403);
+        }
+        Sanctum::actingAs($this->guest);
+        User::whereKey($this->guest->id)->update(['status' => 'suspended']);
+        $this->getJson('/api/admission/exam')->assertForbidden();
+    }
+
+    public function test_incomplete_bank_refuses_start_and_exam_audit_failure_rolls_back(): void
+    {
+        Sanctum::actingAs($this->guest);
+        $this->getJson('/api/admission/exam')->assertJsonPath('data.reason', 'bank_incomplete');
+        $this->postJson('/api/admission/exam/start')->assertStatus(409);
+        $this->bank();
+        $this->mock(AdmissionAuditWriter::class, fn ($m) => $m->shouldReceive('workflow')->andThrow(new \RuntimeException('private database error')));
+        $this->postJson('/api/admission/exam/start')->assertStatus(503)->assertJsonMissing(['message' => 'private database error']);
+        $this->assertDatabaseCount('admission_exam_sessions', 0);
+        $this->assertDatabaseCount('admission_exam_answers', 0);
+    }
+
+    public function test_recommendation_uses_result_evidence_and_provider_fallback(): void
+    {
+        $department = Department::create(['department_code' => 'TEST', 'department_name' => 'Test']);
+        $course = Course::create(['department_id' => $department->id, 'course_code' => 'BSIT', 'course_name' => 'Information Technology', 'years' => 4, 'status' => 'active']);
+        app(AdmissionConfigurationService::class)->program($this->admin, $course->id, [
+            'status' => 'active', 'is_recommendable' => true, 'program_type' => 'degree', 'subjects' => ['Programming'], 'career_paths' => ['Developer'], 'display_order' => 1,
+            'recommendation_profile' => ['Digital Literacy' => .4, 'Logical Reasoning' => .3, 'General Mathematics' => .25, 'Reading Comprehension' => .05],
+        ]);
+        config(['admission.gemini.api_key' => null]);
+        $this->bank();
+        $result = $this->submit($this->start());
+        $this->act($result, 'approve');
+        $this->act($result, 'publish');
+        Sanctum::actingAs($this->guest);
+        $ratings = array_fill_keys(ProgramMatcher::INTEREST_CATEGORIES, 5);
+        $response = $this->postJson('/api/admission/recommendation', ['interests' => $ratings])->assertOk()
+            ->assertJsonPath('data.result_id', $result->id)->assertJsonPath('data.recommendation.ai_status', 'unavailable')
+            ->assertJsonPath('data.recommendation.ranked_programs.0.course_code', 'BSIT')
+            ->assertJsonPath('data.recommendation.evidence.Science.correct', 20);
+        $this->assertEquals(100, $response->json('data.recommendation.ranked_programs.0.score'));
+        $this->assertDatabaseCount('admission_recommendations', 1);
+        $this->postJson('/api/admission/recommendation', ['interests' => $ratings])->assertOk();
+        $this->assertDatabaseCount('admission_recommendations', 1);
+        $this->assertDatabaseCount('students', 0);
+    }
+
+    public function test_batch_operations_and_step_up_requirement(): void
+    {
+        $this->bank();
+        $result = $this->submit($this->start());
+        Sanctum::actingAs($this->registrar);
+        $this->postJson('/api/admission/registrar/results/approve', ['results' => [['id' => $result->id, 'version' => 1], ['id' => 9999, 'version' => 1]]])->assertNotFound();
+        $this->assertSame('pending', $result->fresh()->official_status);
+        $this->act($result, 'approve');
+        $this->act($result, 'publish');
+        $this->postJson('/api/admission/registrar/results/correct', ['results' => [['id' => $result->id, 'version' => $result->fresh()->version]], 'official_score' => 70, 'reason' => 'Review'])->assertStatus(428);
+        $this->getJson('/api/admission/registrar/applicants?search=Test')->assertOk()->assertJsonCount(1, 'data.data');
+        $this->getJson('/api/admission/registrar/results?latest=1')->assertOk()->assertJsonCount(1, 'data.data');
+        $this->getJson('/api/admission/registrar/history')->assertOk()->assertJsonCount(2, 'data.decisions.data');
+    }
+
+    public function test_staff_programs_manage_authoritative_courses_and_preserve_recommendation_metadata(): void
+    {
+        $department = Department::create(['department_code' => 'NEW', 'department_name' => 'Computing']);
+        Sanctum::actingAs($this->admin);
+        $body = ['department_id' => $department->id, 'course_code' => 'BSC', 'course_name' => 'Computing', 'years' => 4, 'status' => 'active'];
+        $course = $this->postJson('/api/admission/admin/programs', $body)->assertOk()->json('data');
+        $this->postJson('/api/admission/admin/programs', $body)->assertUnprocessable();
+        $this->postJson('/api/admission/admin/programs', array_replace($body, ['course_code' => 'X', 'years' => 0]))->assertUnprocessable();
+        $setting = app(AdmissionConfigurationService::class)->program($this->admin, $course['id'], [
+            'status' => 'active', 'is_recommendable' => false, 'program_type' => 'degree', 'subjects' => [], 'career_paths' => [],
+            'display_order' => 0, 'description' => 'Keep this', 'recommendation_profile' => ['Science' => 1],
+        ]);
+        $body['status'] = 'inactive';
+        $body['expected_updated_at'] = $course['updated_at'];
+        $this->putJson('/api/admission/admin/programs/'.$course['id'].'/academic', $body)->assertOk();
+        $this->putJson('/api/admission/admin/programs/'.$course['id'].'/academic', $body)->assertConflict();
+        $this->assertSame('Keep this', $setting->fresh()->description);
+        $this->assertDatabaseCount('courses', 1);
+        $this->getJson('/api/admission/admin/programs?search=Computing')->assertJsonCount(1, 'data.courses')->assertJsonPath('data.courses.0.status', 'inactive');
+        $this->getJson('/api/admission/admin/programs?search=missing')->assertJsonCount(0, 'data.courses');
+        foreach ([$this->guest, $this->user(Role::PROFESSOR), $this->user(Role::STUDENT)] as $user) {
+            Sanctum::actingAs($user);
+            $this->postJson('/api/admission/admin/programs', $body)->assertForbidden();
+            $this->putJson('/api/admission/admin/programs/'.$course['id'].'/academic', $body)->assertForbidden();
+            $this->getJson('/api/admission/admin/exams')->assertForbidden();
+        }
+    }
+
+    private function examPolicy(array $changes = []): array
+    {
+        return array_replace(AdmissionExamPolicy::normalize(null), ['version' => $this->cycle->fresh()->policy_version], $changes);
+    }
+
+    public function test_exam_configuration_validation_version_readiness_and_single_cycle_storage(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $url = '/api/admission/admin/exams/'.$this->cycle->id;
+        foreach (['duration_minutes' => 0, 'passing_score' => 101, 'max_attempts' => 3, 'category_counts' => ['Science' => 20]] as $field => $value) {
+            $this->putJson($url, $this->examPolicy([$field => $value]))->assertUnprocessable();
+        }
+        $this->putJson($url, $this->examPolicy())->assertOk()->assertJsonPath('data.readiness.ready', false);
+        $this->putJson($url, $this->examPolicy(['version' => 1]))->assertConflict();
+        $this->bank();
+        $this->getJson('/api/admission/admin/exams')->assertJsonCount(1, 'data.exams')->assertJsonPath('data.exams.0.readiness.ready', true);
+        $this->putJson($url, $this->examPolicy(['status' => 'inactive']))->assertOk();
+        Sanctum::actingAs($this->guest);
+        $this->postJson('/api/admission/exam/start')->assertConflict();
+        $this->assertDatabaseCount('admission_cycles', 1);
+        $this->assertDatabaseHas('admission_workflow_events', ['action' => 'admission.exam_configured']);
+    }
+
+    public function test_configurable_exam_and_historical_policy_survive_admin_edits(): void
+    {
+        $this->freezeTime();
+        $this->bank();
+        Sanctum::actingAs($this->admin);
+        $policy = $this->examPolicy(['duration_minutes' => 30, 'passing_score' => 90, 'category_counts' => array_fill_keys(ProgramMatcher::INTEREST_CATEGORIES, 2)]);
+        $this->putJson('/api/admission/admin/exams/'.$this->cycle->id, $policy)->assertOk();
+        $session = $this->start();
+        $this->assertCount(10, $session['questions']);
+        $this->assertSame(1800, strtotime($session['deadline']) - strtotime($session['server_now']));
+        $body = $this->answers($session);
+        $body['position'] = 10;
+        $this->putJson('/api/admission/exam/'.$session['session_id'].'/answers', $body)->assertUnprocessable();
+        Sanctum::actingAs($this->admin);
+        $this->putJson('/api/admission/admin/exams/'.$this->cycle->id, $this->examPolicy(['passing_score' => 50, 'max_attempts' => 1]))->assertOk();
+        $body = $this->answers($session);
+        $keys = array_keys($body['answers']);
+        $body['answers'][$keys[0]] = 'B';
+        $body['answers'][$keys[1]] = 'B';
+        Sanctum::actingAs($this->guest);
+        $this->postJson('/api/admission/exam/'.$session['session_id'].'/submit', $body)->assertOk();
+        $result = AdmissionExamResult::sole();
+        $this->assertFalse($result->system_passed);
+        $this->act($result, 'approve');
+        $this->act($result, 'publish');
+        $this->assertSame('RETAKE', $result->fresh()->outcome());
+        $retake = $this->start();
+        $this->assertCount(10, $retake['questions']);
+        $this->assertSame(1800, strtotime($retake['deadline']) - strtotime($retake['server_now']));
+        $this->assertSame(90, AdmissionExamSession::find($retake['session_id'])->policy_snapshot['passing_score']);
+        $second = $this->submit($retake);
+        $this->act($second, 'approve');
+        $this->act($second, 'publish');
+        Sanctum::actingAs($this->guest);
+        $this->postJson('/api/admission/exam/start')->assertConflict();
+    }
+
+    public function test_legacy_snapshot_keeps_original_outcome_and_one_attempt_policy_is_final(): void
+    {
+        $this->bank();
+        $session = $this->start();
+        AdmissionExamSession::find($session['session_id'])->update(['policy_snapshot' => []]);
+        $result = $this->submit($session, 'B');
+        Sanctum::actingAs($this->admin);
+        $this->putJson('/api/admission/admin/exams/'.$this->cycle->id, $this->examPolicy(['passing_score' => 1, 'max_attempts' => 1]))->assertOk();
+        $this->act($result, 'approve', ['official_score' => 50]);
+        $this->act($result, 'publish');
+        $this->assertSame('RETAKE', $result->fresh()->outcome());
+        $newGuest = $this->user(Role::GUEST);
+        app(AdmissionIdentityService::class)->create($newGuest, $this->cycle);
+        $this->guest = $newGuest;
+        $newResult = $this->submit($this->start(), 'B');
+        $this->act($newResult, 'approve');
+        $this->act($newResult, 'publish');
+        $this->assertSame('FAILED', $newResult->fresh()->outcome());
+        Sanctum::actingAs($newGuest);
+        $this->postJson('/api/admission/exam/start')->assertConflict();
+    }
+
+    public function test_question_filters_status_and_production_readiness_use_same_bank(): void
+    {
+        $this->bank();
+        Sanctum::actingAs($this->admin);
+        $row = AdmissionExamQuestion::first();
+        $this->putJson('/api/admission/admin/questions/'.$row->id, array_replace($row->toArray(), ['status' => 'retired']))->assertOk();
+        $this->getJson('/api/admission/admin/questions?status=retired&difficulty=easy&search=Test')->assertJsonCount(1, 'data.questions.data')
+            ->assertJsonPath('data.questions.data.0.correct_answer', 'A');
+        $this->getJson('/api/admission/admin/questions?difficulty=hard')->assertJsonCount(0, 'data.questions.data');
+        AdmissionExamQuestion::query()->update(['question_code' => DB::raw("'DEV-MVP-' || id")]);
+        $dummy = $row->fresh();
+        $this->putJson('/api/admission/admin/questions/'.$dummy->id, array_replace($dummy->toArray(), ['question_code' => 'REAL-RENAMED']))->assertUnprocessable();
+        $this->app['env'] = 'production';
+        $this->getJson('/api/admission/admin/questions?cycle_id='.$this->cycle->id)->assertJsonPath('data.readiness.ready', false);
+        $this->getJson('/api/admission/admin/exams')->assertJsonPath('data.exams.0.readiness.ready', false);
+        Sanctum::actingAs($this->guest);
+        $this->getJson('/api/admission/exam')->assertJsonPath('data.reason', 'bank_incomplete');
+    }
+
+    public function test_result_tabs_valid_actions_applicant_inspection_and_safe_timeline(): void
+    {
+        $this->bank();
+        $result = $this->submit($this->start(), 'B');
+        Sanctum::actingAs($this->registrar);
+        $this->getJson('/api/admission/registrar/results?tab=pending&attempt=1&cycle_id='.$this->cycle->id)->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.allowed_actions', ['approve']);
+        $this->act($result, 'approve');
+        $this->getJson('/api/admission/registrar/results?tab=approved')->assertJsonCount(1, 'data.data');
+        $this->getJson('/api/admission/registrar/results?tab=pending')->assertJsonCount(0, 'data.data');
+        $this->act($result, 'publish');
+        $this->getJson('/api/admission/registrar/results?tab=published')->assertJsonCount(1, 'data.data');
+        $this->getJson('/api/admission/registrar/results?tab=retake')->assertJsonCount(1, 'data.data');
+        $a = $this->guest->admissionApplications()->first();
+        $this->getJson('/api/admission/registrar/applicants/'.$a->id)->assertJsonPath('data.latest_result', 'RETAKE')->assertJsonCount(1, 'data.attempts')
+            ->assertJsonPath('data.acceptance_status', 'not_accepted')->assertJsonPath('data.conversion_status', 'not_converted');
+        $timeline = $this->getJson('/api/admission/registrar/history?applicant_id='.$a->id)->assertOk()->json('data.timeline.data');
+        $this->assertContains('Application created', array_column($timeline, 'action'));
+        $this->assertContains('Result published', array_column($timeline, 'action'));
+        $this->assertSame('Test Applicant', $timeline[0]['actor']);
+        $this->assertStringNotContainsString('correct_answer', json_encode($timeline));
+        $this->assertStringNotContainsString('internal_reason', json_encode($timeline));
+        $this->assertStringNotContainsString('selected_option', json_encode($timeline));
+        $this->start();
+        Sanctum::actingAs($this->registrar);
+        $this->getJson('/api/admission/registrar/results?latest=0')->assertJsonPath('data.data.0.allowed_actions', []);
+        foreach ([$this->guest, $this->user(Role::PROFESSOR), $this->user(Role::STUDENT)] as $user) {
+            Sanctum::actingAs($user);
+            $this->getJson('/api/admission/registrar/history')->assertForbidden();
+            $this->getJson('/api/admission/registrar/applicants/'.$a->id)->assertForbidden();
+        }
+    }
+
+    public static function admissionStaffRoles(): array
+    {
+        return [[Role::ADMIN], [Role::REGISTRAR_STAFF]];
+    }
+
+    #[DataProvider('admissionStaffRoles')]
+    public function test_both_staff_roles_can_configure_and_review_admission(string $role): void
+    {
+        $staff = $role === Role::ADMIN ? $this->admin : $this->registrar;
+        $this->registrar = $staff;
+        Sanctum::actingAs($staff);
+        $department = Department::create(['department_code' => 'SHARED', 'department_name' => 'Shared']);
+        $body = ['course_code' => 'SHARED', 'course_name' => 'Shared Program', 'department_id' => $department->id, 'years' => 4, 'status' => 'active'];
+        $course = $this->postJson('/api/admission/admin/programs', $body)->assertOk()->json('data');
+        $this->getJson('/api/admission/admin/programs?search=SHARED')->assertOk()->assertJsonCount(1, 'data.courses');
+        $this->putJson('/api/admission/admin/programs/'.$course['id'].'/academic', array_replace($body, ['status' => 'inactive', 'expected_updated_at' => $course['updated_at']]))->assertOk()->assertJsonPath('data.status', 'inactive');
+        $this->getJson('/api/admission/admin/exams')->assertOk();
+        $this->putJson('/api/admission/admin/exams/'.$this->cycle->id, $this->examPolicy())->assertOk();
+        $question = ['question_code' => 'SHARED-QUESTION', 'topic' => 'Science', 'question_text' => 'Shared staff question', 'option_a' => 'A', 'option_b' => 'B', 'option_c' => 'C', 'option_d' => 'D', 'correct_answer' => 'A', 'difficulty' => 'easy', 'status' => 'draft'];
+        $q = $this->postJson('/api/admission/admin/questions', $question)->assertOk()->json('data');
+        $this->getJson('/api/admission/admin/questions?search=Shared&status=draft')->assertOk()->assertJsonPath('data.questions.data.0.correct_answer', 'A');
+        $this->putJson('/api/admission/admin/questions/'.$q['id'], array_replace($question, ['version' => 1, 'status' => 'active']))->assertOk();
+        $this->putJson('/api/admission/admin/questions/'.$q['id'], array_replace($question, ['version' => 2, 'status' => 'retired']))->assertOk();
+        $this->deleteJson('/api/admission/admin/questions/'.$q['id'], ['version' => 3])->assertOk();
+        $this->bank();
+        $first = $this->submit($this->start(), 'B');
+        $this->act($first, 'approve');
+        $this->act($first, 'publish');
+        $a = $this->guest->admissionApplications()->first();
+        $this->getJson('/api/admission/registrar/applicants?search='.$a->applicant_number.'&status=draft&cycle_id='.$this->cycle->id)->assertOk()->assertJsonCount(1, 'data.data');
+        $this->getJson('/api/admission/registrar/applicants/'.$a->id)->assertOk();
+        $this->getJson('/api/admission/registrar/results')->assertOk();
+        $this->getJson('/api/admission/registrar/history?applicant_id='.$a->id)->assertOk();
+        $this->postJson('/api/admission/registrar/results/correct', ['results' => [['id' => $first->id, 'version' => $first->fresh()->version]], 'official_score' => 10, 'reason' => 'Verified'])->assertStatus(428);
+        $second = $this->submit($this->start(), 'B');
+        Sanctum::actingAs($staff);
+        $this->postJson('/api/admission/registrar/results/override', ['results' => [['id' => $second->id, 'version' => $second->version]], 'reason' => 'Verified'])->assertStatus(428);
+        $this->postJson('/api/step-up/verify', ['password' => 'wrong-password'])->assertUnprocessable();
+        $this->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
+        $this->act($second, 'override', ['reason' => 'Reviewed second failure']);
+        $this->assertSame('PASSED', $second->fresh()->outcome());
+        $this->act($second, 'correct', ['official_score' => 30, 'reason' => 'Verified correction']);
+        $this->assertSame('FAILED', $second->fresh()->outcome());
+        $this->assertDatabaseHas('admission_decisions', ['result_id' => $second->id, 'action' => 'result_corrected', 'actor_user_id' => $staff->id]);
+        $this->postJson('/api/admission/registrar/results/correct', ['results' => [['id' => $first->id, 'version' => $first->fresh()->version]], 'official_score' => 80, 'reason' => 'Older attempt'])->assertConflict();
+        $items = [];
+        for ($i = 0; $i < 2; $i++) {
+            $this->guest = $this->user(Role::GUEST);
+            app(AdmissionIdentityService::class)->create($this->guest, $this->cycle);
+            $r = $this->submit($this->start());
+            $items[] = ['id' => $r->id, 'version' => $r->version];
+        }
+        Sanctum::actingAs($staff);
+        $this->postJson('/api/admission/registrar/results/approve', ['results' => $items])->assertOk()->assertJsonPath('data.updated', 2);
+        $this->postJson('/api/admission/registrar/results/publish', ['results' => $items])->assertConflict();
+        $items = array_map(fn ($item) => ['id' => $item['id'], 'version' => $item['version'] + 1], $items);
+        $this->postJson('/api/admission/registrar/results/publish', ['results' => $items])->assertOk()->assertJsonPath('data.updated', 2);
+
+    }
+
+    public function test_staff_endpoints_require_authentication_and_active_staff_role(): void
+    {
+        $endpoints = [
+            ['get', 'admin/programs'], ['post', 'admin/programs'], ['put', 'admin/programs/1/academic'],
+            ['get', 'admin/exams'], ['put', 'admin/exams/1'],
+            ['get', 'admin/questions'], ['post', 'admin/questions'], ['put', 'admin/questions/1'], ['delete', 'admin/questions/1'],
+            ['get', 'registrar/applicants'], ['get', 'registrar/applicants/1'], ['get', 'registrar/results'], ['get', 'registrar/history'],
+            ['post', 'registrar/results/approve'], ['post', 'registrar/results/publish'], ['post', 'registrar/results/correct'], ['post', 'registrar/results/override'],
+        ];
+        foreach ($endpoints as [$method, $path]) {
+            $this->{$method.'Json'}('/api/admission/'.$path)->assertUnauthorized();
+        }
+        foreach ([Role::GUEST, Role::STUDENT, Role::PROFESSOR, Role::ADMIN, Role::REGISTRAR_STAFF] as $role) {
+            $user = $this->user($role);
+            $statuses = in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true) ? ['inactive', 'suspended'] : ['active'];
+            foreach ($statuses as $status) {
+                $user->update(['status' => $status]);
+                Sanctum::actingAs($user);
+                foreach ($endpoints as [$method, $path]) {
+                    $this->{$method.'Json'}('/api/admission/'.$path)->assertForbidden();
+                }
+            }
+        }
+    }
+}

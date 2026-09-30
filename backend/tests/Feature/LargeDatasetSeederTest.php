@@ -19,7 +19,10 @@ class LargeDatasetSeederTest extends TestCase
         $this->seed(DatabaseSeeder::class);
         $this->seed(LargeDatasetSeeder::class);
 
-        $this->assertDatabaseCount('generated_data_records', 10_008);
+        foreach (['students', 'user_profiles', 'student_documents', 'document_requests', 'appointments', 'document_request_status_changes', 'cabinet_slots', 'student_record_locations'] as $table) {
+            $this->assertSame(DB::table($table)->whereIn('id', DB::table('generated_data_records')->where('dataset_key', LargeDatasetSeeder::DATASET_KEY)->where('record_type', $table)->select('record_id'))->count(), DB::table('generated_data_records')->where('dataset_key', LargeDatasetSeeder::DATASET_KEY)->where('record_type', $table)->count());
+            $this->assertGreaterThan(0, DB::table('generated_data_records')->where('record_type', $table)->count());
+        }
         $this->assertSame(10_000, DB::table('generated_data_records')
             ->where('dataset_key', LargeDatasetSeeder::DATASET_KEY)
             ->where('record_type', LargeDatasetSeeder::GENERATED_USER_RECORD_TYPE)

@@ -14,6 +14,7 @@ use App\Models\DocumentType;
 use App\Models\Role;
 use App\Models\Student;
 use App\Models\User;
+use App\Services\StudentHistoryService;
 use App\Services\StudentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,6 +42,11 @@ class StudentController extends Controller
             'message' => 'Student record retrieved successfully.',
             'data' => new StudentResource($this->studentService->find($student->id)),
         ]);
+    }
+
+    public function history(Student $student, StudentHistoryService $history): JsonResponse
+    {
+        return response()->json(['success' => true, 'data' => $history->show($this->studentService->find($student->id))]);
     }
 
     public function bulkOptions(Request $request): JsonResponse

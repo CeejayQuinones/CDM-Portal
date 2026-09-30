@@ -56,3 +56,5 @@ if (app()->environment('local')) {
         },
     )->purpose('Install a local-only sample file through the Student Documents observer workflow');
 }
+
+Schedule::command('admission:finalize-expired')->everyMinute()->withoutOverlapping();

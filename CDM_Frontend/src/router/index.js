@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { admissionRoutes } from '../modules/admission/routes.js'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
 import { performanceMonitor } from '../services/performance/performanceMonitor'
@@ -13,7 +14,7 @@ const GuestDashboardView = () => import('../views/GuestDashboardView.vue')
 const RoleDashboardView = () => import('../views/RoleDashboardView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const ComingSoonView = () => import('../views/ComingSoonView.vue')
-const AdmissionView = () => import('../modules/admission/AdmissionView.vue')
+const EnrollmentAcademicView = () => import('../modules/enrollment/EnrollmentAcademicView.vue')
 const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
 const GradingView = () => import('../modules/grading/GradingView.vue')
 const MonitoringView = () => import('../modules/monitoring/MonitoringView.vue')
@@ -158,11 +159,31 @@ const routes = [
           roles: ROUTE_ROLES['activate-student-account'],
         },
       }),
+      ...admissionRoutes.map(protectedRoute),
+      protectedRoute({ path: 'enrollment/sections', name: 'enrollment-sections', component: EnrollmentAcademicView, meta: { title: 'Sections', roles: ROUTE_ROLES['enrollment-sections'] } }),
+      protectedRoute({ path: 'enrollment/scheduling', name: 'enrollment-scheduling', component: EnrollmentAcademicView, meta: { title: 'Scheduling', roles: ROUTE_ROLES['enrollment-scheduling'] } }),
+      protectedRoute({ path: 'enrollment/records', name: 'enrollment-records', component: EnrollmentAcademicView, meta: { title: 'Enrollment Records', roles: ROUTE_ROLES['enrollment-records'] } }),
+      protectedRoute({ path: 'enrollment/subjects', name: 'enrollment-subjects', component: EnrollmentAcademicView, meta: { title: 'Subjects', roles: ROUTE_ROLES['enrollment-subjects'] } }),
+      protectedRoute({ path: 'enrollment/schedule', name: 'enrollment-schedule', component: EnrollmentAcademicView, meta: { title: 'My Schedule', roles: ROUTE_ROLES['enrollment-schedule'] } }),
+      protectedRoute({ path: 'enrollment/cor', name: 'enrollment-cor', component: EnrollmentAcademicView, meta: { title: 'COR', roles: ROUTE_ROLES['enrollment-cor'] } }),
+      protectedRoute({ path: 'enrollment/teaching', name: 'enrollment-teaching', component: EnrollmentAcademicView, meta: { title: 'My Teaching Assignments', roles: ROUTE_ROLES['enrollment-teaching'] } }),
       protectedRoute({
-        path: 'admission',
-        name: 'admission',
-        component: AdmissionView,
-        meta: { title: 'Admission', roles: ROUTE_ROLES.admission },
+        path: 'enrollment/applications',
+        name: 'enrollment-applications',
+        component: EnrollmentView,
+        meta: { title: 'Enrollment Applications', roles: ROUTE_ROLES['enrollment-applications'] },
+      }),
+      protectedRoute({
+        path: 'enrollment/periods',
+        name: 'enrollment-periods',
+        component: EnrollmentView,
+        meta: { title: 'Enrollment Periods', roles: ROUTE_ROLES['enrollment-periods'] },
+      }),
+      protectedRoute({
+        path: 'enrollment/status',
+        name: 'enrollment-status',
+        component: EnrollmentView,
+        meta: { title: 'Enrollment status', roles: ROUTE_ROLES['enrollment-status'] },
       }),
       protectedRoute({
         path: 'enrollment',

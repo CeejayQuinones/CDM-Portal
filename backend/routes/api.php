@@ -1,7 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\Admission\AdmissionApplicationController;
+use App\Http\Controllers\Api\Admission\AdmissionIdentityController;
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\Enrollment\EnrollmentAcademicController;
+use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
+use App\Http\Controllers\Api\Enrollment\EnrollmentWorkflowController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
@@ -14,6 +19,7 @@ use App\Http\Controllers\Api\StepUpAuthenticationController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentDocumentRequestController;
 use App\Http\Controllers\Api\StudentSettingsController;
+use App\Http\Middleware\EnrollmentBoundary;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
@@ -24,6 +30,41 @@ Route::post('/registration/email-verification/verify', [AuthController::class, '
     ->middleware('throttle:5,1');
 
 Route::middleware('auth:sanctum')->group(function (): void {
+    Route::get('/enrollment/status', EnrollmentStatusController::class);
+    Route::get('/enrollment/eligibility', EnrollmentStatusController::class);
+    Route::prefix('enrollment')->middleware(EnrollmentBoundary::class)->controller(EnrollmentWorkflowController::class)->group(function (): void {
+        Route::get('/periods', 'periods');
+        Route::post('/periods', 'savePeriod')->middleware('throttle:30,1');
+        Route::put('/periods/{id}', 'savePeriod')->whereNumber('id')->middleware('throttle:30,1');
+        Route::get('/applications/mine', 'mine');
+        Route::get('/applications', 'index');
+        Route::post('/applications', 'create')->middleware('throttle:20,1');
+        Route::get('/applications/{id}', 'show')->whereNumber('id');
+        Route::post('/applications/{id}/{action}', 'action')->whereNumber('id')->whereIn('action', ['save', 'submit', 'cancel', 'review', 'approve', 'reject'])->middleware('throttle:30,1');
+        Route::post('/applications/{id}/documents', 'upload')->whereNumber('id')->middleware('throttle:10,1');
+        Route::get('/applications/{id}/documents/{document}', 'download')->whereNumber(['id', 'document']);
+    });
+    Route::prefix('enrollment/academic')->middleware(EnrollmentBoundary::class)->controller(EnrollmentAcademicController::class)->group(function (): void {
+        Route::get('/options', 'options');
+        Route::get('/sections', 'sections');
+        Route::post('/sections', 'saveSection')->middleware('throttle:30,1');
+        Route::put('/sections/{id}', 'saveSection')->whereNumber('id')->middleware('throttle:30,1');
+        Route::get('/schedules', 'schedules');
+        Route::post('/schedules', 'saveSchedule')->middleware('throttle:30,1');
+        Route::put('/schedules/{id}', 'saveSchedule')->whereNumber('id')->middleware('throttle:30,1');
+        Route::delete('/schedules/{id}', 'deleteSchedule')->whereNumber('id')->middleware('throttle:30,1');
+        Route::get('/applications/{id}', 'application')->whereNumber('id');
+        Route::post('/applications/{id}/{action}', 'change')->whereNumber('id')->whereIn('action', ['subjects', 'assign', 'finalize'])->middleware('throttle:30,1');
+        Route::get('/records', 'records');
+        Route::get('/records/{id}', 'record')->whereNumber('id');
+        Route::get('/professor', 'professor');
+        Route::get('/professor/sections/{section}', 'professor')->whereNumber('section');
+        Route::get('/notifications', 'notices');
+        Route::patch('/notifications/{id}/read', 'readNotice');
+    });
+    Route::get('/admission/me', AdmissionIdentityController::class);
+    Route::get('/admission/applications/availability', [AdmissionApplicationController::class, 'availability']);
+    Route::post('/admission/applications', [AdmissionApplicationController::class, 'store'])->middleware('throttle:5,1');
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
@@ -49,6 +90,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/students/bulk-options', [StudentController::class, 'bulkOptions']);
         Route::patch('/students/bulk', [StudentController::class, 'bulkUpdate'])->middleware('step-up');
         Route::get('/students/{student}', [StudentController::class, 'show']);
+        Route::get('/students/{student}/history', [StudentController::class, 'history']);
         Route::get('/students/{student}/documents', [StudentController::class, 'documents']);
         Route::patch('/students/{student}', [StudentController::class, 'update'])->middleware('step-up');
     });
@@ -105,3 +147,5 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::patch('/appointments/{appointment}', [RegistrarDocumentRequestController::class, 'updateAppointment']);
     });
 });
+
+require __DIR__.'/admission.php';

@@ -367,6 +367,9 @@ onMounted(fetchStudents)
             <th>Full Name</th>
             <th>Course</th>
             <th>Year Level</th>
+            <th>Section</th>
+            <th>Admission</th>
+            <th>Enrollment</th>
             <th>Student Status</th>
             <th>Account Status</th>
             <th>Actions</th>
@@ -384,8 +387,15 @@ onMounted(fetchStudents)
             </td>
             <td data-label="Student Number">{{ student.student_number }}</td>
             <td data-label="Full Name">{{ student.full_name }}</td>
-            <td data-label="Course">{{ student.course?.code || '—' }}</td>
-            <td data-label="Year Level">Year {{ student.year_level }}</td>
+            <td data-label="Course">{{ student.current_enrollment?.course?.code || student.course?.code || '—' }}</td>
+            <td data-label="Year Level">Year {{ student.current_enrollment?.year_level || student.year_level }}</td>
+            <td data-label="Section">
+              {{ student.current_section
+                ? `${student.current_section}${student.current_enrollment?.assignment_state === 'assigned_pending_finalization' ? ' · Assigned / Pending Finalization' : student.current_enrollment?.record_scope === 'latest' ? ' · Latest Section' : ''}`
+                : 'Not assigned' }}
+            </td>
+            <td data-label="Admission">{{ student.admission_record || 'No linked Admission record' }}</td>
+            <td data-label="Enrollment">{{ student.enrollment_status ? `${displayStatus(student.enrollment_status)} · ${student.current_enrollment?.record_scope === 'latest' ? 'Latest' : 'Current'}` : student.enrollment_application_available ? 'Application' : 'No record' }}</td>
             <td data-label="Student Status">
               <span class="status-badge">{{ displayStatus(student.student_status) }}</span>
             </td>

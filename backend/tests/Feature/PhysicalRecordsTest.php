@@ -308,6 +308,14 @@ class PhysicalRecordsTest extends TestCase
             ],
         ]);
 
+        foreach (['cabinet_slots' => [$generatedSlot->id], 'student_record_locations' => StudentRecordLocation::where('student_id', $generatedStudent->id)->pluck('id')->all()] as $table => $ids) {
+            foreach ($ids as $id) {
+                DB::table('generated_data_records')->insert(['dataset_key' => LargeDatasetSeeder::DATASET_KEY,
+                    'record_type' => $table, 'record_id' => $id,
+                    'record_created_at' => DB::table($table)->where('id', $id)->value('created_at'),
+                    'created_at' => now(), 'updated_at' => now()]);
+            }
+        }
         $this->seed(LargeDatasetCleanupSeeder::class);
 
         $this->assertDatabaseHas('cabinets', ['id' => $normalCabinet->id, 'cabinet_code' => 'A']);
@@ -324,7 +332,7 @@ class PhysicalRecordsTest extends TestCase
         $this->assertDatabaseMissing('generated_data_records', ['dataset_key' => LargeDatasetSeeder::DATASET_KEY]);
     }
 
-    public function test_large_dataset_cleanup_detects_a_cabinet_only_partial_run(): void
+    public function test_large_dataset_cleanup_preserves_unregistered_legacy_cabinet_rows(): void
     {
         $normalCabinet = $this->createCabinet('A', 1);
         $stressCabinet = Cabinet::query()->create([
@@ -341,8 +349,8 @@ class PhysicalRecordsTest extends TestCase
         $this->seed(LargeDatasetCleanupSeeder::class);
 
         $this->assertDatabaseHas('cabinets', ['id' => $normalCabinet->id, 'cabinet_code' => 'A']);
-        $this->assertDatabaseMissing('cabinets', ['id' => $stressCabinet->id]);
-        $this->assertDatabaseCount('cabinet_slots', 1);
+        $this->assertDatabaseHas('cabinets', ['id' => $stressCabinet->id]);
+        $this->assertDatabaseCount('cabinet_slots', 3);
     }
 
     public function test_large_dataset_cleanup_does_not_delete_a_record_when_the_registry_timestamp_does_not_match(): void
@@ -361,7 +369,7 @@ class PhysicalRecordsTest extends TestCase
 
         $this->assertDatabaseHas('users', ['id' => $student->user_id]);
         $this->assertDatabaseHas('students', ['id' => $student->id]);
-        $this->assertDatabaseMissing('generated_data_records', [
+        $this->assertDatabaseHas('generated_data_records', [
             'dataset_key' => LargeDatasetSeeder::DATASET_KEY,
             'record_id' => $student->user_id,
         ]);

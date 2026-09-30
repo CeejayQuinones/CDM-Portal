@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Enrollment\EnrollmentApplication;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -57,6 +58,18 @@ class Student extends Model
         return $this->hasOne(Enrollment::class)->latestOfMany();
     }
 
+    /** Enrollment selected by StudentService's term-aware ranking subquery. */
+    public function currentEnrollment(): BelongsTo
+    {
+        return $this->belongsTo(Enrollment::class, 'current_enrollment_id');
+    }
+
+    /** Assigned application selected by StudentService's term-aware ranking. */
+    public function currentEnrollmentApplication(): BelongsTo
+    {
+        return $this->belongsTo(EnrollmentApplication::class, 'current_enrollment_application_id');
+    }
+
     public function documents(): HasMany
     {
         return $this->hasMany(StudentDocument::class);
@@ -85,6 +98,11 @@ class Student extends Model
     public function enrollments(): HasMany
     {
         return $this->hasMany(Enrollment::class);
+    }
+
+    public function enrollmentApplications(): HasMany
+    {
+        return $this->hasMany(EnrollmentApplication::class);
     }
 
     public function settings(): HasOne
