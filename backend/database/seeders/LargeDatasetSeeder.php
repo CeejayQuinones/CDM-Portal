@@ -309,6 +309,7 @@ class LargeDatasetSeeder extends Seeder
             ];
         }
         $this->insertBatches('user_profiles', $profiles);
+        $this->registerChildren('user_profiles', 'user_id', $userIds);
 
         $profileIdsByUser = collect();
         foreach ($userIds->chunk(self::BATCH_SIZE) as $userIdChunk) {
@@ -336,6 +337,7 @@ class LargeDatasetSeeder extends Seeder
             ];
         }
         $this->insertBatches('students', $students);
+        $this->registerChildren('students', 'user_id', $userIds);
 
         $studentIds = collect();
         foreach ($userIds->chunk(self::BATCH_SIZE) as $userIdChunk) {
@@ -403,6 +405,7 @@ class LargeDatasetSeeder extends Seeder
         }
 
         $this->insertBatches('cabinet_slots', $slots);
+        $this->registerChildren('cabinet_slots', 'cabinet_id', $cabinetIdsByCode->values());
 
         $slotIds = DB::table('cabinet_slots')
             ->join('cabinets', 'cabinets.id', '=', 'cabinet_slots.cabinet_id')
@@ -457,6 +460,7 @@ class LargeDatasetSeeder extends Seeder
         }
 
         $this->insertBatches('student_record_locations', $locations);
+        $this->registerChildren('student_record_locations', 'student_id', $studentIds);
 
         $actualOccupancies = DB::table('cabinet_slots')
             ->join('cabinets', 'cabinets.id', '=', 'cabinet_slots.cabinet_id')
@@ -542,6 +546,7 @@ class LargeDatasetSeeder extends Seeder
             DB::table('student_documents')->insert($rows);
         }
 
+        $this->registerChildren('student_documents', 'student_id', $studentIds);
         $this->command?->info('Generated 30,000 student document records.');
     }
 
@@ -619,6 +624,7 @@ class LargeDatasetSeeder extends Seeder
             DB::table('document_requests')->insert($rows);
         }
 
+        $this->registerChildren('document_requests', 'student_id', $studentIds);
         $this->command?->info('Generated 50,000 document requests with current workflow statuses.');
     }
 
@@ -682,6 +688,8 @@ class LargeDatasetSeeder extends Seeder
         }
 
         $this->seedStatusChanges($requestIds, $registrarIds, $now);
+        $this->registerChildren('appointments', 'student_id', $studentIds);
+        $this->registerChildren('document_request_status_changes', 'document_request_id', $requestIds);
         $this->command?->info('Generated 20,000 date-only appointments. Active queue date: '.$activeDates[0]->toDateString().'.');
     }
 
@@ -748,6 +756,18 @@ class LargeDatasetSeeder extends Seeder
     }
 
     /** @param Collection<int, int> $recordIds */
+    private function registerChildren(string $table, string $parentColumn, Collection $parentIds): void
+    {
+        // Called inside the creation transaction for these newly generated parents.
+        foreach ($parentIds->chunk(self::BATCH_SIZE) as $ids) {
+            $rows = DB::table($table)->whereIn($parentColumn, $ids)->get(['id', 'created_at']);
+            $ledger = $rows->map(fn ($row) => ['dataset_key' => self::DATASET_KEY,
+                'record_type' => $table, 'record_id' => $row->id,
+                'record_created_at' => $row->created_at, 'created_at' => now(), 'updated_at' => now()])->all();
+            $this->insertBatches('generated_data_records', $ledger);
+        }
+    }
+
     private function registerGeneratedRecords(string $recordType, Collection $recordIds, CarbonImmutable $createdAt): void
     {
         $registeredAt = CarbonImmutable::now()->startOfSecond();

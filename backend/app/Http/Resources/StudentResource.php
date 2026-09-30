@@ -11,6 +11,47 @@ class StudentResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $enrollment = $this->relationLoaded('currentEnrollment') ? $this->currentEnrollment : null;
+        $finalApplication = $enrollment?->relationLoaded('application') ? $enrollment->application : null;
+        $assignedApplication = $this->relationLoaded('currentEnrollmentApplication') ? $this->currentEnrollmentApplication : null;
+        $rank = function ($year, $semester, $period): array {
+            $open = $period?->enabled && $period->opens_at?->lte(now()) && $period->closes_at?->gte(now());
+            $active = $year?->status === 'active' && $semester?->status === 'active';
+
+            return [$open ? 2 : ($active ? 1 : 0), (string) ($year?->start_date ?? ''), (int) ($semester?->semester_order ?? 0)];
+        };
+        $enrollmentRank = $enrollment ? $rank($enrollment->academicYear, $enrollment->semester, $finalApplication?->period) : [-1, '', 0];
+        $applicationRank = $assignedApplication ? $rank($assignedApplication->academicYear, $assignedApplication->semester, $assignedApplication->period) : [-1, '', 0];
+        $useAssignedApplication = $assignedApplication && (! $enrollment || $applicationRank > $enrollmentRank);
+        $application = $useAssignedApplication ? $assignedApplication : $finalApplication;
+        $year = $useAssignedApplication ? $assignedApplication->academicYear : $enrollment?->academicYear;
+        $semester = $useAssignedApplication ? $assignedApplication->semester : $enrollment?->semester;
+        $section = $useAssignedApplication ? $assignedApplication->section : $enrollment?->section;
+        $selectedRank = $useAssignedApplication ? $applicationRank : $enrollmentRank;
+        $isCurrent = $selectedRank[0] > 0;
+        $summary = ($enrollment || $assignedApplication) ? [
+            'id' => $useAssignedApplication ? null : $enrollment?->id,
+            'application_id' => $application?->id,
+            'assignment_state' => $useAssignedApplication ? 'assigned_pending_finalization' : 'official',
+            'record_scope' => $isCurrent ? 'current' : 'latest',
+            'academic_year' => $year?->school_year,
+            'semester' => $semester?->semester_name,
+            'section' => $section?->section_name,
+            'year_level' => $application?->year_level ?? $this->year_level,
+            'status' => $useAssignedApplication ? $application?->status : $enrollment?->status,
+            'classification' => $application?->classification,
+            'course' => $application?->course ? [
+                'id' => $application->course->id,
+                'code' => $application->course->course_code,
+                'name' => $application->course->course_name,
+            ] : null,
+            'curriculum' => $application?->curriculum ? [
+                'id' => $application->curriculum->id,
+                'code' => $application->curriculum->curriculum_code,
+                'name' => $application->curriculum->curriculum_name,
+            ] : null,
+        ] : null;
+
         return [
             'id' => $this->id,
             'record_created_at' => $this->created_at?->toISOString(),
@@ -65,15 +106,20 @@ class StudentResource extends JsonResource
                 'code' => $this->course->department->department_code,
                 'name' => $this->course->department->department_name,
             ] : null),
-            'academic_year' => $this->whenLoaded('latestEnrollment', fn () => $this->latestEnrollment?->relationLoaded('academicYear') && $this->latestEnrollment->academicYear ? [
-                'id' => $this->latestEnrollment->academicYear->id,
-                'school_year' => $this->latestEnrollment->academicYear->school_year,
+            'academic_year' => $this->when(array_key_exists('current_enrollment_id', $this->resource->getAttributes()), fn () => $year ? [
+                'id' => $year->id,
+                'school_year' => $year->school_year,
             ] : null),
-            'semester' => $this->whenLoaded('latestEnrollment', fn () => $this->latestEnrollment?->relationLoaded('semester') && $this->latestEnrollment->semester ? [
-                'id' => $this->latestEnrollment->semester->id,
-                'name' => $this->latestEnrollment->semester->semester_name,
+            'semester' => $this->when(array_key_exists('current_enrollment_id', $this->resource->getAttributes()), fn () => $semester ? [
+                'id' => $semester->id,
+                'name' => $semester->semester_name,
             ] : null),
-            'enrollment_status' => $this->whenLoaded('latestEnrollment', fn () => $this->latestEnrollment?->status),
+            'enrollment_status' => $this->when(array_key_exists('current_enrollment_id', $this->resource->getAttributes()), fn () => $summary['status'] ?? null),
+            'current_section' => $this->when(array_key_exists('current_enrollment_id', $this->resource->getAttributes()), fn () => $section?->section_name),
+            'current_enrollment' => $this->when(array_key_exists('current_enrollment_id', $this->resource->getAttributes()), fn () => $summary),
+            'admission_record' => $this->when(array_key_exists('has_admission_record', $this->resource->getAttributes()),
+                fn () => $this->has_admission_record ? 'Available' : 'No linked Admission record'),
+            'enrollment_application_available' => $this->when(isset($this->has_enrollment_application), fn () => (bool) $this->has_enrollment_application),
             'documents' => StudentDocumentResource::collection($this->whenLoaded('documents')),
             'physical_record_location' => $this->whenLoaded(
                 'physicalRecordLocation',

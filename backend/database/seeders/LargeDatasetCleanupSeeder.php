@@ -2,395 +2,148 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Query\Builder;
-use Illuminate\Database\Query\JoinClause;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use LogicException;
 
 class LargeDatasetCleanupSeeder extends Seeder
 {
-    private const DELETE_CHUNK_SIZE = 500;
-
-    private const STRESS_USERNAME_PATTERN = 'stress\\_student\\_%';
-
-    private const LEGACY_STRESS_EMAIL_PATTERN = 'stress%@example.test';
-
-    private const LEGACY_GENERATED_EMAIL_PATTERN = 'large-dataset+%@example.test';
-
-    private const STRESS_STUDENT_NUMBER_PATTERN = 'STRESS-%';
-
-    private const LEGACY_STRESS_CABINET_CODES = [
-        'STRESS-CAB-01',
-        'STRESS-CAB-02',
-        'STRESS-CAB-03',
-        'STRESS-CAB-04',
-        'STRESS-CAB-05',
-        'STRESS-CAB-06',
-        'STRESS-CAB-07',
-        'STRESS-CAB-08',
-    ];
-
     public function run(): void
     {
-        $userIds = $this->generatedUserIds();
-        $studentIds = $this->generatedStudentIds($userIds);
-        $cabinetIds = $this->generatedCabinetIds();
-        $slotIds = $this->generatedCabinetSlotIds($cabinetIds);
-        $recordLocationIds = $this->generatedRecordLocationIds($studentIds, $slotIds);
-        $capacityIds = $this->generatedCapacityIds();
-
-        $counts = [
-            'appointments' => $this->countForStudents('appointments', $studentIds),
-            'document_requests' => $this->countForStudents('document_requests', $studentIds),
-            'student_documents' => $this->countForStudents('student_documents', $studentIds),
-            'students' => count($studentIds),
-            'user_profiles' => $this->countWhereIn('user_profiles', 'user_id', $userIds),
-            'personal_access_tokens' => $this->countPersonalAccessTokens($userIds),
-            'users' => count($userIds),
-            'student_record_locations' => count($recordLocationIds),
-            'cabinet_slots' => count($slotIds),
-            'cabinets' => count($cabinetIds),
-            'appointment_capacities' => count($capacityIds),
-        ];
-
-        $this->command?->info('Found LargeDatasetSeeder records:');
-        $this->command?->line(sprintf('  %s generated users', number_format($counts['users'])));
-        $this->command?->line(sprintf('  %s user profiles', number_format($counts['user_profiles'])));
-        $this->command?->line(sprintf('  %s students', number_format($counts['students'])));
-        $this->command?->line(sprintf('  %s student documents', number_format($counts['student_documents'])));
-        $this->command?->line(sprintf('  %s document requests', number_format($counts['document_requests'])));
-        $this->command?->line(sprintf('  %s appointments', number_format($counts['appointments'])));
-        $this->command?->line(sprintf('  %s personal access tokens', number_format($counts['personal_access_tokens'])));
-        $this->command?->line(sprintf('  %s student record locations', number_format($counts['student_record_locations'])));
-        $this->command?->line(sprintf('  %s generated cabinet slots', number_format($counts['cabinet_slots'])));
-        $this->command?->line(sprintf('  %s generated cabinets', number_format($counts['cabinets'])));
-
-        if ($userIds === [] && $studentIds === [] && $cabinetIds === [] && $recordLocationIds === []) {
-            $this->purgeDatasetRegistry();
-            $this->verifyCleanup();
-            $this->command?->info('No LargeDatasetSeeder records were found.');
-
-            return;
-        }
-
-        $hasPersonalAccessTokens = Schema::hasTable('personal_access_tokens');
-        DB::transaction(function () use ($studentIds, $userIds, $hasPersonalAccessTokens, $recordLocationIds, $slotIds, $cabinetIds, $capacityIds): void {
-            foreach (array_chunk($recordLocationIds, self::DELETE_CHUNK_SIZE) as $recordLocationIdChunk) {
-                DB::table('student_record_locations')->whereIn('id', $recordLocationIdChunk)->delete();
-            }
-
-            foreach (array_chunk($studentIds, self::DELETE_CHUNK_SIZE) as $studentIdChunk) {
-                $requestChunk = $this->idsForStudents('document_requests', $studentIdChunk);
-                if ($requestChunk !== []) {
-                    DB::table('document_request_status_changes')->whereIn('document_request_id', $requestChunk)->delete();
-                }
-                DB::table('appointments')->whereIn('student_id', $studentIdChunk)->delete();
-                DB::table('document_requests')->whereIn('student_id', $studentIdChunk)->delete();
-                DB::table('student_documents')->whereIn('student_id', $studentIdChunk)->delete();
-                DB::table('students')->whereIn('id', $studentIdChunk)->delete();
-            }
-
-            foreach (array_chunk($userIds, self::DELETE_CHUNK_SIZE) as $userIdChunk) {
-                if ($hasPersonalAccessTokens) {
-                    DB::table('personal_access_tokens')
-                        ->where('tokenable_type', 'App\\Models\\User')
-                        ->whereIn('tokenable_id', $userIdChunk)
-                        ->delete();
-                }
-
-                DB::table('user_profiles')->whereIn('user_id', $userIdChunk)->delete();
-                DB::table('users')->whereIn('id', $userIdChunk)->delete();
-            }
-
-            foreach (array_chunk($slotIds, self::DELETE_CHUNK_SIZE) as $slotIdChunk) {
-                DB::table('cabinet_slots')->whereIn('id', $slotIdChunk)->delete();
-            }
-
-            foreach (array_chunk($cabinetIds, self::DELETE_CHUNK_SIZE) as $cabinetIdChunk) {
-                DB::table('cabinets')->whereIn('id', $cabinetIdChunk)->delete();
-            }
-
-            foreach (array_chunk($capacityIds, self::DELETE_CHUNK_SIZE) as $capacityIdChunk) {
-                DB::table('appointment_date_capacities')->whereIn('id', $capacityIdChunk)->delete();
-            }
-
-            $this->purgeDatasetRegistry();
-        });
-
-        $this->verifyCleanup();
-
-        $this->command?->info(sprintf(
-            'Removed generated data only: %d users, %d profiles, %d students, %d documents, %d requests, %d appointments, %d personal access tokens, %d record locations, %d cabinet slots, %d cabinets.',
-            $counts['users'],
-            $counts['user_profiles'],
-            $counts['students'],
-            $counts['student_documents'],
-            $counts['document_requests'],
-            $counts['appointments'],
-            $counts['personal_access_tokens'],
-            $counts['student_record_locations'],
-            $counts['cabinet_slots'],
-            $counts['cabinets'],
-        ));
-    }
-
-    /** @return array<int, int> */
-    private function generatedUserIds(): array
-    {
-        $userIds = collect($this->registeredRecordIds('users', LargeDatasetSeeder::GENERATED_USER_RECORD_TYPE));
-        $userIds = $userIds->merge($this->legacyStressUsernameQuery()->pluck('id'));
-
-        if (Schema::hasTable('user_profiles')) {
-            $userIds = $userIds->merge(
-                DB::table('user_profiles')
-                    ->where(function (Builder $query): void {
-                        $query
-                            ->where('email', 'like', self::LEGACY_GENERATED_EMAIL_PATTERN)
-                            ->orWhere('email', 'like', self::LEGACY_STRESS_EMAIL_PATTERN);
-                    })
-                    ->pluck('user_id')
-            );
-        }
-
-        if (Schema::hasTable('students')) {
-            $userIds = $userIds->merge(
-                DB::table('students')
-                    ->where('student_number', 'like', self::STRESS_STUDENT_NUMBER_PATTERN)
-                    ->pluck('user_id')
-            );
-        }
-
-        return $this->normalizeIds($userIds);
-    }
-
-    /**
-     * @param  array<int, int>  $userIds
-     * @return array<int, int>
-     */
-    private function generatedStudentIds(array $userIds): array
-    {
-        if (! Schema::hasTable('students')) {
-            return [];
-        }
-
-        $studentIds = DB::table('students')
-            ->where('student_number', 'like', self::STRESS_STUDENT_NUMBER_PATTERN)
-            ->pluck('id');
-
-        foreach (array_chunk($userIds, self::DELETE_CHUNK_SIZE) as $userIdChunk) {
-            $studentIds = $studentIds->merge(
-                DB::table('students')->whereIn('user_id', $userIdChunk)->pluck('id')
-            );
-        }
-
-        return $this->normalizeIds($studentIds);
-    }
-
-    private function legacyStressUsernameQuery(): Builder
-    {
-        return DB::table('users')
-            ->where('username', 'like', self::STRESS_USERNAME_PATTERN);
-    }
-
-    /** @return array<int, int> */
-    private function generatedCabinetIds(): array
-    {
-        if (! Schema::hasTable('cabinets')) {
-            return [];
-        }
-
-        return $this->normalizeIds(collect([
-            ...$this->registeredRecordIds('cabinets', LargeDatasetSeeder::GENERATED_CABINET_RECORD_TYPE),
-            ...$this->legacyCabinetQuery()->pluck('id')->all(),
-        ]));
-    }
-
-    private function legacyCabinetQuery(): Builder
-    {
-        return DB::table('cabinets')
-            ->where(function (Builder $query): void {
-                $query->where(function (Builder $generatedCabinets): void {
-                    $generatedCabinets
-                        ->whereIn('cabinet_code', LargeDatasetSeeder::PHYSICAL_RECORD_CABINET_CODES)
-                        ->where('description', 'like', '%[CDM:LARGE_DATASET_SEEDER:PHYSICAL_RECORDS:v1]%');
-                })->orWhere(function (Builder $legacyCabinets): void {
-                    $legacyCabinets
-                        ->whereIn('cabinet_code', self::LEGACY_STRESS_CABINET_CODES)
-                        ->where(function (Builder $descriptions): void {
-                            $descriptions
-                                ->where('description', 'like', '%LargeDatasetSeeder%')
-                                ->orWhere('description', 'like', '%stress%');
-                        });
-                });
-            });
-    }
-
-    /**
-     * @param  array<int, int>  $cabinetIds
-     * @return array<int, int>
-     */
-    private function generatedCabinetSlotIds(array $cabinetIds): array
-    {
-        if (! Schema::hasTable('cabinet_slots')) {
-            return [];
-        }
-
-        $slotIds = collect();
-
-        foreach (array_chunk($cabinetIds, self::DELETE_CHUNK_SIZE) as $cabinetIdChunk) {
-            $slotIds = $slotIds->merge(
-                DB::table('cabinet_slots')->whereIn('cabinet_id', $cabinetIdChunk)->pluck('id')
-            );
-        }
-
-        return $this->normalizeIds($slotIds);
-    }
-
-    /**
-     * @param  array<int, int>  $studentIds
-     * @param  array<int, int>  $slotIds
-     * @return array<int, int>
-     */
-    private function generatedRecordLocationIds(array $studentIds, array $slotIds): array
-    {
-        if (! Schema::hasTable('student_record_locations')) {
-            return [];
-        }
-
-        $locationIds = collect();
-
-        foreach (array_chunk($studentIds, self::DELETE_CHUNK_SIZE) as $studentIdChunk) {
-            $locationIds = $locationIds->merge(
-                DB::table('student_record_locations')->whereIn('student_id', $studentIdChunk)->pluck('id')
-            );
-        }
-
-        foreach (array_chunk($slotIds, self::DELETE_CHUNK_SIZE) as $slotIdChunk) {
-            $locationIds = $locationIds->merge(
-                DB::table('student_record_locations')->whereIn('cabinet_slot_id', $slotIdChunk)->pluck('id')
-            );
-        }
-
-        return $this->normalizeIds($locationIds);
-    }
-
-    private function verifyCleanup(): void
-    {
-        $remainingUsers = count($this->generatedUserIds());
-        $remainingStudents = count($this->generatedStudentIds($this->generatedUserIds()));
-        $remainingCabinets = count($this->generatedCabinetIds());
-
-        if ($remainingUsers !== 0 || $remainingStudents !== 0 || $remainingCabinets !== 0) {
-            throw new LogicException(sprintf(
-                'Large dataset cleanup verification failed: %d generated users, %d generated students, and %d generated cabinets remain.',
-                $remainingUsers,
-                $remainingStudents,
-                $remainingCabinets,
-            ));
-        }
-
-        $this->command?->info('Verified: 0 generated users, 0 generated student records, and 0 generated cabinets remain.');
-    }
-
-    /** @return array<int, int> */
-    private function registeredRecordIds(string $table, string $recordType): array
-    {
-        if (! Schema::hasTable('generated_data_records') || ! Schema::hasTable($table)) {
-            return [];
-        }
-
-        return $this->normalizeIds(
-            DB::table('generated_data_records as generated_records')
-                ->join($table, function (JoinClause $join) use ($table): void {
-                    $join
-                        ->on($table.'.id', '=', 'generated_records.record_id')
-                        ->on($table.'.created_at', '=', 'generated_records.record_created_at');
-                })
-                ->whereIn('generated_records.dataset_key', [LargeDatasetSeeder::DATASET_KEY, LargeDatasetSeeder::LEGACY_DATASET_KEY])
-                ->where('generated_records.record_type', $recordType)
-                ->pluck($table.'.id')
-        );
-    }
-
-    private function purgeDatasetRegistry(): void
-    {
         if (! Schema::hasTable('generated_data_records')) {
+            $this->command?->info('No ownership ledger found; nothing deleted.');
+
             return;
         }
+        DB::transaction(function (): void {
+            $tables = Schema::getTableListing(schemaQualified: false);
+            $owned = [];
+            $registry = DB::table('generated_data_records')->whereIn('dataset_key', [LargeDatasetSeeder::DATASET_KEY, LargeDatasetSeeder::LEGACY_DATASET_KEY])->lockForUpdate()->get();
+            $aliases = ['user' => 'users', 'cabinet' => 'cabinets', 'appointment_capacity' => 'appointment_date_capacities'];
+            foreach ($registry->groupBy('record_type') as $type => $records) {
+                $table = $aliases[$type] ?? $type;
+                if (! in_array($table, $tables, true) || $table === 'generated_data_records' || ! Schema::hasColumn($table, 'created_at')) {
+                    continue;
+                }
+                $stamps = $records->keyBy('record_id');
+                foreach ($records->pluck('record_id')->chunk(500) as $ids) {
+                    foreach (DB::table($table)->whereIn('id', $ids)->lockForUpdate()->get(['id', 'created_at']) as $row) {
+                        if ((string) $row->created_at === (string) $stamps[$row->id]->record_created_at) {
+                            $owned[$table][$row->id] = true;
+                        }
+                    }
+                }
+            }
+            // Older versions recorded only the User. Its same-run identity rows
+            // have the exact creation timestamp; later academic identities do not.
+            foreach (['user_profiles', 'students'] as $table) {
+                if (! in_array($table, $tables, true)) {
+                    continue;
+                }
+                foreach (array_chunk(array_keys($owned['users'] ?? []), 500) as $ids) {
+                    $rows = DB::table($table)->join('users', 'users.id', '=', $table.'.user_id')
+                        ->whereIn('users.id', $ids)->whereColumn($table.'.created_at', 'users.created_at')
+                        ->lockForUpdate()->pluck($table.'.id');
+                    foreach ($rows as $id) {
+                        $owned[$table][$id] = true;
+                    }
+                }
+            }
+            $found = array_map('count', $owned);
+            $edges = [];
+            foreach ($tables as $table) {
+                foreach (Schema::getForeignKeys($table) as $fk) {
+                    if (isset($owned[$fk['foreign_table']]) && count($fk['columns']) === 1 && $fk['foreign_columns'] === ['id']) {
+                        $edges[] = [$table, $fk['columns'][0], $fk['foreign_table'], null];
+                    }
+                }
+            }
+            // These references are polymorphic and therefore have no database FK.
+            foreach (['enrollment_workflow_events' => ['subject_id', 'enrollment_applications', ['subject_type', 'application']],
+                'notifications' => ['notifiable_id', 'users', ['notifiable_type', 'App\\Models\\User']],
+                'personal_access_tokens' => ['tokenable_id', 'users', ['tokenable_type', 'App\\Models\\User']]] as $table => $edge) {
+                if (in_array($table, $tables, true) && isset($owned[$edge[1]])) {
+                    $edges[] = [$table, ...$edge];
+                }
+            }
+            // Materialize references once, then propagate protection to ancestors.
+            $references = [];
+            foreach ($edges as [$child, $column, $parent, $condition]) {
+                $hasId = Schema::hasColumn($child, 'id');
+                foreach (array_chunk(array_keys($owned[$parent]), 500) as $ids) {
+                    $query = DB::table($child)->whereIn($column, $ids);
+                    if ($condition) {
+                        $query->where($condition[0], $condition[1]);
+                    }
+                    foreach ($query->lockForUpdate()->get($hasId ? ['id', $column] : [$column]) as $row) {
+                        $references[] = [$child, $hasId ? $row->id : null, $parent, $row->{$column}];
+                    }
+                }
+            }
+            $deletable = $owned;
+            $reasons = [];
+            do {
+                $changed = false;
+                foreach ($references as [$child, $childId, $parent, $parentId]) {
+                    if (in_array($parent, ['users', 'user_profiles', 'students', 'enrollment_applications', 'enrollments'], true)
+                        && ! isset($deletable[$parent][$parentId]) && isset($deletable[$child][$childId])) {
+                        unset($deletable[$child][$childId]);
+                        $reasons[$child][$childId] = "retained with protected {$parent}";
+                        $changed = true;
+                    }
+                    if (isset($deletable[$parent][$parentId]) && ! isset($deletable[$child][$childId])) {
+                        unset($deletable[$parent][$parentId]);
+                        $reasons[$parent][$parentId] = "protected {$child} reference";
+                        $changed = true;
+                    }
+                }
+            } while ($changed);
 
-        DB::table('generated_data_records')
-            ->whereIn('dataset_key', [LargeDatasetSeeder::DATASET_KEY, LargeDatasetSeeder::LEGACY_DATASET_KEY])
-            ->delete();
-    }
-
-    /** @return array<int, int> */
-    private function generatedCapacityIds(): array
-    {
-        return $this->registeredRecordIds('appointment_date_capacities', LargeDatasetSeeder::GENERATED_CAPACITY_RECORD_TYPE);
-    }
-
-    /** @param array<int, int> $studentIds @return array<int, int> */
-    private function idsForStudents(string $table, array $studentIds): array
-    {
-        if (! Schema::hasTable($table) || $studentIds === []) {
-            return [];
-        }
-
-        return $this->normalizeIds(DB::table($table)->whereIn('student_id', $studentIds)->pluck('id'));
-    }
-
-    /** @param Collection<int, mixed> $ids */
-    private function normalizeIds(Collection $ids): array
-    {
-        return $ids
-            ->map(fn ($id): int => (int) $id)
-            ->unique()
-            ->sort()
-            ->values()
-            ->all();
-    }
-
-    /** @param array<int, int> $studentIds */
-    private function countForStudents(string $table, array $studentIds): int
-    {
-        return $this->countWhereIn($table, 'student_id', $studentIds);
-    }
-
-    /** @param array<int, int> $ids */
-    private function countWhereIn(string $table, string $column, array $ids): int
-    {
-        if (! Schema::hasTable($table)) {
-            return 0;
-        }
-
-        $count = 0;
-
-        foreach (array_chunk($ids, self::DELETE_CHUNK_SIZE) as $idChunk) {
-            $count += DB::table($table)->whereIn($column, $idChunk)->count();
-        }
-
-        return $count;
-    }
-
-    /** @param array<int, int> $userIds */
-    private function countPersonalAccessTokens(array $userIds): int
-    {
-        if (! Schema::hasTable('personal_access_tokens')) {
-            return 0;
-        }
-
-        $count = 0;
-
-        foreach (array_chunk($userIds, self::DELETE_CHUNK_SIZE) as $userIdChunk) {
-            $count += DB::table('personal_access_tokens')
-                ->where('tokenable_type', 'App\\Models\\User')
-                ->whereIn('tokenable_id', $userIdChunk)
-                ->count();
-        }
-
-        return $count;
+            $deleted = [];
+            $pending = array_filter($deletable);
+            while ($pending) {
+                $progress = false;
+                foreach ($pending as $table => $ids) {
+                    $hasChild = false;
+                    foreach ($edges as [$child, , $parent]) {
+                        if ($parent === $table && isset($pending[$child])) {
+                            $hasChild = true;
+                            break;
+                        }
+                    }
+                    if ($hasChild) {
+                        continue;
+                    }
+                    $deleted[$table] = 0;
+                    foreach (array_chunk(array_keys($ids), 500) as $chunk) {
+                        $deleted[$table] += DB::table($table)->whereIn('id', $chunk)->delete();
+                    }
+                    unset($pending[$table]);
+                    $progress = true;
+                }
+                if (! $progress) {
+                    throw new \LogicException('Cyclic fixture dependencies; cleanup rolled back without disabling foreign keys.');
+                }
+            }
+            $deletedRegistryIds = [];
+            foreach ($registry as $entry) {
+                $table = $aliases[$entry->record_type] ?? $entry->record_type;
+                if (isset($deletable[$table][$entry->record_id])) {
+                    $deletedRegistryIds[] = $entry->id;
+                }
+            }
+            foreach (array_chunk($deletedRegistryIds, 500) as $ids) {
+                DB::table('generated_data_records')->whereIn('id', $ids)->delete();
+            }
+            $this->command?->info('Generated rows found: '.json_encode($found));
+            $this->command?->info('Rows deleted per table: '.json_encode($deleted));
+            $protected = $reasons['students'] ?? [];
+            $this->command?->warn('Protected Students retained: '.count($protected));
+            foreach (array_count_values($protected) as $reason => $count) {
+                $this->command?->line("  {$count}: {$reason}");
+            }
+            $this->command?->line('Protected Student IDs: '.implode(', ', array_slice(array_keys($protected), 0, 20)).(count($protected) > 20 ? ' (first 20; ownership ledger retained)' : ''));
+            $this->command?->info('Remaining owned rows: '.array_sum(array_map('count', $reasons)).'. Repeated cleanup leaves protected activity intact.');
+        });
     }
 }

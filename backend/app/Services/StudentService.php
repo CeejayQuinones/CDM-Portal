@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Http\Requests\BulkUpdateStudentsRequest;
+use App\Models\Admission\AdmissionApplicant;
 use App\Models\CabinetSlot;
 use App\Models\Student;
 use App\Models\StudentDocument;
 use App\Models\StudentRecordLocation;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -16,8 +18,14 @@ class StudentService
     /** @param array<string, mixed> $filters */
     public function paginate(array $filters): LengthAwarePaginator
     {
-        return Student::query()
+        return $this->withCurrentEnrollment(Student::query())
             ->with(['user', 'userProfile', 'course', 'curriculum'])
+            ->addSelect(['has_admission_record' => AdmissionApplicant::query()
+                ->selectRaw('1')
+                ->whereColumn('admission_applicants.user_id', 'students.user_id')
+                ->whereColumn('admission_applicants.converted_student_id', 'students.id')
+                ->limit(1)])
+            ->withExists('enrollmentApplications as has_enrollment_application')
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($studentQuery) use ($search): void {
                     $studentQuery->where('student_number', 'like', "%{$search}%")
@@ -41,14 +49,12 @@ class StudentService
 
     public function find(int $studentId): Student
     {
-        return Student::query()
+        return $this->withCurrentEnrollment(Student::query(), true)
             ->with([
                 'user.role',
                 'userProfile',
                 'course.department',
                 'curriculum',
-                'latestEnrollment.academicYear',
-                'latestEnrollment.semester',
                 'documents.documentType',
                 'documents.aiAnalysis',
                 'physicalRecordLocation.cabinetSlot.cabinet',
@@ -58,6 +64,67 @@ class StudentService
                     ->limit(10),
             ])
             ->findOrFail($studentId);
+    }
+
+    public function withCurrentEnrollment(Builder $query, bool $detail = false): Builder
+    {
+        $rankedEnrollment = DB::table('enrollments as ranked_enrollments')
+            ->join('academic_years as ranked_years', 'ranked_years.id', '=', 'ranked_enrollments.academic_year_id')
+            ->join('semesters as ranked_semesters', 'ranked_semesters.id', '=', 'ranked_enrollments.semester_id')
+            ->leftJoin('enrollment_periods as ranked_periods', function ($join): void {
+                $join->on('ranked_periods.academic_year_id', '=', 'ranked_enrollments.academic_year_id')
+                    ->on('ranked_periods.semester_id', '=', 'ranked_enrollments.semester_id')
+                    ->where('ranked_periods.enabled', true)
+                    ->where('ranked_periods.opens_at', '<=', now())
+                    ->where('ranked_periods.closes_at', '>=', now());
+            })
+            ->whereColumn('ranked_enrollments.student_id', 'students.id')
+            ->select('ranked_enrollments.id')
+            ->orderByRaw("CASE WHEN ranked_periods.id IS NOT NULL THEN 2 WHEN ranked_years.status = 'active' AND ranked_semesters.status = 'active' THEN 1 ELSE 0 END DESC")
+            ->orderByDesc('ranked_years.start_date')
+            ->orderByDesc('ranked_semesters.semester_order')
+            ->orderByDesc('ranked_enrollments.enrollment_date')
+            ->orderByDesc('ranked_enrollments.id')
+            ->limit(1);
+
+        $rankedApplication = DB::table('enrollment_applications as ranked_applications')
+            ->join('academic_years as application_years', 'application_years.id', '=', 'ranked_applications.academic_year_id')
+            ->join('semesters as application_semesters', 'application_semesters.id', '=', 'ranked_applications.semester_id')
+            ->join('enrollment_periods as application_periods', 'application_periods.id', '=', 'ranked_applications.period_id')
+            ->whereColumn('ranked_applications.student_id', 'students.id')
+            ->whereNotNull('ranked_applications.section_id')
+            ->where('ranked_applications.status', 'approved')
+            ->select('ranked_applications.id')
+            ->orderByRaw("CASE WHEN application_periods.enabled = 1 AND application_periods.opens_at <= ? AND application_periods.closes_at >= ? THEN 2 WHEN application_years.status = 'active' AND application_semesters.status = 'active' THEN 1 ELSE 0 END DESC", [now(), now()])
+            ->orderByDesc('application_years.start_date')
+            ->orderByDesc('application_semesters.semester_order')
+            ->orderByDesc('ranked_applications.id')
+            ->limit(1);
+
+        $relations = [
+            'currentEnrollment.academicYear',
+            'currentEnrollment.semester',
+            'currentEnrollment.section',
+            'currentEnrollment.application.course',
+            'currentEnrollmentApplication.academicYear',
+            'currentEnrollmentApplication.semester',
+            'currentEnrollmentApplication.period',
+            'currentEnrollmentApplication.section',
+            'currentEnrollmentApplication.course',
+        ];
+        if ($detail) {
+            $relations[] = 'currentEnrollment.application.period';
+            $relations[] = 'currentEnrollment.application.curriculum';
+            $relations[] = 'currentEnrollmentApplication.curriculum';
+        }
+
+        return $query
+            ->addSelect([
+                'students.*',
+                'current_enrollment_id' => $rankedEnrollment,
+                'current_enrollment_application_id' => $rankedApplication,
+            ])
+            ->with($relations);
     }
 
     /** @param array<string, mixed> $attributes */

@@ -7,6 +7,7 @@ import { ROLES } from '../../config/accessControl'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
 import { documentRequestReturnContext } from '../document-request/documentRequestNavigation'
 import { physicalRecordsService } from './physicalRecordsService'
+import StudentAcademicHistory from './StudentAcademicHistory.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -586,6 +587,8 @@ onMounted(loadProfile)
         </div>
       </div>
     </section>
+
+    <StudentAcademicHistory :student-id="student.id" />
 
     <section class="record-card">
       <h2>Recent Document Requests</h2>
