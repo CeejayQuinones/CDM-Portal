@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import EnrollmentNotices from './EnrollmentNotices.vue'
 import EnrollmentDialog from './EnrollmentDialog.vue'
 import { apiClient } from '../../services/apiClient'
 import { classifications, label, termLabel, safeError } from './enrollment'
@@ -38,6 +39,7 @@ async function backToLanding(){application.value=null;step.value=0;await load()}
 onMounted(load);onBeforeUnmount(()=>{epoch++})
 </script>
 <template>
+<EnrollmentNotices/>
 <header class="page-header"><p class="page-kicker">Enrollment</p><h1 class="page-title">Your enrollment application</h1><p class="page-description">Confirm your academic information, choose your classification, and submit for review.</p></header>
 <p v-if="error" class="en-card" role="alert">{{ error }} <button :disabled="busy" @click="application ? open(application) : load()">Reload</button></p>
 <p v-if="notice" role="status">{{ notice }}</p><p v-if="busy" role="status">Loading…</p>
@@ -58,7 +60,7 @@ onMounted(load);onBeforeUnmount(()=>{epoch++})
 <div class="en-card" v-if="step===3"><h2>Review your application</h2><p>{{ data.student?.name }} · {{ data.student?.student_number }}</p><p>{{ termLabel(application.period || data.period) }} · {{ label(classification) }}</p><p>{{ data.student?.course.course_name }} · {{ data.student?.curriculum.curriculum_name }}</p><p v-if="classification!==application.classification">Save your classification to refresh document requirements before submitting.</p><h3>Required documents</h3><p v-if="!requirements.length">No additional documents are required for this classification in this period.</p><div v-for="d in requirements" :key="d.id"><p>{{ d.name }} — {{ d.attached ? 'Attached' : d.reusable ? 'Verified existing document will be reused' : 'Upload required' }}</p><label v-if="!d.attached && !d.reusable">{{ d.name }} (PDF, JPEG or PNG; up to 10 MB)<input type="file" accept=".pdf,.jpg,.jpeg,.png" :disabled="busy || classification!==application.classification" @change="upload(d.id,$event)"></label></div></div>
 <div class="en-actions"><button class="en-secondary" :disabled="busy||step===0" @click="step--">Back</button><button v-if="step<3" :disabled="busy" @click="step++">Continue</button><button :disabled="busy" @click="act('save')">Save draft</button><button v-if="step===3" :disabled="busy || classification!==application.classification || !data.eligible || requirements.some(d=>!d.attached&&!d.reusable)" @click="confirmation='submit'">Submit application</button><button class="en-secondary" :disabled="busy" @click="confirmation='cancel'">Cancel draft</button></div>
 </template>
-<div v-else class="en-card"><h2>{{ label(application.status) }}</h2><p>{{ label(application.classification) }} · {{ termLabel(application.period || data.period) }}</p><p v-if="application.status==='submitted'">Your application is awaiting staff review.</p><p v-if="application.status==='under_review'">Your application is being reviewed.</p><p v-if="application.status==='approved'">Your application is approved. Academic enrollment and subject assignment are still pending finalization.</p><p v-if="application.status==='rejected'">Your application was rejected. Contact the Registrar for guidance.</p><p v-if="application.review_notes">Registrar notes: {{ application.review_notes }}</p></div>
+<div v-else class="en-card"><h2>{{ label(application.status) }}</h2><p>{{ label(application.classification) }} · {{ termLabel(application.period || data.period) }}</p><p v-if="application.status==='submitted'">Your application is awaiting staff review.</p><p v-if="application.status==='under_review'">Your application is being reviewed.</p><p v-if="application.status==='approved'">Your application is approved. Academic enrollment and subject assignment are still pending finalization. Open Subjects to review your load.</p><p v-if="application.status==='rejected'">Your application was rejected. Contact the Registrar for guidance.</p><p v-if="application.review_notes">Registrar notes: {{ application.review_notes }}</p></div>
 </template>
 </template>
 <EnrollmentDialog v-if="confirmation" labelledby="en-confirm" :busy="busy" @cancel="confirmation=''"><h2 id="en-confirm">{{ confirmation==='submit'?'Submit application?':'Cancel draft?' }}</h2><p>{{ data.student?.name }} · {{ data.student?.student_number }} · {{ label(classification) }}</p><p>{{ confirmation==='submit'?'Your application will be sent for review and can no longer be edited.':'This draft will be closed. Contact the Registrar before applying again for this term.' }}</p><div class="en-actions"><button @click="confirmation=''">Go back</button><button @click="act(confirmation)">Confirm {{ confirmation }}</button></div></EnrollmentDialog>

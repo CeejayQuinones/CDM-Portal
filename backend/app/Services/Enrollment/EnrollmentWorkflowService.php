@@ -13,6 +13,7 @@ use App\Models\Semester;
 use App\Models\Student;
 use App\Models\StudentDocument;
 use App\Models\User;
+use App\Notifications\EnrollmentNotice;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -120,6 +121,9 @@ class EnrollmentWorkflowService
             $a->status = ['save' => 'draft', 'submit' => 'submitted', 'cancel' => 'cancelled', 'review' => 'under_review', 'approve' => 'approved', 'reject' => 'rejected'][$action];
             $a->version++;
             $a->save();
+            if ($action === 'reject') {
+                $student->user->notify(new EnrollmentNotice('rejected', 'Your enrollment application was rejected. Review the staff notes.', $a->id));
+            }
             $event = ['save' => 'draft_saved', 'submit' => 'submitted', 'cancel' => 'cancelled', 'review' => 'review_started', 'approve' => 'approved', 'reject' => 'rejected'][$action];
             $this->audit->record($actor, $event, 'application', $a->id, ['status' => $a->status, 'version' => $a->version]);
 

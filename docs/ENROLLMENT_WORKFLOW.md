@@ -175,7 +175,7 @@ review_started, approved, rejected, cancelled, document_attached, period_created
 and period_updated. Audit failure rolls back the database mutation. Upload failure
 also removes a newly stored file. Application history and Admission history remain.
 
-## Validation and Phase 3
+## Validation and academic finalization
 
 Backend feature tests cover real Admission conversion before application, identity
 counts, eligibility, role/status/ownership boundaries, draft/classification,
@@ -187,9 +187,11 @@ forms, and stale-account response isolation. Full validation results are recorde
 in the implementation report. SQLite tests exercise unique constraints and stale
 request interleavings; they do not simulate MySQL row-lock contention.
 
-Phase 3 completes actual subject enrollment, standard/irregular subject loads,
-credit evaluation, sections, scheduling, rooms/professors, conflict checks,
-timetables, COR and any approved fee/payment scope. None is implemented here.
+Phase 3 now completes actual subject enrollment, controlled subject loads,
+sections, schedules, Professor rosters, Student timetables, and an academic COR.
+Its rules and schema are documented in
+[ENROLLMENT_ACADEMIC_FLOW.md](ENROLLMENT_ACADEMIC_FLOW.md). No credit-equivalence,
+fee, payment, or signature subsystem was inferred from absent source data.
 
 ## Changed files
 

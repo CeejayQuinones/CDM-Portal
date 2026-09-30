@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Enrollment\EnrollmentApplication;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -33,5 +34,10 @@ class Enrollment extends Model
     public function section(): BelongsTo
     {
         return $this->belongsTo(Section::class);
+    }
+
+    public function application()
+    {
+        return $this->hasOne(EnrollmentApplication::class);
     }
 }

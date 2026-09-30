@@ -80,7 +80,7 @@ class EnrollmentWorkflowController extends Controller
     public function index(Request $r)
     {
         EnrollmentAccess::require($r->user(), true);
-        $in = $r->validate(['search' => 'nullable|string|max:100', 'course_id' => 'nullable|integer', 'period_id' => 'nullable|integer', 'classification' => ['nullable', Rule::in(['regular', 'irregular', 'transferee', 'returnee'])], 'status' => ['nullable', Rule::in(['draft', 'submitted', 'under_review', 'approved', 'rejected', 'cancelled'])], 'sort' => ['nullable', Rule::in(['newest', 'oldest'])]]);
+        $in = $r->validate(['search' => 'nullable|string|max:100', 'course_id' => 'nullable|integer', 'period_id' => 'nullable|integer', 'classification' => ['nullable', Rule::in(['regular', 'irregular', 'transferee', 'returnee'])], 'status' => ['nullable', Rule::in(['draft', 'submitted', 'under_review', 'approved', 'enrolled', 'rejected', 'cancelled'])], 'sort' => ['nullable', Rule::in(['newest', 'oldest'])]]);
         $q = EnrollmentApplication::with(['student.userProfile', 'course', 'curriculum', 'period.academicYear', 'period.semester']);
         foreach (['course_id', 'period_id', 'classification', 'status'] as $key) {
             if (! empty($in[$key])) {

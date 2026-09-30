@@ -46,10 +46,10 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       for(const role of Object.values(ROLES)){
         auth.currentRole=role
         const item=navigation.menuItemsForRole(role).find(i=>i.name==='enrollment')
-        assert.equal(Boolean(item),[ROLES.STUDENT,ROLES.ADMIN,ROLES.REGISTRAR_STAFF].includes(role))
+        assert.equal(Boolean(item),[ROLES.STUDENT,ROLES.ADMIN,ROLES.REGISTRAR_STAFF,ROLES.PROFESSOR].includes(role))
         for(const target of ['/enrollment','/enrollment/status','/enrollment/applications','/enrollment/periods']){
           await router.push('/'); await router.push(target)
-          const allowed=role===ROLES.STUDENT && ['/enrollment','/enrollment/status'].includes(target) || target!=='/enrollment/status' && [ROLES.ADMIN,ROLES.REGISTRAR_STAFF].includes(role)
+          const allowed=role===ROLES.PROFESSOR && target==='/enrollment' || role===ROLES.STUDENT && ['/enrollment','/enrollment/status'].includes(target) || target!=='/enrollment/status' && [ROLES.ADMIN,ROLES.REGISTRAR_STAFF].includes(role)
           assert.equal(router.currentRoute.value.name==='unauthorized',!allowed,role+' '+target)
           if(allowed) assert.equal(router.currentRoute.value.meta.requiresAuth,true)
         }
@@ -78,6 +78,8 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
     const pagination=data=>({data,current_page:1,last_page:1,total:data.length})
     let record=null
     const handler=async(method,url,payload)=>{
+      if(url==='/enrollment/academic/notifications')return response(pagination([]))
+      if(url==='/enrollment/academic/applications/1')return response({application:{...record},load:{candidates:[],standard_subject_ids:[],selected_subject_ids:[]},sections:pagination([])})
       if(url==='/enrollment/status')return response(state)
       if(url==='/enrollment/applications/mine')return response(pagination(record?[record]:[]))
       if(url==='/enrollment/applications'&&method==='post'){record={id:1,period_id:1,period,classification:payload.classification,status:'draft',version:1};return response({...record})}
@@ -119,7 +121,7 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       apiState.handler=handler;record=null
       for(const role of [ROLES.ADMIN,ROLES.REGISTRAR_STAFF]){
         auth.currentRole=role;await router.push('/enrollment/applications')
-        const nav=navigation.menuItemsForRole(role).find(n=>n.name==='enrollment');assert.deepEqual(nav.children.map(n=>n.label),['Applications','Enrollment Periods'])
+        const nav=navigation.menuItemsForRole(role).find(n=>n.name==='enrollment');assert.deepEqual(nav.children.map(n=>n.label),['Applications','Enrollment Periods','Sections','Scheduling','Enrollment Records'])
         const {root,app}=mount();try{await settle();assert.match(textOf(root),/Student name or number/);const form=find(root,'form');await form.props.onSubmit({preventDefault(){}});await settle();assert.equal(apiState.calls.at(-1).url,'/enrollment/applications');await router.push('/enrollment/periods');await settle();await click(root,'Create period');assert.match(textOf(root),/Required documents by classification/);assert.match(textOf(root),/Enable period/)}finally{app.unmount()}
       }
     })
@@ -127,7 +129,7 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       for(const role of [ROLES.ADMIN,ROLES.REGISTRAR_STAFF]){
         auth.currentRole=role;await router.push('/enrollment/applications');apiState.handler=handler
         record={id:1,period_id:1,period,status:'submitted',classification:'regular',version:2,student:{student_number:'26-001'},course:{course_name:'Computing'}}
-        const {root,app}=mount();try{await settle();await click(root,'Inspect');assert.ok(button(root,'Reject').props.disabled);await click(root,'Start Review');assert.equal(record.status,'submitted');await click(root,'Confirm');assert.equal(record.status,'under_review');await click(root,'Approve');await click(root,'Confirm');assert.equal(record.status,'approved');assert.equal(button(root,'Reject'),undefined)}finally{app.unmount()}
+        const {root,app}=mount();try{await settle();await click(root,'Inspect');let dialogs=all(root,'div').filter(n=>n.props.role==='dialog');assert.equal(dialogs.length,1);assert.match(textOf(dialogs[0]),/Application #1/);assert.match(textOf(dialogs[0]),/26-001/);assert.equal(all(root,'div').filter(n=>n.props.class==='en-card' && /Application #1/.test(textOf(n))).length,0);await click(root,'Close');assert.equal(all(root,'div').filter(n=>n.props.role==='dialog').length,0);assert.doesNotMatch(textOf(root),/Application #1/);await click(root,'Inspect');assert.ok(button(root,'Reject').props.disabled);await click(root,'Start Review');assert.equal(record.status,'submitted');await click(root,'Confirm');assert.equal(record.status,'under_review');await click(root,'Approve');await click(root,'Confirm');assert.equal(record.status,'approved');assert.equal(button(root,'Reject'),undefined)}finally{app.unmount()}
       }
     })
     await t.test('errors stay safe and changing account discards old Student responses',async()=>{
