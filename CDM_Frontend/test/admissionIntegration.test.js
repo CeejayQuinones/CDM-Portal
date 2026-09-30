@@ -135,6 +135,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
       nextSibling: (node) => node.parent?.children[node.parent.children.indexOf(node) + 1] || null,
     })
     const textOf = (node) => [node.text || '', ...(node.children || []).map(textOf)].join(' ')
+    const allNodes = (node, predicate) => [...(predicate(node) ? [node] : []), ...(node.children || []).flatMap(child => allNodes(child, predicate))]
     const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); await nextTick() }
     const mount = () => {
       auth.currentRole = ROLES.GUEST
@@ -429,15 +430,17 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
       assert.equal(writes[1].url,'/admission/admin/exams/1')
       assert.equal(writes[1].data.version,1)
     })
-    await t.test('History renders readable timeline and Applicants loads inspection before conversion', async () => {
+    await t.test('History renders a timeline and Applicant inspection opens the selected record in a dialog', async () => {
       auth.currentRole = ROLES.REGISTRAR_STAFF
       const applicant = {id:1,name:'Example Applicant',applicant_number:'APP-1',cycle:'Intake',status:'draft',exam_status:'finalized',latest_result:'RETAKE',acceptance_status:'not_accepted',conversion_status:'not_converted',attempts:[{attempt_number:1,status:'finalized',outcome:'RETAKE'}]}
+      const secondApplicant = {...applicant,id:2,name:'Second Applicant',applicant_number:'APP-2',attempts:[]}
       apiState.workflow = async config => {
         if (config.url.endsWith('/history')) return {timeline:{data:[{id:'event-1',action:'Application created',actor:'Example Applicant',subject:'Example Applicant',applicant_number:'APP-1',cycle:'Intake',summary:'Application created recorded for APP-1.',created_at:'2026-09-26'}],last_page:1}}
         if (config.url.endsWith('/cycles')) return []
         if (config.url.endsWith('/conversion')) return {can_accept:false,can_convert:false,reason:'Latest result must be passed.',courses:[],curriculums:[]}
         if (config.url.endsWith('/applicants/1')) return applicant
-        return {data:[applicant],last_page:1}
+        if (config.url.endsWith('/applicants/2')) return secondApplicant
+        return {data:[applicant,secondApplicant],last_page:1}
       }
       for (const target of ['/registrar/admissions/history','/registrar/admissions']) {
         await router.push(target)
@@ -447,9 +450,18 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
           await settle()
           if (target.endsWith('/history')) { assert.match(textOf(root),/Application created/); assert.match(textOf(root),/By Example Applicant/) }
           else {
-            findButtonByText(root,'Inspect applicant').props.onClick(); await settle()
-            assert.match(textOf(root),/Exam attempts/); assert.match(textOf(root),/RETAKE/)
+            const inspectButtons = allNodes(root,node => node.tag === 'button' && textOf(node).trim() === 'Inspect applicant')
+            inspectButtons[0].props.onClick(); await settle()
+            let dialogs = allNodes(root,node => node.props?.role === 'dialog')
+            assert.equal(dialogs.length,1); assert.equal(dialogs[0].props['aria-modal'],'true')
+            assert.match(textOf(dialogs[0]),/Example Applicant/); assert.match(textOf(dialogs[0]),/Exam attempts/); assert.match(textOf(dialogs[0]),/RETAKE/)
             assert.equal(findButtonByText(root,'Convert to Student'),undefined)
+            findButtonByText(root,'Close').props.onClick(); await nextTick()
+            assert.equal(allNodes(root,node => node.props?.role === 'dialog').length,0)
+            assert.doesNotMatch(textOf(root),/Exam attempts/)
+            inspectButtons[1].props.onClick(); await settle()
+            dialogs = allNodes(root,node => node.props?.role === 'dialog')
+            assert.match(textOf(dialogs[0]),/Second Applicant/); assert.match(textOf(dialogs[0]),/No exam started/)
           }
         } finally { app.unmount() }
       }

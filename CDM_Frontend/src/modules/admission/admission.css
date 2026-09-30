@@ -82,6 +82,11 @@
 /* Shared confirmations stay beneath the existing password step-up overlay (z-index 2000). */
 .admission-workflow .admission-dialog-backdrop { position: fixed; inset: 0; z-index: 1500; display: grid; place-items: center; padding: 20px; background: rgb(31 31 31 / 48%); }
 .admission-workflow .admission-dialog { width: min(520px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; overscroll-behavior: contain; padding: 24px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); color: var(--color-eerie-black); box-shadow: var(--shadow-soft); animation: admission-reveal 180ms ease; }
+.admission-workflow .admission-dialog--wide { width: min(900px, 100%); padding-top: 0; }
+.admission-workflow .admission-dialog-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 24px 0 16px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
+.admission-workflow .admission-dialog-header p { margin-bottom: 0; }
+.admission-workflow .admission-dialog-body { padding-top: 18px; }
+.admission-workflow .admission-detail-section + .admission-detail-section { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--color-border); }
 .admission-workflow .admission-dialog h2 { margin-top: 0; font-size: 1.25rem; }
 .admission-workflow .admission-dialog .toolbar { justify-content: flex-end; margin-bottom: 0; }
 .admission-workflow .reveal, .admission-workflow .question-content, .admission-workflow .save-message, .admission-applicant .status-block { animation: admission-reveal 180ms ease; }
@@ -107,6 +112,8 @@
   .admission-workflow .exam-controls button:last-child { grid-column: 1 / -1; }
   .admission-workflow .admission-dialog-backdrop { padding: 12px; }
   .admission-workflow .admission-dialog { padding: 20px; max-height: calc(100dvh - 24px); }
+  .admission-workflow .admission-dialog--wide { padding-top: 0; }
+  .admission-workflow .admission-dialog-header { padding-top: 20px; }
   .admission-workflow .admission-dialog .toolbar { display: grid; grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {

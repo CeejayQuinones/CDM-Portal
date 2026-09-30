@@ -1,6 +1,6 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-const props = defineProps({ labelledby: { type: String, required: true }, busy: Boolean })
+const props = defineProps({ labelledby: { type: String, required: true }, busy: Boolean, wide: Boolean })
 const emit = defineEmits(['cancel'])
 const dialog = ref(null)
 let trigger, previousOverflow
@@ -39,6 +39,6 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="admission-dialog-backdrop">
-    <div ref="dialog" class="admission-dialog" role="dialog" aria-modal="true" :aria-labelledby="labelledby" :aria-busy="busy" tabindex="-1" @keydown="keydown"><slot /></div>
+    <div ref="dialog" class="admission-dialog" :class="{ 'admission-dialog--wide': wide }" role="dialog" aria-modal="true" :aria-labelledby="labelledby" :aria-busy="busy" tabindex="-1" @keydown="keydown"><slot /></div>
   </div>
 </template>
