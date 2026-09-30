@@ -6,9 +6,12 @@ import { resolveApiAssetUrl } from '../utils/apiAssetUrl'
 import { clientPlatform } from '../config/clientPlatform'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
+const configuredTimeout = Number(import.meta.env.VITE_API_TIMEOUT_MS || 15000)
+const API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 15000
 
 const onlineApiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  timeout: API_TIMEOUT_MS,
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
