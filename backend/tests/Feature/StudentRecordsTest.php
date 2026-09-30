@@ -13,7 +13,10 @@ use App\Models\User;
 use App\Models\UserProfile;
 use Database\Seeders\StudentDocumentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -109,6 +112,51 @@ class StudentRecordsTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.student.id', $student->id)
             ->assertJsonPath('data.documents', []);
+    }
+
+    public function test_student_photo_update_is_immediately_shared_with_registrar_records(): void
+    {
+        Storage::fake('public');
+        $student = $this->createStudent('2026-000005', 'Elena', 'Cruz', 'regular', 1);
+
+        $upload = $this->actingAs($student->user)->post('/api/student/settings/avatar', [
+            'avatar' => UploadedFile::fake()->image('student.png'),
+        ])->assertOk();
+        $photoUrl = $upload->json('data.profile.avatar_url');
+
+        $this->actingAs($this->createUserWithRole(Role::REGISTRAR_STAFF))
+            ->getJson('/api/students?search=Elena')
+            ->assertOk()
+            ->assertJsonPath('data.0.profile.profile_photo_url', $photoUrl)
+            ->assertJsonMissingPath('data.0.profile.profile_photo');
+        $this->getJson("/api/students/{$student->id}")
+            ->assertOk()
+            ->assertJsonPath('data.profile.profile_photo_url', $photoUrl)
+            ->assertJsonMissingPath('data.profile.profile_photo');
+
+        $this->assertFalse(Schema::hasColumn('students', 'profile_photo'));
+        $this->assertFalse(Schema::hasColumn('enrollments', 'profile_photo'));
+        $this->assertFalse(Schema::hasColumn('enrollment_applications', 'profile_photo'));
+    }
+
+    public function test_student_record_profile_eager_loading_does_not_grow_with_result_count(): void
+    {
+        $registrar = $this->createUserWithRole(Role::REGISTRAR_STAFF);
+        $this->createStudent('2026-000010', 'First', 'Student', 'regular', 1);
+        $this->actingAs($registrar);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->getJson('/api/students')->assertOk();
+        $singleStudentQueries = count(DB::getQueryLog());
+
+        foreach (range(11, 14) as $number) {
+            $this->createStudent("2026-0000{$number}", "Student{$number}", 'Example', 'regular', 1);
+        }
+        DB::flushQueryLog();
+        $this->getJson('/api/students')->assertOk()->assertJsonCount(5, 'data');
+
+        $this->assertLessThanOrEqual($singleStudentQueries + 1, count(DB::getQueryLog()));
     }
 
     public function test_john_doe_starter_document_records_are_seeded_idempotently(): void

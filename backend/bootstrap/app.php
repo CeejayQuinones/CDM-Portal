@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\ClientPlatformException;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureClientPlatformAccess;
 use App\Http\Middleware\EnsureMonitoringAccess;
@@ -36,6 +37,17 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (ClientPlatformException $exception, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+            ], $exception->getStatusCode())->header('Cache-Control', 'private, no-store');
+        });
+
         $exceptions->render(function (Throwable $exception, Request $request) {
             if (! $request->is('api/enrollment/*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
                 return null;

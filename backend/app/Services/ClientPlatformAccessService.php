@@ -2,12 +2,11 @@
 
 namespace App\Services;
 
+use App\Exceptions\ClientPlatformException;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\ClientPlatform;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
-use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
 class ClientPlatformAccessService
 {
@@ -25,11 +24,11 @@ class ClientPlatformAccessService
         $client = trim((string) $request->header(ClientPlatform::HEADER));
 
         if ($client === '') {
-            throw new BadRequestHttpException('The X-CDM-Client header is required.');
+            throw new ClientPlatformException(400, 'The X-CDM-Client header is required.');
         }
 
         if (! in_array($client, ClientPlatform::ALL, true)) {
-            throw new BadRequestHttpException('The X-CDM-Client header must be web, desktop, or mobile.');
+            throw new ClientPlatformException(400, 'The X-CDM-Client header must be web, desktop, or mobile.');
         }
 
         return $client;
@@ -44,7 +43,7 @@ class ClientPlatformAccessService
             return;
         }
 
-        throw new AccessDeniedHttpException($this->denialMessage($role, $client));
+        throw new ClientPlatformException(403, $this->denialMessage($role, $client));
     }
 
     /** @return list<string> */
