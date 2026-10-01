@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentAcademicController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentWorkflowController;
+use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
@@ -31,6 +32,12 @@ Route::post('/registration/email-verification/verify', [AuthController::class, '
     ->middleware('throttle:5,1');
 
 Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void {
+    Route::get('/events', [EventController::class, 'index']);
+    Route::get('/events/options', [EventController::class, 'options'])->middleware('role.registrar-or-admin');
+    Route::post('/events', [EventController::class, 'store'])->middleware(['role.registrar-or-admin', 'throttle:20,1']);
+    Route::get('/events/{event}', [EventController::class, 'show'])->whereNumber('event');
+    Route::put('/events/{event}', [EventController::class, 'update'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:30,1']);
+    Route::post('/events/{event}/{action}', [EventController::class, 'transition'])->whereNumber('event')->whereIn('action', ['publish', 'cancel', 'archive'])->middleware(['role.registrar-or-admin', 'throttle:30,1']);
     Route::get('/enrollment/status', EnrollmentStatusController::class);
     Route::get('/enrollment/eligibility', EnrollmentStatusController::class);
     Route::prefix('enrollment')->middleware(EnrollmentBoundary::class)->controller(EnrollmentWorkflowController::class)->group(function (): void {

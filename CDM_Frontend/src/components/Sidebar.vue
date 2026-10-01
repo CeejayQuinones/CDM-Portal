@@ -141,8 +141,12 @@ const logout = async () => {
           </button>
           <Transition name="nav-children">
             <div v-if="isExpanded(item.name)" class="nav-children">
+              <template v-for="child in item.children" :key="child.name">
+              <span v-if="child.comingSoon" class="nav-link nav-child is-disabled" aria-disabled="true">
+                {{ child.label }} <small>Phase 2</small>
+              </span>
               <RouterLink
-                v-for="child in item.children"
+                v-else
                 :key="child.name"
                 :to="child.path"
                 class="nav-link nav-child"
@@ -152,6 +156,7 @@ const logout = async () => {
               >
                 {{ child.label }}
               </RouterLink>
+              </template>
             </div>
           </Transition>
         </div>
@@ -339,6 +344,9 @@ const logout = async () => {
   margin: 4px 0 3px 29px;
   overflow: hidden;
 }
+
+.nav-child.is-disabled { cursor: not-allowed; opacity: .52; }
+.nav-child.is-disabled small { font-size: .58rem; margin-left: auto; text-transform: uppercase; }
 
 .nav-children-enter-active,
 .nav-children-leave-active {

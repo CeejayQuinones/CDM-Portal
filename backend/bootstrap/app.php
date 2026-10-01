@@ -49,6 +49,21 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (Throwable $exception, Request $request) {
+            if (! $request->is('api/events*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
+                return null;
+            }
+            if ($exception instanceof HttpExceptionInterface) {
+                $status = $exception->getStatusCode();
+
+                return response()->json(['success' => false, 'message' => $status >= 500 ? 'Events are temporarily unavailable.' : $exception->getMessage()], $status)
+                    ->header('Cache-Control', 'private, no-store');
+            }
+
+            return response()->json(['success' => false, 'message' => 'Events are temporarily unavailable. Please reload and try again.'], 503)
+                ->header('Cache-Control', 'private, no-store');
+        });
+
+        $exceptions->render(function (Throwable $exception, Request $request) {
             if (! $request->is('api/enrollment/*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
                 return null;
             }
