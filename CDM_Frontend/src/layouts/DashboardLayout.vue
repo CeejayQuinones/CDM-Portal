@@ -9,11 +9,12 @@ import { useStudentTheme } from '../composables/useStudentTheme'
 const isSidebarOpen = ref(false)
 const authStore = useAuthStore()
 const isStudentTheme = computed(() => authStore.currentRole === 'Student')
+const isStaffTheme = computed(() => ['Registrar Staff', 'Admin'].includes(authStore.currentRole))
 useStudentTheme(authStore)
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'student-portal-shell': isStudentTheme }">
+  <div class="app-shell" :class="{ 'student-portal-shell': isStudentTheme, 'registrar-theme-shell': isStaffTheme }">
     <StepUpAuthModal />
     <Sidebar :is-open="isSidebarOpen" @close="isSidebarOpen = false" />
 
@@ -23,7 +24,13 @@ useStudentTheme(authStore)
       <Navbar @toggle-sidebar="isSidebarOpen = !isSidebarOpen" />
 
       <main class="main-content">
-        <RouterView />
+        <RouterView v-slot="{ Component, route }">
+          <Transition name="portal-route" mode="out-in">
+            <div :key="route.path" class="portal-route-view">
+              <component :is="Component" />
+            </div>
+          </Transition>
+        </RouterView>
       </main>
     </div>
   </div>
@@ -52,11 +59,44 @@ useStudentTheme(authStore)
   padding: 32px;
 }
 
+.portal-route-view {
+  min-width: 0;
+}
+
 .sidebar-backdrop {
   position: fixed;
   inset: 0;
   z-index: 25;
   background: rgba(31, 31, 31, 0.44);
+}
+
+.portal-route-enter-active,
+.portal-route-leave-active {
+  transition:
+    opacity 170ms ease,
+    transform 170ms ease;
+}
+
+.portal-route-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.portal-route-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-route-enter-active,
+  .portal-route-leave-active {
+    transition-duration: 0.01ms;
+  }
+
+  .portal-route-enter-from,
+  .portal-route-leave-to {
+    transform: none;
+  }
 }
 
 @media (max-width: 860px) {

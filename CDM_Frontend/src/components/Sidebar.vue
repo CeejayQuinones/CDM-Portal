@@ -139,19 +139,21 @@ const logout = async () => {
               <path d="m7 5 5 5-5 5" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
-          <div v-show="isExpanded(item.name)" class="nav-children">
-            <RouterLink
-              v-for="child in item.children"
-              :key="child.name"
-              :to="child.path"
-              class="nav-link nav-child"
-              active-class=""
-              exact-active-class="router-link-active"
-              @click="emit('close')"
-            >
-              {{ child.label }}
-            </RouterLink>
-          </div>
+          <Transition name="nav-children">
+            <div v-if="isExpanded(item.name)" class="nav-children">
+              <RouterLink
+                v-for="child in item.children"
+                :key="child.name"
+                :to="child.path"
+                class="nav-link nav-child"
+                active-class=""
+                exact-active-class="router-link-active"
+                @click="emit('close')"
+              >
+                {{ child.label }}
+              </RouterLink>
+            </div>
+          </Transition>
         </div>
 
         <RouterLink v-else :to="item.path" class="nav-link" @click="emit('close')">
@@ -335,6 +337,25 @@ const logout = async () => {
   display: grid;
   gap: 3px;
   margin: 4px 0 3px 29px;
+  overflow: hidden;
+}
+
+.nav-children-enter-active,
+.nav-children-leave-active {
+  max-height: 440px;
+  opacity: 1;
+  transition:
+    max-height 190ms ease,
+    opacity 160ms ease,
+    margin 190ms ease;
+}
+
+.nav-children-enter-from,
+.nav-children-leave-to {
+  margin-bottom: 0;
+  margin-top: 0;
+  max-height: 0;
+  opacity: 0;
 }
 
 .nav-child {
@@ -456,6 +477,16 @@ const logout = async () => {
 
   .sidebar.is-open {
     transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .nav-link,
+  .nav-chevron,
+  .nav-children-enter-active,
+  .nav-children-leave-active {
+    transition-duration: 0.01ms;
   }
 }
 </style>

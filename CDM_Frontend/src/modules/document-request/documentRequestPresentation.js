@@ -7,6 +7,16 @@ export const TIME_FILTERS = Object.freeze([
 ])
 
 const STATUS_ACCENTS = new Set(['pending', 'approved', 'completed', 'rejected', 'cancelled'])
+const HISTORY_STATUS_PRESENTATION = Object.freeze({
+  pending: { label: 'Pending', className: 'status-pending' },
+  processing: { label: 'Processing', className: 'status-processing' },
+  approved: { label: 'Ready for Release', className: 'status-ready' },
+  ready_for_release: { label: 'Ready for Release', className: 'status-ready' },
+  completed: { label: 'Released', className: 'status-released' },
+  released: { label: 'Released', className: 'status-released' },
+  rejected: { label: 'Rejected', className: 'status-rejected' },
+  cancelled: { label: 'Cancelled', className: 'status-cancelled' },
+})
 
 const exactDateTimeFormatter = new Intl.DateTimeFormat('en-PH', {
   dateStyle: 'medium',
@@ -63,6 +73,17 @@ export function requestStatusAccentClass(status) {
   const accent = STATUS_ACCENTS.has(normalizedStatus) ? normalizedStatus.replaceAll('_', '-') : 'gray'
 
   return `status-accent-${accent}`
+}
+
+export function documentHistoryStatus(status) {
+  const normalizedStatus = String(status || '').toLowerCase()
+
+  return HISTORY_STATUS_PRESENTATION[normalizedStatus] || {
+    label: normalizedStatus
+      ? normalizedStatus.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+      : 'Unknown',
+    className: 'status-neutral',
+  }
 }
 
 export function requestStatusFromActivity(activity) {

@@ -62,6 +62,34 @@ class RegistrarDocumentOrganizationTest extends TestCase
         $this->getJson('/api/registrar/document-requests?status=processing')->assertUnprocessable();
     }
 
+    public function test_active_work_queues_filter_by_document_type(): void
+    {
+        $student = $this->createStudent('26-02007');
+        $selectedType = $this->createDocumentType('Transcript of Records');
+        $otherType = $this->createDocumentType('Certificate of Grades');
+        $pending = $this->createRequest($student, $selectedType, 'pending', '2026-08-25 08:00:00', '2026-08-25 08:00:00');
+        $approved = $this->createRequest(
+            $student,
+            $selectedType,
+            'approved',
+            '2026-08-25 09:00:00',
+            '2026-08-25 09:00:00',
+            ['approved_at' => '2026-08-25 09:00:00'],
+        );
+        $this->createRequest($student, $otherType, 'pending', '2026-08-25 10:00:00', '2026-08-25 10:00:00');
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+
+        $this->getJson("/api/registrar/document-requests?view=work_queues&document_type_id={$selectedType->id}")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.pending.data')
+            ->assertJsonPath('data.pending.data.0.id', $pending->id)
+            ->assertJsonCount(1, 'data.approved.data')
+            ->assertJsonPath('data.approved.data.0.id', $approved->id);
+
+        $this->getJson('/api/registrar/document-requests?view=work_queues&document_type_id=999999')->assertUnprocessable();
+    }
+
     public function test_time_filters_use_manila_business_days_around_local_midnight(): void
     {
         $this->travelTo(Carbon::create(2026, 8, 25, 0, 30, 0, 'Asia/Manila'));

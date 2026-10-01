@@ -1,5 +1,8 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import DocumentRequestDialog from './DocumentRequestDialog.vue'
+import DocumentRequestAppointmentSkeleton from './DocumentRequestAppointmentSkeleton.vue'
+import DocumentRequestPageHeader from './DocumentRequestPageHeader.vue'
 import { useAppointmentAvailabilityState } from './appointmentAvailabilityState'
 import { documentRequestService as api } from './documentRequestService'
 
@@ -12,6 +15,12 @@ const calendar = ref(null), calendarLoading = ref(false), calendarError = ref(''
 const today = () => new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Manila' }).format(new Date())
 const requestError = (err) => Object.values(err.response?.data?.errors || {}).flat()[0] || err.response?.data?.message || 'The request could not be completed.'
 const formatDate = (value) => value ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'long', timeZone: 'Asia/Manila' }).format(new Date(`${String(value).slice(0, 10)}T00:00:00+08:00`)) : 'Not assigned'
+const formatTime = (value) => {
+  const time = String(value || '').slice(0, 5)
+  if (!time) return 'Time not assigned'
+  const [hour, minute] = time.split(':').map(Number)
+  return new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit' }).format(new Date(2000, 0, 1, hour, minute))
+}
 const formatStatus = (value) => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const profileOf = (item) => item?.student?.user?.profile || item?.student?.user_profile
 const studentName = (item) => [profileOf(item)?.first_name, profileOf(item)?.last_name].filter(Boolean).join(' ') || 'Student'
@@ -137,13 +146,13 @@ onMounted(refresh)
 </script>
 
 <template>
-  <section class="page-header"><p class="page-kicker">Registrar Staff</p><h1 class="page-title">Today's Appointments</h1><p class="page-description">Verify the student's claim code before completing or cancelling a document release.</p></section>
+  <DocumentRequestPageHeader eyebrow="Registrar Staff" title="Today's Appointments" description="Verify the student's claim code before completing or cancelling a document release." />
   <Transition name="toast"><p v-if="message" class="notice success" role="status">{{ message }}</p></Transition>
   <p v-if="error" class="notice error" role="alert">{{ error }}</p>
 
   <section class="dr-panel appointment-filter-panel verification-panel" :class="{ 'is-verified': verifiedRequest }">
-    <header><p class="page-kicker">Verify request code</p><h2>Claim Verification</h2></header>
-    <form class="toolbar" @submit.prevent="verify"><input v-model="code" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" aria-label="Six-digit verification code" placeholder="6-digit code" /><button :disabled="verifying || !/^\d{6}$/.test(code)">{{ verifying ? 'Verifying…' : 'Verify' }}</button></form>
+    <header class="verification-copy"><p class="page-kicker">Verify request code</p><h2>Claim Verification</h2><p>Enter the six-digit code supplied to the student before releasing a document.</p></header>
+    <form class="toolbar verification-form" @submit.prevent="verify"><input v-model="code" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" aria-label="Six-digit verification code" placeholder="6-digit code" /><button class="verification-submit" :disabled="verifying || !/^\d{6}$/.test(code)">{{ verifying ? 'Verifying…' : 'Verify' }}</button></form>
     <Transition name="verified-details"><article v-if="verifiedRequest" class="request-detail-section verified-request-details">
       <h3>{{ verifiedRequest.request_reference }} · {{ documentName(verifiedRequest) }}</h3><p>{{ studentName(verifiedRequest) }} · {{ formatDate(verifiedRequest.active_appointment?.appointment_date) }}</p>
       <textarea v-model="cancellationReason" placeholder="Cancellation reason (required only for Cancel)"></textarea>
@@ -153,14 +162,17 @@ onMounted(refresh)
 
   <section class="dr-panel appointment-main-table" aria-live="polite">
     <header class="release-queue-header"><div><p class="page-kicker">{{ formatDate(today()) }}</p><h2>Scheduled Today</h2></div><strong class="work-queue-count">{{ appointments.length }}</strong></header>
-    <p v-if="loading" class="empty">Loading today's appointments…</p><p v-else-if="!appointments.length" class="empty">No approved appointments scheduled today.</p>
+    <DocumentRequestAppointmentSkeleton v-if="loading" :rows="4" />
+    <p v-else-if="!appointments.length" class="empty">No approved appointments scheduled today.</p>
     <TransitionGroup v-else name="appointment-row" tag="div" class="work-queue-list"><article v-for="appointment in appointments" :key="appointment.id" class="release-request-row">
-      <div class="release-request-summary"><strong>{{ studentName(appointment) }}</strong><span>{{ appointment.student?.student_number }}</span></div><div><strong>{{ documentName(appointment) }}</strong><small>{{ formatDate(appointment.appointment_date) }}</small></div>
-      <span><span class="badge" :class="appointment.document_request?.code_verified_at ? 'approved' : appointment.status">{{ appointment.document_request?.code_verified_at ? 'Verified' : formatStatus(appointment.status) }}</span><button v-if="!appointment.document_request?.code_verified_at" class="secondary-action" :disabled="resendingId === appointment.document_request_id" @click="resend(appointment)">{{ resendingId === appointment.document_request_id ? 'Sending…' : 'Resend Claim Code' }}</button></span>
+      <div class="release-request-summary"><strong>{{ studentName(appointment) }}</strong><span>{{ appointment.student?.student_number }}</span><span class="badge" :class="appointment.document_request?.code_verified_at ? 'approved' : appointment.status">{{ appointment.document_request?.code_verified_at ? 'Verified' : formatStatus(appointment.status) }}</span></div>
+      <div class="release-request-document"><small>Document</small><strong>{{ documentName(appointment) }}</strong></div>
+      <div class="release-request-schedule"><small>Appointment</small><strong>{{ formatDate(appointment.appointment_date) }}</strong><span>{{ formatTime(appointment.appointment_time) }}</span></div>
+      <div class="release-request-actions"><button v-if="!appointment.document_request?.code_verified_at" class="secondary-action" :disabled="resendingId === appointment.document_request_id" @click="resend(appointment)">{{ resendingId === appointment.document_request_id ? 'Sending…' : 'Resend Claim Code' }}</button><span v-else class="release-verified-copy">Code verified</span></div>
     </article></TransitionGroup>
   </section>
 
-  <Teleport to="body"><Transition name="modal"><div v-if="availabilityOpen" class="appointment-details-backdrop" @click.self="closeAvailability"><section class="appointment-details-modal capacity-planner-modal" role="dialog" aria-modal="true" aria-labelledby="capacity-title">
+  <DocumentRequestDialog v-if="availabilityOpen" labelledby="capacity-title" panel-class="capacity-planner-modal" wide :busy="savingCapacity" @cancel="closeAvailability">
     <header class="appointment-details-header"><div><p class="page-kicker">Availability</p><h2 id="capacity-title">Daily Appointment Capacity</h2></div><button class="capacity-close" aria-label="Close daily appointment capacity" @click="closeAvailability">&times;</button></header>
     <div class="appointment-details-body capacity-planner-body">
       <div class="capacity-month-heading"><div><h3>{{ monthLabel }}</h3><p>Default daily capacity: <strong>{{ defaultCapacity }}</strong></p></div><nav class="calendar-navigation" aria-label="Calendar navigation"><button type="button" @click="changeMonth(-1)">Previous</button><button type="button" @click="goToToday">Today</button><button type="button" @click="changeMonth(1)">Next</button></nav></div>
@@ -180,7 +192,8 @@ onMounted(refresh)
         <div class="capacity-legend" aria-label="Calendar legend"><span><i class="legend-dot available"></i>Available</span><span><i class="legend-dot nearly-full"></i>Nearly full</span><span><i class="legend-dot full"></i>Full</span><span><i class="legend-dot closed"></i>Closed / blocked</span></div>
       </template>
       <div v-else class="capacity-state">No appointment availability data for this month.</div>
-    </div></section></div></Transition></Teleport>
+    </div>
+  </DocumentRequestDialog>
 </template>
 
 <style scoped src="./documentRequest.css"></style>
@@ -191,4 +204,48 @@ onMounted(refresh)
 .capacity-planner-modal{max-width:1120px}.capacity-close{align-items:center;background:#edf3ef;border:1px solid #d5dfd8;border-radius:50%;color:#405047;cursor:pointer;display:inline-flex;font-size:1.35rem;height:36px;justify-content:center;line-height:1;padding:0;width:36px}.capacity-close:focus-visible,.capacity-close:hover{border-color:var(--color-dark-spring-green);outline:2px solid rgb(0 111 60 / 18%);outline-offset:2px}.capacity-planner-body{display:grid;gap:18px}.capacity-month-heading{align-items:center;display:flex;gap:16px;justify-content:space-between}.capacity-month-heading h3,.capacity-editor h3{color:#193e29;font-size:1.05rem;margin:0}.capacity-month-heading p{color:var(--color-muted);font-size:.82rem;margin:5px 0 0}.calendar-navigation{display:flex;gap:7px}.calendar-navigation button,.capacity-state button{background:#fff;border:1px solid #cfdcd2;border-radius:6px;color:#245238;cursor:pointer;font:inherit;font-size:.78rem;font-weight:800;min-height:34px;padding:6px 10px}.calendar-navigation button:hover,.calendar-navigation button:focus-visible,.capacity-state button:hover,.capacity-state button:focus-visible{background:#f1f7f2;border-color:var(--color-dark-spring-green);outline:none}.capacity-summary{display:grid;gap:8px;grid-template-columns:repeat(4,minmax(0,1fr));margin:0}.capacity-summary div{background:#f5f8f5;border-left:3px solid #d9e8dd;min-width:0;padding:9px 11px}.capacity-summary dt,.capacity-editor-stats dt{color:var(--color-muted);font-size:.65rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}.capacity-summary dd,.capacity-editor-stats dd{color:#193e29;font-size:.94rem;font-weight:800;margin:4px 0 0}.capacity-workspace{align-items:start;display:grid;gap:18px;grid-template-columns:minmax(0,1fr) 270px}.capacity-calendar{min-width:0}.calendar-weekdays,.capacity-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(90px,1fr))}.calendar-weekdays{gap:5px;margin-bottom:5px}.calendar-weekdays span{color:var(--color-muted);font-size:.68rem;font-weight:800;padding:0 4px;text-align:left;text-transform:uppercase}.capacity-calendar-grid{background:#e0e8e2;border:1px solid #d4dfd6;gap:1px;overflow:auto}.calendar-blank{background:#f7f9f7;min-height:132px}.appointment-calendar-day{align-items:flex-start;background:#fff;border:0;border-left:3px solid #c4dfcb;color:#264533;cursor:pointer;display:flex;flex-direction:column;min-height:132px;padding:10px;text-align:left;transition:background-color .18s ease,box-shadow .18s ease,transform .18s ease}.appointment-calendar-day:hover:not(:disabled){background:#f7fbf7;transform:translateY(-1px)}.appointment-calendar-day:focus-visible{box-shadow:inset 0 0 0 3px var(--color-naples-yellow);outline:none;position:relative;z-index:1}.appointment-calendar-day.selected{box-shadow:inset 0 0 0 2px var(--color-dartmouth-green);position:relative;z-index:1}.appointment-calendar-day.today .calendar-day-number{background:var(--color-dartmouth-green);border-radius:50%;color:#fff;height:25px;line-height:25px;text-align:center;width:25px}.calendar-day-number{color:#173c27;font-size:.91rem;font-weight:900}.calendar-booked{font-size:.75rem;font-weight:800;margin-top:11px}.calendar-remaining{color:#536259;font-size:.7rem;margin-top:2px}.calendar-status{font-size:.67rem;font-weight:900;margin-top:auto;text-transform:uppercase}.calendar-progress{background:#dfe8e1;border-radius:4px;height:4px;margin-top:7px;overflow:hidden;width:100%}.calendar-progress i{background:#31965b;display:block;height:100%}.appointment-calendar-day.nearly-full{border-left-color:#d1a227}.appointment-calendar-day.nearly-full .calendar-progress i{background:#d1a227}.appointment-calendar-day.full{background:#fff7f5;border-left-color:#bf5648}.appointment-calendar-day.full .calendar-status{color:#9f3f34}.appointment-calendar-day.full .calendar-progress i{background:#bf5648}.appointment-calendar-day.is-unavailable{background:#f3f5f3;border-left-color:#97a39b;color:#607067;cursor:not-allowed}.appointment-calendar-day.is-unavailable small{font-size:.67rem;line-height:1.25;margin-top:4px}.capacity-editor{background:#f8fbf9;border:1px solid #d5e1d7;border-radius:8px;box-shadow:0 4px 14px rgb(19 60 39 / 8%);padding:16px}.capacity-editor header{border-bottom:1px solid #dce6de;padding-bottom:12px}.capacity-status-badge{border-radius:999px;display:inline-block;font-size:.66rem;font-weight:900;margin-top:9px;padding:4px 7px;text-transform:uppercase}.capacity-status-badge.available{background:#e8f5ec;color:#176c3a}.capacity-status-badge.nearly-full{background:#fff5d8;color:#795c06}.capacity-status-badge.full{background:#fff0ed;color:#9f3f34}.capacity-editor-stats{display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr));margin:14px 0}.capacity-editor-stats div{background:#fff;border-left:2px solid #d9e8dd;padding:8px}.capacity-editor-stats dd{font-size:.78rem}.capacity-stepper-label{color:#264533;display:block;font-size:.78rem;font-weight:800;margin-bottom:7px}.capacity-stepper{display:grid;grid-template-columns:38px minmax(0,1fr) 38px}.capacity-stepper button,.capacity-stepper input{border:1px solid #bdcdbf;min-height:38px}.capacity-stepper button{background:#edf3ef;color:#245238;cursor:pointer;font-size:1.1rem;font-weight:800}.capacity-stepper button:disabled{cursor:not-allowed;opacity:.45}.capacity-stepper input{border-left:0;border-right:0;color:#193e29;font:inherit;font-weight:800;min-width:0;text-align:center}.capacity-stepper input:focus-visible{outline:2px solid rgb(0 111 60 / 25%);outline-offset:-2px}.capacity-editor-hint,.capacity-validation{font-size:.72rem;line-height:1.4;margin:9px 0}.capacity-editor-hint{color:var(--color-muted)}.capacity-validation{color:#9f3f34}.capacity-editor footer{display:grid;gap:8px;grid-template-columns:1fr 1fr;margin-top:16px}.capacity-editor footer button{border-radius:6px;cursor:pointer;font:inherit;font-size:.75rem;font-weight:800;min-height:37px;padding:7px}.reset-capacity{background:#fff;border:1px solid #c5d1c7;color:#385448}.save-capacity{background:var(--color-dartmouth-green);border:1px solid var(--color-dartmouth-green);color:#fff}.capacity-editor footer button:disabled{cursor:not-allowed;opacity:.5}.capacity-legend{display:flex;flex-wrap:wrap;gap:13px}.capacity-legend span{align-items:center;color:#536259;display:inline-flex;font-size:.71rem;font-weight:700;gap:5px}.legend-dot{border-radius:50%;height:8px;width:8px}.legend-dot.available{background:#31965b}.legend-dot.nearly-full{background:#d1a227}.legend-dot.full{background:#bf5648}.legend-dot.closed{background:#97a39b}.capacity-state{align-items:center;background:#f5f8f5;border:1px dashed #cbd9ce;color:#536259;display:flex;font-size:.84rem;gap:12px;justify-content:center;min-height:180px;padding:18px;text-align:center}.capacity-state-error{color:#9f3f34}
 @media(max-width:800px){.capacity-workspace{grid-template-columns:1fr}.capacity-editor{position:relative}.capacity-calendar-grid{max-width:100%;overflow-x:auto}.calendar-weekdays,.capacity-calendar-grid{grid-template-columns:repeat(7,minmax(88px,1fr))}}@media(max-width:560px){.capacity-month-heading{align-items:flex-start;flex-direction:column}.capacity-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.capacity-calendar{overflow-x:auto}.calendar-weekdays,.capacity-calendar-grid{min-width:630px}.capacity-editor footer{grid-template-columns:1fr}.appointment-calendar-day,.calendar-blank{min-height:118px}}
 @media(prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;scroll-behavior:auto!important}}
+</style>
+
+<style scoped>
+.capacity-planner-modal { background: var(--bg-surface); color: var(--text-primary); width: min(1120px, 100%); }
+.capacity-close,
+.calendar-navigation button,
+.capacity-state button,
+.capacity-stepper button,
+.reset-capacity { background: var(--bg-surface-alt); border-color: var(--border-color); color: var(--text-secondary); }
+.capacity-close:hover,
+.capacity-close:focus-visible,
+.calendar-navigation button:hover,
+.calendar-navigation button:focus-visible,
+.capacity-state button:hover,
+.capacity-state button:focus-visible { background: var(--bg-hover); border-color: var(--accent); }
+.capacity-month-heading h3,
+.capacity-editor h3,
+.capacity-summary dd,
+.capacity-editor-stats dd,
+.calendar-day-number,
+.capacity-stepper-label { color: var(--text-primary); }
+.capacity-summary div,
+.capacity-editor-stats div,
+.calendar-blank,
+.capacity-state { background: var(--bg-surface-alt); border-color: var(--border-color); }
+.capacity-calendar-grid { background: var(--border-color); border-color: var(--border-color); }
+.appointment-calendar-day { background: var(--bg-surface); border-left-color: color-mix(in srgb, var(--success) 48%, var(--border-color)); color: var(--text-secondary); }
+.appointment-calendar-day:hover:not(:disabled) { background: var(--bg-hover); }
+.appointment-calendar-day.full { background: var(--danger-bg); border-left-color: var(--danger); }
+.appointment-calendar-day.full .calendar-status,
+.capacity-validation,
+.capacity-state-error { color: var(--danger); }
+.appointment-calendar-day.is-unavailable { background: var(--bg-surface-alt); border-left-color: var(--border-color); color: var(--text-muted); }
+.calendar-remaining,
+.capacity-legend span { color: var(--text-muted); }
+.capacity-editor { background: var(--bg-surface-alt); border-color: var(--border-color); box-shadow: var(--shadow-soft); }
+.capacity-editor header { border-color: var(--border-color); }
+.capacity-stepper button,
+.capacity-stepper input { border-color: var(--border-color); }
+.capacity-stepper input { background: var(--bg-input); color: var(--text-primary); }
+.save-capacity { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
+.capacity-status-badge.available { background: var(--success-bg); color: var(--success); }
+.capacity-status-badge.nearly-full { background: var(--warning-bg); color: var(--warning); }
+.capacity-status-badge.full { background: var(--danger-bg); color: var(--danger); }
 </style>

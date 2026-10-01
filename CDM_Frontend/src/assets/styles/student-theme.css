@@ -1,20 +1,55 @@
-/* Loaded by the Student shell. The html attribute is removed on role change/logout.
-   Teleported Student dialogs share the palette without theming staff or the sidebar. */
-html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
-  --student-page: #17221b;
-  --student-page-background: #17221b;
-  --student-surface: #213127;
-  --student-surface-soft: #19271f;
-  --student-field: #19271f;
-  --student-panel-header: #19271f;
-  --student-text: #edf6ef;
-  --student-heading: #edf6ef;
-  --student-muted: #b9cabc;
-  --student-border: #587061;
-  --student-accent: #a5e0b8;
-  --student-selected: #294434;
-  --student-focus: #82c69b;
-  --student-toggle: #587061;
+/* One root attribute restores Student and Registrar/Admin appearance across navigation. */
+html[data-student-theme='dark'] {
+  --bg-page: #101914;
+  --bg-surface: #19261e;
+  --bg-surface-alt: #213128;
+  --bg-surface-raised: #293b30;
+  --bg-sidebar: #063c26;
+  --bg-input: #121f18;
+  --bg-hover: #2b4134;
+  --bg-header: rgb(18 31 24 / 96%);
+  --text-primary: #f0f5ef;
+  --text-secondary: #cad7cd;
+  --text-muted: #9dafaa;
+  --border-color: #3c5143;
+  --border-strong: #5b7363;
+  --accent: #9bd4ad;
+  --accent-hover: #b1e4c0;
+  --text-on-accent: #102018;
+  --danger: #ffb4aa;
+  --danger-bg: #442822;
+  --warning: #f4d35e;
+  --warning-bg: #3c3822;
+  --success: #b7e8c3;
+  --success-bg: #24452f;
+  --color-naples-yellow: #f4d35e;
+  --shadow-soft: 0 10px 28px rgb(0 0 0 / 28%);
+  --shadow-raised: 0 16px 38px rgb(0 0 0 / 38%);
+  --surface-1: var(--bg-surface);
+  --surface-2: var(--bg-surface-alt);
+  --surface-3: var(--bg-surface-raised);
+  --skeleton-base: #26372c;
+  --skeleton-highlight: #354a3c;
+  color-scheme: dark;
+}
+
+html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .registrar-theme-shell, .registrar-theme-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
+  --student-page: #101914;
+  --student-page-background: #101914;
+  --student-surface: #19261e;
+  --student-surface-soft: #213128;
+  --student-field: #121f18;
+  --student-panel-header: #213128;
+  --student-text: #f0f5ef;
+  --student-heading: #f0f5ef;
+  --student-muted: #9dafaa;
+  --student-border: #3c5143;
+  --student-accent: #9bd4ad;
+  --student-primary: #9bd4ad;
+  --student-on-primary: #102018;
+  --student-selected: #2b4134;
+  --student-focus: #b1e4c0;
+  --student-toggle: #5b7363;
   --student-save: #1e3728;
   --student-success: #24452f;
   --student-danger: #ffb4aa;
@@ -25,24 +60,67 @@ html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .stude
   --student-card-shadow: 0 10px 30px #0004;
   --student-card-shadow-hover: 0 18px 34px #0005;
   --student-color-scheme: dark;
+  --color-anti-flash-white: var(--student-page);
+  --color-surface: var(--student-surface);
+  --color-eerie-black: var(--student-text);
+  --color-muted: var(--student-muted);
+  --color-border: var(--student-border);
+  --color-dartmouth-green: var(--student-accent);
+  --color-green-tint: var(--student-selected);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-student-theme='system'] :is(.student-portal-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
-    --student-page: #17221b;
-    --student-page-background: #17221b;
-    --student-surface: #213127;
-    --student-surface-soft: #19271f;
-    --student-field: #19271f;
-    --student-panel-header: #19271f;
-    --student-text: #edf6ef;
-    --student-heading: #edf6ef;
-    --student-muted: #b9cabc;
-    --student-border: #587061;
-    --student-accent: #a5e0b8;
-    --student-selected: #294434;
-    --student-focus: #82c69b;
-    --student-toggle: #587061;
+  html[data-student-theme='system'] {
+    --bg-page: #101914;
+    --bg-surface: #19261e;
+    --bg-surface-alt: #213128;
+    --bg-surface-raised: #293b30;
+    --bg-sidebar: #063c26;
+    --bg-input: #121f18;
+    --bg-hover: #2b4134;
+    --bg-header: rgb(18 31 24 / 96%);
+    --text-primary: #f0f5ef;
+    --text-secondary: #cad7cd;
+    --text-muted: #9dafaa;
+    --border-color: #3c5143;
+    --border-strong: #5b7363;
+    --accent: #9bd4ad;
+    --accent-hover: #b1e4c0;
+    --text-on-accent: #102018;
+    --danger: #ffb4aa;
+    --danger-bg: #442822;
+    --warning: #f4d35e;
+    --warning-bg: #3c3822;
+    --success: #b7e8c3;
+    --success-bg: #24452f;
+    --color-naples-yellow: #f4d35e;
+    --shadow-soft: 0 10px 28px rgb(0 0 0 / 28%);
+    --shadow-raised: 0 16px 38px rgb(0 0 0 / 38%);
+    --surface-1: var(--bg-surface);
+    --surface-2: var(--bg-surface-alt);
+    --surface-3: var(--bg-surface-raised);
+    --skeleton-base: #26372c;
+    --skeleton-highlight: #354a3c;
+    color-scheme: dark;
+  }
+
+  html[data-student-theme='system'] :is(.student-portal-shell .shell-content, .registrar-theme-shell, .registrar-theme-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
+    --student-page: #101914;
+    --student-page-background: #101914;
+    --student-surface: #19261e;
+    --student-surface-soft: #213128;
+    --student-field: #121f18;
+    --student-panel-header: #213128;
+    --student-text: #f0f5ef;
+    --student-heading: #f0f5ef;
+    --student-muted: #9dafaa;
+    --student-border: #3c5143;
+    --student-accent: #9bd4ad;
+    --student-primary: #9bd4ad;
+    --student-on-primary: #102018;
+    --student-selected: #2b4134;
+    --student-focus: #b1e4c0;
+    --student-toggle: #5b7363;
     --student-save: #1e3728;
     --student-success: #24452f;
     --student-danger: #ffb4aa;
@@ -53,7 +131,40 @@ html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .stude
     --student-card-shadow: 0 10px 30px #0004;
     --student-card-shadow-hover: 0 18px 34px #0005;
     --student-color-scheme: dark;
+    --color-anti-flash-white: var(--student-page);
+    --color-surface: var(--student-surface);
+    --color-eerie-black: var(--student-text);
+    --color-muted: var(--student-muted);
+    --color-border: var(--student-border);
+    --color-dartmouth-green: var(--student-accent);
+    --color-green-tint: var(--student-selected);
   }
+}
+
+html[data-student-theme] .registrar-theme-shell,
+html[data-student-theme] .registrar-theme-shell .shell-content,
+html[data-student-theme] .registrar-theme-shell .main-content {
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
+html[data-student-theme] .registrar-theme-shell :is(input, select, textarea) {
+  background: var(--bg-input);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+html[data-student-theme] .registrar-theme-shell :is(table, th, td) {
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+html[data-student-theme] .registrar-theme-shell tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+html[data-student-theme] .registrar-theme-shell .sidebar {
+  border-right: 1px solid var(--border-color);
 }
 
 html[data-student-theme] :is(.student-workflow-backdrop, .step-up-backdrop) {
