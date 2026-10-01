@@ -1,6 +1,8 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import DocumentRequestStatusBadge from './DocumentRequestStatusBadge.vue'
+import DocumentRequestSkeleton from './DocumentRequestSkeleton.vue'
 import {
   documentTypeAccentClass,
   formatExactDateTime,
@@ -111,12 +113,15 @@ onBeforeUnmount(() => window.clearInterval(clock))
         <p class="record-eyebrow">Document workflow</p>
         <h2 id="recent-document-activity-heading">Recent activity</h2>
       </div>
-      <button type="button" class="secondary compact-button" :disabled="loading" @click="loadActivity">Refresh</button>
+      <button type="button" class="dr-button dr-button--secondary" :disabled="loading" @click="loadActivity">Refresh</button>
     </div>
 
     <p v-if="error" class="notice error">{{ error }}</p>
-    <div v-if="loading && !activities.length" class="recent-activity-skeleton" aria-label="Loading recent activity" aria-busy="true">
-      <span v-for="index in 5" :key="index" class="skeleton-shimmer"></span>
+    <div v-if="loading && !activities.length" class="dr-activity-skeleton" aria-label="Loading recent activity" aria-busy="true">
+      <div v-for="index in 5" :key="index" class="dr-activity-skeleton-row">
+        <DocumentRequestSkeleton width="58%" />
+        <DocumentRequestSkeleton kind="text" width="76%" />
+      </div>
     </div>
     <p v-else-if="!activities.length && !error" class="empty">No recent document request activity.</p>
 
@@ -134,6 +139,10 @@ onBeforeUnmount(() => window.clearInterval(clock))
           <strong>{{ activityHeadline(activity) }}</strong>
           <span class="activity-meta">
             <small>{{ activityReference(activity) }}</small>
+            <DocumentRequestStatusBadge
+              v-if="activity.type === 'request' && requestStatusFromActivity(activity)"
+              :status="requestStatusFromActivity(activity)"
+            />
             <span
               v-if="activity.document_type?.document_name"
               class="document-type-chip"

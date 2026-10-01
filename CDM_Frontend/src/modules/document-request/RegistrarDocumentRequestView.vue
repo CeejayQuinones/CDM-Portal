@@ -1,6 +1,10 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import DocumentRequestPageHeader from './DocumentRequestPageHeader.vue'
+import DocumentRequestDialog from './DocumentRequestDialog.vue'
+import DocumentRequestStatusBadge from './DocumentRequestStatusBadge.vue'
+import DocumentRequestTableSkeleton from './DocumentRequestTableSkeleton.vue'
 import RegistrarRecentActivity from './RegistrarRecentActivity.vue'
 import RegistrarRequestQueue from './RegistrarRequestQueue.vue'
 import RegistrarWorkspaceSelector from './RegistrarWorkspaceSelector.vue'
@@ -16,14 +20,17 @@ import {
 import { consumeDocumentRequestFocus } from './documentRequestFocus'
 import { mergeDocumentRequestRow, requestDocumentName, requestStudentNumber } from './documentRequestRow'
 import { documentRequestService as api } from './documentRequestService'
+import { profilePhotoUrl } from '../../utils/profilePhoto'
 
 const route = useRoute()
 const router = useRouter()
 const pendingRequests = ref([])
 const processingRequests = ref([])
+const documentTypes = ref([])
 const selected = ref(null)
 const selectedSummary = ref(null)
 const search = ref('')
+const documentTypeId = ref('')
 const timeFilter = ref('all')
 const loading = ref(false)
 const message = ref('')
@@ -52,6 +59,9 @@ const HIGHLIGHT_DURATION_MS = 3_000
 const requestError = (err) => err.response?.data?.message || 'The request could not be completed.'
 const formatMoney = (value) => Number(value).toFixed(2)
 const studentProfile = computed(() => selected.value?.student?.user_profile || null)
+const studentPhotoFailed = ref(false)
+const studentPhoto = computed(() => studentPhotoFailed.value ? '' : profilePhotoUrl(studentProfile.value))
+watch(studentProfile, () => { studentPhotoFailed.value = false })
 const physicalLocation = computed(() => selected.value?.student?.physical_record_location || null)
 const currentAppointment = computed(() => {
   const appointments = selected.value?.appointments || []
@@ -62,16 +72,16 @@ const appointmentContext = computed(() => appointmentReturnContext(route.query))
 const requestWorkspaceSelectors = computed(() => [
   {
     key: 'pending',
-    eyebrow: 'Active queue',
-    title: 'Pending Requests',
+    eyebrow: 'Status',
+    title: 'Pending',
     count: pendingTotal.value,
     countLabel: 'waiting',
     description: 'New submissions awaiting review.',
   },
   {
     key: 'approved',
-    eyebrow: 'Active work',
-    title: 'Approved Requests',
+    eyebrow: 'Status',
+    title: 'Ready for Release',
     count: processingTotal.value,
     countLabel: 'active',
     description: 'Approved requests awaiting their appointment day.',
@@ -167,6 +177,7 @@ const positiveId = (value) => {
 const listQuerySignature = (query) =>
   JSON.stringify([
     queryValue(query.search) || '',
+    positiveId(query.document_type_id) || '',
     queryValue(query.time_filter) || 'all',
     positiveId(query.pending_page) || 1,
     positiveId(query.processing_page) || 1,
@@ -210,6 +221,7 @@ function applyRouteQuery(query) {
   const nextTimeFilter = String(queryValue(query.time_filter) || 'all')
 
   search.value = String(queryValue(query.search) || '')
+  documentTypeId.value = positiveId(query.document_type_id) || ''
   timeFilter.value = TIME_FILTERS.some((option) => option.value === nextTimeFilter) ? nextTimeFilter : 'all'
   focusedRequestId.value = documentRequestIdFromQuery(query)
   pendingPage.value = positiveId(query.pending_page) || 1
@@ -273,10 +285,6 @@ function closeDetails() {
   }
 }
 
-function handleEscape(event) {
-  if (event.key === 'Escape' && selected.value) closeDetails()
-}
-
 async function refresh(resetPages = false) {
   if (resetPages) {
     pendingPage.value = 1
@@ -288,6 +296,7 @@ async function refresh(resetPages = false) {
     const queues = await api.registrarRequests({
       view: 'work_queues',
       search: search.value || undefined,
+      document_type_id: documentTypeId.value || undefined,
       time_filter: timeFilter.value,
       pending_page: pendingPage.value,
       approved_page: processingPage.value,
@@ -304,6 +313,14 @@ async function refresh(resetPages = false) {
     error.value = requestError(err)
   } finally {
     loading.value = false
+  }
+}
+
+async function loadDocumentTypes() {
+  try {
+    documentTypes.value = await api.registrarDocumentTypes()
+  } catch (err) {
+    error.value = requestError(err)
   }
 }
 
@@ -341,6 +358,13 @@ async function applyFilters() {
   await refresh(true)
 }
 
+async function resetFilters() {
+  search.value = ''
+  documentTypeId.value = ''
+  timeFilter.value = 'all'
+  await applyFilters()
+}
+
 async function selectTimeFilter(value) {
   timeFilter.value = value
   await applyFilters()
@@ -352,7 +376,7 @@ async function changePage(queue, nextPage) {
   selected.value = null
   selectedSummary.value = null
   focusedRequestId.value = null
-  await refresh()
+  await Promise.allSettled([loadDocumentTypes(), refresh()])
 }
 
 async function selectRequest(item) {
@@ -504,7 +528,6 @@ async function confirmReject({ reason }) {
 }
 
 onMounted(async () => {
-  window.addEventListener('keydown', handleEscape)
   appliedListQuery = listQuerySignature(route.query)
   applyRouteQuery(route.query)
   await refresh()
@@ -517,7 +540,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleEscape)
   window.clearTimeout(highlightTimer)
 })
 
@@ -536,55 +558,55 @@ watch(
 </script>
 
 <template>
-  <section class="page-header">
-    <button
-      v-if="appointmentContext"
-      class="appointment-context-back"
-      type="button"
-      @click="returnToAppointment"
-    >
-      {{ appointmentContext.label }}
-    </button>
-    <p class="page-kicker">Registrar Staff</p>
-    <h1 class="page-title">Document Request Work Queues</h1>
-    <p class="page-description">Assign appointment dates, then approve or reject pending document requests.</p>
-  </section>
+  <DocumentRequestPageHeader
+    eyebrow="Registrar Staff"
+    title="Document Requests"
+    description="Review and process active student document requests."
+  >
+    <template v-if="appointmentContext" #actions>
+      <button type="button" class="dr-button dr-button--secondary" @click="returnToAppointment">
+        {{ appointmentContext.label }}
+      </button>
+    </template>
+  </DocumentRequestPageHeader>
 
   <p v-if="message" class="notice success">{{ message }}</p>
   <p v-if="error" class="notice error">{{ error }}</p>
 
-  <div v-if="loading && !pendingRequests.length && !processingRequests.length" class="appointment-workspace-skeleton request-workspace-skeleton" aria-label="Loading document request queues" aria-busy="true">
-    <div class="appointment-filter-skeleton skeleton-shimmer"></div>
-    <div class="appointment-workspace-skeleton-grid">
-      <aside class="appointment-selector-skeletons">
-        <span v-for="index in 2" :key="index" class="appointment-selector-skeleton skeleton-shimmer"></span>
-      </aside>
-      <section class="appointment-table-skeleton">
-        <span class="appointment-heading-skeleton skeleton-shimmer"></span>
-        <span v-for="index in 6" :key="index" class="appointment-row-skeleton skeleton-shimmer"></span>
-      </section>
-    </div>
-  </div>
+  <DocumentRequestTableSkeleton
+    v-if="loading && !pendingRequests.length && !processingRequests.length"
+    :columns="7"
+    :rows="6"
+    :filters="4"
+    label="Loading document request queues"
+  />
 
   <template v-else>
-    <section class="dr-panel queue-filter-panel appointment-filter-panel request-workspace-filter">
-      <nav class="group-tabs time-filter-tabs" aria-label="Request activity period">
-        <button
-          v-for="option in TIME_FILTERS"
-          :key="option.value"
-          type="button"
-          :class="{ active: timeFilter === option.value }"
-          :aria-pressed="timeFilter === option.value"
-          @click="selectTimeFilter(option.value)"
-        >{{ option.label }}</button>
-      </nav>
-      <form class="toolbar" @submit.prevent="applyFilters">
-        <input v-model="search" aria-label="Search document requests" placeholder="REQ-000001, student number, name, or document" />
-        <button :disabled="loading">{{ loading ? 'Loading…' : 'Search' }}</button>
-      </form>
+    <section class="dr-filter-bar active-request-filter" aria-label="Active document request filters">
+      <label>
+        Search
+        <input v-model="search" type="search" placeholder="Student name, number, request ID, or document" />
+      </label>
+      <label>
+        Document Type
+        <select v-model="documentTypeId">
+          <option value="">All document types</option>
+          <option v-for="type in documentTypes" :key="type.id" :value="type.id">{{ type.document_name }}</option>
+        </select>
+      </label>
+      <label>
+        Date Range
+        <select v-model="timeFilter">
+          <option v-for="option in TIME_FILTERS" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
+      </label>
+      <button type="button" class="dr-button dr-button--primary" :disabled="loading" @click="applyFilters">
+        {{ loading ? 'Loading…' : 'Apply' }}
+      </button>
+      <button type="button" class="dr-button dr-button--secondary" :disabled="loading" @click="resetFilters">Reset</button>
     </section>
 
-    <section class="registrar-workspace-grid" aria-label="Active document request work queues">
+    <section class="active-request-workspace" aria-label="Active document request work queues">
       <RegistrarWorkspaceSelector
         v-model="selectedQueueKey"
         :items="requestWorkspaceSelectors"
@@ -617,9 +639,14 @@ watch(
     <RegistrarRecentActivity ref="recentActivity" />
   </section>
 
-  <Teleport to="body">
-    <div v-if="selected" class="request-detail-backdrop" @click.self="closeDetails">
-      <section class="request-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="request-detail-title">
+  <DocumentRequestDialog
+    v-if="selected"
+    labelledby="request-detail-title"
+    panel-class="request-detail-dialog"
+    wide
+    :busy="modalActionBusy || assigningDate || resendingClaimCode"
+    @cancel="closeDetails"
+  >
         <header class="request-detail-header">
           <div>
             <p>Registrar document queue</p>
@@ -634,9 +661,10 @@ watch(
           <section class="request-identity">
             <div class="request-student-avatar">
               <img
-                v-if="studentProfile?.profile_photo"
-                :src="studentProfile.profile_photo"
+                v-if="studentPhoto"
+                :src="studentPhoto"
                 :alt="`${studentFullName} photo`"
+                @error="studentPhotoFailed = true"
               />
               <span v-else>{{ studentInitials }}</span>
             </div>
@@ -645,7 +673,7 @@ watch(
               <h3>{{ studentFullName }}</h3>
               <p>{{ requestDocumentName(selected) }}</p>
             </div>
-            <span class="badge request-detail-status" :class="selected.status">{{ formatStatus(selected.status) }}</span>
+            <DocumentRequestStatusBadge class="request-detail-status" :status="selected.status" />
           </section>
 
           <dl class="request-facts">
@@ -744,9 +772,7 @@ watch(
           </button>
           <button type="button" class="close-action" @click="closeDetails">Close</button>
         </footer>
-      </section>
-    </div>
-  </Teleport>
+  </DocumentRequestDialog>
 
   <RequestWorkflowReasonModal
     :open="reasonDialogOpen"

@@ -1,13 +1,9 @@
 <script setup>
 import PaginationControls from '../../components/PaginationControls.vue'
-import {
-  documentTypeAccentClass,
-  formatExactDateTime,
-  formatRelativeTime,
-  requestReference,
-  requestStatusAccentClass,
-  studentName,
-} from './documentRequestPresentation'
+import DocumentRequestEmptyState from './DocumentRequestEmptyState.vue'
+import DocumentRequestStatusBadge from './DocumentRequestStatusBadge.vue'
+import DocumentRequestTableSkeleton from './DocumentRequestTableSkeleton.vue'
+import { formatExactDate, formatExactDateTime, requestReference, studentName } from './documentRequestPresentation'
 import { requestDocumentName, requestStudentNumber } from './documentRequestRow'
 
 defineProps({
@@ -28,68 +24,50 @@ defineProps({
 defineEmits(['select', 'page-change', 'action'])
 
 const referenceFor = (item) => item?.request_reference || requestReference(item?.id)
-const requestTimestamp = (item) => item?.updated_at || item?.created_at || item?.request_date || null
-const requestStudentName = (item) => studentName(item?.student) || 'Student'
+const requestedTimestamp = (item) => item?.request_date || item?.created_at || null
+const updatedTimestamp = (item) => item?.updated_at || item?.approved_at || item?.created_at || null
+const requestStudentName = (item) => studentName(item?.student) || 'Student name unavailable'
 </script>
 
 <template>
-  <section class="dr-panel work-queue-panel">
-    <header class="work-queue-header">
-      <div>
-        <p class="record-eyebrow">Active work queue</p>
-        <h2>{{ title }}</h2>
-        <p>{{ description }}</p>
-      </div>
-      <strong class="work-queue-count" :aria-label="`${total} ${title.toLowerCase()}`">{{ total }}</strong>
+  <section class="dr-table-panel active-request-table-panel">
+    <header class="dr-records-heading">
+      <div><h2>{{ title }}</h2><p>{{ description }}</p></div>
+      <strong class="active-request-count">{{ total }}</strong>
     </header>
 
-    <div class="work-queue-list">
-      <p v-if="loading && !items.length" class="empty work-queue-empty">Loading requests&hellip;</p>
-      <p v-else-if="!items.length" class="empty work-queue-empty">{{ emptyMessage }}</p>
-      <article
-        v-for="item in items"
-        :id="`request-${item.id}`"
-        :key="item.id"
-        class="queue-item compact-request-item"
-        :class="[
-          requestStatusAccentClass(item.status),
-          {
-            'focused-record': selectedId === item.id,
-            'focused-request': highlightedId === item.id,
-          },
-        ]"
-      >
-        <button class="queue-item-main" type="button" @click="$emit('select', item)">
-          <span class="compact-request-content">
-            <span class="compact-request-heading compact-student-heading">
-              <strong class="compact-student-name">{{ requestStudentName(item) }}</strong>
-              <time
-                v-if="requestTimestamp(item)"
-                :datetime="requestTimestamp(item)"
-                :title="formatExactDateTime(requestTimestamp(item))"
-              >
-                {{ formatRelativeTime(requestTimestamp(item)) }}
-              </time>
-            </span>
-            <span class="compact-request-reference">{{ referenceFor(item) }}</span>
-            <span class="compact-request-meta">
-              <span class="document-type-chip" :class="documentTypeAccentClass(requestDocumentName(item))">
-                {{ requestDocumentName(item) }}
-              </span>
-              <span>{{ requestStudentNumber(item) }}</span>
-            </span>
-          </span>
-        </button>
-        <button
-          v-if="actionLabel"
-          class="queue-row-action"
-          type="button"
-          :disabled="actionBusyId === item.id"
-          @click="$emit('action', item)"
-        >
-          {{ actionBusyId === item.id ? 'Updating…' : actionLabel }}
-        </button>
-      </article>
+    <DocumentRequestTableSkeleton v-if="loading && !items.length" :columns="7" :rows="5" label="Loading active document requests" />
+    <DocumentRequestEmptyState v-else-if="!items.length" :message="emptyMessage" />
+
+    <div v-else class="dr-table-scroll">
+      <table class="dr-table active-request-table">
+        <thead>
+          <tr><th scope="col">Request ID</th><th scope="col">Student</th><th scope="col">Document</th><th scope="col">Requested</th><th scope="col">Status</th><th scope="col">Updated</th><th scope="col">Action</th></tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="item in items"
+            :id="`request-${item.id}`"
+            :key="item.id"
+            :class="{ 'is-selected': selectedId === item.id, 'focused-request': highlightedId === item.id }"
+          >
+            <td><strong class="history-request-reference">{{ referenceFor(item) }}</strong></td>
+            <td><strong>{{ requestStudentName(item) }}</strong><small>{{ requestStudentNumber(item) }}</small></td>
+            <td><strong>{{ requestDocumentName(item) }}</strong><small v-if="item.purpose">{{ item.purpose }}</small></td>
+            <td>{{ formatExactDate(requestedTimestamp(item)) }}</td>
+            <td><DocumentRequestStatusBadge :status="item.status" /></td>
+            <td><time v-if="updatedTimestamp(item)" :datetime="updatedTimestamp(item)">{{ formatExactDateTime(updatedTimestamp(item)) }}</time><span v-else>—</span></td>
+            <td>
+              <div class="dr-table-actions">
+                <button type="button" class="dr-button dr-button--secondary" @click="$emit('select', item)">View / Process</button>
+                <button v-if="actionLabel" type="button" class="dr-button dr-button--primary" :disabled="actionBusyId === item.id" @click="$emit('action', item)">
+                  {{ actionBusyId === item.id ? 'Updating…' : actionLabel }}
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <footer class="work-queue-footer">

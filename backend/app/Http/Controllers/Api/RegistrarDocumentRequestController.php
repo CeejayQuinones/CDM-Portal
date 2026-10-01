@@ -40,6 +40,7 @@ class RegistrarDocumentRequestController extends Controller
         $request->validate([
             'view' => ['nullable', 'in:work_queues'],
             'status' => ['nullable', Rule::in(self::ACTIVE_STATUSES)],
+            'document_type_id' => ['nullable', 'integer', 'exists:document_types,id'],
             'search' => ['nullable', 'string', 'max:100'],
             'time_filter' => ['nullable', Rule::in(self::TIME_FILTERS)],
             'request_id' => ['nullable', 'integer', 'min:1'],
@@ -57,6 +58,7 @@ class RegistrarDocumentRequestController extends Controller
             ->latest('id');
 
         $this->applySearch($query, $request->input('search'));
+        $this->applyDocumentTypeFilter($query, $request->input('document_type_id'));
         $this->applyExactRequestId($query, $request->input('request_id'));
         $this->applyTimeFilter($query, 'updated_at', $request->input('time_filter'));
 

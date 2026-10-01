@@ -1,7 +1,13 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { requestReference } from './documentRequestPresentation'
+import PaginationControls from '../../components/PaginationControls.vue'
+import DocumentRequestDialog from './DocumentRequestDialog.vue'
+import DocumentRequestEmptyState from './DocumentRequestEmptyState.vue'
+import DocumentRequestPageHeader from './DocumentRequestPageHeader.vue'
+import DocumentRequestStatusBadge from './DocumentRequestStatusBadge.vue'
+import DocumentRequestTableSkeleton from './DocumentRequestTableSkeleton.vue'
+import { formatExactDateTime, requestReference } from './documentRequestPresentation'
 import { documentRequestService as api } from './documentRequestService'
 
 const route = useRoute()
@@ -16,6 +22,11 @@ const message = ref('')
 const error = ref('')
 const historyLimit = ref(8)
 const detailPanel = ref(null)
+const requestDetailOpen = ref(false)
+const studentSearch = ref('')
+const studentStatus = ref('')
+const studentRequestPage = ref(1)
+const STUDENT_REQUEST_PAGE_SIZE = 10
 
 const showRequestForm = ref(false)
 const requestFormLoading = ref(false)
@@ -24,7 +35,6 @@ const requestFormError = ref('')
 const selectedTypeId = ref('')
 const quantity = ref(1)
 const purpose = ref('')
-const requestDialog = ref(null)
 
 const bookingRequest = ref(null)
 const appointmentDate = ref('')
@@ -37,7 +47,6 @@ const slotError = ref('')
 const slotDateReason = ref('')
 const bookingInProgress = ref(false)
 const bookingError = ref('')
-const bookingDialog = ref(null)
 const currentDate = new Date()
 const today = dateKey(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate())
 const calendarMonth = ref(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1))
@@ -48,13 +57,11 @@ const cancellingAppointment = ref(null)
 const cancellationReason = ref('')
 const cancellationError = ref('')
 const cancellationInProgress = ref(false)
-const cancellationDialog = ref(null)
 
 const cancellingRequest = ref(null)
 const requestCancellationReason = ref('')
 const requestCancellationError = ref('')
 const requestCancellationInProgress = ref(false)
-const requestCancellationDialog = ref(null)
 
 const activeRequestStatuses = ['pending', 'approved']
 const activeAppointmentStatuses = ['pending', 'confirmed']
@@ -124,11 +131,39 @@ const historyItems = computed(() =>
   ),
 )
 const visibleHistory = computed(() => historyItems.value.slice(0, historyLimit.value))
-const anyModalOpen = computed(
-  () => Boolean(showRequestForm.value || bookingRequest.value || cancellingAppointment.value || cancellingRequest.value),
-)
-let bodyOverflowBeforeModal = ''
+const releasedRequests = computed(() => requests.value.filter((item) => item.status === 'completed'))
+const filteredStudentRequests = computed(() => {
+  const term = studentSearch.value.trim().toLowerCase()
 
+  return requests.value.filter((item) => {
+    const matchesStatus = !studentStatus.value || item.status === studentStatus.value
+    const matchesSearch =
+      !term ||
+      [requestReference(item.id), item.document_type?.document_name, item.purpose]
+        .some((value) => String(value || '').toLowerCase().includes(term))
+
+    return matchesStatus && matchesSearch
+  })
+})
+const studentRequestLastPage = computed(() => Math.max(1, Math.ceil(filteredStudentRequests.value.length / STUDENT_REQUEST_PAGE_SIZE)))
+const visibleStudentRequests = computed(() => {
+  const start = (studentRequestPage.value - 1) * STUDENT_REQUEST_PAGE_SIZE
+
+  return filteredStudentRequests.value.slice(start, start + STUDENT_REQUEST_PAGE_SIZE)
+})
+const requestProgressEvents = computed(() => {
+  const item = selectedRequest.value
+  if (!item) return []
+  const events = [
+    { key: 'requested', label: 'Requested', timestamp: item.created_at || item.request_date, status: 'pending' },
+  ]
+  if (item.approved_at) events.push({ key: 'approved', label: 'Ready for Release', timestamp: item.approved_at, status: 'approved' })
+  if (item.completed_at) events.push({ key: 'completed', label: 'Released', timestamp: item.completed_at, status: 'completed' })
+  if (item.rejected_at) events.push({ key: 'rejected', label: 'Rejected', timestamp: item.rejected_at, status: 'rejected' })
+  if (item.cancelled_at) events.push({ key: 'cancelled', label: 'Cancelled', timestamp: item.cancelled_at, status: 'cancelled' })
+
+  return events.filter((event) => event.timestamp)
+})
 const calendarMonthKey = computed(
   () => `${calendarMonth.value.getFullYear()}-${String(calendarMonth.value.getMonth() + 1).padStart(2, '0')}`,
 )
@@ -290,6 +325,36 @@ function selectRequest(id, scroll = false) {
   }
 }
 
+function viewStudentRequest(item) {
+  selectedRequestId.value = item.id
+  requestDetailOpen.value = true
+}
+
+function closeStudentRequest() {
+  requestDetailOpen.value = false
+}
+
+function resetStudentFilters() {
+  studentSearch.value = ''
+  studentStatus.value = ''
+  studentRequestPage.value = 1
+}
+
+function changeStudentRequestPage(page) {
+  studentRequestPage.value = page
+}
+
+function cancelRequestFromDetails() {
+  const item = selectedRequest.value
+  closeStudentRequest()
+  if (item) nextTick(() => openRequestCancellation(item))
+}
+
+function cancelAppointmentFromDetails(appointment) {
+  closeStudentRequest()
+  nextTick(() => openCancellation({ ...appointment, document_request: selectedRequest.value }))
+}
+
 function selectAppointment(id) {
   selectedAppointmentId.value = id
   selectPanel('appointment')
@@ -304,7 +369,6 @@ async function openRequestForm() {
   selectPanel('request')
   showRequestForm.value = true
   requestFormError.value = ''
-  nextTick(() => requestDialog.value?.focus())
   if (documentTypes.value.length) return
 
   requestFormLoading.value = true
@@ -366,7 +430,6 @@ async function openBooking(documentRequest) {
   clearSlotSelection()
   calendarMonth.value = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   await loadAvailability()
-  nextTick(() => bookingDialog.value?.focus())
 }
 
 function closeBooking(force = false) {
@@ -466,7 +529,6 @@ function openRequestCancellation(documentRequest) {
   cancellingRequest.value = documentRequest
   requestCancellationReason.value = ''
   requestCancellationError.value = ''
-  nextTick(() => requestCancellationDialog.value?.focus())
 }
 
 function closeRequestCancellation(force = false) {
@@ -513,7 +575,6 @@ function openCancellation(appointment) {
   cancellingAppointment.value = appointment
   cancellationReason.value = ''
   cancellationError.value = ''
-  nextTick(() => cancellationDialog.value?.focus())
 }
 
 function closeCancellation(force = false) {
@@ -567,240 +628,138 @@ watch(
   },
 )
 
-watch(anyModalOpen, (isOpen) => {
-  if (isOpen) {
-    bodyOverflowBeforeModal = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-  } else {
-    document.body.style.overflow = bodyOverflowBeforeModal
-  }
+watch([studentSearch, studentStatus], () => {
+  studentRequestPage.value = 1
 })
 
 onMounted(refresh)
-onBeforeUnmount(() => {
-  document.body.style.overflow = bodyOverflowBeforeModal
-})
 </script>
 
 <template>
-  <section class="page-header student-document-heading">
-    <p class="page-kicker">Student Services</p>
-    <h1 class="page-title">Student Document Requests</h1>
-    <p class="page-description">Request documents and follow the Registrar-assigned appointment workflow in one place.</p>
-  </section>
+  <DocumentRequestPageHeader
+    eyebrow="Student Services"
+    title="Document Requests"
+    description="Request official documents and track each request through the Registrar-assigned appointment workflow."
+  >
+    <template #actions>
+      <button type="button" class="dr-button dr-button--primary" @click="openRequestForm">Request a Document</button>
+    </template>
+  </DocumentRequestPageHeader>
 
   <p v-if="message" class="notice success" role="status">{{ message }}</p>
   <p v-if="error" class="notice error" role="alert">{{ error }}</p>
 
-  <section class="student-request-workspace" aria-label="Document request and appointment workspace">
-    <aside class="student-summary-rail" aria-label="Select details to view">
-      <button
-        v-if="false"
-        type="button"
-        class="student-summary-card"
-        :class="{ 'is-active': selectedPanel === 'request' }"
-        :aria-pressed="selectedPanel === 'request'"
-        @click="selectPanel('request')"
-      >
-        <span class="student-summary-icon" aria-hidden="true">DR</span>
-        <span class="student-summary-copy">
-          <small>Document Request</small>
-          <strong>{{ activeRequests.length }} active</strong>
-          <span v-if="latestRequest">{{ latestRequest.document_type.document_name }}</span>
-          <span v-else>No current request</span>
-          <em v-if="latestRequest" class="badge" :class="latestRequest.status">{{ formatStatus(latestRequest.status) }}</em>
-        </span>
-        <span class="student-summary-chevron" aria-hidden="true">›</span>
-      </button>
-
-      <button
-        type="button"
-        class="student-summary-card"
-        :class="{ 'is-active': selectedPanel === 'appointment' }"
-        :aria-pressed="selectedPanel === 'appointment'"
-        @click="selectPanel('appointment')"
-      >
-        <span class="student-summary-icon" aria-hidden="true">AP</span>
-        <span class="student-summary-copy">
-          <small>Appointment</small>
-          <strong>{{ activeAppointments.length }} upcoming/current</strong>
-          <span v-if="nearestAppointment">
-            {{ formatDate(nearestAppointment.appointment_date) }} · {{ formatTime(nearestAppointment.appointment_time) }}
-          </span>
-          <span v-else>No current appointment</span>
-          <em v-if="nearestAppointment" class="badge" :class="nearestAppointment.status">
-            {{ formatStatus(nearestAppointment.status) }}
-          </em>
-        </span>
-        <span class="student-summary-chevron" aria-hidden="true">›</span>
-      </button>
-    </aside>
-
-    <section ref="detailPanel" class="dr-panel student-detail-panel" aria-live="polite">
-      <p v-if="loading && !requests.length" class="student-panel-state">Loading your document requests…</p>
-
-      <Transition name="student-detail-swap" mode="out-in">
-        <article v-if="!loading || requests.length" :key="detailTransitionKey" class="student-detail-content">
-          <template v-if="selectedPanel === 'request'">
-            <header class="student-detail-heading">
-              <div>
-                <p class="page-kicker">Selected details</p>
-                <h2>Document Request</h2>
-              </div>
-              <button type="button" class="student-primary-action" @click="openRequestForm">New Request</button>
-            </header>
-
-            <label v-if="activeRequests.length > 1" class="student-record-selector">
-              Current request
-              <select v-model="selectedRequestId">
-                <option v-for="item in activeRequests" :key="item.id" :value="item.id">
-                  {{ requestReference(item.id) }} · {{ item.document_type.document_name }}
-                </option>
-              </select>
-            </label>
-
-            <template v-if="selectedRequest">
-              <dl class="student-detail-grid">
-                <div><dt>Request reference</dt><dd>{{ requestReference(selectedRequest.id) }}</dd></div>
-                <div><dt>Document type</dt><dd>{{ selectedRequest.document_type.document_name }}</dd></div>
-                <div><dt>Status</dt><dd><span class="badge" :class="selectedRequest.status">{{ formatStatus(selectedRequest.status) }}</span></dd></div>
-                <div v-if="selectedRequest.status === 'approved'" class="student-approval-message">
-                  <dt>Approved</dt><dd>Your request has been approved. Check your registered email for your verification code and appointment instructions.</dd>
-                </div>
-                <div><dt>Request date</dt><dd>{{ formatDate(selectedRequest.request_date) }}</dd></div>
-                <div><dt>Fee</dt><dd>₱{{ formatMoney(selectedRequest.total_fee) }}</dd></div>
-                <div v-if="selectedRequestAppointment">
-                  <dt>Appointment date</dt><dd>{{ formatDate(selectedRequestAppointment.appointment_date) }}</dd>
-                </div>
-                <div v-else><dt>Appointment</dt><dd>Not assigned yet</dd></div>
-              </dl>
-
-              <p v-if="selectedRequest.purpose" class="student-detail-note"><strong>Purpose:</strong> {{ selectedRequest.purpose }}</p>
-              <p v-if="selectedRequest.remarks" class="student-detail-note"><strong>Registrar remarks:</strong> {{ selectedRequest.remarks }}</p>
-
-              <div class="student-detail-actions">
-                <button
-                  v-if="canBookSelectedRequest"
-                  type="button"
-                  class="student-primary-action"
-                  @click="openBooking(selectedRequest)"
-                >
-                  Book Appointment
-                </button>
-                <button
-                  v-if="selectedRequestAppointment"
-                  type="button"
-                  class="student-secondary-action"
-                  @click="viewRequestAppointment"
-                >
-                  View Appointment
-                </button>
-                <button
-                  v-if="canCancelSelectedRequest"
-                  type="button"
-                  class="student-danger-action"
-                  @click="openRequestCancellation(selectedRequest)"
-                >
-                  Cancel Request
-                </button>
-              </div>
-            </template>
-            <p v-else class="student-panel-state">No document requests yet. Start a new request when you are ready.</p>
-
-          </template>
-
-          <template v-else>
-            <header class="student-detail-heading">
-              <div><p class="page-kicker">Selected details</p><h2>Appointment</h2></div>
-            </header>
-
-            <label v-if="activeAppointments.length > 1" class="student-record-selector">
-              Current appointment
-              <select v-model="selectedAppointmentId">
-                <option v-for="item in activeAppointments" :key="item.id" :value="item.id">
-                  {{ formatDate(item.appointment_date) }} · {{ formatTime(item.appointment_time) }} · {{ item.document_request.document_type.document_name }}
-                </option>
-              </select>
-            </label>
-
-            <template v-if="selectedAppointment">
-              <dl class="student-detail-grid">
-                <div><dt>Linked request</dt><dd>{{ requestReference(selectedAppointment.document_request_id) }}</dd></div>
-                <div><dt>Document type</dt><dd>{{ selectedAppointment.document_request.document_type.document_name }}</dd></div>
-                <div><dt>Appointment date</dt><dd>{{ formatDate(selectedAppointment.appointment_date) }}</dd></div>
-                <div><dt>Appointment time</dt><dd>{{ formatTime(selectedAppointment.appointment_time) }}</dd></div>
-                <div><dt>Appointment status</dt><dd><span class="badge" :class="selectedAppointment.status">{{ formatStatus(selectedAppointment.status) }}</span></dd></div>
-                <div><dt>Request status</dt><dd><span class="badge" :class="selectedAppointment.document_request.status">{{ formatStatus(selectedAppointment.document_request.status) }}</span></dd></div>
-              </dl>
-              <p v-if="selectedAppointment.remarks" class="student-detail-note"><strong>Notes:</strong> {{ selectedAppointment.remarks }}</p>
-              <div class="student-detail-actions">
-                <button
-                  v-if="appointmentCanBeCancelled(selectedAppointment)"
-                  type="button"
-                  class="student-danger-action"
-                  @click="openCancellation(selectedAppointment)"
-                >
-                  Cancel Appointment
-                </button>
-                <button type="button" class="student-secondary-action" @click="selectRequest(selectedAppointment.document_request_id)">View Request</button>
-              </div>
-            </template>
-            <p v-else class="student-panel-state">No appointments have been booked yet.</p>
-          </template>
-        </article>
-      </Transition>
-    </section>
+  <section class="dr-summary-row student-request-summary" aria-label="Document request summary">
+    <article class="dr-summary-card"><span>Active requests</span><strong>{{ activeRequests.length }}</strong></article>
+    <article class="dr-summary-card"><span>Upcoming appointments</span><strong>{{ activeAppointments.length }}</strong></article>
+    <article class="dr-summary-card"><span>Released documents</span><strong>{{ releasedRequests.length }}</strong></article>
   </section>
 
-  <section class="student-history-panel">
-    <header class="student-history-heading">
-      <div><p class="page-kicker">Past activity</p><h2>History</h2></div>
-      <span>{{ historyItems.length }} record{{ historyItems.length === 1 ? '' : 's' }}</span>
+  <section class="dr-filter-bar student-request-filter" aria-label="My request filters">
+    <label>Search<input v-model="studentSearch" type="search" placeholder="Request ID or document type" /></label>
+    <label>Status<select v-model="studentStatus"><option value="">All statuses</option><option value="pending">Pending</option><option value="approved">Ready for Release</option><option value="completed">Released</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option></select></label>
+    <button type="button" class="dr-button dr-button--secondary" :disabled="!studentSearch && !studentStatus" @click="resetStudentFilters">Reset</button>
+  </section>
+
+  <section class="dr-table-panel student-requests-panel" aria-labelledby="my-requests-title">
+    <header class="dr-records-heading">
+      <div><h2 id="my-requests-title">My Requests</h2><p>Track active requests and review previous outcomes.</p></div>
     </header>
-    <p v-if="!historyItems.length" class="student-panel-state">Completed or cancelled activity will appear here.</p>
-    <div v-else class="student-history-list">
-      <button
-        v-for="item in visibleHistory"
-        :key="item.id"
-        type="button"
-        class="student-history-row"
-        @click="selectRequest(item.id, true)"
-      >
-        <span><strong>{{ item.document_type.document_name }}</strong><small>{{ requestReference(item.id) }} · {{ formatDate(item.request_date) }}</small></span>
-        <span class="badge" :class="item.status">{{ formatStatus(item.status) }}</span>
-        <span v-if="item.appointments?.length" class="student-history-appointment">
-          Appointment {{ formatStatus(item.appointments[0].status) }}
-        </span>
-        <span class="student-history-chevron" aria-hidden="true">›</span>
-      </button>
+    <DocumentRequestTableSkeleton v-if="loading && !requests.length" :columns="6" :rows="5" label="Loading your document requests" />
+    <DocumentRequestEmptyState
+      v-else-if="!filteredStudentRequests.length"
+      :message="studentSearch || studentStatus ? 'No requests match your filters.' : 'You have not requested any documents yet.'"
+    />
+    <div v-else class="dr-table-scroll">
+      <table class="dr-table student-requests-table">
+        <thead><tr><th scope="col">Request ID</th><th scope="col">Document</th><th scope="col">Requested</th><th scope="col">Status</th><th scope="col">Last Updated</th><th scope="col">Action</th></tr></thead>
+        <tbody>
+          <tr v-for="item in visibleStudentRequests" :key="item.id">
+            <td><strong class="history-request-reference">{{ requestReference(item.id) }}</strong></td>
+            <td><strong>{{ item.document_type.document_name }}</strong><small v-if="item.purpose">{{ item.purpose }}</small></td>
+            <td>{{ formatDate(item.request_date || item.created_at) }}</td>
+            <td><DocumentRequestStatusBadge :status="item.status" /></td>
+            <td>{{ formatExactDateTime(item.completed_at || item.rejected_at || item.cancelled_at || item.approved_at || item.created_at) }}</td>
+            <td><button type="button" class="dr-button dr-button--secondary" @click="viewStudentRequest(item)">View</button></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-    <button
-      v-if="visibleHistory.length < historyItems.length"
-      type="button"
-      class="student-history-more"
-      @click="historyLimit += 8"
-    >
-      Show more history
-    </button>
+    <PaginationControls
+      v-if="filteredStudentRequests.length"
+      :current-page="studentRequestPage"
+      :last-page="studentRequestLastPage"
+      :total="filteredStudentRequests.length"
+      total-label="requests"
+      aria-label="My document request pages"
+      @page-change="changeStudentRequestPage"
+    />
   </section>
 
-  <Teleport to="body">
-    <Transition name="student-modal" appear>
-      <div
-        v-if="showRequestForm"
-        class="appointment-details-backdrop student-workflow-backdrop"
-        role="presentation"
-        @mousedown.self="closeRequestForm"
-        @keydown.esc="closeRequestForm"
-      >
-        <section
-          ref="requestDialog"
-          class="appointment-details-modal student-request-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="student-request-modal-title"
-          tabindex="-1"
-        >
+  <DocumentRequestDialog
+    v-if="requestDetailOpen && selectedRequest"
+    labelledby="student-request-detail-title"
+    wide
+    @cancel="closeStudentRequest"
+  >
+    <header class="dr-dialog-header">
+      <div><h2 id="student-request-detail-title">Request Details</h2><p>{{ requestReference(selectedRequest.id) }} · {{ selectedRequest.document_type.document_name }}</p></div>
+      <button type="button" class="dr-dialog-close" aria-label="Close request details" @click="closeStudentRequest">×</button>
+    </header>
+    <div class="dr-dialog-body student-request-detail-body">
+      <section class="student-request-detail-section">
+        <h3>Document Request</h3>
+        <dl class="student-request-facts">
+          <div><dt>Request ID</dt><dd>{{ requestReference(selectedRequest.id) }}</dd></div>
+          <div><dt>Document</dt><dd>{{ selectedRequest.document_type.document_name }}</dd></div>
+          <div><dt>Copies</dt><dd>{{ selectedRequest.quantity || 1 }}</dd></div>
+          <div><dt>Requested</dt><dd>{{ formatDate(selectedRequest.request_date || selectedRequest.created_at) }}</dd></div>
+          <div><dt>Fee</dt><dd>₱{{ formatMoney(selectedRequest.total_fee) }}</dd></div>
+          <div><dt>Status</dt><dd><DocumentRequestStatusBadge :status="selectedRequest.status" /></dd></div>
+          <div class="wide"><dt>Purpose</dt><dd>{{ selectedRequest.purpose || 'No purpose provided.' }}</dd></div>
+          <div v-if="selectedRequest.remarks" class="wide"><dt>Registrar remarks</dt><dd>{{ selectedRequest.remarks }}</dd></div>
+          <div v-if="selectedRequest.cancellation_reason" class="wide"><dt>Cancellation reason</dt><dd>{{ selectedRequest.cancellation_reason }}</dd></div>
+        </dl>
+        <p v-if="selectedRequest.status === 'approved'" class="student-request-guidance">Your request is ready for release. Check your registered email for your verification code and appointment instructions.</p>
+      </section>
+
+      <section class="student-request-detail-section">
+        <h3>Status History</h3>
+        <ol class="student-request-timeline">
+          <li v-for="event in requestProgressEvents" :key="event.key" :class="`timeline-${event.status}`">
+            <span class="student-timeline-marker" aria-hidden="true"></span>
+            <div><strong>{{ event.label }}</strong><time :datetime="event.timestamp">{{ formatExactDateTime(event.timestamp) }}</time></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="student-request-detail-section">
+        <h3>Appointment</h3>
+        <DocumentRequestEmptyState v-if="!selectedRequest.appointments?.length" message="Not assigned yet." />
+        <ul v-else class="student-request-appointments">
+          <li v-for="appointment in selectedRequest.appointments" :key="appointment.id">
+            <span><strong>{{ formatDate(appointment.appointment_date) }} · {{ formatTime(appointment.appointment_time) }}</strong><small v-if="appointment.remarks">{{ appointment.remarks }}</small></span>
+            <span class="student-appointment-record-actions">
+              <span class="badge" :class="appointment.status">{{ formatStatus(appointment.status) }}</span>
+              <button v-if="appointmentCanBeCancelled({ ...appointment, document_request: selectedRequest })" type="button" class="dr-button dr-button--danger" @click="cancelAppointmentFromDetails(appointment)">Cancel Appointment</button>
+            </span>
+          </li>
+        </ul>
+      </section>
+    </div>
+    <footer class="dr-dialog-footer">
+      <button v-if="canCancelSelectedRequest" type="button" class="dr-button dr-button--danger" @click="cancelRequestFromDetails">Cancel Request</button>
+      <button type="button" class="dr-button dr-button--secondary" @click="closeStudentRequest">Close</button>
+    </footer>
+  </DocumentRequestDialog>
+
+  <DocumentRequestDialog
+    v-if="showRequestForm"
+    labelledby="student-request-modal-title"
+    panel-class="student-request-modal"
+    :busy="requestSubmitting"
+    @cancel="closeRequestForm"
+  >
           <header class="appointment-details-header student-modal-header">
             <div>
               <p class="page-kicker">Student document request</p>
@@ -861,28 +820,16 @@ onBeforeUnmount(() => {
               </button>
             </footer>
           </form>
-        </section>
-      </div>
-    </Transition>
-  </Teleport>
+  </DocumentRequestDialog>
 
-  <Teleport to="body">
-    <Transition name="student-modal" appear>
-      <div
-        v-if="bookingRequest"
-        class="appointment-details-backdrop student-workflow-backdrop"
-        role="presentation"
-        @mousedown.self="closeBooking"
-        @keydown.esc="closeBooking"
-      >
-        <section
-          ref="bookingDialog"
-          class="appointment-details-modal student-booking-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="student-booking-title"
-          tabindex="-1"
-        >
+  <DocumentRequestDialog
+    v-if="bookingRequest"
+    labelledby="student-booking-title"
+    panel-class="student-booking-modal"
+    wide
+    :busy="bookingInProgress"
+    @cancel="closeBooking"
+  >
           <header class="appointment-details-header student-modal-header">
             <div>
               <p class="page-kicker">Student appointment</p>
@@ -965,28 +912,15 @@ onBeforeUnmount(() => {
               <button type="submit" :disabled="!canBook">{{ bookingInProgress ? 'Booking…' : 'Book Appointment' }}</button>
             </footer>
           </form>
-        </section>
-      </div>
-    </Transition>
-  </Teleport>
+  </DocumentRequestDialog>
 
-  <Teleport to="body">
-    <Transition name="student-modal" appear>
-      <div
-        v-if="cancellingRequest"
-        class="appointment-details-backdrop student-workflow-backdrop"
-        role="presentation"
-        @mousedown.self="closeRequestCancellation"
-        @keydown.esc="closeRequestCancellation"
-      >
-        <section
-          ref="requestCancellationDialog"
-          class="appointment-details-modal student-request-cancellation-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="student-request-cancellation-title"
-          tabindex="-1"
-        >
+  <DocumentRequestDialog
+    v-if="cancellingRequest"
+    labelledby="student-request-cancellation-title"
+    panel-class="student-request-cancellation-modal"
+    :busy="requestCancellationInProgress"
+    @cancel="closeRequestCancellation"
+  >
           <header class="appointment-details-header student-modal-header">
             <div>
               <p class="page-kicker">Student document request</p>
@@ -1021,15 +955,15 @@ onBeforeUnmount(() => {
               </button>
             </footer>
           </form>
-        </section>
-      </div>
-    </Transition>
-  </Teleport>
+  </DocumentRequestDialog>
 
-  <Teleport to="body">
-    <Transition name="student-modal" appear>
-      <div v-if="cancellingAppointment" class="appointment-details-backdrop student-workflow-backdrop" role="presentation" @mousedown.self="closeCancellation" @keydown.esc="closeCancellation">
-        <section ref="cancellationDialog" class="appointment-details-modal student-cancellation-modal" role="dialog" aria-modal="true" aria-labelledby="student-cancellation-title" tabindex="-1">
+  <DocumentRequestDialog
+    v-if="cancellingAppointment"
+    labelledby="student-cancellation-title"
+    panel-class="student-cancellation-modal"
+    :busy="cancellationInProgress"
+    @cancel="closeCancellation"
+  >
         <header class="appointment-details-header">
           <div><p class="page-kicker">Student appointment</p><h2 id="student-cancellation-title">Cancel Appointment</h2><p>Review the schedule and tell the Registrar why you need to cancel.</p></div>
         </header>
@@ -1049,10 +983,7 @@ onBeforeUnmount(() => {
             <button type="submit" class="student-confirm-cancellation" :disabled="cancellationInProgress || !cancellationReason.trim()">{{ cancellationInProgress ? 'Cancelling…' : 'Cancel Appointment' }}</button>
           </footer>
         </form>
-      </section>
-      </div>
-    </Transition>
-  </Teleport>
+  </DocumentRequestDialog>
 </template>
 
 <style scoped src="./documentRequest.css"></style>

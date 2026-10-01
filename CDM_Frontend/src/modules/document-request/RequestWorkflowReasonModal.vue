@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import DocumentRequestDialog from './DocumentRequestDialog.vue'
 import { requestReference, studentName } from './documentRequestPresentation'
 
 const props = defineProps({
@@ -63,9 +64,13 @@ function submit() {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="open" class="workflow-reason-backdrop" @click.self="close" @keydown.esc="close">
-      <section class="workflow-reason-dialog" role="dialog" aria-modal="true" aria-labelledby="workflow-reason-title">
+  <DocumentRequestDialog
+    v-if="open"
+    labelledby="workflow-reason-title"
+    panel-class="workflow-reason-dialog"
+    :busy="busy"
+    @cancel="close"
+  >
         <header>
           <div>
             <p class="record-eyebrow">Workflow correction</p>
@@ -113,9 +118,7 @@ function submit() {
             </button>
           </footer>
         </form>
-      </section>
-    </div>
-  </Teleport>
+  </DocumentRequestDialog>
 </template>
 
 <style scoped>
@@ -130,7 +133,7 @@ function submit() {
   z-index: 1200;
 }
 .workflow-reason-dialog {
-  background: #fff;
+  background: var(--bg-surface);
   border-radius: 16px;
   box-shadow: 0 24px 70px rgba(5, 24, 12, 0.3);
   max-height: calc(100vh - 40px);
@@ -157,10 +160,10 @@ h2 {
 }
 header > button {
   align-items: center;
-  background: #eef2ef;
+  background: var(--bg-surface-alt);
   border: 0;
   border-radius: 50%;
-  color: #405047;
+  color: var(--text-secondary);
   display: inline-flex;
   font-size: 1.25rem;
   height: 34px;
@@ -178,7 +181,7 @@ form > p {
   margin: 0;
 }
 .workflow-request-target {
-  background: #f5faf6;
+  background: var(--bg-surface-alt);
   border: 1px solid var(--color-border);
   border-radius: 10px;
   display: grid;
@@ -196,7 +199,7 @@ form > p {
   color: var(--color-dartmouth-green);
 }
 .workflow-request-target span {
-  color: #405047;
+  color: var(--text-secondary);
   font-size: 0.82rem;
 }
 label {
@@ -207,8 +210,10 @@ label {
 }
 select,
 textarea {
+  background: var(--bg-input);
   border: 1px solid var(--color-border);
   border-radius: 8px;
+  color: var(--text-primary);
   font: inherit;
   padding: 10px;
   resize: vertical;
@@ -232,8 +237,8 @@ footer button:not(.secondary) {
   color: #fff;
 }
 footer .secondary {
-  background: #eef2ef;
-  color: #405047;
+  background: var(--bg-surface-alt);
+  color: var(--text-secondary);
 }
 button:disabled {
   cursor: not-allowed;

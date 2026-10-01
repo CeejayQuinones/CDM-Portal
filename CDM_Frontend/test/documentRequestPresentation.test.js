@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  documentHistoryStatus,
   documentTypeAccentClass,
   requestStatusAccentClass,
   requestStatusFromActivity,
@@ -30,4 +31,12 @@ test('recent request workflow actions map to their corresponding request status'
   assert.equal(requestStatusFromActivity({ type: 'request', action: 'code_verified' }), 'approved')
   assert.equal(requestStatusFromActivity({ type: 'request', action: 'completed' }), 'completed')
   assert.equal(requestStatusFromActivity({ type: 'appointment', action: 'cancelled' }), null)
+})
+
+test('history status presentation keeps backend values while using registrar-facing labels', () => {
+  assert.deepEqual(documentHistoryStatus('completed'), { label: 'Released', className: 'status-released' })
+  assert.deepEqual(documentHistoryStatus('approved'), { label: 'Ready for Release', className: 'status-ready' })
+  assert.deepEqual(documentHistoryStatus('rejected'), { label: 'Rejected', className: 'status-rejected' })
+  assert.deepEqual(documentHistoryStatus('cancelled'), { label: 'Cancelled', className: 'status-cancelled' })
+  assert.deepEqual(documentHistoryStatus('legacy_state'), { label: 'Legacy State', className: 'status-neutral' })
 })
