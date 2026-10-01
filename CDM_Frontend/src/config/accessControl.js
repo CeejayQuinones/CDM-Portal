@@ -32,6 +32,7 @@ export const ROUTE_ROLES = Object.freeze({
   'registrar-document-request-history': [ROLES.REGISTRAR_STAFF],
   'activate-student-account': [ROLES.GUEST],
   settings: [ROLES.STUDENT],
+  'registrar-settings': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   // Preserve the legacy staff landing URL alongside role-specific Admission workflows.
   admission: [ROLES.GUEST, ROLES.STUDENT, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'student-admission-exam': [ROLES.GUEST, ROLES.STUDENT],
@@ -280,9 +281,13 @@ export const NAVIGATION_ITEMS = Object.freeze([
   {
     name: 'event-attendance',
     label: 'Event Attendance',
-    path: '/event-attendance',
     icon: 'EV',
     roles: ROUTE_ROLES['event-attendance'],
+    children: [
+      { name: 'event-attendance', label: 'Events', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'] },
+      { name: 'event-attendance-tracking', label: 'Attendance', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'], comingSoon: true },
+      { name: 'event-attendance-reports', label: 'Reports', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'], comingSoon: true },
+    ],
   },
   {
     name: 'settings',
@@ -290,6 +295,13 @@ export const NAVIGATION_ITEMS = Object.freeze([
     path: '/settings',
     icon: 'SE',
     roles: ROUTE_ROLES.settings,
+  },
+  {
+    name: 'registrar-settings',
+    label: 'Settings',
+    path: '/registrar/settings',
+    icon: 'SE',
+    roles: ROUTE_ROLES['registrar-settings'],
   },
 ])
 
