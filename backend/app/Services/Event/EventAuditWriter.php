@@ -22,7 +22,7 @@ class EventAuditWriter
             'event_id' => $event->id,
             'actor_user_id' => $actor->id,
             'actor_role' => $actor->role?->role_name ?? 'Unknown',
-            'action' => 'event.'.$action,
+            'action' => str_starts_with($action, 'attendance.') ? $action : 'event.'.$action,
             'metadata' => $metadata,
             'created_at' => now(),
         ]);

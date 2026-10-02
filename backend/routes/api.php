@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentAcademicController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentWorkflowController;
+use App\Http\Controllers\Api\EventAttendanceController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\MonitoringController;
@@ -33,6 +34,13 @@ Route::post('/registration/email-verification/verify', [AuthController::class, '
 
 Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void {
     Route::get('/events', [EventController::class, 'index']);
+    Route::get('/events/{event}/attendance', [EventAttendanceController::class, 'state'])->whereNumber('event')->middleware('role.registrar-or-admin');
+    Route::post('/events/{event}/attendance/session', [EventAttendanceController::class, 'open'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:10,1']);
+    Route::post('/events/{event}/attendance/session/close', [EventAttendanceController::class, 'close'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:10,1']);
+    Route::post('/events/{event}/attendance/token', [EventAttendanceController::class, 'token'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:30,1']);
+    Route::post('/events/{event}/attendance/scan', [EventAttendanceController::class, 'scan'])->whereNumber('event')->middleware(['role.student', 'throttle:20,1']);
+    Route::post('/events/{event}/attendance/manual', [EventAttendanceController::class, 'manual'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:30,1']);
+    Route::patch('/events/{event}/attendance/{attendance}', [EventAttendanceController::class, 'correct'])->whereNumber(['event', 'attendance'])->middleware(['role.registrar-or-admin', 'step-up', 'throttle:30,1']);
     Route::get('/events/options', [EventController::class, 'options'])->middleware('role.registrar-or-admin');
     Route::post('/events', [EventController::class, 'store'])->middleware(['role.registrar-or-admin', 'throttle:20,1']);
     Route::get('/events/{event}', [EventController::class, 'show'])->whereNumber('event');

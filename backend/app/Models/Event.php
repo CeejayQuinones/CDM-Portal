@@ -29,6 +29,16 @@ class Event extends Model
         return $this->hasMany(EventAuditEvent::class)->latest('created_at');
     }
 
+    public function attendanceSession()
+    {
+        return $this->hasOne(EventAttendanceSession::class);
+    }
+
+    public function attendances(): HasMany
+    {
+        return $this->hasMany(EventAttendance::class);
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
