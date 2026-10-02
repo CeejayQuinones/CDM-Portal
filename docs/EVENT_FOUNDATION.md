@@ -54,10 +54,10 @@ Writes run in transactions, and the audit row is part of the same transaction. R
 
 ## Frontend and deferred work
 
-The existing `/event-attendance` placeholder is now a unified workspace. Staff receive list/calendar views, filters, Event form and lifecycle actions. Students and Professors receive Today, Upcoming, and Past groupings and read-only details. Sidebar entries identify Attendance and Reports as disabled Phase 2 items. The workspace uses shared portal theme variables, dark-mode tokens, responsive layouts, semantic tables, dialog labels, and reduced-motion support.
+The existing `/event-attendance` placeholder is now a unified workspace. Staff receive list/calendar views, filters, Event form and lifecycle actions. Students and Professors receive Today, Upcoming, and Past groupings and read-only details. Attendance is implemented in Phase 2; Reports remains a disabled Phase 3 item. The workspace uses shared portal theme variables, dark-mode tokens, responsive layouts, semantic tables, dialog labels, and reduced-motion support.
 
 The existing database notification implementation is synchronous and its current Enrollment use cases have small recipient sets. Broadcasting an all-Student Event to the local 10,000+ Student dataset through that path would make the request unsafe. Event notification fan-out is therefore explicitly deferred until a queued, chunked delivery worker and retry/observability contract are designed. No misleading partial notification behavior is included.
 
-**PHASE 2: QR Attendance.** Add attendance sessions, QR token issuance/expiry, scanning/manual fallback, duplicate-scan idempotency, and attendance audit evidence while reusing these Event identities and audience rules.
+**PHASE 2: QR Attendance.** Implemented as documented in [Event QR Attendance](EVENT_QR_ATTENDANCE.md).
 
 **PHASE 3: Reports / exports + optional Sub-events.** Add attendance reporting and export only after the Phase 2 evidence model is established; introduce sub-events only if a real workflow requires them.

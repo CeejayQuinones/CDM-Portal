@@ -285,8 +285,8 @@ export const NAVIGATION_ITEMS = Object.freeze([
     roles: ROUTE_ROLES['event-attendance'],
     children: [
       { name: 'event-attendance', label: 'Events', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'] },
-      { name: 'event-attendance-tracking', label: 'Attendance', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'], comingSoon: true },
-      { name: 'event-attendance-reports', label: 'Reports', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'], comingSoon: true },
+      { name: 'event-attendance-tracking', label: 'Attendance', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'] },
+      { name: 'event-attendance-reports', label: 'Reports', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'], comingSoon: true, phaseLabel: 'Phase 3' },
     ],
   },
   {

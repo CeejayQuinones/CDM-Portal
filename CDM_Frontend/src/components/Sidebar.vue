@@ -143,7 +143,7 @@ const logout = async () => {
             <div v-if="isExpanded(item.name)" class="nav-children">
               <template v-for="child in item.children" :key="child.name">
               <span v-if="child.comingSoon" class="nav-link nav-child is-disabled" aria-disabled="true">
-                {{ child.label }} <small>Phase 2</small>
+                {{ child.label }} <small>{{ child.phaseLabel || 'Coming soon' }}</small>
               </span>
               <RouterLink
                 v-else

@@ -4,6 +4,7 @@ namespace App\Services\Event;
 
 use App\Models\Event;
 use App\Models\Role;
+use App\Models\Student;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -53,5 +54,47 @@ class EventAudienceResolver
     public function canView(Event $event, User $user): bool
     {
         return $this->visibleTo(Event::query(), $user)->whereKey($event->getKey())->exists();
+    }
+
+    public function eligibleStudents(Event $event): Builder
+    {
+        $event->loadMissing('audiences');
+        $types = $event->audiences->pluck('audience_type');
+        $courseIds = $event->audiences->where('audience_type', 'course')->pluck('course_id')->filter();
+        $yearLevels = $event->audiences->where('audience_type', 'year_level')->pluck('year_level')->filter();
+        $sectionIds = $event->audiences->where('audience_type', 'section')->pluck('section_id')->filter();
+
+        return Student::query()->whereHas('user', fn (Builder $query) => $query->where('status', 'active'))
+            ->where(function (Builder $query) use ($types, $courseIds, $yearLevels, $sectionIds): void {
+                $query->whereRaw('1 = 0');
+                if ($types->intersect(['all_students', 'all_users'])->isNotEmpty()) {
+                    $query->orWhereRaw('1 = 1');
+                }
+                if ($courseIds->isNotEmpty()) {
+                    $query->orWhereIn('course_id', $courseIds);
+                }
+                if ($yearLevels->isNotEmpty() || $sectionIds->isNotEmpty()) {
+                    $query->orWhereHas('enrollments', function (Builder $enrollments) use ($yearLevels, $sectionIds): void {
+                        $enrollments->whereIn('status', ['enrolled', 'completed'])
+                            ->whereHas('academicYear', fn (Builder $academicYear) => $academicYear->where('status', 'active'))
+                            ->whereHas('semester', fn (Builder $semester) => $semester->where('status', 'active'))
+                            ->whereHas('section', function (Builder $section) use ($yearLevels, $sectionIds): void {
+                                $section->where(function (Builder $target) use ($yearLevels, $sectionIds): void {
+                                    if ($yearLevels->isNotEmpty()) {
+                                        $target->orWhereIn('year_level', $yearLevels);
+                                    }
+                                    if ($sectionIds->isNotEmpty()) {
+                                        $target->orWhereIn('id', $sectionIds);
+                                    }
+                                });
+                            });
+                    });
+                }
+            });
+    }
+
+    public function isStudentEligible(Event $event, Student $student): bool
+    {
+        return $this->eligibleStudents($event)->whereKey($student->id)->exists();
     }
 }
