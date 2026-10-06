@@ -8,6 +8,7 @@ import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAut
 import { documentRequestReturnContext } from '../document-request/documentRequestNavigation'
 import { physicalRecordsService } from './physicalRecordsService'
 import StudentAcademicHistory from './StudentAcademicHistory.vue'
+import { profilePhotoUrl } from '../../utils/profilePhoto'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +21,7 @@ const editMode = ref(false)
 const saving = ref(false)
 const success = ref('')
 const validationErrors = ref({})
+const photoFailed = ref(false)
 const form = reactive({})
 const cabinets = ref([])
 const locationEditing = ref(false)
@@ -46,6 +48,7 @@ const initials = computed(
       .join('')
       .toUpperCase() || 'ST',
 )
+const studentPhoto = computed(() => photoFailed.value ? '' : profilePhotoUrl(student.value?.profile))
 const physicalLocation = computed(() => student.value?.physical_record_location || null)
 const returnContext = computed(() => documentRequestReturnContext(route.query))
 const canManagePhysicalRecords = computed(() => authStore.currentRole === ROLES.REGISTRAR_STAFF)
@@ -66,6 +69,7 @@ async function loadProfile() {
   loading.value = true
   error.value = ''
   student.value = null
+  photoFailed.value = false
   locationEditing.value = false
   locationError.value = ''
   try {
@@ -224,9 +228,10 @@ onMounted(loadProfile)
       <div class="id-card-body">
         <div class="id-photo-frame">
           <img
-            v-if="student.profile?.profile_photo"
-            :src="student.profile.profile_photo"
+            v-if="studentPhoto"
+            :src="studentPhoto"
             :alt="`${student.full_name} photo`"
+            @error="photoFailed = true"
           />
           <div v-else class="photo-placeholder" aria-label="Student photo placeholder">
             {{ initials }}

@@ -37,5 +37,9 @@ class DatabaseSeeder extends Seeder
             StudentDocumentsSeeder::class,
             PhysicalRecordsSeeder::class,
         ]);
+
+        if (app()->environment(['local', 'testing'])) {
+            $this->call(EventRoleTestingSeeder::class);
+        }
     }
 }

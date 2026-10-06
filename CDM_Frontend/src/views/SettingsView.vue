@@ -1,25 +1,29 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { apiClient } from '../services/apiClient'
-import { applyStudentAppearance } from '../composables/useStudentTheme'
+import { applyPortalAppearance, storedPortalAppearance } from '../composables/useStudentTheme'
 import { useStudentProfileStore } from '../stores/studentProfile'
 import { useAuthStore } from '../stores/authStore'
 
+const props = defineProps({ staffMode: { type: Boolean, default: false } })
+const authStore = useAuthStore()
 const studentProfile = useStudentProfileStore()
-const studentUserId = useAuthStore().currentUser?.id
+const studentUserId = authStore.currentUser?.id
 
-const sections = ['Profile', 'Account', 'Student Status', 'Document Status', 'Contact Information', 'Notifications', 'Academic Preferences', 'Appearance', 'Security']
+const sections = computed(() => props.staffMode
+  ? ['Profile', 'Account', 'Contact Information', 'Appearance', 'Security']
+  : ['Profile', 'Account', 'Student Status', 'Document Status', 'Contact Information', 'Notifications', 'Academic Preferences', 'Appearance', 'Security'])
 const active = ref('Profile'), open = ref(false), data = ref(null), error = ref(''), success = ref(''), loading = ref(true), saving = ref(false), saved = ref('')
-const form = ref({ preferred_display_name: '', bio: '', email: '', contact_number: '', address: '', notification_preferences: {}, academic_preferences: {}, appearance: 'system', current_password: '', password: '', password_confirmation: '' })
-const editable = ['Profile', 'Contact Information', 'Notifications', 'Academic Preferences', 'Appearance']
-const dirty = computed(() => editable.includes(active.value) && saved.value !== JSON.stringify(form.value))
+const form = ref({ first_name: '', middle_name: '', last_name: '', suffix: '', preferred_display_name: '', bio: '', email: '', contact_number: '', address: '', notification_preferences: {}, academic_preferences: {}, appearance: 'system', current_password: '', password: '', password_confirmation: '' })
+const dirty = computed(() => ['Profile', 'Contact Information', 'Appearance', ...(!props.staffMode ? ['Notifications', 'Academic Preferences'] : [])].includes(active.value) && saved.value !== JSON.stringify(form.value))
 const status = computed(() => data.value?.student_status || {})
 const avatarInput = ref(null), avatarFailed = ref(false)
-const avatarUrl = computed(() => studentProfile.avatarUrl)
-watch(() => data.value?.profile, profile => studentProfile.setProfile(profile, studentUserId), { deep: true, flush: 'sync' })
+const avatarUrl = computed(() => props.staffMode ? data.value?.profile?.avatar_url : studentProfile.avatarUrl)
+watch(() => data.value?.profile, profile => { if (!props.staffMode) studentProfile.setProfile(profile, studentUserId) }, { deep: true, flush: 'sync' })
 const initials = computed(() => {
   const preferredName = form.value.preferred_display_name
-  const name = (typeof preferredName === 'string' ? preferredName.trim() : '') || data.value?.official?.legal_name || 'Student'
+  const staffName = [form.value.first_name, form.value.last_name].filter(Boolean).join(' ')
+  const name = (props.staffMode ? staffName : (typeof preferredName === 'string' ? preferredName.trim() : '')) || data.value?.official?.legal_name || 'User'
   const parts = name.trim().split(/\s+/)
   return [parts[0], ...(parts.length > 1 ? [parts.at(-1)] : [])].map(part => Array.from(part)[0]).join('').toUpperCase()
 })
@@ -34,23 +38,27 @@ const messageFor = (err, fallback) => {
   const fields = Object.values(response?.errors || {}).flat().filter(message => typeof message === 'string').join(' ')
   return fields || response?.message || fallback
 }
-const applyAppearance = () => applyStudentAppearance(form.value.appearance)
+const applyAppearance = () => applyPortalAppearance(form.value.appearance, authStore.currentRole)
 const load = async () => {
   loading.value = true
   error.value = ''
   try {
-    data.value = (await apiClient.get('/student/settings')).data.data
+    data.value = (await apiClient.get(props.staffMode ? '/registrar/settings' : '/student/settings')).data.data
     const settings = data.value
     const name = settings?.profile?.preferred_display_name
     Object.assign(form.value, {
       preferred_display_name: typeof name === 'string' ? name : '',
       bio: settings?.profile?.bio || '',
+      first_name: settings?.profile?.first_name || '',
+      middle_name: settings?.profile?.middle_name || '',
+      last_name: settings?.profile?.last_name || '',
+      suffix: settings?.profile?.suffix || '',
       email: settings?.contact?.personal_email || '',
       contact_number: settings?.contact?.mobile || '',
       address: settings?.contact?.address || '',
       notification_preferences: settings?.preferences?.notification_preferences || {},
       academic_preferences: settings?.preferences?.academic_preferences || {},
-      appearance: settings?.appearance || 'system',
+      appearance: props.staffMode ? storedPortalAppearance(authStore.currentRole) : (settings?.appearance || 'system'),
     })
     saved.value = JSON.stringify(form.value)
     applyAppearance()
@@ -62,11 +70,22 @@ const load = async () => {
 }
 const reset = () => { if (!saved.value) return; Object.assign(form.value, JSON.parse(saved.value)); applyAppearance(); error.value = '' }
 const save = async (path, payload, message) => { saving.value = true; error.value = success.value = ''; try { data.value = (await apiClient.patch(path, payload)).data.data; saved.value = JSON.stringify(form.value); success.value = message } catch (err) { error.value = messageFor(err, 'Unable to save settings.') } finally { saving.value = false } }
-const saveProfile = () => save('/student/settings/profile', { preferred_display_name: form.value.preferred_display_name, bio: form.value.bio }, 'Profile saved.')
-const saveContact = () => save('/student/settings/contact', { email: form.value.email, contact_number: form.value.contact_number, address: form.value.address }, 'Contact information saved.')
-const savePreferences = () => { applyAppearance(); return save('/student/settings/preferences', { notification_preferences: form.value.notification_preferences, academic_preferences: form.value.academic_preferences, appearance: form.value.appearance }, 'Preferences saved.') }
+const saveProfile = () => save(props.staffMode ? '/registrar/settings/profile' : '/student/settings/profile', props.staffMode
+  ? { first_name: form.value.first_name, middle_name: form.value.middle_name, last_name: form.value.last_name, suffix: form.value.suffix }
+  : { preferred_display_name: form.value.preferred_display_name, bio: form.value.bio }, 'Profile saved.')
+const saveContact = () => save(props.staffMode ? '/registrar/settings/contact' : '/student/settings/contact', { email: form.value.email, contact_number: form.value.contact_number, address: form.value.address }, 'Contact information saved.')
+const savePreferences = () => {
+  applyAppearance()
+  if (props.staffMode) {
+    saved.value = JSON.stringify(form.value)
+    error.value = ''
+    success.value = 'Appearance saved.'
+    return
+  }
+  return save('/student/settings/preferences', { notification_preferences: form.value.notification_preferences, academic_preferences: form.value.academic_preferences, appearance: form.value.appearance }, 'Preferences saved.')
+}
 const saveActive = () => ({ Profile: saveProfile, 'Contact Information': saveContact, Notifications: savePreferences, 'Academic Preferences': savePreferences, Appearance: savePreferences }[active.value]?.())
-const changePassword = async () => { saving.value = true; try { await apiClient.post('/change-password', { current_password: form.value.current_password, password: form.value.password, password_confirmation: form.value.password_confirmation }); success.value = 'Password changed.'; form.value.current_password = form.value.password = form.value.password_confirmation = '' } catch (err) { error.value = messageFor(err, 'Unable to change password.') } finally { saving.value = false } }
+const changePassword = async () => { saving.value = true; error.value = success.value = ''; try { await apiClient.post('/change-password', { current_password: form.value.current_password, password: form.value.password, password_confirmation: form.value.password_confirmation }); success.value = 'Password changed.'; form.value.current_password = form.value.password = form.value.password_confirmation = '' } catch (err) { error.value = messageFor(err, 'Unable to change password.') } finally { saving.value = false } }
 const upload = async (event) => {
   const file = event.target.files?.[0]
   if (!file) return
@@ -75,7 +94,7 @@ const upload = async (event) => {
   saving.value = true
   error.value = success.value = ''
   try {
-    data.value = (await apiClient.post('/student/settings/avatar', payload, { headers: { 'Content-Type': 'multipart/form-data' } })).data.data
+    data.value = (await apiClient.post(props.staffMode ? '/registrar/settings/avatar' : '/student/settings/avatar', payload, { headers: { 'Content-Type': 'multipart/form-data' } })).data.data
     avatarFailed.value = false
     success.value = 'Profile picture updated.'
   } catch (err) {
@@ -89,7 +108,7 @@ const removeAvatar = async () => {
   saving.value = true
   error.value = success.value = ''
   try {
-    await apiClient.delete('/student/settings/avatar')
+    await apiClient.delete(props.staffMode ? '/registrar/settings/avatar' : '/student/settings/avatar')
     data.value.profile.avatar_url = null
     success.value = 'Profile picture removed.'
   } catch (err) {
@@ -102,7 +121,7 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="settings"><header><button class="menu" type="button" @click="open = true">Settings menu</button><div><p>Student Settings</p><h1>Your account and preferences</h1></div></header>
+  <main class="settings"><header><button class="menu" type="button" @click="open = true">Settings menu</button><div><p>{{ staffMode ? 'Registrar Settings' : 'Student Settings' }}</p><h1>Your account and preferences</h1></div></header>
     <div class="layout"><aside :class="{ open }"><strong>Settings</strong><button v-for="section in sections" :key="section" :class="{ active: active === section }" @click="active = section; open = false">{{ section }}</button></aside><div v-if="open" class="backdrop" @click="open = false" />
       <section class="content"><p v-if="loading" class="muted">Loading settings...</p><p v-if="error" class="error" role="alert">{{ error }}</p><article v-if="!loading && data"><p v-if="success" class="toast" role="status">{{ success }}</p><div v-if="dirty" class="save-bar" role="status"><span>You have unsaved changes</span><div><button type="button" :disabled="saving" @click="reset">Reset</button><button type="button" :disabled="saving" @click="saveActive">{{ saving ? 'Saving...' : 'Save Changes' }}</button></div></div><h2>{{ active }}</h2>
         <template v-if="active === 'Profile'">
@@ -122,8 +141,16 @@ onMounted(load)
             </div>
           </div>
           <div class="profile-fields">
-            <label>Preferred display name<input v-model="form.preferred_display_name" maxlength="120" autocomplete="nickname" /></label>
-            <label>Bio<textarea v-model="form.bio" maxlength="1000" /></label>
+            <template v-if="staffMode">
+              <label>First name<input v-model="form.first_name" maxlength="100" autocomplete="given-name" required /></label>
+              <label>Middle name<input v-model="form.middle_name" maxlength="100" autocomplete="additional-name" /></label>
+              <label>Last name<input v-model="form.last_name" maxlength="100" autocomplete="family-name" required /></label>
+              <label>Suffix<input v-model="form.suffix" maxlength="20" /></label>
+            </template>
+            <template v-else>
+              <label>Preferred display name<input v-model="form.preferred_display_name" maxlength="120" autocomplete="nickname" /></label>
+              <label>Bio<textarea v-model="form.bio" maxlength="1000" /></label>
+            </template>
           </div>
           <div class="official-profile">
             <h3>Official information</h3>
@@ -138,7 +165,7 @@ onMounted(load)
             <div class="appearance-grid">
               <label v-for="option in appearances" :key="option.value" class="appearance-card" :class="{ selected: form.appearance === option.value }">
                 <span class="theme-preview" :data-preview="option.value" aria-hidden="true"><span class="preview-sidebar" /><span class="preview-content"><span /><span /></span></span>
-                <span class="appearance-choice"><input v-model="form.appearance" name="student-appearance" type="radio" :value="option.value" :aria-label="option.label" :aria-describedby="`theme-${option.value}-description`" @change="applyAppearance" /> {{ option.label }}</span>
+                <span class="appearance-choice"><input v-model="form.appearance" name="portal-appearance" type="radio" :value="option.value" :aria-label="option.label" :aria-describedby="`theme-${option.value}-description`" @change="applyAppearance" /> {{ option.label }}</span>
                 <span :id="`theme-${option.value}-description`" class="muted appearance-description">{{ option.description }}</span>
               </label>
             </div>

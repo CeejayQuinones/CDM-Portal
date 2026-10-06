@@ -5300,3 +5300,124 @@
   .release-request-row { transition-duration: 0.01ms; }
   .release-request-row:hover { transform: none; }
 }
+
+/* Teleported Student dialogs consume the root semantic palette in every theme. */
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) {
+  background: var(--surface-1);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  color-scheme: inherit;
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .student-modal-form,
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .appointment-details-body {
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .appointment-details-header {
+  background: var(--surface-2);
+  border-color: var(--border-color);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .appointment-details-header h2 {
+  color: var(--text-primary);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .appointment-details-header p:last-child,
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .appointment-details-state {
+  color: var(--text-secondary);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .page-kicker {
+  color: var(--accent);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .student-modal-close {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .student-modal-close:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.student-request-form-grid label,
+.student-cancellation-reason {
+  color: var(--text-primary);
+}
+
+.student-request-form-grid :is(input, select, textarea),
+.student-cancellation-reason textarea {
+  background: var(--bg-input);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  caret-color: var(--text-primary);
+}
+
+.student-request-form-grid select option {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.student-request-form-grid :is(input, textarea)::placeholder,
+.student-cancellation-reason textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.student-request-form-grid :is(input, select, textarea):focus-visible,
+.student-cancellation-reason textarea:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+  outline: none;
+}
+
+.student-request-form-grid :is(input, select, textarea):disabled,
+.student-cancellation-reason textarea:disabled {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  opacity: .68;
+}
+
+.student-request-summary,
+.appointment-detail-grid > div {
+  background: var(--surface-2);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.student-request-summary strong,
+.appointment-detail-grid dd {
+  color: var(--text-primary);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .appointment-details-footer {
+  background: var(--surface-2);
+  border-color: var(--border-color);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .appointment-details-footer button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .appointment-details-footer .appointment-close-action {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) .appointment-details-footer .appointment-close-action:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+:is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) :is(button, input, select, textarea):disabled {
+  opacity: .66;
+}

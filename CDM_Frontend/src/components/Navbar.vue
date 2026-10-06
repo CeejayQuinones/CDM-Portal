@@ -129,7 +129,7 @@ const resetDemo = async () => {
   justify-content: space-between;
   gap: 18px;
   border-bottom: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--bg-header);
   padding: 14px 28px;
   backdrop-filter: blur(12px);
 }
@@ -252,7 +252,7 @@ h1 {
   border: 1px solid var(--color-dartmouth-green);
   border-radius: 8px;
   background: var(--color-dartmouth-green);
-  color: var(--color-anti-flash-white);
+  color: var(--text-on-accent);
   padding: 0 14px;
   font-weight: 700;
   cursor: pointer;

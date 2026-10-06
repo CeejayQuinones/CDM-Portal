@@ -18,15 +18,17 @@ class EventService
     {
         return DB::transaction(function () use ($data, $actor): Event {
             $status = ($data['intent'] ?? 'draft') === 'publish' ? 'published' : 'draft';
-            $this->validateAudiences($data['audiences']);
+            $parent = $this->validateHierarchy($data);
+            $audiences = $data['audiences'] ?? [];
+            $this->validateAudiences($audiences, $parent !== null);
             if ($status === 'published') {
                 $this->assertVenueAvailable($data);
             }
             $event = Event::query()->create($this->attributes($data) + [
                 'status' => $status, 'created_by' => $actor->id, 'updated_by' => $actor->id,
             ]);
-            $this->replaceAudiences($event, $data['audiences']);
-            $this->audit->write($event, $actor, 'created', ['status' => $status, 'version' => 1]);
+            $this->replaceAudiences($event, $audiences);
+            $this->audit->write($event, $actor, $parent ? 'subevent.created' : 'created', ['status' => $status, 'version' => 1, 'parent_event_id' => $parent?->id]);
             if ($status === 'published') {
                 $this->audit->write($event, $actor, 'published', ['status' => $status, 'version' => 1]);
             }
@@ -45,13 +47,15 @@ class EventService
             if (in_array($locked->status, ['cancelled', 'archived'], true)) {
                 abort(409, 'Cancelled or archived events cannot be edited.');
             }
-            $this->validateAudiences($data['audiences']);
+            $parent = $this->validateHierarchy($data + ['parent_event_id' => $locked->parent_event_id], $locked);
+            $audiences = $data['audiences'] ?? [];
+            $this->validateAudiences($audiences, $parent !== null);
             if ($locked->status === 'published') {
                 $this->assertVenueAvailable($data, $locked->id);
             }
             $locked->fill($this->attributes($data) + ['updated_by' => $actor->id, 'version' => $locked->version + 1])->save();
-            $this->replaceAudiences($locked, $data['audiences']);
-            $this->audit->write($locked, $actor, 'updated', ['version' => $locked->version]);
+            $this->replaceAudiences($locked, $audiences);
+            $this->audit->write($locked, $actor, $parent ? 'subevent.updated' : 'updated', ['version' => $locked->version, 'parent_event_id' => $parent?->id]);
 
             return $locked->load(['audiences.course', 'audiences.section']);
         }, 3);
@@ -77,7 +81,11 @@ class EventService
                 $this->assertVenueAvailable($locked->toArray(), $locked->id);
             }
             $locked->forceFill(['status' => $next, 'updated_by' => $actor->id, 'version' => $locked->version + 1])->save();
-            $this->audit->write($locked, $actor, $action === 'cancel' ? 'cancelled' : ($action === 'archive' ? 'archived' : 'published'), ['status' => $next, 'version' => $locked->version]);
+            $auditAction = $action === 'cancel' ? 'cancelled' : ($action === 'archive' ? 'archived' : 'published');
+            if ($locked->parent_event_id && $action === 'cancel') {
+                $auditAction = 'subevent.cancelled';
+            }
+            $this->audit->write($locked, $actor, $auditAction, ['status' => $next, 'version' => $locked->version]);
 
             return $locked->load(['audiences.course', 'audiences.section']);
         }, 3);
@@ -87,7 +95,7 @@ class EventService
     {
         $venue = trim(preg_replace('/\s+/', ' ', $data['venue']));
 
-        return Arr::only($data, ['title', 'description', 'starts_at', 'ends_at']) + ['venue' => $venue, 'venue_key' => mb_strtolower($venue)];
+        return Arr::only($data, ['parent_event_id', 'title', 'description', 'starts_at', 'ends_at']) + ['venue' => $venue, 'venue_key' => mb_strtolower($venue)];
     }
 
     private function replaceAudiences(Event $event, array $audiences): void
@@ -106,8 +114,11 @@ class EventService
         }
     }
 
-    private function validateAudiences(array $audiences): void
+    private function validateAudiences(array $audiences, bool $canInherit = false): void
     {
+        if ($audiences === [] && ! $canInherit) {
+            throw ValidationException::withMessages(['audiences' => 'Select at least one audience.']);
+        }
         foreach ($audiences as $index => $audience) {
             $type = $audience['audience_type'];
             if ($type === 'course' && ! Course::query()->whereKey($audience['course_id'] ?? 0)->where('status', 'active')->exists()) {
@@ -124,11 +135,29 @@ class EventService
         }
     }
 
+    private function validateHierarchy(array $data, ?Event $event = null): ?Event
+    {
+        $parentId = $data['parent_event_id'] ?? null;
+        if (! $parentId) {
+            abort_if($event?->subEvents()->exists() && ($data['starts_at'] > $event->subEvents()->min('starts_at') || $data['ends_at'] < $event->subEvents()->max('ends_at')), 422, 'A parent Event must contain all of its sub-events.');
+
+            return null;
+        }
+        $parent = Event::query()->findOrFail($parentId);
+        abort_if($parent->parent_event_id !== null, 422, 'Sub-events cannot be nested more than one level.');
+        abort_if($event && $event->id === $parent->id, 422, 'An Event cannot be its own parent.');
+        abort_if($data['starts_at'] < $parent->starts_at || $data['ends_at'] > $parent->ends_at, 422, 'A sub-event must remain within its parent Event schedule.');
+
+        return $parent;
+    }
+
     private function assertVenueAvailable(array $data, ?int $except = null): void
     {
         $venue = mb_strtolower(trim(preg_replace('/\s+/', ' ', $data['venue'])));
         $overlap = Event::query()->where('venue_key', $venue)->where('status', 'published')
             ->when($except, fn ($q) => $q->whereKeyNot($except))
+            ->when($data['parent_event_id'] ?? null, fn ($q, $parentId) => $q->whereKeyNot($parentId))
+            ->when($except, fn ($q) => $q->where(fn ($events) => $events->where('parent_event_id', '!=', $except)->orWhereNull('parent_event_id')))
             ->where('starts_at', '<', $data['ends_at'])->where('ends_at', '>', $data['starts_at'])->exists();
         if ($overlap) {
             throw ValidationException::withMessages(['venue' => 'This venue is already assigned to another published event during that time.']);

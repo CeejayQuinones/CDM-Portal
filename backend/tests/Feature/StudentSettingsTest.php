@@ -115,6 +115,39 @@ class StudentSettingsTest extends TestCase
             ->assertJsonPath('data.document_status.completed_requests', 1)->assertJsonPath('data.document_status.upcoming_appointment', now()->addDay()->toDateString());
     }
 
+    public function test_academic_status_uses_the_active_finalized_enrollment_and_real_school_year_field(): void
+    {
+        $student = $this->studentFixture();
+        $now = now();
+        $academicYear = DB::table('academic_years')->insertGetId([
+            'school_year' => '2026-2027', 'start_date' => '2026-08-01', 'end_date' => '2027-06-30',
+            'status' => 'active', 'created_at' => $now, 'updated_at' => $now,
+        ]);
+        $semester = DB::table('semesters')->insertGetId([
+            'semester_name' => 'First Semester', 'semester_order' => 1, 'status' => 'active',
+            'created_at' => $now, 'updated_at' => $now,
+        ]);
+        $section = DB::table('sections')->insertGetId([
+            'course_id' => $student->course_id, 'academic_year_id' => $academicYear, 'semester_id' => $semester,
+            'section_name' => 'BSIT-2B', 'year_level' => 2, 'capacity' => 40, 'status' => 'open',
+            'version' => 1, 'created_at' => $now, 'updated_at' => $now,
+        ]);
+        DB::table('enrollments')->insert([
+            'student_id' => $student->id, 'section_id' => $section, 'academic_year_id' => $academicYear,
+            'semester_id' => $semester, 'enrollment_date' => '2026-08-01', 'status' => 'enrolled',
+            'created_at' => $now, 'updated_at' => $now,
+        ]);
+
+        $this->actingAs($student->user)->getJson('/api/student/settings')->assertOk()
+            ->assertJsonPath('data.student_status.record_scope', 'current')
+            ->assertJsonPath('data.student_status.academic_year', '2026-2027')
+            ->assertJsonPath('data.student_status.semester', 'First Semester')
+            ->assertJsonPath('data.student_status.year_level', 2)
+            ->assertJsonPath('data.student_status.section', 'BSIT-2B')
+            ->assertJsonPath('data.official.year_level', 2)
+            ->assertJsonPath('data.official.section', 'BSIT-2B');
+    }
+
     private function studentFixture(): Student
     {
         $role = Role::query()->firstOrCreate(['role_name' => Role::STUDENT]);

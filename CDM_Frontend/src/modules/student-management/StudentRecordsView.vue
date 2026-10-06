@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
 import { apiClient } from '../../services/apiClient'
+import { profilePhotoUrl } from '../../utils/profilePhoto'
 
 const router = useRouter()
 const { runWithStepUp } = useStepUpAuth()
@@ -23,6 +24,7 @@ const bulkDocumentAvailability = ref('')
 const bulkOptions = reactive({ actions: [], courses: [], cabinets: [], document_types: [] })
 const pagination = reactive({ current_page: 1, last_page: 1, total: 0, from: 0, to: 0 })
 const filters = reactive({ search: '', course: '', year_level: '', student_status: '' })
+const failedPhotos = ref(new Set())
 let bulkOptionsLoaded = false
 let bulkOptionsRequest = null
 
@@ -43,6 +45,11 @@ const cabinetSlots = computed(() =>
   bulkOptions.cabinets.flatMap((cabinet) => cabinet.slots.map((slot) => ({ ...slot, cabinet_code: cabinet.code }))),
 )
 const selectedAction = computed(() => bulkOptions.actions.find((action) => action.value === bulkAction.value))
+const initials = (name) => name?.split(' ').filter(Boolean).map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'ST'
+const studentPhoto = (student) => failedPhotos.value.has(student.id) ? '' : profilePhotoUrl(student.profile)
+const markPhotoFailed = (studentId) => {
+  failedPhotos.value = new Set([...failedPhotos.value, studentId])
+}
 const bulkPayloadValue = computed(() => {
   if (bulkAction.value === 'change_year_level' || bulkAction.value === 'change_course') {
     return bulkValue.value ? Number(bulkValue.value) : null
@@ -91,6 +98,7 @@ async function fetchStudents(page = 1) {
   try {
     const { data } = await apiClient.get('/students', { params: { ...filters, page } })
     students.value = data.data
+    failedPhotos.value = new Set()
     Object.assign(pagination, data.meta)
   } catch (requestError) {
     students.value = []
@@ -386,7 +394,15 @@ onMounted(fetchStudents)
               />
             </td>
             <td data-label="Student Number">{{ student.student_number }}</td>
-            <td data-label="Full Name">{{ student.full_name }}</td>
+            <td data-label="Full Name">
+              <span class="student-identity">
+                <span class="record-avatar">
+                  <img v-if="studentPhoto(student)" :src="studentPhoto(student)" :alt="`${student.full_name} photo`" @error="markPhotoFailed(student.id)" />
+                  <span v-else>{{ initials(student.full_name) }}</span>
+                </span>
+                {{ student.full_name }}
+              </span>
+            </td>
             <td data-label="Course">{{ student.current_enrollment?.course?.code || student.course?.code || '—' }}</td>
             <td data-label="Year Level">Year {{ student.current_enrollment?.year_level || student.year_level }}</td>
             <td data-label="Section">
@@ -503,7 +519,7 @@ input[type='checkbox'] {
 .button-primary,
 .view-button {
   background: var(--color-dartmouth-green);
-  color: white;
+  color: var(--text-on-accent);
 }
 .button-secondary,
 .selection-button {
@@ -547,8 +563,8 @@ button:disabled {
 }
 .bulk-toolbar {
   align-items: end;
-  background: linear-gradient(100deg, #e8f4e6, #f6f9dc);
-  border: 1px solid #c7dca4;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-color);
   border-radius: 9px;
   display: flex;
   flex-wrap: wrap;
@@ -568,7 +584,7 @@ button:disabled {
   align-items: center;
   background: var(--color-dartmouth-green);
   border-radius: 50%;
-  color: white;
+  color: var(--text-on-accent);
   display: inline-flex;
   height: 23px;
   justify-content: center;
@@ -600,8 +616,11 @@ td {
   text-align: center;
   width: 44px;
 }
+.student-identity { display: flex; align-items: center; gap: 9px; font-weight: 700; }
+.record-avatar { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; overflow: hidden; border-radius: 50%; background: var(--color-green-tint); color: var(--color-dartmouth-green); font-size: .72rem; font-weight: 800; }
+.record-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .row-selected {
-  background: #f4f8e8;
+  background: var(--bg-hover);
 }
 .status-badge {
   background: var(--color-green-tint);
@@ -622,12 +641,12 @@ td {
   color: var(--color-muted);
 }
 .notice-error {
-  background: #fce8e8;
-  color: #9c2222;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 .notice-success {
-  background: #e6f5e7;
-  color: #176b32;
+  background: var(--success-bg);
+  color: var(--success);
   margin: 0 0 20px;
 }
 .modal-backdrop {
@@ -641,7 +660,9 @@ td {
   z-index: 1200;
 }
 .confirmation-modal {
-  background: white;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
   border-radius: 12px;
   box-shadow: 0 24px 70px rgb(0 0 0 / 24%);
   max-width: 520px;

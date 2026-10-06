@@ -120,3 +120,15 @@ test('dark mode exposes layered shared surfaces and appointments keep distinct d
   assert.match(styles, /\.release-request-row:hover/)
   assert.match(styles, /\.verification-submit:disabled/)
 })
+
+test('Teleported Student request dialogs inherit dark semantic surfaces and readable controls', () => {
+  for (const alias of ['student-surface', 'student-surface-soft', 'student-field', 'student-text', 'student-muted', 'student-border']) {
+    assert.match(theme, new RegExp(`html\\[data-student-theme='dark'\\][\\s\\S]*--${alias}: var\\(`))
+  }
+  assert.match(styles, /\.student-request-form-grid :is\(input, select, textarea\)[\s\S]*background: var\(--bg-input\)/)
+  assert.match(styles, /\.student-request-form-grid select option[\s\S]*background: var\(--bg-input\)/)
+  assert.match(styles, /\.student-request-form-grid :is\(input, textarea\)::placeholder[\s\S]*opacity: 1/)
+  assert.match(styles, /\.appointment-details-header[\s\S]*background: var\(--surface-2\)/)
+  assert.match(styles, /\.appointment-details-footer[\s\S]*background: var\(--surface-2\)/)
+  assert.match(styles, /\.appointment-close-action[\s\S]*background: var\(--surface-3\)/)
+})

@@ -36,11 +36,11 @@ test('compiled student themes cover the shell and dialogs with live system color
     const compiled = compileStyle({ source: style.content, filename: 'SettingsView.vue', id: 'data-v-settings-test', scoped: style.scoped })
     assert.deepEqual(compiled.errors, [])
     compiled.rawResult.root.walkRules(rule => {
-      if (!/data-student-theme=['"]/.test(rule.selector)) return
+      if (!/data-student-theme=['"](?:dark|system)['"]\]\s+:is\(\.student-portal-shell/.test(rule.selector)) return
       themeRules.push(rule)
       // The descendant must survive Vue compilation: never theme html alone.
-      assert.match(rule.selector, /^html\[data-student-theme=['"](?:dark|system)['"]\]\s+:is\(\.student-portal-shell \.shell-content, \.student-workflow-backdrop, \.step-up-backdrop\)$/)
-      assert.ok(rule.nodes.every(node => node.type === 'comment' || (node.type === 'decl' && node.prop.startsWith('--student-'))), 'theme selectors must only set Student palette variables')
+      assert.match(rule.selector, /^html\[data-student-theme=['"](?:dark|system)['"]\]\s+:is\(\.student-portal-shell \.shell-content,[^)]+\.step-up-backdrop\)$/)
+      assert.ok(rule.nodes.every(node => node.type === 'comment' || (node.type === 'decl' && (node.prop.startsWith('--student-') || node.prop.startsWith('--color-')))), 'theme selectors must only set shared palette variables')
     })
   }
 

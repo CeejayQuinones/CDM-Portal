@@ -15,6 +15,7 @@ class StudentIndexRequest extends ApiFormRequest
             'search' => ['nullable', 'string', 'max:100'],
             'course' => ['nullable', 'string', 'max:50'],
             'year_level' => ['nullable', 'integer', 'between:1,20'],
+            'section' => ['nullable', 'string', 'max:100'],
             'student_status' => ['nullable', 'in:regular,irregular,graduated,transferred,dropped,leave_of_absence'],
             'page' => ['nullable', 'integer', 'min:1'],
         ];

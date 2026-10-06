@@ -105,7 +105,7 @@ input:disabled,
 select:disabled,
 textarea:disabled,
 button:disabled {
-  opacity: 0.58;
+  opacity: 0.66;
 }
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
@@ -118,7 +118,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--color-dark-spring-green);
-  box-shadow: 0 0 0 4px rgba(13, 120, 86, 0.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
   outline: 0;
 }
 button:not(:disabled):active {

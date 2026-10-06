@@ -3,6 +3,7 @@
 use App\Exceptions\ClientPlatformException;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureClientPlatformAccess;
+use App\Http\Middleware\EnsureEventPlatformAccess;
 use App\Http\Middleware\EnsureMonitoringAccess;
 use App\Http\Middleware\EnsureProfessorRole;
 use App\Http\Middleware\EnsureRegistrarOrAdminRole;
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role.admin' => EnsureAdminRole::class,
             'client.platform' => EnsureClientPlatformAccess::class,
+            'event.platform' => EnsureEventPlatformAccess::class,
             'role.registrar-staff' => EnsureRegistrarStaffRole::class,
             'role.professor' => EnsureProfessorRole::class,
             'role.student' => EnsureStudentRole::class,

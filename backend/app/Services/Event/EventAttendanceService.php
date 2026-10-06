@@ -21,6 +21,8 @@ class EventAttendanceService
 
     public const LATE_AFTER_MINUTES = 15;
 
+    public const PARTICIPANT_DYNAMIC_LIFETIME_SECONDS = 45;
+
     public function __construct(private readonly EventAudienceResolver $audiences, private readonly EventAuditWriter $audit) {}
 
     public function open(Event $event, User $actor): EventAttendanceSession
@@ -133,9 +135,106 @@ class EventAttendanceService
             $attendance = EventAttendance::query()->create([
                 'event_id' => $event->id, 'attendance_session_id' => $locked->id, 'student_id' => $student->id,
                 'status' => $status, 'checked_in_at' => now(), 'source' => 'qr', 'recorded_by' => $student->user_id,
+                ...$this->academicSnapshot($student),
             ]);
             $this->recordScan($event, $student, $locked, 'accepted', $fingerprint, $client);
             $this->audit->write($event, $student->user, 'attendance.recorded', ['attendance_id' => $attendance->id, 'student_id' => $student->id, 'status' => $status, 'source' => 'qr']);
+
+            return ['http' => 201, 'code' => 'ATTENDANCE_RECORDED', 'message' => 'Attendance recorded.', 'attendance' => $attendance];
+        }, 3);
+    }
+
+    public function studentIsEligible(Event $event, Student $student): bool
+    {
+        return $this->audiences->isStudentEligible($event, $student);
+    }
+
+    /** @return array{token:string,mode:string,expires_at:?string} */
+    public function participantQr(Event $event, Student $student, string $mode): array
+    {
+        $this->assertActiveWindow($event);
+        $session = EventAttendanceSession::query()->where('event_id', $event->id)->first();
+        abort_unless($session?->status === 'open', 409, 'Attendance is closed.');
+        abort_unless($this->audiences->isStudentEligible($event, $student), 403, 'You are not included in this Event audience.');
+
+        $expiresAt = $mode === 'dynamic' ? now()->addSeconds(self::PARTICIPANT_DYNAMIC_LIFETIME_SECONDS) : null;
+        $payload = [
+            'v' => 1,
+            'purpose' => 'event_participant',
+            'mode' => $mode,
+            'event' => $event->id,
+            'session' => $session->id,
+            'student' => $student->id,
+        ];
+        if ($expiresAt) {
+            $payload['issued_at'] = now()->timestamp;
+            $payload['expires_at'] = $expiresAt->timestamp;
+            $payload['nonce'] = bin2hex(random_bytes(16));
+        }
+
+        return [
+            'token' => $this->signParticipantPayload($payload),
+            'mode' => $mode,
+            'expires_at' => $expiresAt?->toIso8601String(),
+        ];
+    }
+
+    public function operatorScan(Event $event, User $actor, string $token, string $workflow, string $client): array
+    {
+        $fingerprint = hash('sha256', $token);
+        $payload = $this->verifyParticipantPayload($token);
+        if (! $payload || ($payload['purpose'] ?? null) !== 'event_participant' || ($payload['mode'] ?? null) !== $workflow) {
+            return ['http' => 422, 'code' => 'INVALID_PARTICIPANT_QR', 'message' => 'This participant QR is invalid for the selected workflow.', 'attendance' => null];
+        }
+        if ((int) ($payload['event'] ?? 0) !== $event->id) {
+            return ['http' => 422, 'code' => 'WRONG_EVENT', 'message' => 'This participant QR belongs to another Event.', 'attendance' => null];
+        }
+        if ($workflow === 'dynamic' && (int) ($payload['expires_at'] ?? 0) < now()->timestamp) {
+            return ['http' => 410, 'code' => 'EXPIRED_PARTICIPANT_QR', 'message' => 'This dynamic participant QR has expired.', 'attendance' => null];
+        }
+
+        $student = Student::query()->with('user')->find($payload['student'] ?? 0);
+        $session = EventAttendanceSession::query()->find($payload['session'] ?? 0);
+        if (! $student || ! $session || $session->event_id !== $event->id || $session->status !== 'open') {
+            return ['http' => 409, 'code' => 'SESSION_CLOSED', 'message' => 'Attendance is closed or the participant QR is no longer valid.', 'attendance' => null];
+        }
+        if (! $this->audiences->isStudentEligible($event, $student)) {
+            return ['http' => 403, 'code' => 'NOT_ELIGIBLE', 'message' => 'This Student is not included in the Event audience.', 'attendance' => null];
+        }
+        if ($event->status !== 'published' || now()->lt($event->starts_at) || ! now()->lt($event->ends_at)) {
+            return ['http' => 409, 'code' => 'EVENT_NOT_ACTIVE', 'message' => 'This Event is not accepting attendance now.', 'attendance' => null];
+        }
+
+        return DB::transaction(function () use ($event, $actor, $student, $session, $fingerprint, $client, $workflow): array {
+            $locked = EventAttendanceSession::query()->lockForUpdate()->findOrFail($session->id);
+            if ($locked->status !== 'open') {
+                return ['http' => 409, 'code' => 'SESSION_CLOSED', 'message' => 'Attendance is already closed.', 'attendance' => null];
+            }
+            $existing = EventAttendance::query()->where('event_id', $event->id)->where('student_id', $student->id)->lockForUpdate()->first();
+            if ($existing) {
+                $this->recordScan($event, $student, $locked, 'duplicate', $fingerprint, $client, ['workflow' => $workflow, 'operator_user_id' => $actor->id]);
+
+                return ['http' => 200, 'code' => 'ALREADY_RECORDED', 'message' => 'Attendance already recorded.', 'attendance' => $existing];
+            }
+            $status = now()->lte($event->starts_at->copy()->addMinutes(self::LATE_AFTER_MINUTES)) ? 'present' : 'late';
+            $attendance = EventAttendance::query()->create([
+                'event_id' => $event->id,
+                'attendance_session_id' => $locked->id,
+                'student_id' => $student->id,
+                'status' => $status,
+                'checked_in_at' => now(),
+                'source' => 'qr',
+                'recorded_by' => $actor->id,
+                'remarks' => ucfirst($workflow).' participant QR scanned by assigned Event personnel.',
+                ...$this->academicSnapshot($student),
+            ]);
+            $this->recordScan($event, $student, $locked, 'accepted', $fingerprint, $client, ['workflow' => $workflow, 'operator_user_id' => $actor->id]);
+            $this->audit->write($event, $actor, 'attendance.operator_qr_recorded', [
+                'attendance_id' => $attendance->id,
+                'student_id' => $student->id,
+                'status' => $status,
+                'workflow' => $workflow,
+            ]);
 
             return ['http' => 201, 'code' => 'ATTENDANCE_RECORDED', 'message' => 'Attendance recorded.', 'attendance' => $attendance];
         }, 3);
@@ -153,6 +252,7 @@ class EventAttendanceService
                 'event_id' => $event->id, 'attendance_session_id' => $session->id, 'student_id' => $student->id,
                 'status' => $status, 'checked_in_at' => in_array($status, ['present', 'late'], true) ? now() : null,
                 'source' => 'manual', 'recorded_by' => $actor->id, 'remarks' => $reason,
+                ...$this->academicSnapshot($student),
             ]);
             $this->audit->write($event, $actor, 'attendance.manual_created', ['attendance_id' => $attendance->id, 'student_id' => $student->id, 'status' => $status, 'source' => 'manual', 'reason' => $reason]);
 
@@ -224,6 +324,20 @@ class EventAttendanceService
         abort_unless(now()->lt($event->ends_at), 409, 'Attendance cannot open after the Event ends.');
     }
 
+    private function academicSnapshot(Student $student): array
+    {
+        $enrollment = $student->enrollments()->whereIn('status', ['enrolled', 'completed'])
+            ->whereHas('academicYear', fn ($query) => $query->where('status', 'active'))
+            ->whereHas('semester', fn ($query) => $query->where('status', 'active'))
+            ->with('section:id,year_level')->latest('id')->first();
+
+        return [
+            'course_id_at_attendance' => $student->course_id,
+            'year_level_at_attendance' => $enrollment?->section?->year_level ?? $student->year_level,
+            'section_id_at_attendance' => $enrollment?->section_id,
+        ];
+    }
+
     private function rejected(Event $event, Student $student, ?EventAttendanceSession $session, string $result, string $fingerprint, string $client, string $message, int $http): array
     {
         $this->recordScan($event, $student, $session, $result, $fingerprint, $client);
@@ -231,12 +345,44 @@ class EventAttendanceService
         return ['http' => $http, 'code' => strtoupper($result), 'message' => $message, 'attendance' => null];
     }
 
-    private function recordScan(Event $event, Student $student, ?EventAttendanceSession $session, string $result, string $fingerprint, string $client): void
+    /** @param array<string, mixed> $metadata */
+    private function recordScan(Event $event, Student $student, ?EventAttendanceSession $session, string $result, string $fingerprint, string $client, array $metadata = []): void
     {
         EventAttendanceScan::query()->create([
             'event_id' => $event->id, 'attendance_session_id' => $session?->id, 'student_id' => $student->id,
             'scanned_at' => now(), 'result' => $result, 'token_fingerprint' => $fingerprint,
-            'client_platform' => $client, 'metadata' => [],
+            'client_platform' => $client, 'metadata' => $metadata,
         ]);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function signParticipantPayload(array $payload): string
+    {
+        $encoded = rtrim(strtr(base64_encode(json_encode($payload, JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+        $signature = hash_hmac('sha256', $encoded, (string) config('app.key'));
+
+        return $encoded.'.'.$signature;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function verifyParticipantPayload(string $token): ?array
+    {
+        $parts = explode('.', $token, 2);
+        if (count($parts) !== 2 || ! hash_equals(hash_hmac('sha256', $parts[0], (string) config('app.key')), $parts[1])) {
+            return null;
+        }
+
+        $decoded = base64_decode(strtr($parts[0], '-_', '+/'), true);
+        if ($decoded === false) {
+            return null;
+        }
+
+        try {
+            $payload = json_decode($decoded, true, 16, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        return is_array($payload) ? $payload : null;
     }
 }

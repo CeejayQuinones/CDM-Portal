@@ -15,9 +15,9 @@ class EventFoundationTest extends TestCase
 
     private int $sequence = 0;
 
-    public function test_registrar_and_admin_can_create_edit_publish_cancel_and_archive_with_audit(): void
+    public function test_admin_coordinator_can_create_edit_publish_cancel_and_archive_with_audit(): void
     {
-        foreach ([Role::REGISTRAR_STAFF, Role::ADMIN] as $role) {
+        foreach ([Role::ADMIN] as $role) {
             Sanctum::actingAs($this->user($role));
             $created = $this->postJson('/api/events', $this->payload())->assertCreated()->assertJsonPath('data.managed_status', 'draft')->json('data');
             $updated = $this->putJson('/api/events/'.$created['id'], $this->payload(['title' => "$role Event", 'version' => $created['version']]));
@@ -29,8 +29,8 @@ class EventFoundationTest extends TestCase
             $archived = $this->postJson('/api/events/'.$created['id'].'/archive', ['version' => 4]);
             $archived->assertOk()->assertJsonPath('data.managed_status', 'archived');
         }
-        $this->assertDatabaseCount('events', 2);
-        $this->assertDatabaseCount('event_audit_events', 10);
+        $this->assertDatabaseCount('events', 1);
+        $this->assertDatabaseCount('event_audit_events', 5);
     }
 
     public function test_guest_student_and_professor_cannot_manage_events_and_inactive_staff_is_denied(): void
@@ -46,7 +46,7 @@ class EventFoundationTest extends TestCase
 
     public function test_student_sees_published_events_for_current_finalized_enrollment_only(): void
     {
-        $registrar = $this->user(Role::REGISTRAR_STAFF);
+        $registrar = $this->user(Role::ADMIN);
         [$studentUser, $academic] = $this->academicStudent();
         Sanctum::actingAs($registrar);
         $visible = $this->postJson('/api/events', $this->payload(['intent' => 'publish', 'audiences' => [['audience_type' => 'section', 'section_id' => $academic['section_id']]]]))->assertCreated()->json('data.id');
@@ -70,19 +70,20 @@ class EventFoundationTest extends TestCase
 
     public function test_event_routes_retain_role_platform_policy(): void
     {
-        Sanctum::actingAs($this->user(Role::REGISTRAR_STAFF));
+        Sanctum::actingAs($this->user(Role::ADMIN));
         $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/events')->assertOk();
         $this->withHeader('X-CDM-Client', 'web')->getJson('/api/events')->assertForbidden();
 
         Sanctum::actingAs($this->user(Role::STUDENT));
-        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/events')->assertOk();
+        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/events')->assertForbidden();
         $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events')->assertOk();
         $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/events')->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/event-promotions')->assertOk();
     }
 
     public function test_professor_visibility_is_read_only_and_audience_specific(): void
     {
-        $registrar = $this->user(Role::REGISTRAR_STAFF);
+        $registrar = $this->user(Role::ADMIN);
         Sanctum::actingAs($registrar);
         $professorEvent = $this->postJson('/api/events', $this->payload(['intent' => 'publish', 'audiences' => [['audience_type' => 'all_professors']]]))->assertCreated()->json('data.id');
         $this->postJson('/api/events', $this->payload(['title' => 'Students only', 'venue' => 'Library Hall', 'intent' => 'publish']))->assertCreated();

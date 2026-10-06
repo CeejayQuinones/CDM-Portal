@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { admissionApi } from './services/workflowService'
 import { ROLES } from '../../config/accessControl.js'
 import { useAuthStore } from '../../stores/authStore'
-import AdmissionPlaceholder from './components/AdmissionPlaceholder.vue'
+import AdmissionStaffWorkspace from './components/AdmissionStaffWorkspace.vue'
 import { fetchAdmissionIdentity, fetchAdmissionAvailability, createAdmissionApplication, admissionCreationMessage } from './services/admissionService.js'
 
 defineProps({ title: { type: String, default: 'Admission Status' } })
@@ -123,8 +123,7 @@ onBeforeUnmount(() => { requestVersion++ })
 </script>
 
 <template>
-  <!-- Preserve staff's legacy landing URL without calling the self-service API. -->
-  <AdmissionPlaceholder v-if="!canReadIdentity" :title="title" />
+  <AdmissionStaffWorkspace v-if="!canReadIdentity" :title="title" description="Choose an Admission workspace below."><p class="placeholder-panel panel">Applicants, Programs, Exams, Exam Questions, Results, and Admission History use the same staff permissions.</p></AdmissionStaffWorkspace>
   <section v-else class="admission-workflow admission-applicant" aria-labelledby="admission-page-title" :aria-busy="loading">
     <header class="page-header">
       <p class="page-kicker">Admission</p>

@@ -31,9 +31,6 @@ export default defineConfig(({ mode }) => {
 
     server: {
       host: '0.0.0.0',
-      allowedHosts: [
-        'achieving-chair-ideal-clients.trycloudflare.com',
-      ],
     },
 
     plugins: [
