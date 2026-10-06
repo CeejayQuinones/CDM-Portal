@@ -52,7 +52,7 @@ test('main sidebar follows Settings identity changes, retries, and restored Stud
       export { createMemoryHistory, createRouter } from 'vue-router'
       export { default as Sidebar } from './src/components/Sidebar.vue'
       export { default as Settings } from './src/views/SettingsView.vue'
-      export { useStudentTheme } from './src/composables/useStudentTheme.js'
+      export { applyPortalAppearance, useStudentTheme } from './src/composables/useStudentTheme.js'
       export { useAuthStore } from './src/stores/authStore.js'
       export { useStudentProfileStore } from './src/stores/studentProfile.js'
     ` },
@@ -72,7 +72,7 @@ test('main sidebar follows Settings identity changes, retries, and restored Stud
   const compiled = { exports: {} }
   new Function('require', 'module', 'exports', bundle.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports)
   const { createRenderer, h, nextTick, ref, createPinia, defineStore, createRouter, createMemoryHistory,
-    Sidebar, Settings, useStudentTheme, useAuthStore, useStudentProfileStore } = compiled.exports
+    Sidebar, Settings, applyPortalAppearance, useStudentTheme, useAuthStore, useStudentProfileStore } = compiled.exports
   const stored = new Map()
   globalThis.localStorage = {
     getItem: key => stored.get(key) ?? null,
@@ -218,6 +218,17 @@ test('main sidebar follows Settings identity changes, retries, and restored Stud
       expectInitials(tree)
       assert.equal(sidebarName(tree), 'Maya Santos')
       assert.equal(settingsRequests, requestsBeforeStaff, 'staff sidebar must not request Student settings')
+      if (role === 'Registrar Staff') {
+        applyPortalAppearance('dark', role)
+        assert.equal(document.documentElement.dataset.studentTheme, 'dark')
+        assert.equal(localStorage.getItem('cdm-registrar-appearance'), 'dark')
+        app.unmount()
+        ;({ tree } = await mount(role))
+        assert.equal(document.documentElement.dataset.studentTheme, 'dark', 'Registrar appearance must restore after remount')
+        applyPortalAppearance('light', role)
+        assert.equal(document.documentElement.dataset.studentTheme, 'light')
+        assert.equal(localStorage.getItem('cdm-registrar-appearance'), 'light')
+      }
       app.unmount()
       app = null
     }

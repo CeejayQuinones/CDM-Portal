@@ -43,6 +43,14 @@ class StudentRecordsTest extends TestCase
             ->assertJsonPath('data.0.course.code', 'BSIT')
             ->assertJsonPath('meta.total', 1);
 
+        $this->getJson('/api/students?section=BSIT-1A')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2);
+
+        $this->getJson('/api/students?section=NO-SUCH-SECTION')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
+
         $this->getJson("/api/students/{$firstStudent->id}")
             ->assertOk()
             ->assertJsonPath('success', true)

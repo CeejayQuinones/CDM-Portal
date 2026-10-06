@@ -23,14 +23,12 @@ export const ROUTE_ROLES = Object.freeze({
   'professor-dashboard': [ROLES.PROFESSOR],
   'registrar-dashboard': [ROLES.REGISTRAR_STAFF],
   'admin-dashboard': [ROLES.ADMIN],
-  'guest-profile': [ROLES.GUEST],
   'student-document-requests': [ROLES.STUDENT],
   'student-document-appointments': [ROLES.STUDENT],
   'registrar-document-types': [ROLES.REGISTRAR_STAFF],
   'registrar-document-requests': [ROLES.REGISTRAR_STAFF],
   'registrar-document-appointments': [ROLES.REGISTRAR_STAFF],
   'registrar-document-request-history': [ROLES.REGISTRAR_STAFF],
-  'activate-student-account': [ROLES.GUEST],
   settings: [ROLES.STUDENT],
   'registrar-settings': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   // Preserve the legacy staff landing URL alongside role-specific Admission workflows.
@@ -58,11 +56,12 @@ export const ROUTE_ROLES = Object.freeze({
   'enrollment-cor': [ROLES.STUDENT],
   'enrollment-teaching': [ROLES.PROFESSOR],
 
-  grading: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.ADMIN],
-  monitoring: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF],
+  grading: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
+  'grading-student-history': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
+  monitoring: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'student-management': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'physical-records': [ROLES.REGISTRAR_STAFF],
-  'event-attendance': [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
+  'event-attendance': [ROLES.GUEST, ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
 })
 
 export const NAVIGATION_ITEMS = Object.freeze([
@@ -79,13 +78,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
     path: '/guest-dashboard',
     icon: 'DB',
     roles: ROUTE_ROLES['guest-dashboard'],
-  },
-  {
-    name: 'guest-profile',
-    label: 'My Profile',
-    path: '/profile',
-    icon: 'PR',
-    roles: ROUTE_ROLES['guest-profile'],
   },
   {
     name: 'document-requests-menu',
@@ -124,14 +116,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
         roles: ROUTE_ROLES['registrar-document-request-history'],
       },
     ],
-  },
-  {
-    name: 'activate-student-account',
-    label: 'Activate Student Account',
-    path: '/activate-student-account',
-    icon: 'AC',
-    roles: ROUTE_ROLES['activate-student-account'],
-    comingSoon: true,
   },
   {
     name: 'student-dashboard',
@@ -246,16 +230,23 @@ export const NAVIGATION_ITEMS = Object.freeze([
   {
     name: 'grading',
     label: 'Grading',
-    path: '/grading',
     icon: 'GR',
     roles: ROUTE_ROLES.grading,
+    children: [
+      { name: 'grading-student', label: 'My Grades', path: '/grading', roles: [ROLES.STUDENT] },
+      { name: 'grading-professor', label: 'My Classes', path: '/grading', roles: [ROLES.PROFESSOR] },
+      { name: 'grading-professor-messages', label: 'Grade Messages', path: '/grading', roles: [ROLES.PROFESSOR] },
+      { name: 'grading-periods', label: 'Grade Periods', path: '/grading', roles: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN] },
+      { name: 'grading-student-history', label: 'Student Grade History', path: '/grading/student-history', roles: ROUTE_ROLES['grading-student-history'] },
+    ],
   },
   {
     name: 'monitoring',
-    label: 'Monitoring',
+    label: 'Academic Monitoring',
     path: '/monitoring',
     icon: 'MO',
     roles: ROUTE_ROLES.monitoring,
+    activeRoutes: ['monitoring', 'monitoring-study-plans', 'monitoring-adviser-alerts'],
   },
   {
     name: 'student-management-menu',
@@ -280,13 +271,12 @@ export const NAVIGATION_ITEMS = Object.freeze([
   },
   {
     name: 'event-attendance',
-    label: 'Event Attendance',
+    label: 'Events',
     icon: 'EV',
     roles: ROUTE_ROLES['event-attendance'],
     children: [
       { name: 'event-attendance', label: 'Events', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'] },
-      { name: 'event-attendance-tracking', label: 'Attendance', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'] },
-      { name: 'event-attendance-reports', label: 'Reports', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'], comingSoon: true, phaseLabel: 'Phase 3' },
+      { name: 'event-attendance-reports', label: 'Reports', path: '/event-attendance/reports', roles: ['Admin', 'Professor'], desktopOnly: true },
     ],
   },
   {

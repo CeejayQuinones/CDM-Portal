@@ -4,12 +4,14 @@ namespace Tests\Feature;
 
 use App\Models\Event;
 use App\Models\EventAttendanceSession;
+use App\Models\EventRoleAssignment;
 use App\Models\Role;
 use App\Models\Student;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -28,18 +30,18 @@ class EventQrAttendanceTest extends TestCase
         $this->fixture = $this->fixture();
     }
 
-    public function test_registrar_and_admin_open_session_student_is_forbidden_and_second_open_is_idempotent(): void
+    public function test_admin_opens_session_student_is_forbidden_and_second_open_is_idempotent(): void
     {
-        foreach ([$this->fixture['registrar'], $this->fixture['admin']] as $index => $staff) {
-            $event = $index === 0 ? $this->fixture['event'] : $this->event('Admin Event', [['audience_type' => 'all_students']]);
+        foreach ([$this->fixture['admin']] as $staff) {
+            $event = $this->fixture['event'];
             Sanctum::actingAs($staff);
             $first = $this->postJson("/api/events/{$event->id}/attendance/session")->assertCreated()->assertJsonPath('data.status', 'open')->json('data.id');
             $this->postJson("/api/events/{$event->id}/attendance/session")->assertCreated()->assertJsonPath('data.id', $first);
         }
         Sanctum::actingAs($this->fixture['eligible']->user);
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/session')->assertForbidden();
-        $this->assertDatabaseCount('event_attendance_sessions', 2);
-        $this->assertDatabaseCount('event_audit_events', 2);
+        $this->assertDatabaseCount('event_attendance_sessions', 1);
+        $this->assertDatabaseCount('event_audit_events', 1);
     }
 
     public function test_close_session_invalidates_qr_and_blocks_scans(): void
@@ -72,6 +74,10 @@ class EventQrAttendanceTest extends TestCase
         $this->postJson($endpoint, ['token' => $token])->assertCreated()->assertJsonPath('code', 'ATTENDANCE_RECORDED')->assertJsonPath('data.attendance.status', 'present');
         $this->postJson($endpoint, ['token' => $token])->assertOk()->assertJsonPath('code', 'ALREADY_RECORDED');
         $this->assertDatabaseCount('event_attendances', 1);
+        $this->assertDatabaseHas('event_attendances', [
+            'student_id' => $this->fixture['eligible']->id, 'course_id_at_attendance' => $this->fixture['course'],
+            'year_level_at_attendance' => 1, 'section_id_at_attendance' => $this->fixture['section'],
+        ]);
         $this->assertDatabaseHas('event_attendance_scans', ['result' => 'accepted']);
         $this->assertDatabaseHas('event_attendance_scans', ['result' => 'duplicate']);
         $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.recorded']);
@@ -130,11 +136,11 @@ class EventQrAttendanceTest extends TestCase
 
     public function test_platform_policy_is_enforced_for_scanning_and_management(): void
     {
-        Sanctum::actingAs($this->fixture['registrar']);
+        Sanctum::actingAs($this->fixture['admin']);
         $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/session')->assertCreated();
         $this->withHeader('X-CDM-Client', 'web')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertForbidden();
         Sanctum::actingAs($this->fixture['eligible']->user);
-        $this->withHeader('X-CDM-Client', 'web')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/scan', ['token' => 'invalid'])->assertUnprocessable();
+        $this->withHeader('X-CDM-Client', 'web')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/scan', ['token' => 'invalid'])->assertForbidden();
         $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/scan', ['token' => 'invalid'])->assertUnprocessable();
         $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/scan', ['token' => 'invalid'])->assertForbidden();
     }
@@ -144,9 +150,10 @@ class EventQrAttendanceTest extends TestCase
         Sanctum::actingAs($this->fixture['admin']);
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/session')->assertCreated();
         $record = $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/manual', ['student_id' => $this->fixture['eligible']->id, 'status' => 'present', 'reason' => 'Camera was unavailable.'])->assertCreated()->json('data');
+        $this->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
         $this->patchJson('/api/events/'.$this->fixture['event']->id.'/attendance/'.$record['id'], ['status' => 'excused', 'version' => $record['version']])->assertUnprocessable()->assertJsonValidationErrors('reason');
         $this->patchJson('/api/events/'.$this->fixture['event']->id.'/attendance/'.$record['id'], ['status' => 'excused', 'version' => $record['version'], 'reason' => 'Approved medical documentation.'])->assertOk()->assertJsonPath('data.status', 'excused')->assertJsonPath('data.source', 'manual');
-        $this->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertOk()->assertJsonPath('data.summary.eligible', 1)->assertJsonPath('data.summary.not_checked_in', 0)->assertJsonPath('data.students.data.0.attendance.status', 'excused');
+        $this->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertOk()->assertJsonPath('data.summary.eligible', 2)->assertJsonPath('data.summary.not_checked_in', 1)->assertJsonPath('data.students.data.0.attendance.status', 'excused');
         $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.manual_created']);
         $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.corrected']);
 
@@ -154,13 +161,73 @@ class EventQrAttendanceTest extends TestCase
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/manual', ['student_id' => $this->fixture['eligible']->id, 'status' => 'late', 'reason' => 'Unauthorized attempt.'])->assertForbidden();
     }
 
-    public function test_registrar_correction_requires_existing_step_up(): void
+    public function test_coordinator_correction_requires_existing_step_up(): void
     {
         Sanctum::actingAs($this->fixture['admin']);
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/session')->assertCreated();
         $record = $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/manual', ['student_id' => $this->fixture['eligible']->id, 'status' => 'present', 'reason' => 'Manual fallback used.'])->assertCreated()->json('data');
-        Sanctum::actingAs($this->fixture['registrar']);
+        Sanctum::actingAs($this->fixture['admin']);
         $this->patchJson('/api/events/'.$this->fixture['event']->id.'/attendance/'.$record['id'], ['status' => 'late', 'version' => 1, 'reason' => 'Correcting verified arrival time.'])->assertStatus(428)->assertJsonPath('code', 'STEP_UP_REQUIRED');
+    }
+
+    public function test_registered_and_requested_moderators_use_only_their_mobile_qr_workflows(): void
+    {
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
+            'user_id' => $this->fixture['registeredModerator']->id,
+            'responsibility' => EventRoleAssignment::REGISTERED_MODERATOR,
+        ])->assertCreated();
+        $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
+            'user_id' => $this->fixture['requestedModerator']->user_id,
+            'responsibility' => EventRoleAssignment::REQUESTED_MODERATOR,
+        ])->assertCreated();
+        $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/session')->assertCreated();
+
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $static = $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/participant-qr', ['mode' => 'static'])
+            ->assertOk()->assertJsonPath('data.mode', 'static')->assertJsonPath('data.expires_at', null)->json('data.token');
+        $dynamic = $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/participant-qr', ['mode' => 'dynamic'])
+            ->assertOk()->assertJsonPath('data.mode', 'dynamic')->json('data.token');
+
+        Sanctum::actingAs($this->fixture['registeredModerator']);
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $dynamic, 'workflow' => 'dynamic'])->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $static, 'workflow' => 'static'])
+            ->assertCreated()->assertJsonPath('code', 'ATTENDANCE_RECORDED');
+
+        Sanctum::actingAs($this->fixture['requestedTarget']->user);
+        $requestedDynamic = $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/participant-qr', ['mode' => 'dynamic'])
+            ->assertOk()->json('data.token');
+        $requestedStatic = $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/participant-qr', ['mode' => 'static'])
+            ->assertOk()->json('data.token');
+
+        Sanctum::actingAs($this->fixture['requestedModerator']->user);
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $requestedStatic, 'workflow' => 'static'])->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $requestedDynamic, 'workflow' => 'dynamic'])
+            ->assertCreated()->assertJsonPath('code', 'ATTENDANCE_RECORDED');
+        $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.operator_qr_recorded']);
+
+        Sanctum::actingAs($this->fixture['admin']);
+        $assignment = EventRoleAssignment::query()->where('event_id', $this->fixture['event']->id)->where('user_id', $this->fixture['requestedModerator']->user_id)->firstOrFail();
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/personnel/'.$assignment->id.'/revoke')->assertOk();
+        Sanctum::actingAs($this->fixture['requestedModerator']->user);
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $requestedDynamic, 'workflow' => 'dynamic'])->assertForbidden();
+    }
+
+    public function test_promotional_api_is_public_safe_and_contains_no_operational_data(): void
+    {
+        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/event-promotions')->assertUnauthorized();
+        Sanctum::actingAs($this->user(Role::GUEST));
+        $response = $this->withHeader('X-CDM-Client', 'web')->getJson('/api/event-promotions')->assertOk()
+            ->assertJsonPath('data.data.0.title', 'General Assembly')
+            ->assertJsonMissingPath('data.data.0.audiences')
+            ->assertJsonMissingPath('data.data.0.capabilities')
+            ->assertJsonMissingPath('data.data.0.attendance')
+            ->assertJsonMissingPath('data.data.0.role_assignments')
+            ->assertJsonMissingPath('data.data.0.qr_token');
+        $this->assertSame([
+            'id', 'title', 'description', 'venue', 'starts_at', 'ends_at', 'status', 'organizer', 'public_audience', 'image_url',
+        ], array_keys($response->json('data.data.0')));
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/event-promotions')->assertForbidden();
     }
 
     private function openAndToken(?Event $event = null): string
@@ -186,19 +253,22 @@ class EventQrAttendanceTest extends TestCase
         $yearTwoSection = $this->section($course, $year, $semester, 'BSIT-2A', 2);
         $otherCourseSection = $this->section($otherCourse, $year, $semester, 'BSCS-1A', 1);
         $eligible = $this->student($course, $section, $year, $semester, '0001');
+        $requestedTarget = $this->student($course, $section, $year, $semester, '0005');
+        $requestedModerator = $this->student($course, $otherSection, $year, $semester, '0006');
+        $registeredModerator = $this->user(Role::PROFESSOR);
         $wrongSection = $this->student($course, $otherSection, $year, $semester, '0002');
         $wrongYear = $this->student($course, $yearTwoSection, $year, $semester, '0003');
         $wrongCourse = $this->student($otherCourse, $otherCourseSection, $year, $semester, '0004');
         $event = $this->event('General Assembly', [['audience_type' => 'section', 'section_id' => $section]]);
 
-        return ['registrar' => $registrar, 'admin' => $admin, 'course' => $course, 'section' => $section, 'eligible' => $eligible, 'wrong_section' => $wrongSection, 'wrong_year' => $wrongYear, 'wrong_course' => $wrongCourse, 'event' => $event];
+        return ['registrar' => $registrar, 'admin' => $admin, 'course' => $course, 'section' => $section, 'eligible' => $eligible, 'requestedTarget' => $requestedTarget, 'requestedModerator' => $requestedModerator, 'registeredModerator' => $registeredModerator, 'wrong_section' => $wrongSection, 'wrong_year' => $wrongYear, 'wrong_course' => $wrongCourse, 'event' => $event];
     }
 
     private function user(string $role): User
     {
         $roleModel = Role::query()->firstOrCreate(['role_name' => $role], ['description' => $role]);
 
-        return User::query()->create(['username' => 'event_user_'.(++$this->sequence), 'password' => 'password', 'role_id' => $roleModel->id, 'status' => 'active', 'is_first_login' => false]);
+        return User::query()->create(['username' => 'event_user_'.(++$this->sequence), 'password' => Hash::make('password'), 'role_id' => $roleModel->id, 'status' => 'active', 'is_first_login' => false]);
     }
 
     private function course(int $department, string $code): int

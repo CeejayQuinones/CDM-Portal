@@ -69,7 +69,14 @@ class StudentSettingsController extends Controller
 
     private function student(Request $request): Student
     {
-        return Student::query()->with(['user.role', 'userProfile', 'course', 'latestEnrollment.section', 'latestEnrollment.academicYear', 'latestEnrollment.semester', 'settings', 'documents.documentType', 'documentRequests.activeAppointment'])
+        return Student::query()->with([
+            'user.role', 'userProfile', 'course', 'latestEnrollment.section', 'latestEnrollment.academicYear', 'latestEnrollment.semester',
+            'enrollments' => fn ($query) => $query->whereIn('status', ['enrolled', 'completed'])
+                ->whereHas('academicYear', fn ($year) => $year->where('status', 'active'))
+                ->whereHas('semester', fn ($semester) => $semester->where('status', 'active'))
+                ->with(['section', 'academicYear', 'semester'])->latest('id')->limit(1),
+            'settings', 'documents.documentType', 'documentRequests.activeAppointment',
+        ])
             ->where('user_id', $request->user()->id)->firstOrFail();
     }
 
@@ -81,12 +88,18 @@ class StudentSettingsController extends Controller
         $profile = $student->userProfile;
         $requests = $student->documentRequests;
         $appearance = $student->settings?->appearance ?? 'system';
+        $currentEnrollment = $student->enrollments->first();
+        $academicEnrollment = $currentEnrollment ?? $student->latestEnrollment;
+        $recordScope = $currentEnrollment ? 'current' : ($academicEnrollment ? 'latest' : null);
+        $academicYear = $academicEnrollment?->academicYear?->school_year;
+        $academicSection = $academicEnrollment?->section;
+        $academicYearLevel = $academicSection?->year_level ?? $student->year_level;
 
         return [
             'profile' => ['preferred_display_name' => $student->settings?->preferred_display_name, 'bio' => $student->settings?->bio, 'avatar_url' => $profile?->profile_photo_url],
             'account' => ['school_email' => $student->user?->username, 'role' => $student->user?->role?->role_name, 'status' => $student->user?->status, 'last_login' => $student->user?->last_login?->toIso8601String(), 'created_at' => $student->user?->created_at?->toIso8601String(), 'profile_updated_at' => $profile?->updated_at?->toIso8601String()],
-            'student_status' => ['enrollment_status' => $student->student_status, 'academic_year' => $student->latestEnrollment?->academicYear?->year_name, 'semester' => $student->latestEnrollment?->semester?->semester_name, 'year_level' => $student->year_level, 'section' => $student->latestEnrollment?->section?->section_name, 'program' => $student->course?->course_name],
-            'official' => ['legal_name' => trim(implode(' ', array_filter([$profile?->first_name, $profile?->middle_name, $profile?->last_name]))), 'student_number' => $student->student_number, 'program' => $student->course?->course_name, 'year_level' => $student->year_level, 'section' => $student->latestEnrollment?->section?->section_name],
+            'student_status' => ['enrollment_status' => $student->student_status, 'record_scope' => $recordScope, 'academic_year' => $academicYear, 'semester' => $academicEnrollment?->semester?->semester_name, 'year_level' => $academicYearLevel, 'section' => $academicSection?->section_name, 'program' => $student->course?->course_name],
+            'official' => ['legal_name' => trim(implode(' ', array_filter([$profile?->first_name, $profile?->middle_name, $profile?->last_name]))), 'student_number' => $student->student_number, 'program' => $student->course?->course_name, 'year_level' => $academicYearLevel, 'section' => $academicSection?->section_name],
             'contact' => ['personal_email' => $profile?->email, 'mobile' => $profile?->contact_number, 'address' => $profile?->address],
             'document_status' => ['complete' => $complete, 'total' => $total, 'items' => $documents->map(fn ($document) => ['name' => $document->documentType?->document_name, 'status' => $document->verification_status])->values(), 'active_requests' => $requests->whereIn('status', ['pending', 'processing', 'approved'])->count(), 'completed_requests' => $requests->where('status', 'completed')->count(), 'upcoming_appointment' => $requests->pluck('activeAppointment')->filter()->first()?->appointment_date?->toDateString()],
             'preferences' => ['notification_preferences' => $student->settings?->notification_preferences ?? [], 'academic_preferences' => $student->settings?->academic_preferences ?? []],

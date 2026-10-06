@@ -10,7 +10,7 @@ class Event extends Model
 {
     public const MANAGED_STATUSES = ['draft', 'published', 'cancelled', 'archived'];
 
-    protected $fillable = ['title', 'description', 'venue', 'venue_key', 'starts_at', 'ends_at', 'status', 'version', 'created_by', 'updated_by'];
+    protected $fillable = ['parent_event_id', 'title', 'description', 'venue', 'venue_key', 'starts_at', 'ends_at', 'status', 'version', 'created_by', 'updated_by'];
 
     protected $attributes = ['status' => 'draft', 'version' => 1];
 
@@ -24,9 +24,24 @@ class Event extends Model
         return $this->hasMany(EventAudience::class);
     }
 
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_event_id');
+    }
+
+    public function subEvents(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_event_id')->orderBy('starts_at');
+    }
+
     public function auditEvents(): HasMany
     {
         return $this->hasMany(EventAuditEvent::class)->latest('created_at');
+    }
+
+    public function roleAssignments(): HasMany
+    {
+        return $this->hasMany(EventRoleAssignment::class);
     }
 
     public function attendanceSession()

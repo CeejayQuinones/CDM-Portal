@@ -108,7 +108,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
             if (target === '/admission' && [ROLES.GUEST, ROLES.STUDENT].includes(role)) {
               assert.match(html, /Loading admission information/)
             } else {
-              if (target === '/admission') { assert.match(html, /Coming soon/); assert.match(html, /not available yet/) }
+              if (target === '/admission') { assert.match(html, /aria-label="Admission workspace"/); assert.match(html, /Choose an Admission workspace/) }
             }
             if (target === '/admission') assert.doesNotMatch(html, /<button|<form|<input/)
           }

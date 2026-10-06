@@ -13,6 +13,8 @@ use App\Services\Ai\Analyzers\MockDocumentAnalyzer;
 use App\Services\Ai\Contracts\DocumentAnalyzer;
 use App\Services\Enrollment\DatabaseEnrollmentPeriods;
 use App\Services\Enrollment\EnrollmentPeriodResolver;
+use App\Services\Monitoring\Ai\ConfiguredMonitoringAiProvider;
+use App\Services\Monitoring\Ai\MonitoringAiProvider;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
@@ -25,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(EnrollmentPeriodResolver::class, DatabaseEnrollmentPeriods::class);
+        $this->app->bind(MonitoringAiProvider::class, ConfiguredMonitoringAiProvider::class);
         $this->app->bind(DocumentAnalyzer::class, function (): DocumentAnalyzer {
             $driver = strtolower(trim((string) config('services.document_analysis.driver', 'mock')));
 

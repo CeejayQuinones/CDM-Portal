@@ -140,6 +140,31 @@ class RegistrarDashboardTest extends TestCase
         $this->getJson('/api/registrar/dashboard')->assertForbidden();
     }
 
+    public function test_dashboard_excludes_timestamp_verified_large_dataset_students_and_activity(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-26 09:30:00', 'Asia/Manila'));
+        $this->createStudent('26-03001', 'Real', 'Student');
+        $fixture = $this->createStudent('26-03002', 'Fixture', 'Student');
+        DB::table('generated_data_records')->insert([
+            'dataset_key' => 'school-demo-v2', 'record_type' => 'students', 'record_id' => $fixture->id,
+            'record_created_at' => $fixture->created_at, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $type = DocumentType::query()->create(['document_name' => 'Fixture document', 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false, 'status' => 'active']);
+        StudentDocument::query()->create(['student_id' => $fixture->id, 'document_type_id' => $type->id, 'availability_status' => 'missing', 'verification_status' => 'pending']);
+        $request = DocumentRequest::query()->create(['student_id' => $fixture->id, 'document_type_id' => $type->id, 'quantity' => 1, 'total_fee' => 0, 'status' => 'pending', 'request_date' => '2026-08-26']);
+        Appointment::query()->create(['student_id' => $fixture->id, 'document_request_id' => $request->id, 'appointment_date' => '2026-08-26', 'appointment_time' => '11:00', 'purpose' => 'Fixture', 'status' => 'pending', 'active_slot_key' => '2026-08-26 11:00']);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->getJson('/api/registrar/dashboard')->assertOk()
+            ->assertJsonPath('data.summary.total_students', 1)
+            ->assertJsonPath('data.summary.pending_document_requests', 0)
+            ->assertJsonPath('data.summary.todays_appointments', 0)
+            ->assertJsonPath('data.summary.students_without_record_location', 1)
+            ->assertJsonPath('data.summary.students_with_missing_documents', 0)
+            ->assertJsonCount(0, 'data.todays_appointments')
+            ->assertJsonCount(0, 'data.recent_activity');
+    }
+
     private function createStudent(string $number, string $firstName, string $lastName): Student
     {
         DB::table('departments')->insertOrIgnore([

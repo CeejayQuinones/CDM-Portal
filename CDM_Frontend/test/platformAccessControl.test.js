@@ -82,3 +82,13 @@ test('network and timeout failures use safe actionable messages', () => {
   assert.match(loginErrorMessage({ code: 'ECONNABORTED' }), /did not respond in time/)
   assert.match(loginErrorMessage({ request: {} }), /Unable to reach the CDM server/)
 })
+
+test('Electron keeps renderer isolation and restricts external navigation', async () => {
+  const source = await readFile(new URL('../electron/main.cjs', import.meta.url), 'utf8')
+
+  assert.match(source, /contextIsolation:\s*true/)
+  assert.match(source, /nodeIntegration:\s*false/)
+  assert.doesNotMatch(source, /webSecurity:\s*false/)
+  assert.match(source, /protocol === 'https:' \|\| protocol === 'http:'/)
+  assert.match(source, /webContents\.on\('will-navigate'/)
+})

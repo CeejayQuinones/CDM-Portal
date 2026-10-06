@@ -4,7 +4,10 @@ import QRCode from 'qrcode'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
 import { eventErrorMessage, eventService } from './eventService'
 
-const props = defineProps({ event: { type: Object, required: true } })
+const props = defineProps({
+  event: { type: Object, required: true },
+  capabilities: { type: Object, required: true },
+})
 const { runWithStepUp } = useStepUpAuth()
 const state = ref(null), loading = ref(true), busy = ref(false), error = ref(''), qrImage = ref(''), seconds = ref(0), search = ref('')
 const editor = ref(null), editStatus = ref('present'), reason = ref('')
@@ -13,7 +16,7 @@ let pollTimer, refreshTimer, countdownTimer, expiresAt = 0
 const clearQrTimers = () => { clearTimeout(refreshTimer); clearInterval(countdownTimer); refreshTimer = null; countdownTimer = null }
 async function load() { try { state.value = await eventService.attendance(props.event.id, { search: search.value || undefined, per_page: 100 }); if (state.value.session?.status !== 'open') clearQrTimers() } catch (e) { error.value = eventErrorMessage(e) } finally { loading.value = false } }
 async function refreshQr() {
-  if (state.value?.session?.status !== 'open') return
+  if (!props.capabilities.can_manage_attendance_session || state.value?.session?.status !== 'open') return
   try {
     const data = await eventService.attendanceToken(props.event.id)
     qrImage.value = await QRCode.toDataURL(data.token, { width: 300, margin: 2, color: { dark: '#061b10', light: '#ffffff' }, errorCorrectionLevel: 'M' })
@@ -39,7 +42,7 @@ async function saveManual() {
   } catch (e) { if (!isStepUpCancelled(e)) error.value = eventErrorMessage(e) } finally { busy.value = false }
 }
 async function applySearch() { loading.value = true; await load() }
-onMounted(async () => { await load(); if (state.value?.session?.status === 'open') await refreshQr(); pollTimer = setInterval(() => { if (state.value?.session?.status === 'open') load() }, 7000) })
+onMounted(async () => { await load(); if (props.capabilities.can_manage_attendance_session && state.value?.session?.status === 'open') await refreshQr(); pollTimer = setInterval(() => { if (state.value?.session?.status === 'open') load() }, 7000) })
 onBeforeUnmount(() => { clearInterval(pollTimer); clearQrTimers() })
 </script>
 
@@ -49,16 +52,17 @@ onBeforeUnmount(() => { clearInterval(pollTimer); clearQrTimers() })
     <p v-if="error" class="event-alert error" role="alert">{{ error }}</p>
     <div v-if="loading" class="attendance-loading">Loading attendance…</div>
     <template v-else>
-      <button v-if="!state.session" class="event-button primary" type="button" :disabled="busy" @click="open">Start Attendance</button>
-      <div v-else class="attendance-layout">
-        <section class="qr-panel">
+      <button v-if="!state.session && capabilities.can_manage_attendance_session" class="event-button primary" type="button" :disabled="busy" @click="open">Start Attendance</button>
+      <p v-else-if="!state.session" class="event-state compact">Attendance has not been opened by an Event Coordinator.</p>
+      <div v-else class="attendance-layout" :class="{ 'monitor-only': !capabilities.can_manage_attendance_session }">
+        <section v-if="capabilities.can_manage_attendance_session" class="qr-panel">
           <template v-if="state.session.status === 'open'"><div v-if="qrImage" class="qr-surface"><img :src="qrImage" alt="Rotating Event attendance QR code" /></div><div v-else class="qr-error">QR unavailable. Retrying on the next refresh.</div><strong>Attendance Open</strong><span>Refreshes in {{ seconds }} seconds</span><button class="event-button danger" type="button" :disabled="busy" @click="close">Close Attendance</button></template>
           <template v-else><strong>Attendance Closed</strong><span>Scans are no longer accepted.</span></template>
         </section>
         <section class="attendance-monitor">
           <div class="attendance-summary"><div><strong>{{ state.summary.eligible }}</strong><span>Eligible</span></div><div><strong>{{ state.summary.present }}</strong><span>Present</span></div><div><strong>{{ state.summary.late }}</strong><span>Late</span></div><div><strong>{{ state.summary.not_checked_in }}</strong><span>Not checked in</span></div></div>
           <form class="attendance-search" @submit.prevent="applySearch"><input v-model.trim="search" type="search" placeholder="Student name or number" aria-label="Search eligible Students" /><button class="event-button secondary" type="submit">Search</button></form>
-          <div class="attendance-table"><table><thead><tr><th>Student</th><th>Course / Section</th><th>Check-in</th><th>Status</th><th>Source</th><th></th></tr></thead><tbody><tr v-for="row in state.students.data" :key="row.student_id"><td><strong>{{ row.name }}</strong><small>{{ row.student_number }}</small></td><td>{{ row.course }} · {{ row.section || `Year ${row.year_level}` }}</td><td>{{ row.attendance?.checked_in_at ? new Date(row.attendance.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—' }}</td><td>{{ row.attendance?.status || 'Not checked in' }}</td><td>{{ row.attendance?.source || '—' }}</td><td><button type="button" @click="edit(row)">{{ row.attendance ? 'Correct' : 'Mark' }}</button></td></tr></tbody></table></div>
+          <div class="attendance-table"><table><thead><tr><th>Student</th><th>Course / Section</th><th>Check-in</th><th>Status</th><th>Source</th><th></th></tr></thead><tbody><tr v-for="row in state.students.data" :key="row.student_id"><td><strong>{{ row.name }}</strong><small>{{ row.student_number }}</small></td><td>{{ row.course }} · {{ row.section || `Year ${row.year_level}` }}</td><td>{{ row.attendance?.checked_in_at ? new Date(row.attendance.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—' }}</td><td>{{ row.attendance?.status || 'Not checked in' }}</td><td>{{ row.attendance?.source || '—' }}</td><td><button v-if="(!row.attendance && capabilities.can_verify_attendance) || (row.attendance && capabilities.can_correct_attendance)" type="button" @click="edit(row)">{{ row.attendance ? 'Correct' : 'Mark' }}</button></td></tr></tbody></table></div>
         </section>
       </div>
     </template>

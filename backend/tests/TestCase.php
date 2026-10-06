@@ -21,7 +21,7 @@ abstract class TestCase extends BaseTestCase
         if ($this->injectClientPlatformHeader
             && str_starts_with(parse_url((string) $uri, PHP_URL_PATH) ?: '', '/api/')
             && ! array_key_exists('HTTP_X_CDM_CLIENT', $server)) {
-            $server['HTTP_X_CDM_CLIENT'] = $this->defaultClientPlatform($content);
+            $server['HTTP_X_CDM_CLIENT'] = $this->defaultClientPlatform((string) $uri, $content);
         }
 
         return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
@@ -34,7 +34,7 @@ abstract class TestCase extends BaseTestCase
         return $this;
     }
 
-    private function defaultClientPlatform(?string $content): string
+    private function defaultClientPlatform(string $uri, ?string $content): string
     {
         $authorization = $this->defaultHeaders['Authorization'] ?? null;
         $user = null;
@@ -53,6 +53,12 @@ abstract class TestCase extends BaseTestCase
         }
 
         $role = $user instanceof User ? $user->loadMissing('role')->role?->role_name : null;
+
+        $eventRequest = preg_match('#^/api/(events|event-reports)(?:/|$)#', parse_url($uri, PHP_URL_PATH) ?: '') === 1;
+
+        if ($eventRequest) {
+            return $role === Role::ADMIN ? ClientPlatform::DESKTOP : ClientPlatform::MOBILE;
+        }
 
         return $role === Role::REGISTRAR_STAFF ? ClientPlatform::DESKTOP : ClientPlatform::WEB;
     }

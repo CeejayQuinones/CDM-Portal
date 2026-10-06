@@ -30,6 +30,25 @@ html[data-student-theme='dark'] {
   --surface-3: var(--bg-surface-raised);
   --skeleton-base: #26372c;
   --skeleton-highlight: #354a3c;
+  /* Legacy Student component aliases must live at root for Teleported dialogs. */
+  --student-page: var(--bg-page);
+  --student-page-background: var(--bg-page);
+  --student-surface: var(--bg-surface);
+  --student-surface-soft: var(--bg-surface-alt);
+  --student-field: var(--bg-input);
+  --student-panel-header: var(--bg-surface-alt);
+  --student-text: var(--text-primary);
+  --student-heading: var(--text-primary);
+  --student-muted: var(--text-muted);
+  --student-border: var(--border-color);
+  --student-accent: var(--accent);
+  --student-primary: var(--accent);
+  --student-on-primary: var(--text-on-accent);
+  --student-selected: var(--bg-hover);
+  --student-focus: var(--accent-hover);
+  --student-note: var(--warning-bg);
+  --student-danger: var(--danger);
+  --student-danger-bg: var(--danger-bg);
   color-scheme: dark;
 }
 
@@ -101,6 +120,24 @@ html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .regis
     --surface-3: var(--bg-surface-raised);
     --skeleton-base: #26372c;
     --skeleton-highlight: #354a3c;
+    --student-page: var(--bg-page);
+    --student-page-background: var(--bg-page);
+    --student-surface: var(--bg-surface);
+    --student-surface-soft: var(--bg-surface-alt);
+    --student-field: var(--bg-input);
+    --student-panel-header: var(--bg-surface-alt);
+    --student-text: var(--text-primary);
+    --student-heading: var(--text-primary);
+    --student-muted: var(--text-muted);
+    --student-border: var(--border-color);
+    --student-accent: var(--accent);
+    --student-primary: var(--accent);
+    --student-on-primary: var(--text-on-accent);
+    --student-selected: var(--bg-hover);
+    --student-focus: var(--accent-hover);
+    --student-note: var(--warning-bg);
+    --student-danger: var(--danger);
+    --student-danger-bg: var(--danger-bg);
     color-scheme: dark;
   }
 

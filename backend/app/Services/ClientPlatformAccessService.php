@@ -15,7 +15,7 @@ class ClientPlatformAccessService
         Role::REGISTRAR_STAFF => [ClientPlatform::DESKTOP],
         Role::ADMIN => [ClientPlatform::DESKTOP, ClientPlatform::WEB],
         Role::STUDENT => [ClientPlatform::WEB, ClientPlatform::MOBILE],
-        Role::PROFESSOR => [ClientPlatform::WEB],
+        Role::PROFESSOR => [ClientPlatform::WEB, ClientPlatform::MOBILE],
         Role::GUEST => [ClientPlatform::WEB],
     ];
 
@@ -39,7 +39,15 @@ class ClientPlatformAccessService
         $user->loadMissing('role');
         $role = $user->role?->role_name;
 
-        if ($role !== null && in_array($client, self::ALLOWED_CLIENTS_BY_ROLE[$role] ?? [], true)) {
+        $semiCoordinator = $role === Role::PROFESSOR
+            && $user->eventRoleAssignments()->granting()->where('responsibility', 'semi_coordinator')->exists();
+        $semiCoordinatorDesktop = $semiCoordinator && $client === ClientPlatform::DESKTOP;
+
+        if ($semiCoordinator && $client === ClientPlatform::MOBILE) {
+            throw new ClientPlatformException(403, 'Semi-Coordinator accounts use Desktop for Event management and Web for promotional viewing.');
+        }
+
+        if ($semiCoordinatorDesktop || ($role !== null && in_array($client, self::ALLOWED_CLIENTS_BY_ROLE[$role] ?? [], true))) {
             return;
         }
 

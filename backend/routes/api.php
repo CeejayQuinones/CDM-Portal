@@ -9,6 +9,11 @@ use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentWorkflowController;
 use App\Http\Controllers\Api\EventAttendanceController;
 use App\Http\Controllers\Api\EventController;
+use App\Http\Controllers\Api\EventPersonnelController;
+use App\Http\Controllers\Api\EventPromotionController;
+use App\Http\Controllers\Api\EventReportController;
+use App\Http\Controllers\Api\GradingController;
+use App\Http\Controllers\Api\GradingExperienceController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
@@ -33,19 +38,78 @@ Route::post('/registration/email-verification/verify', [AuthController::class, '
     ->middleware('throttle:5,1');
 
 Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void {
-    Route::get('/events', [EventController::class, 'index']);
-    Route::get('/events/{event}/attendance', [EventAttendanceController::class, 'state'])->whereNumber('event')->middleware('role.registrar-or-admin');
-    Route::post('/events/{event}/attendance/session', [EventAttendanceController::class, 'open'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:10,1']);
-    Route::post('/events/{event}/attendance/session/close', [EventAttendanceController::class, 'close'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:10,1']);
-    Route::post('/events/{event}/attendance/token', [EventAttendanceController::class, 'token'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:30,1']);
-    Route::post('/events/{event}/attendance/scan', [EventAttendanceController::class, 'scan'])->whereNumber('event')->middleware(['role.student', 'throttle:20,1']);
-    Route::post('/events/{event}/attendance/manual', [EventAttendanceController::class, 'manual'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:30,1']);
-    Route::patch('/events/{event}/attendance/{attendance}', [EventAttendanceController::class, 'correct'])->whereNumber(['event', 'attendance'])->middleware(['role.registrar-or-admin', 'step-up', 'throttle:30,1']);
-    Route::get('/events/options', [EventController::class, 'options'])->middleware('role.registrar-or-admin');
-    Route::post('/events', [EventController::class, 'store'])->middleware(['role.registrar-or-admin', 'throttle:20,1']);
-    Route::get('/events/{event}', [EventController::class, 'show'])->whereNumber('event');
-    Route::put('/events/{event}', [EventController::class, 'update'])->whereNumber('event')->middleware(['role.registrar-or-admin', 'throttle:30,1']);
-    Route::post('/events/{event}/{action}', [EventController::class, 'transition'])->whereNumber('event')->whereIn('action', ['publish', 'cancel', 'archive'])->middleware(['role.registrar-or-admin', 'throttle:30,1']);
+    Route::middleware('event.platform:promotion')->group(function (): void {
+        Route::get('/event-promotions', [EventPromotionController::class, 'index'])->middleware('throttle:60,1');
+        Route::get('/event-promotions/{event}', [EventPromotionController::class, 'show'])->whereNumber('event')->middleware('throttle:60,1');
+    });
+    Route::prefix('grading')->group(function (): void {
+        Route::middleware('role.registrar-or-admin')->group(function (): void {
+            Route::get('/periods', [GradingController::class, 'periods']);
+            Route::post('/periods', [GradingController::class, 'storePeriod']);
+            Route::put('/periods/{gradePeriodSchedule}', [GradingController::class, 'updatePeriod']);
+            Route::patch('/periods/{gradePeriodSchedule}/archive', [GradingController::class, 'archivePeriod']);
+            Route::get('/reviews', [GradingController::class, 'reviews']);
+            Route::get('/reviews/{gradeSheet}', [GradingController::class, 'reviewDetail']);
+            Route::post('/reviews/{gradeSheet}/{action}', [GradingController::class, 'review'])->whereIn('action', ['approve', 'return'])->middleware('step-up:staff');
+            Route::get('/releases', [GradingController::class, 'releases']);
+            Route::post('/releases', [GradingController::class, 'storeRelease']);
+            Route::put('/releases/{gradeReleaseSchedule}', [GradingController::class, 'updateRelease']);
+            Route::post('/releases/{gradeReleaseSchedule}/execute', [GradingController::class, 'executeRelease'])->middleware('step-up:staff');
+            Route::get('/staff/students/{student}', [GradingExperienceController::class, 'staffStudentGrades']);
+            Route::get('/staff/students/{student}/export', [GradingExperienceController::class, 'staffStudentExport'])->middleware('throttle:20,1');
+            Route::get('/staff/sheets/{gradeSheet}/export', [GradingExperienceController::class, 'classExport'])->middleware('throttle:20,1');
+        });
+        Route::middleware('role.professor')->group(function (): void {
+            Route::get('/classes', [GradingController::class, 'classes']);
+            Route::post('/classes/{sectionSubject}/workspace', [GradingController::class, 'workspace']);
+            Route::post('/sheets/{gradeSheet}/assessments', [GradingController::class, 'storeAssessment']);
+            Route::put('/sheets/{gradeSheet}/assessments/{gradeAssessment}', [GradingController::class, 'updateAssessment']);
+            Route::patch('/sheets/{gradeSheet}/assessments/{gradeAssessment}/status', [GradingController::class, 'assessmentStatus']);
+            Route::put('/sheets/{gradeSheet}/scores', [GradingController::class, 'scores']);
+            Route::put('/sheets/{gradeSheet}/weights/{period}', [GradingController::class, 'weights']);
+            Route::put('/sheets/{gradeSheet}/final-weights', [GradingController::class, 'finalWeights']);
+            Route::get('/sheets/{gradeSheet}/readiness', [GradingController::class, 'readiness']);
+            Route::post('/sheets/{gradeSheet}/submit', [GradingController::class, 'submit']);
+            Route::get('/professor/conversations', [GradingExperienceController::class, 'professorConversations']);
+        });
+        Route::middleware('role.student')->group(function (): void {
+            Route::get('/student/grades', [GradingExperienceController::class, 'studentGrades']);
+            Route::get('/student/grades/export', [GradingExperienceController::class, 'studentExport'])->middleware('throttle:20,1');
+            Route::post('/student/grades/{gradeSheet}/conversation', [GradingExperienceController::class, 'createConversation'])->middleware('throttle:30,1');
+        });
+        Route::get('/conversations/{gradeConversation}', [GradingExperienceController::class, 'conversation']);
+        Route::post('/conversations/{gradeConversation}/messages', [GradingExperienceController::class, 'sendMessage'])->middleware('throttle:30,1');
+        Route::delete('/messages/{gradeMessage}', [GradingExperienceController::class, 'unsendMessage'])->middleware('throttle:30,1');
+        Route::get('/messages/{gradeMessage}/attachment', [GradingExperienceController::class, 'attachment'])->middleware('throttle:60,1');
+    });
+    Route::middleware('event.platform')->group(function (): void {
+        Route::get('/events', [EventController::class, 'index']);
+        Route::get('/events/{event}', [EventController::class, 'show'])->whereNumber('event');
+        Route::get('/events/{event}/attendance', [EventAttendanceController::class, 'state'])->whereNumber('event');
+        Route::post('/events/{event}/attendance/manual', [EventAttendanceController::class, 'manual'])->whereNumber('event')->middleware('throttle:30,1');
+    });
+    Route::middleware('event.platform:mobile')->group(function (): void {
+        Route::post('/events/{event}/attendance/scan', [EventAttendanceController::class, 'scan'])->whereNumber('event')->middleware(['role.student', 'throttle:20,1']);
+        Route::post('/events/{event}/attendance/participant-qr', [EventAttendanceController::class, 'participantQr'])->whereNumber('event')->middleware(['role.student', 'throttle:30,1']);
+        Route::post('/events/{event}/attendance/operator-scan', [EventAttendanceController::class, 'operatorScan'])->whereNumber('event')->middleware('throttle:30,1');
+    });
+    Route::middleware('event.platform:desktop')->group(function (): void {
+        Route::get('/event-reports', [EventReportController::class, 'index']);
+        Route::get('/event-reports/{event}', [EventReportController::class, 'show'])->whereNumber('event');
+        Route::get('/event-reports/{event}/export', [EventReportController::class, 'export'])->whereNumber('event')->middleware('throttle:10,1');
+        Route::post('/events/{event}/attendance/session', [EventAttendanceController::class, 'open'])->whereNumber('event')->middleware('throttle:10,1');
+        Route::post('/events/{event}/attendance/session/close', [EventAttendanceController::class, 'close'])->whereNumber('event')->middleware('throttle:10,1');
+        Route::post('/events/{event}/attendance/token', [EventAttendanceController::class, 'token'])->whereNumber('event')->middleware('throttle:30,1');
+        Route::patch('/events/{event}/attendance/{attendance}', [EventAttendanceController::class, 'correct'])->whereNumber(['event', 'attendance'])->middleware(['step-up:staff', 'throttle:30,1']);
+        Route::get('/events/options', [EventController::class, 'options']);
+        Route::post('/events', [EventController::class, 'store'])->middleware('throttle:20,1');
+        Route::put('/events/{event}', [EventController::class, 'update'])->whereNumber('event')->middleware('throttle:30,1');
+        Route::post('/events/{event}/{action}', [EventController::class, 'transition'])->whereNumber('event')->whereIn('action', ['publish', 'cancel', 'archive'])->middleware('throttle:30,1');
+        Route::get('/events/{event}/personnel', [EventPersonnelController::class, 'index'])->whereNumber('event');
+        Route::post('/events/{event}/personnel', [EventPersonnelController::class, 'store'])->whereNumber('event')->middleware('throttle:30,1');
+        Route::put('/events/{event}/personnel/{assignment}', [EventPersonnelController::class, 'update'])->whereNumber(['event', 'assignment'])->middleware('throttle:30,1');
+        Route::post('/events/{event}/personnel/{assignment}/revoke', [EventPersonnelController::class, 'revoke'])->whereNumber(['event', 'assignment'])->middleware('throttle:30,1');
+    });
     Route::get('/enrollment/status', EnrollmentStatusController::class);
     Route::get('/enrollment/eligibility', EnrollmentStatusController::class);
     Route::prefix('enrollment')->middleware(EnrollmentBoundary::class)->controller(EnrollmentWorkflowController::class)->group(function (): void {
@@ -88,6 +152,7 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         ->middleware('throttle:5,1');
 
     Route::middleware('role.monitoring')->group(function (): void {
+        Route::get('/monitoring/overview', [MonitoringController::class, 'earlyWarnings']);
         Route::get('/monitoring/early-warnings', [MonitoringController::class, 'earlyWarnings']);
         Route::get('/monitoring/my-risk', [MonitoringController::class, 'myRisk']);
         Route::post('/monitoring/students/{student}/support-plan', [MonitoringController::class, 'supportPlan']);
@@ -96,7 +161,7 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::get('/monitoring/adviser-alerts', [MonitoringController::class, 'adviserAlerts']);
         Route::get('/monitoring/ai-status', [MonitoringController::class, 'aiStatus']);
         Route::post('/monitoring/students/{student}/ai-help', [MonitoringController::class, 'aiHelp'])->middleware('throttle:10,1');
-        Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification']);
+        Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification'])->middleware('throttle:10,1');
         Route::get('/monitoring/my-risk-notifications', [MonitoringController::class, 'myRiskNotifications']);
         Route::patch('/monitoring/risk-notifications/{notification}/read', [MonitoringController::class, 'markRiskNotificationRead']);
     });

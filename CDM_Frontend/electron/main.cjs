@@ -1,5 +1,25 @@
 const { app, BrowserWindow, shell } = require('electron')
 const path = require('path')
+const { pathToFileURL } = require('url')
+
+const appEntryUrl = pathToFileURL(path.join(__dirname, '../dist/index.html')).toString()
+const isAppUrl = (url) => {
+  try {
+    const target = new URL(url)
+    const entry = new URL(appEntryUrl)
+    return target.protocol === 'file:' && target.pathname === entry.pathname
+  } catch {
+    return false
+  }
+}
+const openExternalHttpUrl = (url) => {
+  try {
+    const protocol = new URL(url).protocol
+    if (protocol === 'https:' || protocol === 'http:') shell.openExternal(url)
+  } catch {
+    // Ignore malformed and unsupported external URLs.
+  }
+}
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -16,11 +36,18 @@ const createWindow = () => {
     },
   })
 
-  mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+  mainWindow.loadURL(appEntryUrl)
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    openExternalHttpUrl(url)
     return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (isAppUrl(url)) return
+
+    event.preventDefault()
+    openExternalHttpUrl(url)
   })
 }
 

@@ -3,6 +3,7 @@
 namespace App\Services\Event;
 
 use App\Models\Event;
+use App\Models\EventRoleAssignment;
 use App\Models\Role;
 use App\Models\Student;
 use App\Models\User;
@@ -10,17 +11,40 @@ use Illuminate\Database\Eloquent\Builder;
 
 class EventAudienceResolver
 {
+    public function __construct(private readonly EventAuthorizationService $authorization) {}
+
     public function visibleTo(Builder $query, User $user): Builder
     {
         $role = $user->role?->role_name;
         if (in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true)) {
-            return $query;
+            if ($this->authorization->isCoordinator($user)) {
+                return $query;
+            }
+
+            return $query->where(function (Builder $events) use ($user): void {
+                $events->whereHas('roleAssignments', fn (Builder $assignment) => $assignment->granting()
+                    ->where('user_id', $user->id)
+                    ->where('responsibility', EventRoleAssignment::SEMI_COORDINATOR))
+                    ->orWhereHas('parent.roleAssignments', fn (Builder $assignment) => $assignment->granting()
+                        ->where('user_id', $user->id)
+                        ->where('responsibility', EventRoleAssignment::SEMI_COORDINATOR));
+            });
         }
 
         $query->where('status', 'published');
+        $assigned = fn (Builder $events) => $events
+            ->where('ends_at', '>', now())
+            ->where(function (Builder $scope) use ($user): void {
+                $scope->whereHas('roleAssignments', fn (Builder $assignment) => $assignment->granting()->where('user_id', $user->id))
+                    ->orWhereHas('parent.roleAssignments', fn (Builder $assignment) => $assignment->granting()->where('user_id', $user->id));
+            });
         if ($role === Role::PROFESSOR) {
-            return $query->whereHas('audiences', fn (Builder $audiences) => $audiences
-                ->whereIn('audience_type', ['all_professors', 'all_users']));
+            return $query->where(function (Builder $events) use ($assigned): void {
+                $matches = fn (Builder $audiences) => $audiences->whereIn('audience_type', ['all_professors', 'all_users']);
+                $events->whereHas('audiences', $matches)
+                    ->orWhere(fn (Builder $inherited) => $inherited->whereDoesntHave('audiences')->whereHas('parent.audiences', $matches))
+                    ->orWhere($assigned);
+            });
         }
         if ($role !== Role::STUDENT || ! $user->student) {
             return $query->whereRaw('1 = 0');
@@ -39,7 +63,7 @@ class EventAudienceResolver
             ->whereHas('section')->with('section:id,year_level')->get()
             ->pluck('section.year_level')->filter()->unique();
 
-        return $query->whereHas('audiences', function (Builder $audiences) use ($student, $sectionIds, $yearLevels): void {
+        $matches = function (Builder $audiences) use ($student, $sectionIds, $yearLevels): void {
             $audiences->whereIn('audience_type', ['all_students', 'all_users'])
                 ->orWhere(fn (Builder $q) => $q->where('audience_type', 'course')->where('course_id', $student->course_id));
             if ($yearLevels->isNotEmpty()) {
@@ -48,6 +72,12 @@ class EventAudienceResolver
             if ($sectionIds->isNotEmpty()) {
                 $audiences->orWhere(fn (Builder $q) => $q->where('audience_type', 'section')->whereIn('section_id', $sectionIds));
             }
+        };
+
+        return $query->where(function (Builder $events) use ($matches, $assigned): void {
+            $events->whereHas('audiences', $matches)
+                ->orWhere(fn (Builder $inherited) => $inherited->whereDoesntHave('audiences')->whereHas('parent.audiences', $matches))
+                ->orWhere($assigned);
         });
     }
 
@@ -58,11 +88,12 @@ class EventAudienceResolver
 
     public function eligibleStudents(Event $event): Builder
     {
-        $event->loadMissing('audiences');
-        $types = $event->audiences->pluck('audience_type');
-        $courseIds = $event->audiences->where('audience_type', 'course')->pluck('course_id')->filter();
-        $yearLevels = $event->audiences->where('audience_type', 'year_level')->pluck('year_level')->filter();
-        $sectionIds = $event->audiences->where('audience_type', 'section')->pluck('section_id')->filter();
+        $event->loadMissing(['audiences', 'parent.audiences']);
+        $audiences = $event->audiences->isNotEmpty() ? $event->audiences : ($event->parent?->audiences ?? collect());
+        $types = $audiences->pluck('audience_type');
+        $courseIds = $audiences->where('audience_type', 'course')->pluck('course_id')->filter();
+        $yearLevels = $audiences->where('audience_type', 'year_level')->pluck('year_level')->filter();
+        $sectionIds = $audiences->where('audience_type', 'section')->pluck('section_id')->filter();
 
         return Student::query()->whereHas('user', fn (Builder $query) => $query->where('status', 'active'))
             ->where(function (Builder $query) use ($types, $courseIds, $yearLevels, $sectionIds): void {

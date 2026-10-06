@@ -22,7 +22,7 @@ class EnsureMonitoringAccessTest extends TestCase
     }
 
     #[DataProvider('deniedRoles')]
-    public function test_guest_and_admin_cannot_enter_monitoring(string $roleName): void
+    public function test_guest_cannot_enter_monitoring(string $roleName): void
     {
         try {
             $this->runMiddleware($roleName);
@@ -34,17 +34,33 @@ class EnsureMonitoringAccessTest extends TestCase
 
     public static function allowedRoles(): array
     {
-        return [[Role::STUDENT], [Role::PROFESSOR], [Role::REGISTRAR_STAFF]];
+        return [[Role::STUDENT], [Role::PROFESSOR], [Role::REGISTRAR_STAFF], [Role::ADMIN]];
     }
 
     public static function deniedRoles(): array
     {
-        return [[Role::GUEST], [Role::ADMIN]];
+        return [[Role::GUEST]];
     }
 
-    private function runMiddleware(string $roleName): Response
+    #[DataProvider('blockedStatuses')]
+    public function test_inactive_accounts_cannot_enter_monitoring(string $status): void
     {
-        $user = new User;
+        try {
+            $this->runMiddleware(Role::REGISTRAR_STAFF, $status);
+            $this->fail('Expected inactive monitoring access to be denied.');
+        } catch (HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
+    }
+
+    public static function blockedStatuses(): array
+    {
+        return [['inactive'], ['suspended']];
+    }
+
+    private function runMiddleware(string $roleName, string $status = 'active'): Response
+    {
+        $user = new User(['status' => $status]);
         $user->setRelation('role', new Role(['role_name' => $roleName]));
         $request = Request::create('/api/monitoring/early-warnings');
         $request->setUserResolver(fn () => $user);

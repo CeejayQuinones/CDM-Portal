@@ -46,6 +46,7 @@
   "build": {
     "appId": "edu.cdm.portal",
     "productName": "CDM Portal",
+    "beforeBuild": "electron/before-build.cjs",
     "directories": {
       "buildResources": "build",
       "output": "release"
