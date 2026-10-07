@@ -1,0 +1,406 @@
+.grading-page{padding:clamp(1rem,2vw,2rem);color:var(--text-primary);min-width:0}.grading-hero,.grading-summary,.grading-toolbar,.grading-window,.grading-table-wrap,.grading-class-card,.grading-state{background:var(--bg-surface);border:1px solid var(--border-color);border-radius:16px;box-shadow:var(--shadow-soft)}.grading-hero{display:flex;justify-content:space-between;gap:1rem;padding:1.5rem;margin-bottom:1rem}.grading-hero h1{margin:.2rem 0;font-size:clamp(1.5rem,3vw,2.25rem)}.grading-hero p{margin:0;color:var(--text-secondary)}.grading-eyebrow{text-transform:uppercase;letter-spacing:.12em;font-weight:800;font-size:.72rem;color:var(--accent)!important}.grading-button,.grading-page button{cursor:pointer}.grading-button{border:0;border-radius:10px;padding:.75rem 1rem;font-weight:700}.grading-button.primary{background:var(--accent);color:var(--text-on-accent)}.grading-alert{padding:.8rem 1rem;border:1px solid transparent;border-radius:10px}.grading-alert.error{background:var(--danger-bg);border-color:color-mix(in srgb,var(--danger) 38%,var(--border-color));color:var(--danger)}.grading-alert.success{background:var(--success-bg);border-color:color-mix(in srgb,var(--success) 38%,var(--border-color));color:var(--success)}.grading-state{padding:3rem;text-align:center;display:grid;gap:.4rem}.grading-state span,.grading-page small{display:block;color:var(--text-secondary)}.grading-class-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}.grading-class-card{text-align:left;padding:1.2rem;display:grid;gap:.5rem;color:inherit}.grading-class-card div{display:flex;gap:.5rem;flex-wrap:wrap}.grading-page em{font-style:normal;border-radius:999px;padding:.25rem .55rem;background:var(--bg-surface-alt);font-size:.78rem}.grading-page em[data-state=Open]{background:var(--success-bg);color:var(--success)}.grading-page em[data-state=Closed]{background:var(--danger-bg);color:var(--danger)}.grading-page em[data-state=Upcoming]{background:var(--warning-bg);color:var(--warning)}.grading-toolbar{display:flex;align-items:end;justify-content:space-between;gap:1rem;padding:1rem;margin:1rem 0}.grading-toolbar label{flex:1}.grading-page label{display:grid;gap:.35rem;font-weight:700;font-size:.85rem}.grading-page input,.grading-page select{border:1px solid var(--border-color);background:var(--bg-input);color:var(--text-primary);border-radius:9px;padding:.68rem}.grading-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;padding:1rem}.grading-summary div{display:grid;gap:.2rem}.grading-tabs{display:flex;gap:.5rem;margin:1rem 0}.grading-tabs button{border:0;border-radius:999px;padding:.65rem 1rem;background:var(--bg-surface-alt);color:var(--text-secondary)}.grading-tabs .active{background:var(--accent);color:var(--text-on-accent)}.grading-window{padding:1rem;display:flex;justify-content:space-between;text-transform:capitalize}.grading-table-wrap{overflow:auto}.grading-table-wrap table{width:100%;border-collapse:separate;border-spacing:0;min-width:720px}.grading-table-wrap th,.grading-table-wrap td{padding:.75rem;border-bottom:1px solid var(--border-color);text-align:left;background:var(--bg-surface);color:var(--text-primary)}.grading-table-wrap th{background:var(--bg-surface-alt);color:var(--text-secondary);font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}.grading-table-wrap th button{display:block;margin-top:.25rem;border:0;background:transparent;color:var(--accent)}.grading-table-wrap td input{width:6rem}.grading-table-wrap .sticky{position:sticky;z-index:2}.grading-table-wrap .number{left:0;min-width:44px}.grading-table-wrap .identity{left:44px;min-width:210px}.grading-save-list{display:flex;gap:.4rem;flex-wrap:wrap}.grading-save-list button{border:0;border-radius:8px;background:var(--accent);color:var(--text-on-accent);padding:.55rem}.grading-back{border:0;background:transparent;color:var(--accent);font-weight:700;margin-bottom:1rem}.grading-modal-backdrop{position:fixed;inset:0;z-index:1000;background:#0f172acc;display:grid;place-items:center;padding:1rem}.grading-modal{width:min(640px,100%);max-height:90vh;overflow:auto;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border-color);border-radius:16px;padding:1.25rem;box-shadow:var(--shadow-raised)}.grading-modal header,.grading-modal footer{display:flex;justify-content:space-between;gap:.75rem}.grading-modal header button{border:0;background:transparent;color:var(--text-primary);font-size:1.6rem}.grading-modal form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.grading-modal footer{grid-column:1/-1;justify-content:flex-end;margin-top:.5rem}.grading-modal footer button{padding:.7rem 1rem;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-surface-alt);color:var(--text-primary)}
+@media(max-width:700px){.grading-hero,.grading-toolbar,.grading-window{align-items:stretch;flex-direction:column}.grading-modal form{grid-template-columns:1fr}.grading-table-wrap .identity,.grading-table-wrap .number{position:static}}
+.grading-weights{display:flex;align-items:end;gap:.75rem;flex-wrap:wrap;padding:1rem}.grading-weights label{width:9rem}.grading-weights button{padding:.7rem;border-radius:9px;border:1px solid var(--border-color)}
+.grading-readiness,.grading-release-form,.grading-review-filters{background:var(--bg-surface);border:1px solid var(--border-color);border-radius:16px;padding:1rem;margin:1rem 0}.grading-readiness{display:flex;justify-content:space-between;gap:1rem}.grading-readiness ul{margin:.5rem 0 0;padding-left:1.25rem;color:var(--danger)}.grading-final-weights{display:flex;align-items:end;gap:.6rem;flex-wrap:wrap}.grading-final-weights label{width:7rem}.grading-review-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:.75rem;align-items:end}.grading-release-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.grading-release-form h2,.grading-release-form fieldset{grid-column:1/-1}.grading-release-form fieldset{border:1px solid var(--border-color);border-radius:10px;display:grid;gap:.5rem}.grading-release-form fieldset label{display:flex;align-items:center;gap:.5rem}.grading-release-form fieldset input{width:auto}.grading-review-detail{display:grid;gap:1rem}.grading-review-detail textarea{background:var(--bg-surface);border:1px solid var(--border-color);border-radius:9px;color:inherit;padding:.7rem}.grading-status{text-transform:capitalize}
+@media(max-width:700px){.grading-readiness{flex-direction:column}.grading-release-form{grid-template-columns:1fr}.grading-release-form h2,.grading-release-form fieldset{grid-column:1}}
+.grading-alert.warning{background:var(--warning-bg);color:var(--warning)}.student-grade-summary span{color:var(--text-secondary);font-size:.82rem}.student-term-filter{grid-template-columns:repeat(2,minmax(160px,240px)) auto;justify-content:start}.grade-unread{display:inline-grid;place-items:center;min-width:1.35rem;height:1.35rem;padding:0 .35rem;border-radius:999px;background:var(--accent);color:var(--text-on-accent);font-size:.72rem}.grade-message-modal{width:min(820px,100%);position:relative}.grade-chat-close{position:absolute;right:1rem;top:.7rem;border:0;background:transparent;font-size:1.7rem;z-index:2}.grade-chat{display:grid;gap:1rem;min-width:0}.grade-chat header{padding-right:2rem}.grade-chat header div{display:grid;gap:.2rem}.grade-chat header span{color:var(--text-secondary)}.grade-chat-history{display:flex;flex-direction:column;gap:.75rem;max-height:55vh;overflow:auto;padding:.75rem;background:var(--bg-surface-alt);border-radius:12px}.grade-chat-empty{text-align:center;color:var(--text-secondary)}.grade-chat-bubble{align-self:flex-start;width:min(78%,560px);padding:.75rem;border-radius:14px;background:var(--bg-surface);border:1px solid var(--border-color);display:grid;gap:.35rem}.grade-chat-bubble.mine{align-self:flex-end;background:var(--bg-hover)}.grade-chat-bubble.unsent{opacity:.7;font-style:italic}.grade-chat-bubble p{margin:0;white-space:pre-wrap}.grade-chat-bubble img{display:block;max-width:min(100%,420px);max-height:320px;object-fit:contain;border-radius:10px}.grade-chat-bubble small{color:var(--text-secondary)}.grade-chat-bubble button{justify-self:start;border:0;background:transparent;color:var(--accent);padding:0}.grade-chat-composer{display:grid!important;grid-template-columns:1fr minmax(180px,.5fr)!important;gap:.75rem}.grade-chat-composer button{align-self:end}.grade-chat-file small{font-weight:400;color:var(--text-secondary)}.grade-message-layout{display:grid;grid-template-columns:minmax(230px,.36fr) 1fr;gap:1rem}.grade-conversation-list{display:flex;flex-direction:column;gap:.5rem;max-height:70vh;overflow:auto}.grade-conversation-list button{position:relative;text-align:left;padding:.8rem;border:1px solid var(--border-color);background:var(--bg-surface);color:inherit;border-radius:10px;display:grid;gap:.25rem}.grade-conversation-list button.active{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}.grade-conversation-list span,.grade-conversation-list small{color:var(--text-secondary)}.grade-conversation-list .grade-unread{position:absolute;right:.6rem;top:.6rem;color:var(--text-on-accent)}.professor-grade-messages{margin-top:1rem}
+@media(max-width:760px){.student-term-filter{grid-template-columns:1fr}.grade-message-layout{grid-template-columns:1fr}.grade-chat-composer{grid-template-columns:1fr!important}.grade-chat-bubble{width:90%}.student-grade-table table,.student-grade-table tbody,.student-grade-table tr,.student-grade-table td{display:block;min-width:0}.student-grade-table thead{display:none}.student-grade-table tr{border-bottom:1px solid var(--border-color);padding:.75rem}.student-grade-table td{border:0!important;padding:.4rem .5rem!important;display:grid!important;grid-template-columns:8rem 1fr;gap:.5rem}.student-grade-table td::before{content:attr(data-label);font-weight:800;color:var(--text-secondary)}}
+
+/* Portal semantic-theme alignment for Student grades and staff grade history. */
+.student-grades .grading-hero,
+.grade-history-page .grading-hero {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--bg-surface)), var(--bg-surface));
+}
+
+.grading-summary {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.grading-summary > div {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  min-height: 104px;
+  padding: 1rem;
+}
+
+.grading-summary small {
+  color: var(--text-muted);
+  font-size: .73rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.grading-summary strong {
+  color: var(--text-primary);
+  font-size: 1.35rem;
+}
+
+.grading-review-filters,
+.grading-readiness,
+.grading-release-form {
+  background: var(--bg-surface);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-soft);
+}
+
+.grading-button.secondary,
+.grade-history-pagination button {
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.grading-alert.warning {
+  background: var(--warning-bg);
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--border-color));
+  color: var(--warning);
+}
+
+.student-grade-table tbody tr:hover td,
+.grade-history-directory-table tbody tr:hover td,
+.grade-history-detail-table tbody tr:hover td {
+  background: var(--bg-hover);
+}
+
+.student-grade-table td:last-child button,
+.grade-history-open {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface-alt));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-color));
+  border-radius: 8px;
+  color: var(--accent);
+  font-weight: 750;
+  padding: .55rem .7rem;
+}
+
+.grade-unread {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.grade-chat-close {
+  color: var(--text-primary);
+}
+
+.grade-chat-history {
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-color);
+}
+
+.grade-chat-bubble {
+  background: var(--bg-surface);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-soft);
+}
+
+.grade-chat-bubble.mine {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border-color));
+}
+
+.grade-chat-bubble button,
+.grade-conversation-list button.active {
+  color: var(--accent);
+}
+
+.grade-conversation-list button {
+  background: var(--bg-surface);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.grading-skeleton {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.grading-skeleton-summary {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.grading-skeleton-summary span,
+.grading-skeleton-line {
+  animation: grading-skeleton-pulse 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, var(--skeleton-base), var(--skeleton-highlight), var(--skeleton-base));
+  background-size: 200% 100%;
+  border-radius: 12px;
+  display: block;
+  min-height: 94px;
+}
+
+.grading-skeleton-line {
+  min-height: 58px;
+}
+
+.grading-skeleton-line.wide {
+  min-height: 74px;
+}
+
+@keyframes grading-skeleton-pulse {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.grade-history-directory,
+.grade-history-student-heading {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+}
+
+.grade-history-directory > header {
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 1rem;
+}
+
+.grade-history-directory .grading-table-wrap {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.grade-history-directory-filters {
+  grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(145px, 1fr)) auto;
+}
+
+.grade-history-filter-actions {
+  display: flex;
+  gap: .5rem;
+}
+
+.grade-history-pagination {
+  align-items: center;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.grade-history-pagination button {
+  border-radius: 8px;
+  padding: .55rem .8rem;
+}
+
+.grade-history-student-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding: 1.2rem;
+}
+
+.grade-history-student-heading h2,
+.grade-history-student-heading p {
+  margin: .2rem 0;
+}
+
+.grade-history-student-heading p:last-child {
+  color: var(--text-secondary);
+}
+
+.grade-history-summary {
+  margin-bottom: 1rem;
+}
+
+.grade-history-detail-table table {
+  min-width: 1160px;
+}
+
+@media(max-width:1100px) {
+  .grade-history-directory-filters {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+}
+
+@media(max-width:760px) {
+  .grading-skeleton-summary,
+  .grade-history-directory-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .grading-skeleton-summary span {
+    min-height: 72px;
+  }
+
+  .grade-history-student-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
+/* One semantic control and modal treatment across Student, Professor, and staff grading. */
+.grading-page :is(input, select, textarea) {
+  background: var(--bg-input);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  caret-color: var(--text-primary);
+}
+
+.grading-page select option {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.grading-page :is(input, textarea)::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.grading-page :is(input, select, textarea):focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+  outline: none;
+}
+
+.grading-page :is(input, select, textarea, button):disabled {
+  color: var(--text-muted);
+  opacity: .66;
+}
+
+.grading-page button:not(.grading-button, .grading-back, .grade-chat-close) {
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: .5rem .7rem;
+}
+
+.grading-page button:not(.grading-button, .grading-back, .grade-chat-close):hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.grading-tabs .active {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--text-on-accent) !important;
+}
+
+.grading-class-card {
+  background: var(--surface-1) !important;
+  border-color: var(--border-color) !important;
+}
+
+.grading-class-card:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--accent) !important;
+}
+
+.grading-table-wrap th button,
+.grade-chat-bubble button {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--accent) !important;
+  padding: 0 !important;
+}
+
+.student-grade-table td:last-child button,
+.grade-history-open {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2)) !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-color)) !important;
+  color: var(--accent) !important;
+  padding: .55rem .7rem !important;
+}
+
+.grading-readiness ul {
+  color: var(--danger);
+}
+
+.grading-field-error {
+  color: var(--danger);
+  display: block;
+  font-size: .8rem;
+  margin-top: .25rem;
+}
+
+.grading-release-form fieldset {
+  background: var(--surface-2);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.grading-modal {
+  background: var(--surface-1);
+  border-color: var(--border-strong);
+}
+
+.grading-modal > header {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-color);
+  margin: -1.25rem -1.25rem 1.25rem;
+  padding: 1rem 1.25rem;
+}
+
+.grading-modal > header button,
+.grade-chat-close {
+  background: var(--surface-3) !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text-secondary) !important;
+}
+
+.grade-chat-close {
+  align-items: center;
+  border-radius: 50%;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  padding: 0;
+  width: 36px;
+}
+
+.grading-review-detail footer,
+.grading-modal form > footer {
+  background: var(--surface-2);
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+}
+
+.grading-toolbar,
+.grading-window,
+.grading-state,
+.grading-readiness,
+.grading-release-form,
+.grading-review-filters,
+.grade-history-directory,
+.grade-history-student-heading {
+  color: var(--text-primary);
+}
+
+.grading-page em[data-state='approved'],
+.grading-page em[data-state='published'],
+.grading-page em[data-state='open'] {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.grading-page em[data-state='returned'],
+.grading-page em[data-state='closed'] {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.grading-page em[data-state='submitted'],
+.grading-page em[data-state='scheduled'],
+.grading-page em[data-state='upcoming'] {
+  background: var(--warning-bg);
+  color: var(--warning);
+}

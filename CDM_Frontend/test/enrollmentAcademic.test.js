@@ -78,6 +78,7 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
     const subject={id:10,subject_code:'CS101',subject_name:'Programming',units:3,lecture_hours:3,laboratory_hours:0,completed:false,prerequisite_met:true}
     const section={id:1,section_name:'CS-1A',course:{course_name:'Computing'},...period,course_id:1,academic_year_id:1,semester_id:1,year_level:1,capacity:30,enrolled_count:1,reserved_count:0,status:'open',version:1}
     const professor={id:1,employee_number:'P-001',user:{profile:{first_name:'Test',last_name:'Professor'}}}
+    const replacementProfessor={id:2,employee_number:'P-002',user:{profile:{first_name:'Replacement',last_name:'Professor'}}}
     const schedule={id:1,section_id:1,subject_id:10,professor_id:1,subject,professor,day:'Monday',start_time:'09:00:00',end_time:'10:00:00',room:'Lab 1',version:1}
     const academicRecord={id:42,student_number:'26-ACADEMIC',name:'Academic Student',course:'Computing',year_level:1,academic_year:'2026–2027',semester:'First',section:'CS-1A',enrollment_date:'2026-09-27',subjects:[{...subject,schedule}],total_units:3}
     const recordRow={...period,id:42,status:'enrolled',section,student:{student_number:'26-ACADEMIC',user_profile:{first_name:'Academic',last_name:'Student'},course:section.course},application:{classification:'regular'}}
@@ -88,12 +89,13 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
       if(url==='/enrollment/applications/mine')return response(pagination([application()]))
       if(url==='/enrollment/academic/applications/1')return response({application:application(),load:{candidates:[subject],standard_subject_ids:[10],selected_subject_ids:selected},sections:pagination([section])})
       if(url==='/enrollment/academic/applications/1/subjects'){selected=payload.subject_ids;return response(application())}
-      if(url==='/enrollment/academic/options')return response({courses:[{id:1,course_name:'Computing',years:4}],academic_years:[period.academic_year],semesters:[period.semester],professors:pagination([professor])})
+      if(url==='/enrollment/academic/options')return response({courses:[{id:1,course_name:'Computing',years:4}],academic_years:[period.academic_year],semesters:[period.semester],professors:pagination([professor,replacementProfessor])})
       if(url==='/enrollment/academic/sections')return response(method==='post'?section:pagination([section]))
       if(url==='/enrollment/academic/schedules'){
         if(method==='post'){if(conflict)throw {response:{status:409,data:{message:'Schedule overlaps an existing section, Professor or room meeting.'}}};return response(schedule)}
         return response({section,schedules:pagination([schedule]),subjects:[subject],days:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']})
       }
+      if(url==='/enrollment/academic/schedules/1'&&method==='put')return response({...schedule,...payload,professor:replacementProfessor,version:2})
       if(url==='/enrollment/academic/records')return response(pagination([recordRow]))
       if(url==='/enrollment/academic/records/42')return response(academicRecord)
       if(url==='/enrollment/academic/professor')return response(pagination([{...section,schedules:[schedule]}]))
@@ -128,6 +130,10 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
     await t.test('scheduling supports views, copy and safe server conflict feedback',async()=>{
       auth.currentRole=ROLES.REGISTRAR_STAFF;apiState.handler=handler;await router.push('/enrollment/scheduling');const {root,app}=mount()
       try{await settle();const selector=all(root,'select').find(n=>n.props.onChange);await model(selector,1);await selector.props.onChange();await settle();assert.match(textOf(root),/Programming/);await click(root,'Timetable');assert.match(textOf(root),/Monday/);await click(root,'List');assert.match(textOf(root),/Room \/ Professor/);await click(root,'Copy');const form=all(root,'form').at(-1);assert.match(textOf(form),/copy destination/);conflict=true;await form.props.onSubmit({preventDefault(){}});await settle();assert.match(textOf(root),/Schedule overlaps/)}finally{conflict=false;app.unmount()}
+    })
+    await t.test('Professor reassignment requires explicit confirmation',async()=>{
+      auth.currentRole=ROLES.REGISTRAR_STAFF;apiState.handler=handler;apiState.calls=[];await router.push('/enrollment/scheduling');const {root,app}=mount()
+      try{await settle();const selector=all(root,'select').find(n=>n.props.onChange);await model(selector,1);await selector.props.onChange();await settle();await click(root,'Edit');const form=all(root,'form').at(-1);await model(field(form,'Professor','select'),2);await form.props.onSubmit({preventDefault(){}});await settle();assert.match(textOf(root),/Reassign this teaching assignment/);assert.equal(apiState.calls.some(c=>c.method==='put'),false);await click(root,'Confirm reassignment');assert.equal(apiState.calls.find(c=>c.method==='put').payload.professor_id,2)}finally{app.unmount()}
     })
     await t.test('Scheduling explains missing curriculum subjects without inventing options',async()=>{
       auth.currentRole=ROLES.REGISTRAR_STAFF;await router.push('/enrollment/scheduling')

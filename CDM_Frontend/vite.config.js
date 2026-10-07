@@ -1,20 +1,41 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig({
-  base: './',
+export const clientPlatformForMode = (mode) => {
+  if (mode === 'desktop') return 'desktop'
+  if (mode === 'mobile' || mode === 'demo-mobile') return 'mobile'
+  return 'web'
+}
 
-  server: {
-    host: '0.0.0.0',
-    allowedHosts: [
-      'achieving-chair-ideal-clients.trycloudflare.com',
-    ],
-  },
+export const apiBaseUrlForMode = (mode, env) => {
+  if (mode === 'desktop') {
+    return env.VITE_DESKTOP_API_BASE_URL || 'http://127.0.0.1:8000/api'
+  }
 
-  plugins: [
-    vue(),
-    VitePWA({
+  return env.VITE_API_BASE_URL
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
+  const apiBaseUrl = apiBaseUrlForMode(mode, env)
+
+  return {
+    base: './',
+
+    define: {
+      'import.meta.env.VITE_CDM_CLIENT': JSON.stringify(clientPlatformForMode(mode)),
+      ...(apiBaseUrl ? { 'import.meta.env.VITE_API_BASE_URL': JSON.stringify(apiBaseUrl) } : {}),
+      ...(mode === 'demo-mobile' ? { 'import.meta.env.VITE_OFFLINE_DEMO': JSON.stringify('true') } : {}),
+    },
+
+    server: {
+      host: '0.0.0.0',
+    },
+
+    plugins: [
+      vue(),
+      VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png'],
       manifest: {
@@ -52,6 +73,7 @@ export default defineConfig({
         navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
       },
-    }),
-  ],
+      }),
+    ],
+  }
 })

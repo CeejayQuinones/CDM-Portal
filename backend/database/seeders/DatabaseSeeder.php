@@ -29,13 +29,17 @@ class DatabaseSeeder extends Seeder
 
             // Personnel
             RegistrarStaffSeeder::class,
-            ProfessorsSeeder::class,
             StudentsSeeder::class,
+            ProfessorsSeeder::class,
 
             // Registrar services
             DocumentTypesSeeder::class,
             StudentDocumentsSeeder::class,
             PhysicalRecordsSeeder::class,
         ]);
+
+        if (app()->environment(['local', 'testing'])) {
+            $this->call(EventRoleTestingSeeder::class);
+        }
     }
 }

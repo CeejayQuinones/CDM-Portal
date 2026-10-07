@@ -44,4 +44,13 @@ return [
         ],
     ],
 
+    'monitoring_ai' => [
+        'enabled' => filter_var(env('MONITORING_AI_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'provider' => env('MONITORING_AI_PROVIDER', 'disabled'),
+        'model' => env('MONITORING_AI_MODEL'),
+        'base_url' => env('MONITORING_AI_BASE_URL'),
+        'api_key' => env('MONITORING_AI_API_KEY'),
+        'timeout' => (int) env('MONITORING_AI_TIMEOUT', 15),
+    ],
+
 ];

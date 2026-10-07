@@ -40,6 +40,7 @@ class RegistrarDocumentRequestController extends Controller
         $request->validate([
             'view' => ['nullable', 'in:work_queues'],
             'status' => ['nullable', Rule::in(self::ACTIVE_STATUSES)],
+            'document_type_id' => ['nullable', 'integer', 'exists:document_types,id'],
             'search' => ['nullable', 'string', 'max:100'],
             'time_filter' => ['nullable', Rule::in(self::TIME_FILTERS)],
             'request_id' => ['nullable', 'integer', 'min:1'],
@@ -57,6 +58,7 @@ class RegistrarDocumentRequestController extends Controller
             ->latest('id');
 
         $this->applySearch($query, $request->input('search'));
+        $this->applyDocumentTypeFilter($query, $request->input('document_type_id'));
         $this->applyExactRequestId($query, $request->input('request_id'));
         $this->applyTimeFilter($query, 'updated_at', $request->input('time_filter'));
 
@@ -85,6 +87,7 @@ class RegistrarDocumentRequestController extends Controller
         $request->validate([
             'request_status' => ['nullable', 'in:completed,cancelled,rejected'],
             'appointment_status' => ['nullable', 'in:cancelled,completed,no_show'],
+            'document_type_id' => ['nullable', 'integer', 'exists:document_types,id'],
             'search' => ['nullable', 'string', 'max:100'],
             'time_filter' => ['nullable', Rule::in(self::TIME_FILTERS)],
             'request_id' => ['nullable', 'integer', 'min:1'],
@@ -117,6 +120,7 @@ class RegistrarDocumentRequestController extends Controller
         }
 
         $this->applySearch($query, $request->input('search'));
+        $this->applyDocumentTypeFilter($query, $request->input('document_type_id'));
         $this->applyExactRequestId($query, $request->input('request_id'));
         $this->applyTimeFilter($query, 'updated_at', $request->input('time_filter'));
 
@@ -144,6 +148,7 @@ class RegistrarDocumentRequestController extends Controller
         }
 
         $this->applyAppointmentSearch($appointments, $request->input('search'));
+        $this->applyAppointmentDocumentTypeFilter($appointments, $request->input('document_type_id'));
         $this->applyExactAppointmentFilters($appointments, $request->input('request_id'), $request->input('appointment_id'));
         $this->applyTimeFilter($appointments, 'updated_at', $request->input('time_filter'));
 
@@ -431,6 +436,23 @@ class RegistrarDocumentRequestController extends Controller
         });
     }
 
+    private function applyDocumentTypeFilter(Builder $query, mixed $documentTypeId): void
+    {
+        if ($documentTypeId !== null && $documentTypeId !== '') {
+            $query->where('document_type_id', (int) $documentTypeId);
+        }
+    }
+
+    private function applyAppointmentDocumentTypeFilter(Builder $query, mixed $documentTypeId): void
+    {
+        if ($documentTypeId !== null && $documentTypeId !== '') {
+            $query->whereHas(
+                'documentRequest',
+                fn (Builder $requests) => $requests->where('document_type_id', (int) $documentTypeId),
+            );
+        }
+    }
+
     private function applyProfileNameSearch(Builder $query, string $search): void
     {
         $terms = preg_split('/\s+/', trim($search)) ?: [];
@@ -657,7 +679,7 @@ class RegistrarDocumentRequestController extends Controller
     {
         return [
             'student:id,user_id,user_profile_id,course_id,student_number,year_level,student_status',
-            'student.userProfile:id,first_name,middle_name,last_name,suffix,profile_photo',
+            'student.userProfile:id,first_name,middle_name,last_name,suffix,email,contact_number,profile_photo',
             'student.course:id,course_code,course_name',
             'student.documents:id,student_id,document_type_id,availability_status,verification_status,remarks,submitted_date',
             'student.documents.documentType:id,document_name',

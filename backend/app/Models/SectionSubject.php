@@ -24,4 +24,9 @@ class SectionSubject extends Model
     {
         return $this->belongsTo(Professor::class);
     }
+
+    public function gradeSheet()
+    {
+        return $this->hasOne(GradeSheet::class);
+    }
 }

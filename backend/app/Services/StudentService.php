@@ -41,6 +41,13 @@ class StudentService
                 });
             })
             ->when($filters['year_level'] ?? null, fn ($query, int $yearLevel) => $query->where('year_level', $yearLevel))
+            ->when($filters['section'] ?? null, function ($query, string $section): void {
+                $query->where(function ($sectionQuery) use ($section): void {
+                    $sectionQuery
+                        ->whereHas('enrollments.section', fn ($relationQuery) => $relationQuery->where('section_name', 'like', "%{$section}%"))
+                        ->orWhereHas('enrollmentApplications.section', fn ($relationQuery) => $relationQuery->where('section_name', 'like', "%{$section}%"));
+                });
+            })
             ->when($filters['student_status'] ?? null, fn ($query, string $status) => $query->where('student_status', $status))
             ->orderBy('student_number')
             ->paginate(15)

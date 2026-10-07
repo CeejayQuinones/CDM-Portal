@@ -1,14 +1,42 @@
 :root {
-  --color-dartmouth-green: #106a2e;
-  --color-dark-spring-green: #0d7856;
+  --bg-page: #f8f9fa;
+  --bg-surface: #ffffff;
+  --bg-surface-alt: #f1f5f2;
+  --bg-surface-raised: #ffffff;
+  --bg-sidebar: #063c26;
+  --bg-input: #ffffff;
+  --bg-hover: rgba(13, 120, 86, 0.1);
+  --bg-header: rgba(255, 255, 255, 0.94);
+  --text-primary: #1f1f1f;
+  --text-secondary: #3f4d44;
+  --text-muted: #5e665f;
+  --border-color: #e8e8e8;
+  --border-strong: #cbd7ce;
+  --accent: #106a2e;
+  --accent-hover: #0d7856;
+  --text-on-accent: #ffffff;
+  --danger: #9c2222;
+  --danger-bg: #fce8e8;
+  --warning: #765300;
+  --warning-bg: #fff4cc;
+  --success: #176b32;
+  --success-bg: #e6f5e7;
+  --color-dartmouth-green: var(--accent);
+  --color-dark-spring-green: var(--accent-hover);
   --color-naples-yellow: #f4d35e;
-  --color-eerie-black: #1f1f1f;
-  --color-anti-flash-white: #f8f9fa;
-  --color-surface: #ffffff;
-  --color-muted: #5e665f;
-  --color-border: #e8e8e8;
-  --color-green-tint: rgba(13, 120, 86, 0.1);
+  --color-eerie-black: var(--text-primary);
+  --color-anti-flash-white: var(--bg-page);
+  --color-surface: var(--bg-surface);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border-color);
+  --color-green-tint: var(--bg-hover);
   --shadow-soft: 0 10px 30px rgba(16, 106, 46, 0.08);
+  --shadow-raised: 0 14px 34px rgba(16, 46, 27, 0.12);
+  --surface-1: var(--bg-surface);
+  --surface-2: var(--bg-surface-alt);
+  --surface-3: var(--bg-surface-raised);
+  --skeleton-base: #e3eae5;
+  --skeleton-highlight: #f7faf8;
 
   color: var(--color-eerie-black);
   background: var(--color-anti-flash-white);
@@ -61,13 +89,36 @@ textarea {
   border-radius: 10px;
   min-height: 42px;
   padding: 9px 12px;
-  background: #fff;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+select option {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+input:disabled,
+select:disabled,
+textarea:disabled,
+button:disabled {
+  opacity: 0.66;
+}
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-primary);
+  box-shadow: 0 0 0 1000px var(--bg-input) inset;
+  caret-color: var(--text-primary);
 }
 input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--color-dark-spring-green);
-  box-shadow: 0 0 0 4px rgba(13, 120, 86, 0.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
   outline: 0;
 }
 button:not(:disabled):active {

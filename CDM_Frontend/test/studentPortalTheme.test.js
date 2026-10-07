@@ -9,9 +9,11 @@ const studentRequestSource = readFileSync(
   'utf8',
 )
 
-test('authenticated theme is activated only for Student sessions', () => {
+test('authenticated theme keeps the Student shell and adds the shared staff preference shell', () => {
   assert.match(layoutSource, /authStore\.currentRole === 'Student'/)
   assert.match(layoutSource, /'student-portal-shell': isStudentTheme/)
+  assert.match(layoutSource, /\['Registrar Staff', 'Admin'\]\.includes\(authStore\.currentRole\)/)
+  assert.match(layoutSource, /'registrar-theme-shell': isStaffTheme/)
   assert.match(layoutSource, /student-portal\.css/)
   assert.doesNotMatch(themeSource, /\.registrar-/)
 })
@@ -24,12 +26,12 @@ test('student theme reuses the public homepage CDM palette and surface language'
   assert.match(themeSource, /linear-gradient\(135deg, #f5f8f4 0%, #edf4ef 100%\)/)
 })
 
-test('student request structure and workflow modal pattern remain unchanged', () => {
-  assert.match(studentRequestSource, /class="student-request-workspace"/)
-  assert.match(studentRequestSource, /class="student-summary-rail"/)
-  assert.match(studentRequestSource, /class="dr-panel student-detail-panel"/)
-  assert.match(studentRequestSource, /class="student-history-panel"/)
-  assert.match(studentRequestSource, /<Transition name="student-modal" appear>/)
+test('student requests use the unified table and accessible dialog pattern', () => {
+  assert.match(studentRequestSource, /<DocumentRequestPageHeader/)
+  assert.match(studentRequestSource, /class="dr-summary-row student-request-summary"/)
+  assert.match(studentRequestSource, /class="dr-table student-requests-table"/)
+  assert.match(studentRequestSource, /<DocumentRequestStatusBadge/)
+  assert.match(studentRequestSource, /<DocumentRequestDialog/)
 })
 
 test('student cards, forms, statuses, and modals receive scoped theme rules', () => {

@@ -4,27 +4,29 @@
 .enrollment-workspace p { line-height:1.6; margin:10px 0; }
 .enrollment-workspace .en-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr)); gap:16px; }
 .enrollment-workspace label { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
-.enrollment-workspace input,.enrollment-workspace select,.enrollment-workspace textarea { width:100%; min-height:44px; padding:10px; border:1px solid var(--color-border,#bccbc1); border-radius:8px; background:var(--color-surface,#fff); color:inherit; box-sizing:border-box; }
+.enrollment-workspace input,.enrollment-workspace select,.enrollment-workspace textarea { width:100%; min-height:44px; padding:10px; border:1px solid var(--color-border,#bccbc1); border-radius:8px; background:var(--bg-input,var(--color-surface,#fff)); color:var(--text-primary,inherit); box-sizing:border-box; }
 .enrollment-workspace input[type=checkbox],.enrollment-workspace input[type=radio] { width:auto; min-height:20px; }
 .enrollment-workspace .en-check { flex-direction:row; align-items:center; }
-.enrollment-workspace button,.enrollment-workspace .en-link { min-height:44px; padding:10px 16px; border:1px solid var(--color-border,#cedbd1); border-radius:10px; background:var(--color-dartmouth-green,#006b3f); color:white; cursor:pointer; text-decoration:none; }
+.enrollment-workspace button,.enrollment-workspace .en-link { min-height:44px; padding:10px 16px; border:1px solid var(--color-border,#cedbd1); border-radius:10px; background:var(--color-dartmouth-green,#006b3f); color:var(--text-on-accent,#fff); cursor:pointer; text-decoration:none; }
 .enrollment-workspace button:disabled { opacity:.5; cursor:default; }
 .enrollment-workspace :focus-visible { outline:3px solid #d7b32c; outline-offset:3px; }
 .enrollment-workspace .en-actions { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:16px; }
 .enrollment-workspace .en-secondary { background:transparent; color:inherit; }
-.enrollment-workspace .en-badge { display:inline-block; background:#e7f2e9; color:#185a35; border-radius:20px; padding:5px 12px; font-size:.85rem; font-weight:600; }
-.enrollment-workspace .en-badge[data-status=rejected],.enrollment-workspace [role=alert] { color:#9b2525; }
-.enrollment-workspace .en-badge[data-status=under_review],.enrollment-workspace .en-badge[data-status=upcoming] { background:#fff2c1; color:#66500b; }
+.enrollment-workspace .en-badge { display:inline-block; background:var(--bg-hover,#e7f2e9); color:var(--accent,#185a35); border:1px solid var(--border-color,transparent); border-radius:20px; padding:5px 12px; font-size:.85rem; font-weight:600; }
+.enrollment-workspace .en-badge[data-status=rejected],.enrollment-workspace [role=alert] { color:var(--danger,#9b2525); }
+.enrollment-workspace .en-badge[data-status=under_review],.enrollment-workspace .en-badge[data-status=upcoming] { background:var(--student-note,#fff2c1); color:var(--color-naples-yellow,#66500b); }
 .enrollment-workspace .en-progress { display:flex; gap:12px; padding:0; list-style:none; flex-wrap:wrap; }
-.enrollment-workspace .en-progress li { border-bottom:3px solid #dce5df; padding:12px 4px; }
+.enrollment-workspace .en-progress li { border-bottom:3px solid var(--border-color,#dce5df); padding:12px 4px; }
 .enrollment-workspace .en-progress [aria-current=step] { border-color:#d7b32c; font-weight:700; }
 .enrollment-workspace dt { color:var(--color-muted,#5f6c64); font-size:.85rem; }
 .enrollment-workspace dd { margin:6px 0 16px; font-weight:600; }
 .enrollment-workspace .en-table { overflow-x:auto; }
-.enrollment-workspace table { width:100%; border-collapse:collapse; text-align:left; }
+.enrollment-workspace table { width:100%; border-collapse:collapse; background:var(--bg-surface); color:var(--text-primary); text-align:left; }
 .enrollment-workspace th,.enrollment-workspace td { padding:12px; border-bottom:1px solid var(--color-border,#dce5df); }
+.enrollment-workspace th { color:var(--text-secondary); }
+.enrollment-workspace tbody tr:hover { background:var(--bg-hover); }
 .enrollment-workspace .en-overlay { position:fixed; inset:0; z-index:1500; background:#001b1599; display:flex; align-items:center; justify-content:center; padding:16px; }
-.enrollment-workspace [role=dialog] { background:var(--color-surface,#fff); border-radius:16px; padding:24px; width:min(520px,100%); max-height:85vh; overflow:auto; }
+.enrollment-workspace [role=dialog] { background:var(--color-surface,#fff); color:var(--text-primary); border:1px solid var(--border-color); border-radius:16px; padding:24px; width:min(520px,100%); max-height:85vh; overflow:auto; }
 .enrollment-workspace .en-dialog--wide { width:min(900px,100%); padding-top:0; overscroll-behavior:contain; }
 .enrollment-workspace .en-dialog-header { position:sticky; top:0; z-index:1; display:flex; align-items:flex-start; justify-content:space-between; gap:20px; padding:24px 0 16px; background:var(--color-surface,#fff); border-bottom:1px solid var(--color-border,#dce5df); }
 .enrollment-workspace .en-dialog-header p { margin-bottom:0; }
@@ -32,7 +34,7 @@
 .enrollment-workspace .en-detail-section + .en-detail-section { margin-top:20px; padding-top:18px; border-top:1px solid var(--color-border,#dce5df); }
 @media(max-width:600px) { .enrollment-workspace .en-card { padding:16px; }.enrollment-workspace .en-actions button { flex:1; }.enrollment-workspace .en-dialog--wide { padding:0 16px 16px; }.enrollment-workspace .en-dialog-header { padding-top:16px; } }
 .enrollment-workspace .en-timetable { display:grid; grid-template-columns:repeat(7,minmax(150px,1fr)); gap:10px; overflow-x:auto; margin-top:20px; }
-.enrollment-workspace .en-timetable h3 { padding:12px; background:#e7f2e9; color:#185a35; }
+.enrollment-workspace .en-timetable h3 { padding:12px; background:var(--bg-hover,#e7f2e9); color:var(--accent,#185a35); }
 .enrollment-workspace .en-time-class { padding:12px; margin:10px 0; border-left:4px solid #d7b32c; background:var(--color-surface,#fff); }
 .enrollment-workspace .en-cor-header { text-align:center; border-bottom:2px solid #185a35; padding-bottom:15px; margin-bottom:20px; }
 @media print {

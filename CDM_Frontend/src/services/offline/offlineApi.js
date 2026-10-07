@@ -46,8 +46,18 @@ async function dispatch(method, rawUrl, body={}, config={}) {
   match=path.match(/^\/appointments\/(\d+)\/cancel$/)
   if(method==='patch'&&match) fail('Only Registrar Staff can manage appointment dates.',403)
   if(!registrar) fail('Forbidden.',403)
-  if(method==='get'&&path==='/registrar/document-requests'){let rows=data.hydratedRequests;if(params.status)rows=rows.filter(r=>r.status===params.status);if(params.view==='work_queues')return wrap({pending:paginator(rows.filter(r=>r.status==='pending')),approved:paginator(rows.filter(r=>r.status==='approved'))});return wrap(paginator(rows))}
-  if(method==='get'&&path==='/registrar/document-requests/history')return wrap({requests:paginator(data.hydratedRequests.filter(r=>['completed','rejected','cancelled'].includes(r.status))),appointments:paginator(data.hydratedAppointments.filter(a=>['completed','cancelled'].includes(a.status)))})
+  if(method==='get'&&path==='/registrar/document-requests'){let rows=data.hydratedRequests;if(params.status)rows=rows.filter(r=>r.status===params.status);if(params.document_type_id)rows=rows.filter(r=>r.document_type_id===Number(params.document_type_id));if(params.view==='work_queues')return wrap({pending:paginator(rows.filter(r=>r.status==='pending')),approved:paginator(rows.filter(r=>r.status==='approved'))});return wrap(paginator(rows))}
+  if(method==='get'&&path==='/registrar/document-requests/history'){
+    let requestRows=data.hydratedRequests.filter(r=>['completed','rejected','cancelled'].includes(r.status))
+    let appointmentRows=data.hydratedAppointments.filter(a=>['completed','cancelled','no_show'].includes(a.status))
+    if(params.request_status)requestRows=requestRows.filter(r=>r.status===params.request_status)
+    if(params.appointment_status)appointmentRows=appointmentRows.filter(a=>a.status===params.appointment_status)
+    if(params.document_type_id){const typeId=Number(params.document_type_id);requestRows=requestRows.filter(r=>r.document_type_id===typeId);appointmentRows=appointmentRows.filter(a=>a.document_request?.document_type_id===typeId)}
+    if(params.request_id){const requestId=Number(params.request_id);requestRows=requestRows.filter(r=>r.id===requestId);appointmentRows=appointmentRows.filter(a=>a.document_request_id===requestId)}
+    if(params.appointment_id){const appointmentId=Number(params.appointment_id);appointmentRows=appointmentRows.filter(a=>a.id===appointmentId);const requestIds=new Set(appointmentRows.map(a=>a.document_request_id));requestRows=requestRows.filter(r=>requestIds.has(r.id))}
+    if(params.search){const term=String(params.search).trim().toLowerCase();requestRows=requestRows.filter(r=>[r.request_reference,r.student?.student_number,r.document_type?.document_name,r.student?.user_profile?.first_name,r.student?.user_profile?.last_name].some(value=>String(value||'').toLowerCase().includes(term)));const requestIds=new Set(requestRows.map(r=>r.id));appointmentRows=appointmentRows.filter(a=>requestIds.has(a.document_request_id))}
+    return wrap({requests:params.section==='appointments'?null:paginator(requestRows),appointments:params.section==='requests'?null:paginator(appointmentRows)})
+  }
   if(method==='get'&&path==='/registrar/document-request-activity')return wrap(await offlineDb.all('activity'))
   match=path.match(/^\/registrar\/document-requests\/(\d+)$/)
   if(method==='get'&&match)return wrap(data.hydratedRequests.find(r=>r.id===Number(match[1]))||fail('Request not found.',404))

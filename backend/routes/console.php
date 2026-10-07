@@ -58,3 +58,5 @@ if (app()->environment('local')) {
 }
 
 Schedule::command('admission:finalize-expired')->everyMinute()->withoutOverlapping();
+
+Schedule::command('grading:release-due')->everyMinute()->withoutOverlapping();

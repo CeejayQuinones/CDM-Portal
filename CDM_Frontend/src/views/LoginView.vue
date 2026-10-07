@@ -4,6 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import RegistrationWizard from '../components/RegistrationWizard.vue'
 import { useAuthStore } from '../stores/authStore'
 import { dashboardForRole } from '../utils/roleDashboard'
+import { runLoginRequest } from '../utils/loginFlow'
 import logoUrl from '../assets/styles/images/cdm_logo.png'
 
 const router = useRouter()
@@ -47,18 +48,20 @@ const submit = async () => {
   if (!form.password) errors.value.password = 'Password is required.'
   if (Object.keys(errors.value).length) return
 
-  isLoading.value = true
-  try {
-    await authStore.login({ username: form.username.trim(), password: form.password })
-    const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
-    await router.replace(destination)
-  } catch (error) {
-    const backendErrors = error.response?.data?.errors
-    errors.value = Object.fromEntries(Object.entries(backendErrors || {}).map(([field, messages]) => [field, messages[0]]))
-    formError.value = error.response?.data?.message || 'Invalid username or password.'
-  } finally {
-    isLoading.value = false
-  }
+  await runLoginRequest({
+    credentials: { username: form.username.trim(), password: form.password },
+    login: authStore.login,
+    setLoading: (loading) => { isLoading.value = loading },
+    redirect: async () => {
+      const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
+      await router.replace(destination)
+    },
+    onError: (error, message) => {
+      const backendErrors = error.response?.data?.errors
+      errors.value = Object.fromEntries(Object.entries(backendErrors || {}).map(([field, messages]) => [field, messages[0]]))
+      formError.value = message
+    },
+  })
 }
 
 const registrationComplete = () => {

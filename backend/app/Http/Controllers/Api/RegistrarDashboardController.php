@@ -7,9 +7,11 @@ use App\Models\Appointment;
 use App\Models\DocumentRequest;
 use App\Models\Student;
 use App\Models\StudentRecordLocation;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class RegistrarDashboardController extends Controller
 {
@@ -22,16 +24,16 @@ class RegistrarDashboardController extends Controller
         $today = Carbon::now(self::BUSINESS_TIMEZONE)->toDateString();
 
         $summary = [
-            'total_students' => Student::query()->count(),
-            'pending_document_requests' => DocumentRequest::query()->where('status', 'pending')->count(),
-            'todays_appointments' => Appointment::query()->whereDate('appointment_date', $today)->count(),
-            'students_without_record_location' => Student::query()->whereDoesntHave('physicalRecordLocation')->count(),
-            'students_with_missing_documents' => Student::query()
+            'total_students' => $this->operational(Student::query())->count(),
+            'pending_document_requests' => $this->operational(DocumentRequest::query(), 'student_id')->where('status', 'pending')->count(),
+            'todays_appointments' => $this->operational(Appointment::query(), 'student_id')->whereDate('appointment_date', $today)->count(),
+            'students_without_record_location' => $this->operational(Student::query())->whereDoesntHave('physicalRecordLocation')->count(),
+            'students_with_missing_documents' => $this->operational(Student::query())
                 ->whereHas('documents', fn ($query) => $query->where('availability_status', 'missing'))
                 ->count(),
         ];
 
-        $appointments = Appointment::query()
+        $appointments = $this->operational(Appointment::query(), 'student_id')
             ->select([
                 'id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time',
                 'purpose', 'status', 'created_at', 'updated_at',
@@ -63,7 +65,7 @@ class RegistrarDashboardController extends Controller
 
     private function recentActivity(): Collection
     {
-        $requests = DocumentRequest::query()
+        $requests = $this->operational(DocumentRequest::query(), 'student_id')
             ->select([
                 'id', 'student_id', 'document_type_id', 'status', 'created_at', 'updated_at',
                 'approved_at', 'completed_at', 'rejected_at', 'cancelled_at',
@@ -78,7 +80,7 @@ class RegistrarDashboardController extends Controller
             ->get()
             ->map(fn (DocumentRequest $request): array => $this->requestActivity($request));
 
-        $appointments = Appointment::query()
+        $appointments = $this->operational(Appointment::query(), 'student_id')
             ->select(['id', 'student_id', 'document_request_id', 'status', 'created_at', 'updated_at'])
             ->with([
                 ...$this->studentRelations(),
@@ -91,7 +93,7 @@ class RegistrarDashboardController extends Controller
             ->get()
             ->map(fn (Appointment $appointment): array => $this->appointmentActivity($appointment));
 
-        $locations = StudentRecordLocation::query()
+        $locations = $this->operational(StudentRecordLocation::query(), 'student_id')
             ->select(['id', 'student_id', 'cabinet_slot_id', 'created_at', 'updated_at'])
             ->with([
                 ...$this->studentRelations(),
@@ -216,5 +218,15 @@ class RegistrarDashboardController extends Controller
             'student.user:id',
             'student.user.profile:id,user_id,first_name,last_name',
         ];
+    }
+
+    private function operational(Builder $query, string $studentColumn = 'id'): Builder
+    {
+        return $query->whereNotIn($query->qualifyColumn($studentColumn), DB::table('generated_data_records as generated_students')
+            ->join('students as fixture_students', 'fixture_students.id', '=', 'generated_students.record_id')
+            ->select('fixture_students.id')
+            ->whereColumn('fixture_students.created_at', 'generated_students.record_created_at')
+            ->whereIn('generated_students.dataset_key', ['school-demo-v2', 'school-demo-v1'])
+            ->where('generated_students.record_type', 'students'));
     }
 }
