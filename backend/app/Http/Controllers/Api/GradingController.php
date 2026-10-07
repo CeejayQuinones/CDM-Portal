@@ -205,7 +205,22 @@ class GradingController extends Controller
     {
         $ignore = $updating ? $request->route('gradePeriodSchedule')?->id : null;
 
-        return $request->validate(['academic_year_id' => ['required', 'integer', 'exists:academic_years,id', Rule::unique('grade_period_schedules')->where(fn ($q) => $q->where('semester_id', $request->input('semester_id')))->ignore($ignore)], 'semester_id' => 'required|integer|exists:semesters,id', 'midterm_opens_at' => 'required|date', 'midterm_deadline' => 'required|date|after_or_equal:midterm_opens_at', 'finals_opens_at' => 'required|date', 'finals_deadline' => 'required|date|after_or_equal:finals_opens_at', 'status' => ['sometimes', Rule::in(['active', 'archived'])], 'version' => $updating ? 'required|integer|min:1' : 'sometimes|integer']);
+        return $request->validate(
+            ['academic_year_id' => ['required', 'integer', 'exists:academic_years,id', Rule::unique('grade_period_schedules')->where(fn ($q) => $q->where('semester_id', $request->input('semester_id')))->ignore($ignore)], 'semester_id' => 'required|integer|exists:semesters,id', 'midterm_opens_at' => 'required|date', 'midterm_deadline' => 'required|date|after_or_equal:midterm_opens_at', 'finals_opens_at' => 'required|date', 'finals_deadline' => 'required|date|after_or_equal:finals_opens_at', 'status' => ['sometimes', Rule::in(['active', 'archived'])], 'version' => $updating ? 'required|integer|min:1' : 'sometimes|integer'],
+            [
+                'academic_year_id.required' => 'Select an academic year.',
+                'academic_year_id.exists' => 'The selected academic year is unavailable.',
+                'academic_year_id.unique' => 'A grade period schedule already exists for the selected academic term.',
+                'semester_id.required' => 'Select a semester.',
+                'semester_id.exists' => 'The selected semester is unavailable.',
+                'midterm_opens_at.required' => 'Enter when Midterm grading opens.',
+                'midterm_deadline.required' => 'Enter the Midterm grading deadline.',
+                'midterm_deadline.after_or_equal' => 'The Midterm deadline must be at or after its opening date.',
+                'finals_opens_at.required' => 'Enter when Finals grading opens.',
+                'finals_deadline.required' => 'Enter the Finals grading deadline.',
+                'finals_deadline.after_or_equal' => 'The Finals deadline must be at or after its opening date.',
+            ],
+        );
     }
 
     private function assessmentRules(bool $updating = false): array

@@ -29,8 +29,8 @@ class DatabaseSeeder extends Seeder
 
             // Personnel
             RegistrarStaffSeeder::class,
-            ProfessorsSeeder::class,
             StudentsSeeder::class,
+            ProfessorsSeeder::class,
 
             // Registrar services
             DocumentTypesSeeder::class,

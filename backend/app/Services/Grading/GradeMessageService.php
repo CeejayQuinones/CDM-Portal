@@ -156,10 +156,7 @@ class GradeMessageService
 
     private function professor(User $actor): Professor
     {
-        $actor->loadMissing('role');
-        abort_unless($actor->role?->role_name === Role::PROFESSOR, 403);
-
-        return Professor::where('user_id', $actor->id)->firstOrFail();
+        return $this->grading->professor($actor);
     }
 
     private function context(GradeSheet $sheet): array
