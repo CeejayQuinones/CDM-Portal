@@ -1,7 +1,8 @@
 import { apiClient } from '../../services/apiClient'
 
 const data = (response) => response.data.data
-export const gradingError = (error) => error.response?.data?.message || Object.values(error.response?.data?.errors || {})[0]?.[0] || 'Unable to complete the grading request.'
+export const gradingValidationErrors = (error) => error.response?.data?.errors || {}
+export const gradingError = (error) => Object.values(gradingValidationErrors(error)).flat().find(Boolean) || error.response?.data?.message || 'Unable to complete the grading request.'
 export const gradingService = {
   students: (params = {}) => apiClient.get('/students', { params }).then((response) => response.data),
   studentOptions: () => apiClient.get('/students/bulk-options').then(data),

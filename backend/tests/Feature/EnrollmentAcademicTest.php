@@ -6,12 +6,14 @@ use App\Models\AcademicYear;
 use App\Models\Enrollment;
 use App\Models\Enrollment\EnrollmentWorkflowEvent;
 use App\Models\EnrollmentSubject;
+use App\Models\GradeSheet;
 use App\Models\Professor;
 use App\Models\Role;
 use App\Models\Section;
 use App\Models\SectionSubject;
 use App\Models\Student;
 use App\Models\User;
+use App\Services\EarlyWarningService;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\EnrollmentAcademicFixture;
@@ -274,6 +276,90 @@ class EnrollmentAcademicTest extends TestCase
         $this->putJson($this->base().'/schedules/'.$s->id, $payload)->assertConflict();
         $this->action('finalize')->assertOk();
         $this->deleteJson($this->base().'/schedules/'.$s->id, ['version' => $s->fresh()->version, 'confirmed' => true])->assertConflict();
+    }
+
+    public function test_staff_reassignment_transfers_draft_grading_and_all_professor_scopes(): void
+    {
+        $this->prepare();
+        $this->action('finalize')->assertOk();
+        $assignment = SectionSubject::query()->where('subject_id', $this->f['subjects'][0]->id)->firstOrFail();
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $sheet = $this->withHeader('X-CDM-Client', 'web')->postJson('/api/grading/classes/'.$assignment->id.'/workspace')
+            ->assertOk()
+            ->json('data.sheet');
+
+        $otherUser = User::factory()->create(['role_id' => Role::where('role_name', Role::PROFESSOR)->value('id')]);
+        $otherProfile = $otherUser->profile()->create(['first_name' => 'Replacement', 'last_name' => 'Professor', 'gender' => 'Prefer not to say']);
+        $other = Professor::create(['user_id' => $otherUser->id, 'user_profile_id' => $otherProfile->id, 'department_id' => $this->f['department']->id, 'employee_number' => 'REASSIGN-P', 'status' => 'active']);
+        $payload = [
+            'section_id' => $assignment->section_id,
+            'subject_id' => $assignment->subject_id,
+            'professor_id' => $other->id,
+            'day' => $assignment->day,
+            'start_time' => substr($assignment->start_time, 0, 5),
+            'end_time' => substr($assignment->end_time, 0, 5),
+            'room' => $assignment->room,
+            'version' => $assignment->version,
+        ];
+
+        Sanctum::actingAs($this->f['registrar']);
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, $payload)->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'desktop')->putJson($this->base().'/schedules/'.$assignment->id, $payload)
+            ->assertOk()
+            ->assertJsonPath('data.professor_id', $other->id);
+        $this->assertDatabaseHas('grade_sheets', ['id' => $sheet['id'], 'professor_id' => $other->id, 'status' => 'draft']);
+        $this->assertDatabaseHas('enrollment_subjects', ['subject_id' => $assignment->subject_id, 'professor_id' => $other->id]);
+
+        $secondAssignment = SectionSubject::query()->where('subject_id', $this->f['subjects'][1]->id)->firstOrFail();
+        $this->withHeader('X-CDM-Client', 'desktop')->putJson($this->base().'/schedules/'.$secondAssignment->id, [
+            'section_id' => $secondAssignment->section_id,
+            'subject_id' => $secondAssignment->subject_id,
+            'professor_id' => $other->id,
+            'day' => $secondAssignment->day,
+            'start_time' => substr($secondAssignment->start_time, 0, 5),
+            'end_time' => substr($secondAssignment->end_time, 0, 5),
+            'room' => $secondAssignment->room,
+            'version' => $secondAssignment->version,
+        ])->assertOk()->assertJsonPath('data.professor_id', $other->id);
+        $this->assertFalse(app(EarlyWarningService::class)->professorCanAccessStudent($this->f['professorUser']->id, $this->f['student']->id));
+        $this->assertTrue(app(EarlyWarningService::class)->professorCanAccessStudent($otherUser->id, $this->f['student']->id));
+
+        $this->f['section']->update(['adviser_id' => $this->f['professor']->id]);
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/classes')->assertOk()->assertJsonPath('data.total', 0);
+        $this->withHeader('X-CDM-Client', 'web')->postJson('/api/grading/classes/'.$assignment->id.'/workspace')->assertNotFound();
+        $this->withHeader('X-CDM-Client', 'web')->getJson($this->base().'/professor/sections/'.$this->f['section']->id)->assertNotFound();
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, $payload)->assertForbidden();
+
+        Sanctum::actingAs($otherUser);
+        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/classes')->assertOk()->assertJsonPath('data.total', 2);
+        $this->withHeader('X-CDM-Client', 'web')->postJson('/api/grading/classes/'.$assignment->id.'/workspace')->assertOk();
+        $this->withHeader('X-CDM-Client', 'web')->getJson($this->base().'/professor/sections/'.$this->f['section']->id)->assertOk();
+
+        Sanctum::actingAs($this->f['user']);
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, $payload)->assertForbidden();
+
+        $guest = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::GUEST])->id]);
+        Sanctum::actingAs($guest);
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, $payload)->assertForbidden();
+
+        $admin = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id]);
+        $current = $assignment->fresh();
+        Sanctum::actingAs($admin);
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, array_replace($payload, [
+            'professor_id' => $this->f['professor']->id,
+            'version' => $current->version,
+        ]))->assertOk()->assertJsonPath('data.professor_id', $this->f['professor']->id);
+
+        GradeSheet::findOrFail($sheet['id'])->update(['status' => 'published']);
+        $current = $assignment->fresh();
+        Sanctum::actingAs($this->f['registrar']);
+        $this->withHeader('X-CDM-Client', 'desktop')->putJson($this->base().'/schedules/'.$assignment->id, array_replace($payload, [
+            'version' => $current->version,
+        ]))->assertConflict()->assertJsonPath('message', 'A submitted, approved, or published grade sheet prevents Professor reassignment.');
+        $this->assertDatabaseHas('section_subjects', ['id' => $assignment->id, 'professor_id' => $this->f['professor']->id]);
+        $this->assertDatabaseHas('grade_sheets', ['id' => $sheet['id'], 'professor_id' => $this->f['professor']->id, 'status' => 'published']);
     }
 
     public function test_both_staff_can_manage_sections_and_invalid_year_or_capacity_fails(): void

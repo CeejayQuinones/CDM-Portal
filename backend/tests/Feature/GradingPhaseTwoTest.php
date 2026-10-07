@@ -9,6 +9,7 @@ use App\Models\GradeAuditEvent;
 use App\Models\GradePeriodSchedule;
 use App\Models\GradeScore;
 use App\Models\GradeSheet;
+use App\Models\Professor;
 use App\Models\Role;
 use App\Models\SectionSubject;
 use App\Models\User;
@@ -170,6 +171,14 @@ class GradingPhaseTwoTest extends TestCase
     public function test_foreign_professor_student_guest_and_registrar_web_are_blocked(): void
     {
         $other = User::factory()->create(['role_id' => Role::where('role_name', Role::PROFESSOR)->value('id')]);
+        $profile = $other->profile()->create(['first_name' => 'Foreign', 'last_name' => 'Professor', 'gender' => 'Prefer not to say']);
+        Professor::query()->create([
+            'user_id' => $other->id,
+            'user_profile_id' => $profile->id,
+            'department_id' => $this->f['department']->id,
+            'employee_number' => 'GRADE-TWO-FOREIGN',
+            'status' => 'active',
+        ]);
         Sanctum::actingAs($other);
         $this->getJson('/api/grading/sheets/'.$this->sheet->id.'/readiness')->assertNotFound();
         Sanctum::actingAs($this->f['user']);

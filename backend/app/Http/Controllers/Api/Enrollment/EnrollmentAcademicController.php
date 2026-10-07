@@ -205,7 +205,7 @@ class EnrollmentAcademicController extends Controller
         $actor = $r->user()->fresh('role');
         abort_unless($actor->status === 'active' && $actor->role?->role_name === Role::PROFESSOR, 403, 'Active Professor access required.');
         $p = Professor::where('user_id', $actor->id)->where('status', 'active')->firstOrFail();
-        $q = Section::where(fn ($q) => $q->where('adviser_id', $p->id)->orWhereHas('schedules', fn ($s) => $s->where('professor_id', $p->id)));
+        $q = Section::whereHas('schedules', fn ($s) => $s->where('professor_id', $p->id));
         if ($section) {
             $s = $q->findOrFail($section);
 

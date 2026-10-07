@@ -11,6 +11,7 @@ use App\Models\SectionSubject;
 use App\Models\User;
 use App\Services\Grading\GradingService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\EnrollmentAcademicFixture;
 use Tests\TestCase;
@@ -58,7 +59,7 @@ class GradingPhaseOneTest extends TestCase
         Sanctum::actingAs($this->f['registrar']);
         $payload = ['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'midterm_opens_at' => now()->subDay()->toIso8601String(), 'midterm_deadline' => now()->addDay()->toIso8601String(), 'finals_opens_at' => now()->addDays(2)->toIso8601String(), 'finals_deadline' => now()->addDays(3)->toIso8601String()];
         $this->postJson('/api/grading/periods', $payload, $this->desktop)->assertCreated()->assertJsonPath('data.midterm_state.state', 'Open')->assertJsonPath('data.finals_state.state', 'Upcoming');
-        $this->postJson('/api/grading/periods', $payload, $this->desktop)->assertUnprocessable();
+        $this->postJson('/api/grading/periods', $payload, $this->desktop)->assertUnprocessable()->assertJsonPath('errors.academic_year_id.0', 'A grade period schedule already exists for the selected academic term.');
         $this->putJson('/api/grading/periods/1', $payload + ['version' => 99], $this->desktop)->assertConflict();
         $this->assertDatabaseHas('grade_audit_events', ['action' => 'grading_period.created']);
 
@@ -66,6 +67,68 @@ class GradingPhaseOneTest extends TestCase
         Sanctum::actingAs($admin);
         $this->getJson('/api/grading/periods')->assertOk();
         $this->putJson('/api/grading/periods/1', array_replace($payload, ['midterm_deadline' => now()->subDays(2)->toIso8601String(), 'version' => 1]))->assertUnprocessable();
+    }
+
+    public function test_desktop_period_index_accepts_an_empty_filter_and_create_errors_name_the_fields(): void
+    {
+        Sanctum::actingAs($this->f['registrar']);
+
+        $this->getJson('/api/grading/periods', $this->desktop)
+            ->assertOk()
+            ->assertJsonPath('data.periods.total', 0)
+            ->assertJsonStructure(['data' => ['academic_years', 'semesters']]);
+
+        $this->postJson('/api/grading/periods', [], $this->desktop)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Validation failed.')
+            ->assertJsonPath('errors.academic_year_id.0', 'Select an academic year.')
+            ->assertJsonPath('errors.semester_id.0', 'Select a semester.')
+            ->assertJsonPath('errors.midterm_opens_at.0', 'Enter when Midterm grading opens.')
+            ->assertJsonPath('errors.finals_opens_at.0', 'Enter when Finals grading opens.');
+    }
+
+    public function test_professor_window_and_assessment_use_grade_period_schedule_not_legacy_periods(): void
+    {
+        DB::table('grading_periods')->insert([
+            'period_name' => 'Legacy Midterm',
+            'period_order' => 9,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->getJson('/api/grading/classes')
+            ->assertOk()
+            ->assertJsonPath('data.data.0.schedule', null);
+
+        Sanctum::actingAs($this->f['registrar']);
+        $this->postJson('/api/grading/periods', [
+            'academic_year_id' => $this->f['year']->id,
+            'semester_id' => $this->f['semester']->id,
+            'midterm_opens_at' => now()->subHour()->toIso8601String(),
+            'midterm_deadline' => now()->addHour()->toIso8601String(),
+            'finals_opens_at' => now()->addDay()->toIso8601String(),
+            'finals_deadline' => now()->addDays(2)->toIso8601String(),
+        ], $this->desktop)
+            ->assertCreated()
+            ->assertJsonPath('data.midterm_state.state', 'Open')
+            ->assertJsonPath('data.midterm_state.editable', true)
+            ->assertJsonPath('data.finals_state.state', 'Upcoming');
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->getJson('/api/grading/classes')
+            ->assertOk()
+            ->assertJsonPath('data.data.0.schedule.midterm_state.state', 'Open')
+            ->assertJsonPath('data.data.0.schedule.midterm_state.editable', true);
+        $workspace = $this->workspace();
+        $this->postJson('/api/grading/sheets/'.$workspace['sheet']['id'].'/assessments', [
+            'period' => 'midterm',
+            'label' => 'Window verification',
+            'category' => 'Quiz',
+            'max_score' => 10,
+            'display_order' => 1,
+        ])->assertCreated();
     }
 
     public function test_period_boundaries_are_inclusive_at_open_and_exclusive_at_deadline(): void

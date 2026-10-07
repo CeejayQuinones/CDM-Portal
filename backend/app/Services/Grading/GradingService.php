@@ -28,7 +28,10 @@ class GradingService
         $actor = $user->fresh('role');
         abort_unless($actor->status === 'active' && $actor->role?->role_name === Role::PROFESSOR, 403, 'Active Professor access required.');
 
-        return Professor::where('user_id', $actor->id)->where('status', 'active')->firstOrFail();
+        $professor = Professor::where('user_id', $actor->id)->where('status', 'active')->first();
+        abort_unless($professor, 409, 'Your academic Professor profile is not configured. Contact the Registrar before using Grading.');
+
+        return $professor;
     }
 
     public function classes(User $user, array $filters)

@@ -325,6 +325,13 @@
   color: var(--danger);
 }
 
+.grading-field-error {
+  color: var(--danger);
+  display: block;
+  font-size: .8rem;
+  margin-top: .25rem;
+}
+
 .grading-release-form fieldset {
   background: var(--surface-2);
   border-color: var(--border-color);
