@@ -1,155 +1,72 @@
 <script setup>
 import { reactive, ref, watch } from 'vue'
-import {
-  createPerformanceRecord,
-  fetchPerformanceRecords,
-  generateRecordStudyPlan,
-  sendRecordStudyPlan,
-} from '../services/monitoringApi'
+import { generateGradeStudyPlan, sendGradeStudyPlan } from '../services/monitoringApi'
 
 const props = defineProps({
   studentId: { type: Number, required: true },
   subjects: { type: Array, default: () => [] },
-  viewerRole: { type: String, default: 'professor' }, // professor | student | staff
+  viewerRole: { type: String, default: 'professor' }, // professor | staff
 })
 
 const emit = defineEmits(['sent'])
 
-const records = ref([])
-const loading = ref(false)
-const saving = ref(false)
-const generatingId = ref(null)
-const sendingId = ref(null)
+const generatingCode = ref('')
+const sendingCode = ref('')
 const error = ref('')
 const notice = ref('')
 const draftPlans = reactive({})
 
-const form = reactive({
-  subject_code: '',
-  subject_name: '',
-  assessment_name: '',
-  topic: '',
-  score: '',
-  max_score: '',
-  notes: '',
-  attachment: null,
-})
-
 watch(
   () => props.studentId,
   () => {
-    resetForm()
-    loadRecords()
+    error.value = ''
+    notice.value = ''
+    Object.keys(draftPlans).forEach((key) => delete draftPlans[key])
   },
-  { immediate: true },
 )
 
-watch(
-  () => props.subjects,
-  (list) => {
-    if (!form.subject_code && list?.[0]) {
-      form.subject_code = list[0].subject_code || ''
-      form.subject_name = list[0].subject_name || ''
-    }
-  },
-  { immediate: true },
-)
-
-function resetForm() {
-  form.subject_code = props.subjects?.[0]?.subject_code || ''
-  form.subject_name = props.subjects?.[0]?.subject_name || ''
-  form.assessment_name = ''
-  form.topic = ''
-  form.score = ''
-  form.max_score = ''
-  form.notes = ''
-  form.attachment = null
-  error.value = ''
-  notice.value = ''
+function periodText(subject) {
+  const periods = subject.periods || {}
+  const show = (value) => (value == null || value === '' ? '—' : value)
+  return `Prelim ${show(periods.Prelim)} · Midterm ${show(periods.Midterm)} · Final ${show(periods.Final)}`
 }
 
-function onSubjectChange() {
-  const match = props.subjects.find((s) => s.subject_code === form.subject_code)
-  form.subject_name = match?.subject_name || form.subject_name
-}
-
-function onFileChange(event) {
-  form.attachment = event.target.files?.[0] || null
-}
-
-async function loadRecords() {
-  if (!props.studentId) return
-  loading.value = true
-  error.value = ''
-  try {
-    const payload = await fetchPerformanceRecords(props.studentId)
-    records.value = payload.records || []
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to load performance records.'
-  } finally {
-    loading.value = false
-  }
-}
-
-async function saveRecord() {
-  if (saving.value) return
-  saving.value = true
+async function generatePlan(subject) {
+  generatingCode.value = subject.subject_code
   error.value = ''
   notice.value = ''
   try {
-    const body = new FormData()
-    body.append('subject_code', form.subject_code)
-    if (form.subject_name) body.append('subject_name', form.subject_name)
-    body.append('assessment_name', form.assessment_name)
-    body.append('topic', form.topic)
-    if (form.score !== '') body.append('score', form.score)
-    if (form.max_score !== '') body.append('max_score', form.max_score)
-    if (form.notes) body.append('notes', form.notes)
-    if (form.attachment) body.append('attachment', form.attachment)
-
-    await createPerformanceRecord(props.studentId, body)
-    notice.value = 'Performance record saved.'
-    resetForm()
-    await loadRecords()
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to save the performance record.'
-  } finally {
-    saving.value = false
-  }
-}
-
-async function generatePlan(record) {
-  generatingId.value = record.id
-  error.value = ''
-  notice.value = ''
-  try {
-    const plan = await generateRecordStudyPlan(props.studentId, record.id)
-    draftPlans[record.id] = {
+    const plan = await generateGradeStudyPlan(props.studentId, subject.subject_code)
+    draftPlans[subject.subject_code] = {
       title: plan.title,
       plan_body: plan.plan_body,
     }
-    notice.value = 'Study plan drafted from this record. Review it, then send to the student.'
+    notice.value = 'Study plan drafted from this subject’s approved grades. Review it, then send to the student.'
   } catch (err) {
     error.value = err.response?.data?.message || 'Unable to generate a study plan.'
   } finally {
-    generatingId.value = null
+    generatingCode.value = ''
   }
 }
 
-async function sendPlan(record) {
-  const draft = draftPlans[record.id]
+async function sendPlan(subject) {
+  const draft = draftPlans[subject.subject_code]
   if (!draft?.plan_body) return
-  sendingId.value = record.id
+  sendingCode.value = subject.subject_code
   error.value = ''
   notice.value = ''
   try {
-    await sendRecordStudyPlan(props.studentId, record.id, draft)
+    await sendGradeStudyPlan(props.studentId, {
+      subject_code: subject.subject_code,
+      title: draft.title,
+      plan_body: draft.plan_body,
+    })
     notice.value = 'Study plan sent to the student account.'
     emit('sent')
   } catch (err) {
     error.value = err.response?.data?.message || 'Unable to send the study plan.'
   } finally {
-    sendingId.value = null
+    sendingCode.value = ''
   }
 }
 </script>
@@ -158,95 +75,50 @@ async function sendPlan(record) {
   <section class="record-panel">
     <header>
       <div>
-        <p class="kicker">{{ viewerRole === 'student' ? 'My files & weak quizzes' : 'Monitoring files' }}</p>
-        <h3>{{ viewerRole === 'student' ? 'Upload low-score quizzes and notes' : 'Quiz / topic files & interventions' }}</h3>
+        <p class="kicker">Academic record</p>
+        <h3>Approved grades</h3>
       </div>
     </header>
     <p class="lead">
-      {{
-        viewerRole === 'student'
-          ? 'Upload quiz papers or notes for topics you find hard. These feed your Study Studio flashcards and practice.'
-          : 'Log a weak assessment and optionally attach the quiz/file. AI can draft a study plan for the student.'
-      }}
+      These cards are the student’s approved prelim, midterm, and final grades. Study files and sample quizzes are not listed here.
     </p>
-
-    <form class="record-form" @submit.prevent="saveRecord">
-      <label>
-        Subject
-        <select v-model="form.subject_code" required @change="onSubjectChange">
-          <option disabled value="">Select subject</option>
-          <option v-for="subject in subjects" :key="subject.subject_code" :value="subject.subject_code">
-            {{ subject.subject_code }} · {{ subject.subject_name }}
-          </option>
-          <option v-if="!subjects.length" value="GEN">GEN · General</option>
-        </select>
-      </label>
-      <label>
-        Assessment
-        <input v-model="form.assessment_name" required maxlength="120" placeholder="Quiz 2" />
-      </label>
-      <label class="wide">
-        Weak topic
-        <input v-model="form.topic" required maxlength="255" placeholder="Nested loops / control structures" />
-      </label>
-      <label>
-        Score
-        <input v-model="form.score" type="number" min="0" step="0.01" placeholder="12" />
-      </label>
-      <label>
-        Max score
-        <input v-model="form.max_score" type="number" min="0" step="0.01" placeholder="20" />
-      </label>
-      <label class="wide">
-        Notes
-        <textarea v-model="form.notes" rows="2" maxlength="2000" placeholder="Student struggled with nested loop tracing." />
-      </label>
-      <label class="wide">
-        Optional file
-        <input type="file" @change="onFileChange" />
-      </label>
-      <button type="submit" class="primary" :disabled="saving">
-        {{ saving ? 'Saving…' : 'Save record' }}
-      </button>
-    </form>
 
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice">{{ notice }}</p>
-    <p v-if="loading" class="muted">Loading records…</p>
 
-    <div v-else class="record-list">
-      <article v-for="record in records" :key="record.id" class="record-card">
+    <div class="record-list">
+      <article v-for="subject in subjects" :key="subject.subject_code" class="record-card">
         <header>
           <div>
-            <strong>{{ record.assessment_name }}</strong>
-            <span>{{ record.subject_code }} · {{ record.topic }}</span>
+            <strong>{{ subject.subject_code }}</strong>
+            <span>{{ subject.subject_name }}</span>
           </div>
-          <em v-if="record.score != null">{{ record.score }}{{ record.max_score != null ? ` / ${record.max_score}` : '' }}</em>
+          <em v-if="subject.average_grade != null">{{ subject.average_grade }} / 100</em>
         </header>
-        <p v-if="record.notes">{{ record.notes }}</p>
-        <p v-if="record.has_attachment" class="muted">Attachment: {{ record.attachment_name }}</p>
-        <div v-if="viewerRole !== 'student'" class="actions">
-          <button type="button" :disabled="generatingId === record.id" @click="generatePlan(record)">
-            {{ generatingId === record.id ? 'Generating…' : 'Generate AI plan' }}
+        <p>{{ periodText(subject) }}</p>
+        <p class="muted">{{ subject.risk_label }} · {{ subject.trend }}</p>
+        <div class="actions">
+          <button type="button" :disabled="generatingCode === subject.subject_code" @click="generatePlan(subject)">
+            {{ generatingCode === subject.subject_code ? 'Generating…' : 'Generate AI plan' }}
           </button>
           <button
             v-if="viewerRole === 'professor'"
             type="button"
             class="primary"
-            :disabled="!draftPlans[record.id] || sendingId === record.id"
-            @click="sendPlan(record)"
+            :disabled="!draftPlans[subject.subject_code] || sendingCode === subject.subject_code"
+            @click="sendPlan(subject)"
           >
-            {{ sendingId === record.id ? 'Sending…' : 'Send to student' }}
+            {{ sendingCode === subject.subject_code ? 'Sending…' : 'Send to student' }}
           </button>
         </div>
         <textarea
-          v-if="viewerRole !== 'student' && draftPlans[record.id]"
-          v-model="draftPlans[record.id].plan_body"
+          v-if="draftPlans[subject.subject_code]"
+          v-model="draftPlans[subject.subject_code].plan_body"
           rows="8"
           aria-label="Draft study plan"
         />
       </article>
-      <p v-if="!records.length" class="muted">No intervention records yet for this student.</p>
+      <p v-if="!subjects.length" class="muted">No approved grades yet for this student.</p>
     </div>
   </section>
 </template>

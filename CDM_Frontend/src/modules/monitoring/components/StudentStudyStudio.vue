@@ -1,21 +1,21 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
-  fetchMyRisk,
-  fetchMySentPlans,
-  fetchPerformanceRecords,
+  createPerformanceRecord,
   fetchStudyStudio,
   generateStudyFlashcards,
   generateStudyQuiz,
   generateStudyStudioPlan,
+  generateTopicStudyPlan,
 } from '../services/monitoringApi'
 
 const mode = ref('home') // home | flashcards | learn | test | guide
 const loading = ref(true)
+const uploading = ref(false)
+const generating = ref(false)
 const error = ref('')
-const topicQuery = ref('')
-const studio = ref({ topics: [], records: [], week_plan: null, live_ai_configured: false, risk: null })
-const selectedTopic = ref('')
+const studio = ref({ student_id: null, topics: [], records: [], week_plan: null, live_ai_configured: false, risk: null })
+const selectedRecordId = ref(null)
 const cards = ref([])
 const cardIndex = ref(0)
 const flipped = ref(false)
@@ -28,25 +28,19 @@ const quizScore = ref(0)
 const quizDone = ref(false)
 const revealed = ref(false)
 const plan = ref(null)
+const planTopic = ref('')
+const topicPlan = ref(null)
+const planBusy = ref(false)
 const matchPairs = ref([])
 const matchSelected = ref(null)
 const matchSolved = ref([])
 const matchDone = ref(false)
 
-const focusTopic = computed(() => selectedTopic.value || studio.value.topics?.[0]?.topic || 'General academic recovery')
+const files = computed(() => (studio.value.records || []).filter((record) => record.has_attachment))
+const selectedFile = computed(() => files.value.find((record) => record.id === selectedRecordId.value) || null)
+const focusTopic = computed(() => selectedFile.value?.attachment_name || selectedFile.value?.topic || '')
 const currentCard = computed(() => cards.value[cardIndex.value] || null)
 const currentQuestion = computed(() => quiz.value[quizIndex.value] || null)
-
-const filteredTopics = computed(() => {
-  const q = topicQuery.value.trim().toLowerCase()
-  const list = studio.value.topics || []
-  if (!q) return list
-  return list.filter((item) =>
-    [item.topic, item.subject_code, item.subject_name, item.assessment_name]
-      .filter(Boolean)
-      .some((v) => String(v).toLowerCase().includes(q)),
-  )
-})
 
 const progressPct = computed(() => {
   if (!cards.value.length) return 0
@@ -57,186 +51,69 @@ const modes = [
   {
     id: 'flashcards',
     title: 'Flashcards',
-    blurb: 'Flip terms and definitions — classic Quizlet feel.',
+    blurb: 'AI turns the file into terms and answers.',
     icon: 'M4 5h16v14H4zM8 9h8M8 13h5',
   },
   {
-    id: 'learn',
-    title: 'Learn',
-    blurb: 'Mark Knew it / Still learning to track mastery.',
-    icon: 'M12 3l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V7l8-4z',
-  },
-  {
     id: 'test',
-    title: 'Test',
-    blurb: 'Practice quiz with instant feedback.',
+    title: 'Quiz',
+    blurb: 'AI writes practice questions from the file.',
     icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
-  },
-  {
-    id: 'match',
-    title: 'Match',
-    blurb: 'Tap matching term ↔ definition pairs.',
-    icon: 'M8 7h3M13 7h3M8 12h8M8 17h5M5 5h14v14H5z',
   },
   {
     id: 'guide',
     title: 'Study guide',
-    blurb: 'AI recovery plan from your weak topics.',
+    blurb: 'AI explains the file and lists what to review.',
     icon: 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
   },
 ]
-
-function localFlashcards(topic) {
-  return [
-    { front: `What is the core idea of ${topic}?`, back: 'State the main definition in one sentence, then give one example.' },
-    { front: `Common mistake in ${topic}`, back: 'Skipping prerequisites or mixing similar terms. Recheck definitions first.' },
-    { front: `How do I practice ${topic} today?`, back: 'Do 3 short problems, then explain your solution out loud.' },
-    { front: `When is ${topic} used?`, back: 'In class activities, quizzes, and follow-up graded work.' },
-    { front: 'Quick check', back: `If you cannot explain ${topic} without notes, review again.` },
-    { front: 'Ask your professor', back: `Which part of ${topic} matters most for the next assessment?` },
-    { front: 'Memory tip', back: 'Link the idea to a real example so it sticks longer.' },
-    { front: 'Next step', back: 'Take a short practice quiz after one flashcard pass.' },
-  ]
-}
-
-function localQuiz(topic) {
-  return [
-    {
-      prompt: `Best first step when studying ${topic}?`,
-      choices: ['Memorize random facts', 'Review key definitions', 'Skip to hardest item', 'Ignore instructor notes'],
-      answer_index: 1,
-      explanation: 'Start with clear definitions before harder practice.',
-    },
-    {
-      prompt: `Why was ${topic} flagged?`,
-      choices: ['Already mastered', 'Weak area to recover', 'Optional forever', 'Replaces all grades'],
-      answer_index: 1,
-      explanation: 'Professor topic logs highlight where support is needed.',
-    },
-    {
-      prompt: 'Most effective practice loop?',
-      choices: ['Read once only', 'Flashcards → quiz → review misses', 'Only watch videos', 'Avoid practice'],
-      answer_index: 1,
-      explanation: 'Active recall plus checking mistakes builds mastery.',
-    },
-    {
-      prompt: 'What should you bring to consultation?',
-      choices: ['No questions', 'Specific confusing steps', 'Only final answers', 'Unrelated topics'],
-      answer_index: 1,
-      explanation: 'Specific questions help instructors coach faster.',
-    },
-    {
-      prompt: 'When is a topic ready?',
-      choices: ['You can explain and solve without notes', 'You recognized the title', 'A friend said it is easy', 'You opened the file once'],
-      answer_index: 0,
-      explanation: 'True readiness means you can teach and apply it.',
-    },
-  ]
-}
-
-function localPlan(topic) {
-  return {
-    title: `Study guide · ${topic}`,
-    plan: `Focus: ${topic}\n\nDay 1: Review notes and mark confusing parts.\nDay 2: Flip flashcards twice and note misses.\nDay 3: Take a practice test and check explanations.\nDay 4: Rework the weakest items from instructor feedback.\nDay 5: Teach the topic out loud and list questions for your professor.`,
-    week: [
-      { day: 'Day 1', focus: 'Diagnose gaps', minutes: 45 },
-      { day: 'Day 2', focus: 'Flashcard reps', minutes: 60 },
-      { day: 'Day 3', focus: 'Practice test', minutes: 45 },
-      { day: 'Day 4', focus: 'Fix misses', minutes: 60 },
-      { day: 'Day 5', focus: 'Teach & ask', minutes: 40 },
-    ],
-    source: 'local-coach',
-  }
-}
-
-function buildTopicsFromLegacy(riskPayload, records, sentPlans) {
-  const topics = []
-  const seen = new Set()
-  for (const record of records || []) {
-    const key = `${record.subject_code}|${record.topic}`.toLowerCase()
-    if (seen.has(key) || !record.topic) continue
-    seen.add(key)
-    topics.push({
-      topic: record.topic,
-      subject_code: record.subject_code,
-      subject_name: record.subject_name,
-      assessment_name: record.assessment_name,
-      percent: record.max_score > 0 ? Math.round((Number(record.score) / Number(record.max_score)) * 1000) / 10 : null,
-      source: 'professor',
-      terms: 8,
-    })
-  }
-  for (const planItem of sentPlans || []) {
-    const key = `${planItem.subject_code}|${planItem.topic}`.toLowerCase()
-    if (!planItem.topic || seen.has(key)) continue
-    seen.add(key)
-    topics.push({ topic: planItem.topic, subject_code: planItem.subject_code, source: 'professor', terms: 8 })
-  }
-  const student = riskPayload?.students?.[0]
-  for (const subject of student?.subjects || []) {
-    if (!['high', 'moderate'].includes(subject.risk_level)) continue
-    const key = `${subject.subject_code}|grade-focus`.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    topics.push({
-      topic: `${subject.subject_name || subject.subject_code} fundamentals`,
-      subject_code: subject.subject_code,
-      subject_name: subject.subject_name,
-      percent: subject.average_grade,
-      source: 'grades',
-      terms: 8,
-    })
-  }
-  return { topics, student }
-}
-
-async function loadLegacyStudio() {
-  const risk = await fetchMyRisk()
-  const student = risk.students?.[0]
-  let records = []
-  let sentPlans = []
-  if (student?.student_id) {
-    try {
-      records = (await fetchPerformanceRecords(student.student_id)).records || []
-    } catch {
-      records = []
-    }
-  }
-  try {
-    sentPlans = (await fetchMySentPlans()).plans || []
-  } catch {
-    sentPlans = []
-  }
-  const built = buildTopicsFromLegacy(risk, records, sentPlans)
-  return {
-    topics: built.topics,
-    records,
-    risk: built.student || student || null,
-    week_plan: null,
-    live_ai_configured: true,
-  }
-}
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    try {
-      const data = await fetchStudyStudio()
-      studio.value = {
-        ...data,
-        risk: data.risk?.students?.[0] || data.risk || null,
-      }
-    } catch {
-      studio.value = await loadLegacyStudio()
+    const data = await fetchStudyStudio()
+    studio.value = {
+      ...data,
+      risk: data.risk?.students?.[0] || data.risk || null,
     }
-    if (!selectedTopic.value && studio.value.topics?.[0]?.topic) {
-      selectedTopic.value = studio.value.topics[0].topic
+    if (!selectedRecordId.value) {
+      selectedRecordId.value = files.value[0]?.id || null
     }
   } catch (err) {
     error.value = err.response?.data?.message || 'Unable to load study studio.'
   } finally {
     loading.value = false
+  }
+}
+
+async function onUpload(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  const studentId = studio.value.student_id || studio.value.risk?.student_id
+  if (!studentId) {
+    error.value = 'Your student profile is not ready for file upload yet.'
+    return
+  }
+  uploading.value = true
+  error.value = ''
+  try {
+    const body = new FormData()
+    const title = file.name.replace(/\.[^.]+$/, '') || 'Uploaded notes'
+    body.append('subject_code', 'NOTES')
+    body.append('subject_name', 'Uploaded notes')
+    body.append('assessment_name', 'Uploaded file')
+    body.append('topic', title)
+    body.append('attachment', file)
+    const saved = await createPerformanceRecord(studentId, body)
+    await load()
+    selectedRecordId.value = saved?.id || files.value[0]?.id || null
+    uploading.value = false
+    await openMode('guide')
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Unable to upload that file. Use TXT, DOCX, or a text-based PDF.'
+    uploading.value = false
   }
 }
 
@@ -266,69 +143,62 @@ function withTimeout(promise, ms = 8000) {
   ])
 }
 
-async function refreshFlashcards() {
+async function makeTopicPlan() {
+  const topic = planTopic.value.trim()
+  if (!topic || planBusy.value) return
+  planBusy.value = true
+  error.value = ''
   try {
-    const data = await withTimeout(generateStudyFlashcards(focusTopic.value))
-    const incoming = usableCards(data?.cards)
-    if (incoming.length) {
-      cards.value = incoming
-      if (mode.value === 'match') buildMatchBoard(cards.value)
-      return
-    }
-  } catch {
-    /* keep the local set already on screen */
-  }
-}
-
-async function refreshQuiz() {
-  try {
-    const data = await withTimeout(generateStudyQuiz(focusTopic.value))
-    const incoming = usableQuestions(data?.questions)
-    if (incoming.length) quiz.value = incoming
-  } catch {
-    /* keep the local quiz already on screen */
+    topicPlan.value = await withTimeout(generateTopicStudyPlan(topic), 25000)
+  } catch (err) {
+    topicPlan.value = null
+    error.value = err.response?.data?.message || 'The AI could not make a study plan for that topic.'
+  } finally {
+    planBusy.value = false
   }
 }
 
 async function openMode(nextMode) {
-  if (!focusTopic.value) {
-    error.value = 'Pick a study set / topic first.'
+  if (!selectedRecordId.value) {
+    error.value = 'Upload a file first, then choose flashcards, a quiz, or a study guide.'
     return
   }
   error.value = ''
-  if (nextMode === 'flashcards' || nextMode === 'learn' || nextMode === 'match') {
-    cards.value = usableCards(cards.value).length ? cards.value : localFlashcards(focusTopic.value)
-    cardIndex.value = 0
-    flipped.value = false
-    knownIds.value = []
-    learningIds.value = []
-    if (nextMode === 'match') buildMatchBoard(cards.value)
-    mode.value = nextMode
-    revealSession()
-    refreshFlashcards()
-    return
-  }
-  if (nextMode === 'test') {
-    quiz.value = usableQuestions(quiz.value).length ? quiz.value : localQuiz(focusTopic.value)
-    quizIndex.value = 0
-    quizChoice.value = null
-    quizScore.value = 0
-    quizDone.value = false
-    revealed.value = false
-    mode.value = 'test'
-    revealSession()
-    refreshQuiz()
-    return
-  }
-  if (nextMode === 'guide') {
-    plan.value = localPlan(focusTopic.value)
-    mode.value = 'guide'
-    try {
-      const data = await withTimeout(generateStudyStudioPlan(focusTopic.value))
-      if (data?.plan) plan.value = data
-    } catch {
-      /* local guide stays */
+  generating.value = true
+  try {
+    if (nextMode === 'flashcards') {
+      const data = await withTimeout(generateStudyFlashcards(selectedRecordId.value), 25000)
+      const incoming = usableCards(data?.cards)
+      if (!incoming.length) throw new Error('empty')
+      cards.value = incoming
+      cardIndex.value = 0
+      flipped.value = false
+      knownIds.value = []
+      learningIds.value = []
+      mode.value = 'flashcards'
+    } else if (nextMode === 'test') {
+      const data = await withTimeout(generateStudyQuiz(selectedRecordId.value), 25000)
+      const incoming = usableQuestions(data?.questions)
+      if (!incoming.length) throw new Error('empty')
+      quiz.value = incoming
+      quizIndex.value = 0
+      quizChoice.value = null
+      quizScore.value = 0
+      quizDone.value = false
+      revealed.value = false
+      mode.value = 'test'
+    } else if (nextMode === 'guide') {
+      const data = await withTimeout(generateStudyStudioPlan(selectedRecordId.value), 25000)
+      if (!data?.plan) throw new Error('empty')
+      plan.value = data
+      mode.value = 'guide'
     }
+    revealSession()
+  } catch (err) {
+    mode.value = 'home'
+    error.value = err.response?.data?.message || 'The AI could not make a review from this file. Upload a TXT, DOCX, or text-based PDF and try again.'
+  } finally {
+    generating.value = false
   }
 }
 
@@ -398,7 +268,7 @@ function onMatchTap(tile) {
   matchSelected.value = tile
 }
 
-watch(selectedTopic, () => {
+watch(selectedRecordId, () => {
   cards.value = []
   quiz.value = []
   plan.value = null
@@ -417,11 +287,9 @@ onMounted(load)
   <section class="quizlet-studio">
     <header class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">CDM Study Studio</p>
-        <h2>How do you want to study?</h2>
-        <p class="lead">
-          Quizlet-style practice from your weak topics — flashcards, learn, test, match, and an AI study guide.
-        </p>
+        <p class="eyebrow">Study Studio</p>
+        <h2>Make a review from your file</h2>
+        <p class="lead">Upload a file and the AI writes a study guide from it automatically. Flashcards and a quiz are still there if you want them. The chat is separate.</p>
       </div>
       <div class="hero-meta">
         <span class="chip">{{ studio.topics?.length || 0 }} study sets</span>
@@ -433,36 +301,46 @@ onMounted(load)
     <p v-if="loading" class="muted">Loading your study sets…</p>
 
     <template v-else>
-      <div class="search-row">
-        <label class="search">
-          <span class="sr-only">Search topics</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M20 20l-3.5-3.5" stroke-linecap="round" />
-          </svg>
-          <input v-model="topicQuery" type="search" placeholder="Search for a topic or subject…" />
+      <form class="topic-plan" @submit.prevent="makeTopicPlan">
+        <label>
+          Study plan topic
+          <input v-model="planTopic" maxlength="180" placeholder="Example: loops and nested conditionals" />
         </label>
-      </div>
+        <button type="submit" class="pill ok" :disabled="planBusy || !planTopic.trim()">
+          {{ planBusy ? 'Making plan…' : 'Make study plan' }}
+        </button>
+      </form>
+      <article v-if="topicPlan" class="topic-result">
+        <h3>{{ topicPlan.title }}</h3>
+        <pre>{{ topicPlan.plan }}</pre>
+      </article>
+
+      <label class="upload">
+        <input type="file" accept=".txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :disabled="uploading" @change="onUpload" />
+        <span>{{ uploading ? 'Uploading and writing the study guide…' : 'Upload a file' }}</span>
+        <small>TXT, DOCX, or a PDF with selectable text</small>
+      </label>
 
       <div class="sets">
         <button
-          v-for="item in filteredTopics"
-          :key="`${item.subject_code}-${item.topic}`"
+          v-for="item in files"
+          :key="item.id"
           type="button"
           class="set"
-          :class="{ active: selectedTopic === item.topic }"
-          @click="selectedTopic = item.topic"
+          :class="{ active: selectedRecordId === item.id }"
+          @click="selectedRecordId = item.id"
         >
           <div>
-            <strong>{{ item.topic }}</strong>
-            <span>{{ item.subject_code || 'General' }} · {{ item.source === 'professor' ? 'From professor' : 'From grades' }}</span>
+            <strong>{{ item.attachment_name || item.topic }}</strong>
+            <span>Uploaded file</span>
           </div>
-          <em>{{ item.percent != null ? `${item.percent}%` : `${item.terms || 8} terms` }}</em>
         </button>
-        <p v-if="!filteredTopics.length" class="muted empty">
-          No study sets yet. When your professor logs quiz topics — or grades show risk — they appear here.
+        <p v-if="!files.length" class="muted empty">
+          No file yet. Upload one and a study guide is written automatically.
         </p>
       </div>
+
+      <p v-if="generating" class="muted">The AI is reading your file and writing the study guide…</p>
 
       <!-- HOME: mode picker -->
       <div v-if="mode === 'home'" class="modes" aria-label="Study modes">
@@ -471,7 +349,8 @@ onMounted(load)
           :key="item.id"
           type="button"
           class="mode"
-          :disabled="!focusTopic"
+          :class="item.id"
+          :disabled="!selectedRecordId || generating"
           @click="openMode(item.id)"
         >
           <span class="mode-icon" aria-hidden="true">
@@ -501,13 +380,20 @@ onMounted(load)
         <!-- FLASHCARDS -->
         <div v-if="mode === 'flashcards' || mode === 'learn'" class="stage">
           <p class="progress-label">Card {{ cardIndex + 1 }} / {{ cards.length }}</p>
-          <article class="study-card">
-            <p class="card-kicker">{{ flipped ? 'Definition' : 'Term' }} · {{ cardIndex + 1 }} / {{ cards.length }}</p>
-            <h3>{{ flipped ? currentCard?.back : currentCard?.front }}</h3>
-            <button type="button" class="pill ok" @click="flipped = !flipped">
-              {{ flipped ? 'Show term' : 'Show answer' }}
-            </button>
-          </article>
+          <button type="button" class="flip-card" :class="{ flipped }" @click="flipped = !flipped">
+            <span class="inner">
+              <span class="face front">
+                <small>Term · {{ cardIndex + 1 }} / {{ cards.length }}</small>
+                <strong>{{ currentCard?.front }}</strong>
+                <em>Click the card to flip</em>
+              </span>
+              <span class="face back">
+                <small>Answer · {{ cardIndex + 1 }} / {{ cards.length }}</small>
+                <strong>{{ currentCard?.back }}</strong>
+                <em>Click to flip back</em>
+              </span>
+            </span>
+          </button>
           <ul class="card-list">
             <li v-for="(card, index) in cards" :key="index" :class="{ on: index === cardIndex }">
               <button type="button" @click="cardIndex = index; flipped = false">
@@ -533,7 +419,7 @@ onMounted(load)
             <div class="scoreboard">
               <p class="eyebrow">Results</p>
               <strong>{{ quizScore }} / {{ quiz.length }}</strong>
-              <p>Nice work. Review misses in Flashcards or Learn, then retake.</p>
+              <p class="score-copy">You got {{ quizScore }} out of {{ quiz.length }} correct. Review the ones you missed, then retake.</p>
               <div class="row-actions">
                 <button type="button" class="pill ok" @click="openMode('test')">Retake test</button>
                 <button type="button" class="ghost" @click="openMode('flashcards')">Review flashcards</button>
@@ -541,7 +427,8 @@ onMounted(load)
             </div>
           </template>
           <template v-else>
-            <p class="progress-label">Question {{ quizIndex + 1 }} / {{ quiz.length }}</p>
+            <p class="progress-label">Question {{ quizIndex + 1 }} of {{ quiz.length }}</p>
+            <span class="quiz-progress" aria-hidden="true"><i :style="{ width: `${((quizIndex + (revealed ? 1 : 0)) / quiz.length) * 100}%` }" /></span>
             <h3 class="prompt">{{ currentQuestion?.prompt }}</h3>
             <div class="choices">
               <button
@@ -550,14 +437,14 @@ onMounted(load)
                 type="button"
                 class="choice"
                 :class="{
-                  selected: quizChoice === index,
+                  selected: quizChoice === index && !revealed,
                   correct: revealed && index === currentQuestion.answer_index,
                   wrong: revealed && quizChoice === index && index !== currentQuestion.answer_index,
                 }"
                 @click="selectChoice(index)"
               >
                 <span class="letter">{{ String.fromCharCode(65 + index) }}</span>
-                {{ choice }}
+                <span class="choice-label">{{ choice }}</span>
               </button>
             </div>
             <p v-if="revealed" class="explain">{{ currentQuestion?.explanation }}</p>
@@ -611,21 +498,21 @@ onMounted(load)
 
 <style scoped>
 .quizlet-studio {
-  --ink: #0f1720;
-  --muted: #5b6570;
-  --line: #e3e8ee;
-  --soft: #f4f7fb;
-  --accent: #0d7856;
-  --accent-deep: #065f46;
-  --ok: #0f9f6e;
-  --danger: #e11d48;
-  --shadow: 0 14px 40px rgba(15, 23, 32, 0.08);
+  --ink: #282e3e;
+  --muted: #586380;
+  --line: #e4e6eb;
+  --soft: #f6f7fb;
+  --accent: #4255ff;
+  --accent-deep: #282e3e;
+  --ok: #178a4a;
+  --danger: #d92d20;
+  --shadow: 0 8px 24px rgba(40, 46, 62, 0.06);
   animation: enter 320ms ease both;
-  background:
-    radial-gradient(circle at 12% 0%, rgba(13, 120, 86, 0.1), transparent 42%),
-    linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+  background: #fff;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 16px;
+  color: #282e3e;
+  color-scheme: light;
   display: grid;
   gap: 1rem;
   padding: 1.25rem;
@@ -651,7 +538,7 @@ onMounted(load)
 }
 
 .eyebrow {
-  color: var(--accent);
+  color: #4255ff;
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -670,9 +557,15 @@ onMounted(load)
 .lead,
 .muted,
 .progress-label,
-.explain,
 .busy {
   color: var(--muted);
+  margin: 0;
+}
+
+.explain {
+  color: #243028;
+  font-size: 1rem;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -691,9 +584,9 @@ onMounted(load)
 }
 
 .chip {
-  background: #e7f6ef;
+  background: #eceeff;
   border-radius: 999px;
-  color: var(--accent-deep);
+  color: #4255ff;
   font-size: 0.78rem;
   font-weight: 800;
   padding: 0.4rem 0.75rem;
@@ -711,6 +604,82 @@ onMounted(load)
   color: #9f1239;
   margin: 0;
   padding: 0.75rem 0.9rem;
+}
+
+.topic-plan {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.topic-plan label {
+  color: #282e3e;
+  display: grid;
+  flex: 1;
+  font-size: 0.82rem;
+  font-weight: 800;
+  gap: 0.35rem;
+  min-width: 220px;
+}
+
+.topic-plan input {
+  border: 1.5px solid #d5dbe3;
+  border-radius: 12px;
+  color: #1a1d21;
+  font: inherit;
+  font-weight: 600;
+  min-height: 46px;
+  padding: 0.65rem 0.8rem;
+}
+
+.topic-result {
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 16px;
+  color: #282e3e;
+  display: grid;
+  gap: 0.55rem;
+  padding: 1rem;
+}
+
+.topic-result h3 {
+  color: #282e3e;
+  margin: 0;
+}
+
+.topic-result pre {
+  color: #243028;
+  font-family: inherit;
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.upload {
+  align-items: center;
+  background: #f6f7fb;
+  border: 1.5px dashed #98a2ff;
+  border-radius: 16px;
+  color: #282e3e;
+  cursor: pointer;
+  display: grid;
+  gap: 0.15rem;
+  justify-items: start;
+  padding: 0.9rem 1rem;
+}
+
+.upload input {
+  display: none;
+}
+
+.upload span {
+  color: #4255ff;
+  font-weight: 800;
+}
+
+.upload small {
+  color: #586380;
 }
 
 .search {
@@ -768,8 +737,8 @@ onMounted(load)
 
 .set:hover,
 .set.active {
-  border-color: var(--accent);
-  box-shadow: 0 12px 28px rgba(13, 120, 86, 0.12);
+  border-color: #4255ff;
+  box-shadow: 0 10px 24px rgba(66, 85, 255, 0.12);
   transform: translateY(-2px);
 }
 
@@ -788,20 +757,23 @@ onMounted(load)
 .modes {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
 }
 
 .mode {
+  align-items: center;
   background: #fff;
-  border: 1.5px solid var(--line);
-  border-radius: 18px;
+  border: 1px solid #e4e6eb;
+  border-radius: 16px;
+  color: #282e3e;
+  color-scheme: light;
   cursor: pointer;
   display: grid;
-  gap: 0.35rem;
-  justify-items: start;
-  min-height: 148px;
-  padding: 1rem;
-  text-align: left;
+  gap: 0.45rem;
+  justify-items: center;
+  min-height: 132px;
+  padding: 1rem 0.75rem;
+  text-align: center;
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
@@ -818,13 +790,33 @@ onMounted(load)
 
 .mode-icon {
   align-items: center;
-  background: #e8f7f0;
+  background: #eceeff;
   border-radius: 14px;
-  color: var(--accent-deep);
+  color: #4255ff;
   display: grid;
-  height: 42px;
+  height: 44px;
   place-items: center;
-  width: 42px;
+  width: 44px;
+}
+
+.mode.learn .mode-icon {
+  background: #e7f8f6;
+  color: #139e9e;
+}
+
+.mode.test .mode-icon {
+  background: #f4e9fb;
+  color: #8b3fc7;
+}
+
+.mode.match .mode-icon {
+  background: #fff6dc;
+  color: #c98900;
+}
+
+.mode.guide .mode-icon {
+  background: #e8f7ef;
+  color: #0d7856;
 }
 
 .mode-icon svg {
@@ -833,12 +825,12 @@ onMounted(load)
 }
 
 .mode strong {
-  color: var(--ink);
-  font-size: 1.05rem;
+  color: #282e3e;
+  font-size: 0.98rem;
 }
 
 .mode small {
-  color: var(--muted);
+  color: #586380;
   line-height: 1.35;
 }
 
@@ -914,7 +906,7 @@ onMounted(load)
 
 .ghost {
   background: transparent;
-  color: var(--accent-deep);
+  color: #4255ff;
   padding: 0.35rem 0.2rem;
 }
 
@@ -926,7 +918,7 @@ onMounted(load)
 }
 
 .pill.ok {
-  background: var(--accent);
+  background: #4255ff;
   color: #fff;
 }
 
@@ -956,29 +948,33 @@ onMounted(load)
 }
 
 .study-card {
-  background: linear-gradient(160deg, #064e3b, #0d7856 58%, #059669);
-  border-radius: 22px;
-  box-shadow: 0 18px 40px rgba(6, 78, 59, 0.22);
-  color: #fff;
+  align-content: center;
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(40, 46, 62, 0.08);
+  color: #282e3e;
   display: grid;
   gap: 0.85rem;
-  justify-items: start;
-  min-height: 220px;
-  padding: 1.4rem 1.5rem;
-  width: min(100%, 640px);
+  justify-items: center;
+  min-height: 280px;
+  padding: 1.6rem 1.5rem;
+  text-align: center;
+  width: min(100%, 680px);
 }
 
 .study-card h3 {
-  color: #fff;
-  font-size: clamp(1.2rem, 2.4vw, 1.6rem);
-  line-height: 1.35;
+  color: #282e3e;
+  font-size: clamp(1.45rem, 2.8vw, 2rem);
+  font-weight: 700;
+  line-height: 1.3;
   margin: 0;
 }
 
 .card-kicker {
+  color: #586380;
   letter-spacing: 0.08em;
   margin: 0;
-  opacity: 0.8;
   text-transform: uppercase;
   font-size: 0.75rem;
   font-weight: 800;
@@ -1022,18 +1018,22 @@ onMounted(load)
 .flip-card {
   background: transparent;
   border: 0;
+  color-scheme: light;
   cursor: pointer;
-  max-width: 560px;
+  height: 320px;
+  max-width: 640px;
+  padding: 0;
   perspective: 1400px;
-  width: min(100%, 560px);
+  width: min(100%, 640px);
 }
 
 .inner {
   display: block;
-  min-height: 280px;
+  height: 100%;
+  min-height: 320px;
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 480ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 560ms cubic-bezier(0.2, 0.8, 0.2, 1);
   width: 100%;
 }
 
@@ -1044,12 +1044,14 @@ onMounted(load)
 .face {
   align-content: center;
   backface-visibility: hidden;
-  background: linear-gradient(160deg, #064e3b, #0d7856 55%, #059669);
-  border-radius: 22px;
-  box-shadow: 0 18px 40px rgba(6, 78, 59, 0.28);
-  color: #fff;
+  -webkit-backface-visibility: hidden;
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(40, 46, 62, 0.12);
+  color: #1a1d21;
   display: grid;
-  gap: 0.65rem;
+  gap: 0.75rem;
   inset: 0;
   justify-items: center;
   padding: 1.6rem;
@@ -1059,21 +1061,27 @@ onMounted(load)
 }
 
 .face.back {
-  background: linear-gradient(160deg, #0b3b2e, #116b4d 50%, #1f8f66);
+  background: #4255ff;
+  border-color: #4255ff;
+  color: #fff;
   transform: rotateY(180deg);
 }
 
 .face small,
 .face em {
+  color: inherit;
   font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
   letter-spacing: 0.08em;
   opacity: 0.8;
   text-transform: uppercase;
 }
 
 .face strong {
-  font-size: clamp(1.15rem, 2.6vw, 1.55rem);
-  font-weight: 750;
+  color: inherit;
+  font-size: clamp(1.35rem, 2.8vw, 1.9rem);
+  font-weight: 700;
   line-height: 1.35;
   max-width: 28ch;
 }
@@ -1086,68 +1094,145 @@ onMounted(load)
   width: 100%;
 }
 
+.quiz-progress {
+  background: #e7ebf0;
+  border-radius: 999px;
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.quiz-progress i {
+  background: #4257ff;
+  display: block;
+  height: 100%;
+}
+
 .prompt {
-  color: var(--ink);
-  font-size: 1.2rem;
-  margin: 0;
+  color: #1a1d21;
+  font-size: clamp(1.25rem, 2.4vw, 1.7rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  margin: 0.15rem 0 0.2rem;
 }
 
 .choices {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.7rem;
   width: 100%;
 }
 
 .choice {
   align-items: center;
   background: #fff;
-  border: 1.5px solid var(--line);
+  border: 2px solid #d5dbe3;
   border-radius: 14px;
+  color: #1a1d21;
+  color-scheme: light;
   cursor: pointer;
   display: flex;
-  gap: 0.75rem;
+  gap: 0.85rem;
+  min-height: 58px;
   padding: 0.85rem 1rem;
   text-align: left;
-  transition: border-color 140ms ease, background 140ms ease;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
 .choice:hover {
-  border-color: #9ad4bb;
+  background: #f7f8fb;
+  border-color: #98a2b3;
+}
+
+.choice-label {
+  color: #1a1d21;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 .choice .letter {
   align-items: center;
-  background: var(--soft);
+  background: #fff;
+  border: 2px solid #c5ced8;
   border-radius: 999px;
+  color: #1a1d21;
   display: grid;
   flex: 0 0 auto;
+  font-size: 0.92rem;
   font-weight: 800;
-  height: 28px;
+  height: 34px;
   place-items: center;
-  width: 28px;
+  width: 34px;
+}
+
+.choice.selected {
+  background: #f4f6ff;
+  border-color: #4257ff;
+  box-shadow: 0 0 0 3px rgba(66, 87, 255, 0.16);
+}
+
+.choice.selected .letter {
+  background: #4257ff;
+  border-color: #4257ff;
+  color: #fff;
 }
 
 .choice.correct {
-  background: #ecfdf5;
-  border-color: var(--ok);
+  background: #e8f8ef;
+  border-color: #178a4a;
+}
+
+.choice.correct .choice-label,
+.choice.correct {
+  color: #14532d;
+}
+
+.choice.correct .letter {
+  background: #178a4a;
+  border-color: #178a4a;
+  color: #fff;
 }
 
 .choice.wrong {
-  background: #fff1f2;
-  border-color: var(--danger);
+  background: #fdeeee;
+  border-color: #d92d20;
+}
+
+.choice.wrong .choice-label,
+.choice.wrong {
+  color: #9f1239;
+}
+
+.choice.wrong .letter {
+  background: #d92d20;
+  border-color: #d92d20;
+  color: #fff;
 }
 
 .scoreboard {
   display: grid;
   gap: 0.65rem;
-  justify-items: start;
-  padding: 0.5rem 0;
+  justify-items: center;
+  padding: 1.25rem 0 0.4rem;
+  text-align: center;
 }
 
 .scoreboard strong {
-  color: var(--accent-deep);
-  font-size: 2.4rem;
+  color: #282e3e;
+  font-size: 3.4rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
   line-height: 1;
+}
+
+.score-copy {
+  color: #3d4555;
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+  max-width: 36ch;
 }
 
 .match-grid {
@@ -1159,9 +1244,12 @@ onMounted(load)
 
 .match-tile {
   background: #fff;
-  border: 1.5px solid var(--line);
+  border: 2px solid #d5dbe3;
   border-radius: 14px;
+  color: #1a1d21;
+  color-scheme: light;
   cursor: pointer;
+  font-weight: 600;
   min-height: 88px;
   padding: 0.75rem;
   text-align: left;

@@ -6,7 +6,6 @@ import {
   fetchAiStatus,
   fetchEarlyWarnings,
   fetchMyRisk,
-  fetchMySentPlans,
   fetchStudentSentPlans,
   markSentPlanRead,
 } from './services/monitoringApi'
@@ -50,9 +49,20 @@ const title = computed(() => {
 })
 
 watch(selected, (student) => {
-  if (student) loadPlans(student.student_id)
+  if (student && !isStudent.value) loadPlans(student.student_id)
   else sentPlans.value = []
 })
+
+watch(
+  () => auth.currentUser?.id,
+  (next, prev) => {
+    if (!next || next === prev) return
+    data.value = null
+    selectedId.value = null
+    sentPlans.value = []
+    load()
+  },
+)
 
 async function load() {
   loading.value = true
@@ -75,7 +85,10 @@ async function load() {
     }
     selectedId.value = students.value[0]?.student_id || null
   } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to load monitoring.'
+    const timedOut = err.code === 'ECONNABORTED'
+    error.value = timedOut
+      ? 'Faculty monitoring took too long to answer. The API may be unreachable.'
+      : err.response?.data?.message || 'Unable to load monitoring.'
   } finally {
     loading.value = false
   }
@@ -83,7 +96,7 @@ async function load() {
 
 async function loadPlans(studentId) {
   try {
-    const payload = isStudent.value ? await fetchMySentPlans() : await fetchStudentSentPlans(studentId)
+    const payload = await fetchStudentSentPlans(studentId)
     sentPlans.value = payload.plans || []
   } catch {
     sentPlans.value = []
@@ -113,7 +126,7 @@ onMounted(load)
         <p class="lead">
           {{
             isStudent
-              ? 'Study Studio: flashcards, practice quizzes, and AI study plans from your weak topics.'
+              ? 'Upload a file and the AI writes a study guide automatically. You can still make flashcards or a quiz from the same file.'
               : isProfessor
                 ? 'Review assigned students, log weak topics, and send AI study plans.'
                 : 'Browse students by department, course, and section.'
@@ -201,7 +214,7 @@ onMounted(load)
               </article>
               <article>
                 <strong>Quizzes</strong>
-                <span>{{ selected.signals.weak_quiz_count || 0 }} weak topic records</span>
+                <span>{{ selected.signals.weak_quiz_count || 0 }} scored quizzes on this account</span>
                 <em>{{ selected.signals.weak_quizzes }}</em>
               </article>
               <article>
@@ -220,15 +233,22 @@ onMounted(load)
             <div v-if="selected.subjects?.length" class="subjects">
               <article v-for="subject in selected.subjects" :key="subject.subject_code">
                 <strong>{{ subject.subject_code }}</strong>
-                <span>{{ subject.subject_name }}</span>
+                <span>
+                  {{ subject.subject_name }}
+                  <template v-if="subject.periods">
+                    · Prelim {{ subject.periods.Prelim ?? '—' }}
+                    · Midterm {{ subject.periods.Midterm ?? '—' }}
+                    · Final {{ subject.periods.Final ?? '—' }}
+                  </template>
+                </span>
                 <em :class="subject.risk_level">{{ subject.average_grade }} · {{ subject.risk_level }}</em>
               </article>
             </div>
             <p v-else class="muted">No approved grades yet.</p>
           </div>
 
-          <div class="card">
-            <h3>{{ isStudent ? 'Study plans from instructors' : 'Sent plans' }}</h3>
+          <div v-if="!isStudent" class="card">
+            <h3>Sent plans</h3>
             <article v-for="plan in sentPlans" :key="plan.id" class="plan" @click="openPlan(plan)">
               <strong>{{ plan.title }}</strong>
               <span>{{ plan.subject_code }} · {{ plan.topic }}</span>
@@ -237,13 +257,14 @@ onMounted(load)
             <p v-if="!sentPlans.length" class="muted">No study plans yet.</p>
           </div>
 
-          <StudentStudyStudio v-if="isStudent" />
+          <StudentStudyStudio v-if="isStudent" :key="`studio-${auth.currentUser?.id}`" />
 
           <ProfessorRecordPanel
-            v-if="selected && (isProfessor || isAdmin || isStudent)"
+            v-if="selected && !isStudent"
+            :key="`records-${auth.currentUser?.id}-${selected.student_id}`"
             :student-id="selected.student_id"
             :subjects="selected.subjects || []"
-            :viewer-role="isStudent ? 'student' : isProfessor ? 'professor' : 'staff'"
+            :viewer-role="isProfessor ? 'professor' : 'staff'"
             @sent="loadPlans(selected.student_id)"
           />
         </section>
@@ -253,6 +274,7 @@ onMounted(load)
     </template>
 
     <AiHelpChatbot
+      :key="`chat-${auth.currentUser?.id || 0}-${selected?.student_id || 0}`"
       :student-id="selected?.student_id || null"
       :student-name="selected?.student_name || (isStudent ? 'You' : 'Student')"
       :risk-label="selected?.risk_label || ''"

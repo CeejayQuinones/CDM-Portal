@@ -49,11 +49,18 @@ const badge = computed(() => {
 
 const canChat = computed(() => Boolean(props.studentId))
 
-const historyPayload = computed(() =>
+const priorTurns = () =>
   messages.value
-    .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
-    .map((msg) => ({ role: msg.role, content: msg.content })),
-)
+    .filter((msg) => {
+      if (msg.pending) return false
+      if (msg.role !== 'user' && msg.role !== 'assistant') return false
+      if (String(msg.id || '').startsWith('sys-')) return false
+      const content = String(msg.content || '').trim()
+      return content !== '' && content !== 'Thinking…'
+    })
+    .slice(0, -1)
+    .slice(-10)
+    .map((msg) => ({ role: msg.role, content: msg.content }))
 
 const scrollToBottom = async () => {
   await nextTick()
@@ -141,7 +148,7 @@ const sendMessage = async (text) => {
   sending.value = true
   await scrollToBottom()
 
-  const prior = historyPayload.value.slice(0, -1)
+  const prior = priorTurns()
 
   try {
     const reply = await askAiHelp(props.studentId, question, prior)

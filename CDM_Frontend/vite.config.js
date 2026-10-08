@@ -2,11 +2,26 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const useFileProtocolAssets = () => {
+  let relative = false
+  return {
+    name: 'file-protocol-assets',
+    configResolved(config) {
+      relative = config.base === './' || config.base === ''
+    },
+    transformIndexHtml(html) {
+      if (!relative) return html
+      return html.replaceAll(' crossorigin', '')
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => ({
   // Relative base for Capacitor/Electron; absolute root for Vercel/web hosting.
   base: mode === 'vercel' || mode === 'production' ? '/' : './',
   plugins: [
     vue(),
+    useFileProtocolAssets(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png'],

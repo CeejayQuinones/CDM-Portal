@@ -45,6 +45,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/monitoring/performance-records/{record}/attachment', [MonitoringController::class, 'downloadPerformanceAttachment']);
         Route::post('/monitoring/students/{student}/performance-records/{record}/generate-plan', [MonitoringController::class, 'generateRecordStudyPlan'])->middleware('throttle:8,1');
         Route::post('/monitoring/students/{student}/performance-records/{record}/send-plan', [MonitoringController::class, 'sendRecordStudyPlan'])->middleware('throttle:10,1');
+        Route::post('/monitoring/students/{student}/grade-plan', [MonitoringController::class, 'generateGradeStudyPlan'])->middleware('throttle:8,1');
+        Route::post('/monitoring/students/{student}/grade-plan/send', [MonitoringController::class, 'sendGradeStudyPlan'])->middleware('throttle:10,1');
         Route::get('/monitoring/students/{student}/sent-plans', [MonitoringController::class, 'listSentPlans']);
         Route::get('/monitoring/my-sent-plans', [MonitoringController::class, 'mySentPlans']);
         Route::patch('/monitoring/sent-plans/{plan}/read', [MonitoringController::class, 'markSentPlanRead']);

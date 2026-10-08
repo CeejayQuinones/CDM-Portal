@@ -2,8 +2,9 @@ import { apiClient } from '../../../services/apiClient'
 
 const unwrap = async (request) => (await request).data.data
 
-export const fetchEarlyWarnings = (params = {}) => unwrap(apiClient.get('/monitoring/early-warnings', { params }))
-export const fetchMyRisk = () => unwrap(apiClient.get('/monitoring/my-risk'))
+export const fetchEarlyWarnings = (params = {}) =>
+  unwrap(apiClient.get('/monitoring/early-warnings', { params, timeout: 20000 }))
+export const fetchMyRisk = () => unwrap(apiClient.get('/monitoring/my-risk', { timeout: 20000 }))
 export const fetchStudyPlans = () => unwrap(apiClient.get('/monitoring/study-plans'))
 export const fetchStudentStudyPlan = (studentId) => unwrap(apiClient.get(`/monitoring/students/${studentId}/study-plan`))
 export const fetchAdviserAlerts = () => unwrap(apiClient.get('/monitoring/adviser-alerts'))
@@ -33,6 +34,12 @@ export const createPerformanceRecord = (studentId, formData) =>
     }),
   )
 
+export const generateGradeStudyPlan = (studentId, subjectCode) =>
+  unwrap(apiClient.post(`/monitoring/students/${studentId}/grade-plan`, { subject_code: subjectCode }))
+
+export const sendGradeStudyPlan = (studentId, payload) =>
+  unwrap(apiClient.post(`/monitoring/students/${studentId}/grade-plan/send`, payload))
+
 export const generateRecordStudyPlan = (studentId, recordId) =>
   unwrap(apiClient.post(`/monitoring/students/${studentId}/performance-records/${recordId}/generate-plan`))
 
@@ -48,11 +55,14 @@ export const markSentPlanRead = (planId) => unwrap(apiClient.patch(`/monitoring/
 
 export const fetchStudyStudio = () => unwrap(apiClient.get('/monitoring/study-studio'))
 
-export const generateStudyFlashcards = (topic) =>
-  unwrap(apiClient.post('/monitoring/study-studio/flashcards', { topic: topic || null }))
+export const generateStudyFlashcards = (recordId) =>
+  unwrap(apiClient.post('/monitoring/study-studio/flashcards', { record_id: recordId }))
 
-export const generateStudyQuiz = (topic) =>
-  unwrap(apiClient.post('/monitoring/study-studio/quiz', { topic: topic || null }))
+export const generateStudyQuiz = (recordId) =>
+  unwrap(apiClient.post('/monitoring/study-studio/quiz', { record_id: recordId }))
 
-export const generateStudyStudioPlan = (topic) =>
-  unwrap(apiClient.post('/monitoring/study-studio/plan', { topic: topic || null }))
+export const generateStudyStudioPlan = (recordId) =>
+  unwrap(apiClient.post('/monitoring/study-studio/plan', { record_id: recordId }))
+
+export const generateTopicStudyPlan = (topic) =>
+  unwrap(apiClient.post('/monitoring/study-studio/plan', { topic }))

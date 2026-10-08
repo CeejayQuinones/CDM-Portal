@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
+import { SHELL_BLOCK_STORAGE_KEY, detectAppShell, shellBlockMessage } from '../config/appShell'
 import { performanceMonitor } from '../services/performance/performanceMonitor'
 
 const AuthLayout = () => import('../layouts/AuthLayout.vue')
@@ -313,6 +314,20 @@ router.beforeEach(async (to) => {
   performanceMonitor.beginRoute(to.name || to.path)
   const authStore = useAuthStore()
   await authStore.initialize()
+
+  if (authStore.isAuthenticated) {
+    const blocked = shellBlockMessage(detectAppShell(), authStore.currentRole)
+    if (blocked) {
+      sessionStorage.setItem(SHELL_BLOCK_STORAGE_KEY, blocked)
+      try {
+        await authStore.logout()
+      } catch {
+        // The session is already cleared. Continue to the login screen.
+      }
+      if (to.name === 'login') return true
+      return { name: 'login' }
+    }
+  }
 
   if (to.matched.some((record) => record.meta.guestOnly) && authStore.isAuthenticated)
     return dashboardForRole(authStore.currentRole)

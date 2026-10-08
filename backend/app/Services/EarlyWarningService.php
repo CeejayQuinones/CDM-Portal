@@ -165,10 +165,12 @@ class EarlyWarningService
             foreach ($enrollment->enrollmentSubjects as $record) {
                 $periods = ['Prelim' => null, 'Midterm' => null, 'Final' => null];
                 foreach ($record->grades as $grade) {
-                    if (isset($periods[$grade->gradingPeriod?->period_name]) && $grade->grade !== null) {
-                        $periods[$grade->gradingPeriod->period_name] = (float) $grade->grade;
-                        $scores[] = (float) $grade->grade;
+                    $periodName = $grade->gradingPeriod?->period_name;
+                    if (! is_string($periodName) || ! array_key_exists($periodName, $periods) || $grade->grade === null) {
+                        continue;
                     }
+                    $periods[$periodName] = (float) $grade->grade;
+                    $scores[] = (float) $grade->grade;
                 }
                 $values = array_values(array_filter($periods, fn ($v) => $v !== null));
                 if (! $values) {
@@ -205,7 +207,10 @@ class EarlyWarningService
         $trend = $prelim->isNotEmpty() && $midterm->isNotEmpty() && $midterm->avg() <= $prelim->avg() - (float) config('monitoring.decline_points', 3) ? 'declining' : 'steady';
 
         $quizPercents = $student->performanceRecords
-            ->filter(fn ($record) => (float) $record->max_score > 0)
+            ->filter(fn ($record) => (int) $record->student_id === (int) $student->id)
+            ->filter(fn ($record) => (int) $record->professor_user_id !== (int) $student->user_id)
+            ->filter(fn ($record) => filled($record->attachment_path))
+            ->filter(fn ($record) => $record->score !== null && (float) $record->max_score > 0)
             ->map(fn ($record) => ((float) $record->score / (float) $record->max_score) * 100)
             ->values();
         $weakLine = (float) config('monitoring.quiz_weak_percent', 75);

@@ -19,8 +19,8 @@
     "mobile:open:android": "npx cap open android",
     "mobile:add:ios": "npx cap add ios",
     "mobile:open:ios": "npx cap open ios",
-    "desktop:dev": "npm run build && electron .",
-    "desktop:build": "npm run build && electron-builder"
+    "desktop:dev": "vite build --base ./ && electron .",
+    "desktop:build": "vite build --base ./ && electron-builder"
   },
   "dependencies": {
     "@capacitor/core": "^7.4.4",

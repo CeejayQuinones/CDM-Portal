@@ -1,9 +1,10 @@
 <script setup>
-import { nextTick, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import RegistrationWizard from '../components/RegistrationWizard.vue'
 import { useAuthStore } from '../stores/authStore'
 import { dashboardForRole } from '../utils/roleDashboard'
+import { APP_SHELLS, SHELL_BLOCK_STORAGE_KEY, detectAppShell, shellBlockMessage } from '../config/appShell'
 import logoUrl from '../assets/styles/images/cdm_logo.png'
 
 const router = useRouter()
@@ -33,6 +34,19 @@ const events = [
   { month: 'SEP', day: '21', type: 'Academic support', title: 'Academic Consultation Week', description: 'Dedicated consultation days for academic guidance and student support.' },
 ]
 
+const shell = detectAppShell()
+const shellLabel =
+  shell === APP_SHELLS.MOBILE ? 'Student mobile app' : shell === APP_SHELLS.DESKTOP ? 'Staff desktop app' : 'Web app'
+
+const takeShellBlock = () => {
+  const message = sessionStorage.getItem(SHELL_BLOCK_STORAGE_KEY)
+  if (!message) return
+  sessionStorage.removeItem(SHELL_BLOCK_STORAGE_KEY)
+  formError.value = message
+}
+
+onMounted(takeShellBlock)
+
 const scrollTo = async (id) => {
   mobileMenuOpen.value = false
   await nextTick()
@@ -50,6 +64,16 @@ const submit = async () => {
   isLoading.value = true
   try {
     await authStore.login({ username: form.username.trim(), password: form.password })
+    const blocked = shellBlockMessage(shell, authStore.currentRole)
+    if (blocked) {
+      try {
+        await authStore.logout()
+      } catch {
+        // The session is already cleared. Keep the shell message on screen.
+      }
+      formError.value = blocked
+      return
+    }
     const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
     await router.replace(destination)
   } catch (error) {
@@ -106,7 +130,7 @@ const registrationComplete = () => {
             <div class="card-brand"><img :src="logoUrl" alt="" /><span>CDM <strong>PORTAL</strong></span></div>
             <p class="card-kicker">Account access</p>
             <h2 id="login-title">Welcome back</h2>
-            <p class="login-intro">Sign in with your campus credentials.</p>
+            <p class="login-intro">Sign in with your campus credentials. {{ shellLabel }}.</p>
             <p v-if="registrationSuccess" class="registration-success" role="status">Account created successfully. You can now sign in.</p>
             <form novalidate @submit.prevent="submit">
               <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>

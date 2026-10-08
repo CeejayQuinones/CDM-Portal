@@ -260,6 +260,80 @@ class MonitoringController extends Controller
         ]);
     }
 
+    public function generateGradeStudyPlan(Request $request, int $student): JsonResponse
+    {
+        $role = $request->user()->role?->role_name;
+        if (! in_array($role, [Role::PROFESSOR, Role::ADMIN, Role::REGISTRAR_STAFF], true)) {
+            return $this->forbidden('Only professors, admins, and registrar staff can generate study plans from grades.');
+        }
+        if ($response = $this->authorizeStudent($request, $student)) {
+            return $response;
+        }
+
+        $data = $request->validate([
+            'subject_code' => ['required', 'string', 'max:40'],
+        ]);
+        $assessment = $this->warnings->assessByStudentId($student);
+        $subject = $this->gradeSubject($assessment, $data['subject_code']);
+        if (! $assessment || ! $subject) {
+            return $this->notFound('Approved grade record not found for that subject.');
+        }
+
+        try {
+            $generated = $this->ai->generateTopicStudyPlan($assessment, $this->gradePlanRecord($subject));
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 503);
+        }
+
+        return $this->ok([
+            'title' => $generated['title'],
+            'plan_body' => $generated['reply'],
+            'source' => $generated['source'],
+            'subject' => $subject,
+        ]);
+    }
+
+    public function sendGradeStudyPlan(Request $request, int $student): JsonResponse
+    {
+        if ($request->user()->role?->role_name !== Role::PROFESSOR) {
+            return $this->forbidden('Only professors can send study plans to students.');
+        }
+        if (! $this->warnings->professorCanAccessStudent($request->user()->id, $student)) {
+            return $this->forbidden('You can only send plans to students in your assigned subjects.');
+        }
+
+        $data = $request->validate([
+            'subject_code' => ['required', 'string', 'max:40'],
+            'title' => ['nullable', 'string', 'max:180'],
+            'plan_body' => ['required', 'string', 'max:8000'],
+        ]);
+        $subject = $this->gradeSubject($this->warnings->assessByStudentId($student), $data['subject_code']);
+        if (! $subject) {
+            return $this->notFound('Approved grade record not found for that subject.');
+        }
+
+        $plan = MonitoringSentPlan::query()->create([
+            'student_id' => $student,
+            'sender_user_id' => $request->user()->id,
+            'performance_record_id' => null,
+            'title' => trim((string) ($data['title'] ?? '')) ?: 'Study plan: '.$subject['subject_code'],
+            'topic' => $subject['subject_name'] ?? $subject['subject_code'],
+            'subject_code' => $subject['subject_code'],
+            'plan_body' => $data['plan_body'],
+            'source' => 'gemini',
+        ]);
+
+        RiskNotification::query()->create([
+            'student_id' => $student,
+            'sender_user_id' => $request->user()->id,
+            'risk_level' => $subject['risk_level'] ?? 'moderate',
+            'title' => $plan->title,
+            'message' => 'Your instructor sent a study plan for '.$subject['subject_code'].'. Open Academic Monitoring to review it.',
+        ]);
+
+        return response()->json(['success' => true, 'data' => $this->sentPlan($plan)], 201);
+    }
+
     public function sendRecordStudyPlan(Request $request, int $student, int $record): JsonResponse
     {
         $role = $request->user()->role?->role_name;
@@ -425,6 +499,7 @@ class MonitoringController extends Controller
             : null;
 
         return $this->ok([
+            'student_id' => $studentId,
             'topics' => $context['topics'],
             'records' => $context['records'],
             'risk' => $context['assessment'],
@@ -440,12 +515,16 @@ class MonitoringController extends Controller
         }
 
         $validated = $request->validate([
-            'topic' => ['nullable', 'string', 'max:180'],
+            'record_id' => ['required', 'integer'],
         ]);
 
         $studentId = (int) Student::query()->where('user_id', $request->user()->id)->value('id');
 
-        return $this->ok($this->ai->generateFlashcards($studentId, $validated['topic'] ?? null));
+        try {
+            return $this->ok($this->ai->generateFlashcards($studentId, (int) $validated['record_id']));
+        } catch (\RuntimeException $exception) {
+            return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
+        }
     }
 
     public function generateStudentQuiz(Request $request): JsonResponse
@@ -455,12 +534,16 @@ class MonitoringController extends Controller
         }
 
         $validated = $request->validate([
-            'topic' => ['nullable', 'string', 'max:180'],
+            'record_id' => ['required', 'integer'],
         ]);
 
         $studentId = (int) Student::query()->where('user_id', $request->user()->id)->value('id');
 
-        return $this->ok($this->ai->generateSampleQuiz($studentId, $validated['topic'] ?? null));
+        try {
+            return $this->ok($this->ai->generateSampleQuiz($studentId, (int) $validated['record_id']));
+        } catch (\RuntimeException $exception) {
+            return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
+        }
     }
 
     public function generateStudentStudioPlan(Request $request): JsonResponse
@@ -470,12 +553,21 @@ class MonitoringController extends Controller
         }
 
         $validated = $request->validate([
-            'topic' => ['nullable', 'string', 'max:180'],
+            'record_id' => ['nullable', 'integer', 'required_without:topic'],
+            'topic' => ['nullable', 'string', 'max:180', 'required_without:record_id'],
         ]);
 
         $studentId = (int) Student::query()->where('user_id', $request->user()->id)->value('id');
 
-        return $this->ok($this->ai->generateStudentStudioPlan($studentId, $validated['topic'] ?? null));
+        try {
+            if (filled($validated['topic'] ?? null) && empty($validated['record_id'])) {
+                return $this->ok($this->ai->generateRequestedTopicPlan($studentId, (string) $validated['topic']));
+            }
+
+            return $this->ok($this->ai->generateStudentStudioPlan($studentId, (int) $validated['record_id']));
+        } catch (\RuntimeException $exception) {
+            return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
+        }
     }
 
     private function requireStudent(Request $request): ?JsonResponse
@@ -502,6 +594,37 @@ class MonitoringController extends Controller
         }
 
         return null;
+    }
+
+    /** @param  array<string, mixed>|null  $assessment */
+    private function gradeSubject(?array $assessment, string $subjectCode): ?array
+    {
+        foreach ($assessment['subjects'] ?? [] as $subject) {
+            if (($subject['subject_code'] ?? '') === $subjectCode) {
+                return $subject;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param  array<string, mixed>  $subject */
+    private function gradePlanRecord(array $subject): array
+    {
+        $periods = $subject['periods'] ?? [];
+        $format = fn ($value) => $value === null ? 'not yet released' : (string) $value;
+
+        return [
+            'assessment_name' => 'Approved grades',
+            'topic' => $subject['subject_name'] ?? $subject['subject_code'] ?? 'Subject',
+            'subject_code' => $subject['subject_code'] ?? '',
+            'score' => $subject['average_grade'] ?? null,
+            'max_score' => 100,
+            'notes' => 'Prelim '.$format($periods['Prelim'] ?? null)
+                .', Midterm '.$format($periods['Midterm'] ?? null)
+                .', Final '.$format($periods['Final'] ?? null)
+                .'. Trend '.($subject['trend'] ?? 'steady').'.',
+        ];
     }
 
     private function performanceRecord(MonitoringPerformanceRecord $record): array

@@ -5,6 +5,7 @@ $localOrigins = implode(',', [
     'http://127.0.0.1:5173',
     'http://localhost',
     'capacitor://localhost',
+    'null',
 ]);
 
 $configuredOrigins = env(
