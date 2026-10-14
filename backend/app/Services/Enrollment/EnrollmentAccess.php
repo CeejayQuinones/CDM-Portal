@@ -4,6 +4,7 @@ namespace App\Services\Enrollment;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Admission\AdmissionHandoffService;
 
 class EnrollmentAccess
 {
@@ -13,7 +14,11 @@ class EnrollmentAccess
         if ($lock) {
             $q->lockForUpdate();
         } $actor = $q->first();
-        abort_unless($actor && $actor->status === 'active' && in_array($actor->role?->role_name, $staff ? [Role::ADMIN, Role::REGISTRAR_STAFF] : [Role::STUDENT], true), 403, 'Enrollment access denied.');
+        $allowed = $actor && $actor->status === 'active' && ($staff
+            ? in_array($actor->role?->role_name, [Role::ADMIN, Role::REGISTRAR_STAFF], true)
+            : ($actor->role?->role_name === Role::STUDENT
+                || ($actor->role?->role_name === Role::GUEST && app(AdmissionHandoffService::class)->isAdmittedGuest($actor, $lock))));
+        abort_unless($allowed, 403, 'Enrollment access denied.');
 
         return $actor;
     }

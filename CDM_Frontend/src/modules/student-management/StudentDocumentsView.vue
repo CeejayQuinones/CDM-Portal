@@ -356,7 +356,7 @@ onBeforeUnmount(stopAnalysisPolling)
   <p v-if="actionError" class="notice error" role="alert">{{ actionError }}</p>
   <section v-if="loading" class="panel state">Loading student documents…</section>
   <section v-else-if="error" class="panel state error" role="alert">
-    {{ error }}
+    {{ error }} <button type="button" @click="loadDocuments">Retry</button>
   </section>
   <template v-else-if="student">
     <section class="summary">

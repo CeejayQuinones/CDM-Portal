@@ -372,129 +372,31 @@ resources, its additive migration and commands, plus Admission-only registration
 `backend/routes/api.php`, `backend/routes/console.php`, `backend/bootstrap/app.php`
 and `CDM_Frontend/src/config/accessControl.js`.
 
-## Final phase: acceptance and academic Student conversion (2026-09-25)
+## Admission to Enrollment lifecycle — Phase 1 (2026-10-09)
 
-The final conversion workflow is now implemented. This supersedes the earlier
-statement that institutional acceptance and conversion remain a separate future
-phase. No academic or Admission schema migration is required.
+A current application becomes complete only after the latest finalized attempt has a
+published PASSED result, no unresolved retake exists, staff confirms an active Course
+and matching active Curriculum, and the versioned acceptance decision matches those
+records. Admin and Registrar Staff use the same password-step-up protected
+`POST /api/admission/registrar/applicants/{id}/accept` action. The transaction locks the
+User and applicant, revalidates the result and configuration, updates the applicant to
+`accepted`, and writes the `application_accepted` decision and audit atomically.
+Repeated confirmation is idempotent.
 
-### Mapping and eligibility
+Completion deliberately leaves the account as Guest. It creates no Student row,
+no official student number, no new User or credentials, and no role change. The
+accepted applicant, matching decision, published result, Course and Curriculum form
+the authoritative admitted-Guest handoff. `/api/me` exposes only derived completion
+flags; it does not trust a browser flag. The applicant sees a read-only completion
+page and cannot restart the exam, result or recommendation workflow.
 
-`students.user_id` and `user_profile_id` reuse the existing applicant User and its
-canonical profile. Names, contacts, username, password, account status and User ID
-are unchanged. The Registrar explicitly accepts an active academic course and an
-active curriculum belonging to that course. Acceptance is recorded in the existing
-`admission_decisions` table against the exact application/result versions, and sets
-`accepted_course_id`, `accepted_curriculum_id`, `accepted_at`, accepted status and
-an incremented application version. Profile review is explicitly confirmed by the
-Registrar; this operation does not fabricate email-verification evidence.
+An admitted Guest can view the Enrollment handoff/status and public promotional
+Events on web. Enrollment application creation remains disabled because the current
+application schema requires `student_id`. Grading, Academic Monitoring, Student
+document services and operational Event tools remain role-protected. Existing
+Students converted under the earlier lifecycle keep their Student row, number, role
+and Admission history.
 
-Conversion requires the latest/current application, an active Guest with a complete
-name/profile and no existing academic identity, an open or closed cycle between
-its opening and final-confirmation deadline, the latest finalized attempt belonging
-to that application, and a published PASSED result (including authorized Registrar
-pass). No active attempt across any of the user's cases may remain. Acceptance
-must match the current result version and accepted academic IDs. A result correction
-invalidates acceptance and requires another explicit review. Closed application
-intake does not prevent confirmation within its remaining confirmation window.
-
-The Registrar supplies the official student number: nonempty, at most 20 characters,
-no surrounding whitespace/control characters, and database-unique under the portal's
-existing collation. There is no production sequence allocator in the portal; seed
-example `26-00001` is not treated as an allocation policy. No `MAX+1`, applicant-number
-reuse, or new numbering format is introduced. A duplicate number returns a conflict.
-
-Student creation supplies exactly: existing `user_id`, existing `user_profile_id`,
-accepted `course_id`, accepted `curriculum_id`, confirmed `student_number`, confirmed
-`admission_date` (valid date, not in the future), `year_level = 1`, and
-`student_status = regular`. Curriculum must be active and effective no later than
-the admission-date year. No enrollment, section, grade, Monitoring, Document Request,
-or other academic workflow record is created.
-
-### Transaction and concurrency
-
-Conversion locks the User first, then applicant and relevant cycle/profile/session/
-result/acceptance/academic rows, and revalidates inside the transaction. The existing
-Student-role row serializes number assignment between conversions for different
-users. Existing unique indexes on Student user/profile/number and converted Student
-link remain authoritative. Lock deadlocks retry at most three transaction attempts;
-unique conflicts return safe 409 responses.
-
-Only after Student insertion succeeds does the transaction change Guest to Student,
-set converted status/link/time/version, write immutable conversion decision evidence
-and `admission.student_converted` workflow audit, and revoke existing account tokens.
-Any failure rolls back all of those writes, including token revocation. The same
-username/password works on normal sign-in, which refreshes Student navigation.
-Admission remains read-only for Student accounts. Result mutations on converted
-cases are blocked for separate academic exception review; they never silently undo
-conversion or demote/delete the Student.
-
-Repeat confirmation verifies the existing Student user/profile link and conversion
-evidence, then returns that Student without changing academic fields or duplicating
-history. Existing academic identities without completed conversion evidence are
-reconciliation conflicts, never automatically merged or overwritten.
-
-### Registrar API and UI
-
-Under `/api/admission/registrar/applicants/{id}`:
-
-- `GET conversion`: eligibility, reason, current versions, academic choices and
-  converted Student identity. Registrar only.
-- `POST accept`: confirmed program/curriculum and application/result versions.
-- `POST convert`: the same versions/academic IDs plus official student number,
-  admission date and explicit confirmation.
-
-Both mutations require existing password step-up and throttling. Admin, Professor,
-Guest and Student are denied. The Registrar Applicants page → Inspect applicant
-shows acceptance first; Convert to Student appears only after eligible acceptance.
-Final confirmation identifies the applicant, program, curriculum, number and date.
-Double submission is blocked. After success it displays Converted and the academic
-identity, with instructions to use the existing account to sign in again.
-
-### Validation and operational limits
-
-Focused backend tests cover same-account/academic mapping, history/credential
-preservation, token revocation, acceptance/result-version checks, duplicate retries,
-number collisions, retakes, unpublished/failed results, course/curriculum validity,
-existing-identity reconciliation, stale/non-current cases, authorization/step-up,
-and full rollback after an injected audit failure. Frontend tests exercise eligibility
-visibility, final confirmation/cancel, double-submit prevention and converted display.
-
-Manual real MySQL/MariaDB endpoint race verification:
-
-```sh
-php backend/scripts/verify-admission-conversion.php --run-with-fixtures
-```
-
-It refuses production, uses synthetic fixtures only, races two confirmations for the
-same applicant plus two different applicants competing for one official number,
-checks Student/decision uniqueness and the losing Guest role, then removes only its
-exact fixture IDs. All original schema/data fingerprints must match (auto-increment
-counters naturally advance and are excluded). A private temporary ledger is retained
-for recovery if the verifier is externally interrupted. Do not run against a busy
-shared database because unrelated writes correctly fail the fingerprint comparison.
-
-This completes the controlled initial-intake Applicant → Student lifecycle, not
-academic enrollment. Production still requires an approved question bank and real
-active course/curriculum configuration, official Registrar-issued numbers and review.
-Transfer placement, automatic reconciliation, post-conversion academic exception
-handling, offline backup and notification delivery remain outside this scope.
-
-Final-phase validation: **208 backend tests passed, 1,613 assertions**; Pint passed;
-all **10 frontend test files passed**; production Vite/PWA build and diff check passed.
-The full run exposed an existing wall-clock-dependent exam test; freezing its clock
-preserves the exact 120-minute assertion without changing exam behavior.
-MariaDB endpoint races returned two HTTP 200 responses with the same Student ID
-(one marked already-converted), and HTTP 200/409 for competing applicants using
-one official number. Exactly two distinct Student records and two conversion
-decisions were created across those races. The conflict account remained Guest.
-All synthetic database fixtures were removed and original schema/data fingerprints
-matched afterward.
-
-A real Chromium walkthrough against a separate temporary SQLite database passed
-Registrar program/curriculum acceptance, password step-up, final confirmation and
-cancel, conversion display, old Guest token rejection, normal sign-in using the
-same username/password and User ID, Student auth/navigation state, and read-only
-Admission history. No browser page errors occurred. This browser fixture used a
-private persistent file cache for step-up; no production credentials or database
-records were used. Temporary test servers were stopped after validation.
+The old conversion endpoint and automatic Admission-side student-number allocation
+are removed. Phase 2 will create the Student identity and official number atomically
+during Enrollment finalization; that work is not part of Phase 1.

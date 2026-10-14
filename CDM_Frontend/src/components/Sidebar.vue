@@ -43,7 +43,7 @@ const initials = computed(() =>
     .join('')
     .toUpperCase(),
 )
-const menuItems = computed(() => navigationStore.menuItemsForRole(authStore.currentRole))
+const menuItems = computed(() => navigationStore.menuItemsForRole(authStore.currentRole, authStore.currentUser?.admission))
 const isExpanded = (name) => expandedItems.value.includes(name)
 const isChildActive = (item) =>
   item.children?.some((child) => child.path === route.path || child.activeRoutes?.includes(route.name))
@@ -479,7 +479,14 @@ const logout = async () => {
 
 @media (max-width: 860px) {
   .sidebar {
+    width: min(86vw, 320px);
+    height: 100vh;
+    height: 100dvh;
     box-shadow: 12px 0 32px rgba(3, 32, 18, 0.3);
+    padding:
+      calc(18px + env(safe-area-inset-top))
+      13px
+      calc(14px + env(safe-area-inset-bottom));
     transform: translateX(-100%);
   }
 

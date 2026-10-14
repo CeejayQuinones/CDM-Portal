@@ -10,7 +10,6 @@ use App\Models\Section;
 use App\Models\Semester;
 use App\Models\Student;
 use App\Models\User;
-use App\Services\Admission\AdmissionConversionService;
 use App\Services\Enrollment\EnrollmentPeriodResolver;
 use App\Services\Enrollment\EnrollmentWindow;
 use Carbon\CarbonImmutable;
@@ -37,17 +36,10 @@ class EnrollmentFoundationTest extends TestCase
 
     private function converted(): Student
     {
-        $service = app(AdmissionConversionService::class);
-        $applicant = $this->case['applicant'];
-        $input = ['version' => $applicant->version, 'result_id' => $this->case['result']->id,
-            'result_version' => $this->case['result']->version, 'course_id' => $this->fixture['course']->id,
-            'curriculum_id' => $this->fixture['curriculum']->id, 'confirmed' => true];
-        $service->accept($this->fixture['registrar'], $applicant->id, $input);
-        $input['version'] = $applicant->fresh()->version;
-        $service->convert($this->fixture['registrar'], $applicant->id, $input + ['student_number' => '26-ENROLL', 'admission_date' => now()->toDateString()]);
+        $student = AdmissionConversionFixture::legacyStudent($this->fixture, $this->case, 'LEGACY-FOUNDATION');
         Sanctum::actingAs($this->case['user']->fresh());
 
-        return $this->case['user']->student()->firstOrFail();
+        return $student;
     }
 
     private function window(?CarbonImmutable $opens = null, ?CarbonImmutable $closes = null): EnrollmentWindow

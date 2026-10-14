@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\User;
+use App\Services\Admission\AdmissionHandoffService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,6 +19,8 @@ class AuthResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $admission = app(AdmissionHandoffService::class)->context($this->resource);
+
         return [
             'id' => $this->id,
             'username' => $this->username,
@@ -44,6 +47,11 @@ class AuthResource extends JsonResource
                 'profile_photo_url' => $this->profile->profile_photo_url,
                 'nationality' => $this->profile->nationality,
             ]),
+            'admission' => [
+                'completed' => $admission['completed'],
+                'admitted_guest' => $admission['admitted_guest'],
+                'applicant_id' => $admission['applicant']?->id,
+            ],
         ];
     }
 }

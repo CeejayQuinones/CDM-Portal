@@ -16,6 +16,10 @@ class EnrollmentSubjectPolicy
 
     public function completed(EnrollmentApplication $a, bool $lock = false): array
     {
+        if (! $a->student_id) {
+            return [];
+        }
+
         return EnrollmentSubject::join('enrollments', 'enrollments.id', '=', 'enrollment_subjects.enrollment_id')->where('enrollments.student_id', $a->student_id)->whereIn('enrollments.status', ['enrolled', 'completed'])->where('enrollment_subjects.subject_status', 'completed')->where('enrollment_subjects.remarks', 'Passed')->when($lock, fn ($q) => $q->lockForUpdate())->pluck('enrollment_subjects.subject_id')->all();
     }
 

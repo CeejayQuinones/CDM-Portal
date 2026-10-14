@@ -52,6 +52,23 @@ test('phase one overview presents published-only risk evidence and explicit data
   assert.doesNotMatch(view, /AiHelpChatbot|average_grade|GWA|Passed|Failed/)
 })
 
+test('monitoring workspace contains wide content and adapts to Electron viewport widths', async () => {
+  const view = await source('src/modules/monitoring/MonitoringView.vue')
+
+  assert.match(view, /\.monitoring-page\s*\{[^}]*width: 100%;[^}]*max-width: 1420px;[^}]*min-width: 0;/s)
+  assert.doesNotMatch(view, /width:\s*100vw/)
+  assert.match(view, /\.monitoring-workspace\s*\{[^}]*grid-template-columns: minmax\(220px, 280px\) minmax\(0, 1fr\)/s)
+  assert.match(view, /\.assessment-panel,[\s\S]*?\.student-list button > span\s*\{\s*min-width: 0;/)
+  assert.match(view, /\.table-scroll\s*\{[^}]*max-width: 100%;[^}]*min-width: 0;[^}]*overflow-x: auto;/s)
+  assert.match(view, /table\s*\{[^}]*min-width: 760px;/s)
+
+  assert.match(view, /@media \(max-width: 1400px\)[\s\S]*?\.summary-grid\s*\{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
+  assert.match(view, /@media \(max-width: 1400px\)[\s\S]*?\.assessment-metrics\s*\{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
+  assert.match(view, /@media \(max-width: 1200px\)[\s\S]*?\.monitoring-workspace\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/)
+  assert.match(view, /@media \(max-width: 680px\)[\s\S]*?\.summary-grid,[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
+  assert.match(view, /overflow-wrap: anywhere/)
+})
+
 test('phase three AI Help is advisory, session-only, responsive, and safely rendered', async () => {
   const panel = await source('src/modules/monitoring/components/AiHelpPanel.vue')
   const api = await source('src/modules/monitoring/services/monitoringApi.js')

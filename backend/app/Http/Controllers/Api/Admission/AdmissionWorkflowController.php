@@ -14,8 +14,8 @@ use App\Models\Admission\AdmissionProgramSetting;
 use App\Models\Course;
 use App\Models\Department;
 use App\Models\User;
+use App\Services\Admission\AdmissionCompletionService;
 use App\Services\Admission\AdmissionConfigurationService;
-use App\Services\Admission\AdmissionConversionService;
 use App\Services\Admission\AdmissionExamPolicy;
 use App\Services\Admission\AdmissionExamService;
 use App\Services\Admission\AdmissionRecommendationService;
@@ -184,8 +184,8 @@ class AdmissionWorkflowController extends Controller
             'name' => trim($a->user->profile?->first_name.' '.$a->user->profile?->last_name),
             'status' => $a->status, 'cycle' => $a->cycle->name, 'created_at' => $a->created_at,
             'exam_status' => $latest?->status ?? 'not_started', 'latest_result' => $latest?->result?->outcome() ?? 'Not available',
-            'acceptance_status' => $a->accepted_at ? 'accepted' : 'not_accepted',
-            'conversion_status' => $a->converted_student_id ? 'converted' : 'not_converted'];
+            'acceptance_status' => $a->accepted_at ? 'completed' : 'not_completed',
+            'student_identity_status' => $a->converted_student_id ? 'legacy_student_created' : 'not_created'];
     }
 
     public function applicant(Request $request, int $id)
@@ -205,19 +205,14 @@ class AdmissionWorkflowController extends Controller
         return $this->ok(AdmissionCycle::latest('id')->get(['id', 'name']));
     }
 
-    public function conversion(Request $request, AdmissionConversionService $service, int $id)
+    public function handoff(Request $request, AdmissionCompletionService $service, int $id)
     {
         return $this->ok($service->inspect($request->user(), $id));
     }
 
-    public function acceptApplicant(Request $request, AdmissionConversionService $service, int $id)
+    public function acceptApplicant(Request $request, AdmissionCompletionService $service, int $id)
     {
         return $this->ok($service->accept($request->user(), $id, $request->all()));
-    }
-
-    public function convertApplicant(Request $request, AdmissionConversionService $service, int $id)
-    {
-        return $this->ok($service->convert($request->user(), $id, $request->all()));
     }
 
     public function results(Request $request, AdmissionResultService $service)

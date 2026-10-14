@@ -1894,8 +1894,8 @@
 
 .group-tabs button {
   background: transparent;
-  border: 1px solid var(--color-dartmouth-green);
-  color: var(--color-dartmouth-green);
+  border: 1px solid var(--border-strong);
+  color: var(--tab-inactive, var(--text-secondary));
   min-height: 36px;
   padding: 7px 12px;
 }
@@ -5292,7 +5292,9 @@
 @media (max-width: 680px) {
   .verification-panel,
   .release-request-row { grid-template-columns: 1fr; }
+  .verification-panel { gap: 14px; padding: 14px; }
   .verification-form { grid-template-columns: 1fr; }
+  .release-request-row { gap: 12px; min-height: 0; padding: 13px; }
   .release-request-actions .secondary-action { white-space: normal; width: 100%; }
 }
 

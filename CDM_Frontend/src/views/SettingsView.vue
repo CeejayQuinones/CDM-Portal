@@ -292,15 +292,23 @@ dd { margin: 3px 0; font-weight: 700; overflow-wrap: anywhere; }
 article > button { justify-self: start; padding: 7px 10px; font-size: .85rem; }
 .menu { display: none; }
 @media (max-width: 720px) {
-  .settings { padding: 16px; }
+  .settings { padding: 0; border-radius: 0; }
   .layout { display: block; }
-  .menu { display: block; }
-  article { padding: 16px; }
-  aside { position: fixed; inset: 0 auto 0 0; width: min(290px, 82vw); z-index: 50; transform: translateX(-105%); transition: transform 180ms ease; }
+  .menu { display: block; min-height: 44px; }
+  article { gap: 13px; padding: 15px; }
+  aside { position: fixed; inset: 0 auto 0 0; width: min(290px, 84vw); padding-top:calc(12px + env(safe-area-inset-top)); padding-bottom:calc(12px + env(safe-area-inset-bottom)); z-index: 50; transform: translateX(-105%); transition: transform 180ms ease; }
   aside.open { transform: translateX(0); }
   .backdrop { position: fixed; inset: 0; background: #10261a66; z-index: 40; }
-  .save-bar { align-items: stretch; flex-direction: column; }
+  .save-bar { align-items: stretch; bottom:calc(8px + env(safe-area-inset-bottom)); flex-direction: column; padding:10px; }
   .save-bar div { display: grid; grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 480px) {
+  .settings > header h1 { font-size:1.5rem; }
+  .profile-photo { gap:12px; }
+  .avatar { flex-basis:72px; width:72px; height:72px; }
+  .appearance-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .save-bar div { grid-template-columns:minmax(0,1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }

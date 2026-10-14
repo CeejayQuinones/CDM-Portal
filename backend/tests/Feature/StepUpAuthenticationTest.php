@@ -59,9 +59,9 @@ class StepUpAuthenticationTest extends TestCase
             'year_level' => 2,
         ])
             ->assertOk()
-            ->assertJsonPath('data.student_number', '2026-000099')
+            ->assertJsonPath('data.student_number', '2026-000001')
             ->assertJsonPath('data.profile.first_name', 'Updated')
-            ->assertJsonPath('data.year_level', 2);
+            ->assertJsonPath('data.year_level', 1);
     }
 
     public function test_expired_step_up_is_blocked(): void

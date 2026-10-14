@@ -39,7 +39,8 @@ class AdmissionApplicationCreationTest extends TestCase
         $this->assertSame($guest->id, $applicant->user_id);
         $this->assertSame($cycle->id, $applicant->cycle_id);
         $this->assertStringStartsWith('APP-', $applicant->applicant_number);
-        $this->assertSame(['applicant_number', 'status', 'cycle', 'created_at', 'submitted_at', 'is_converted', 'converted_at'], array_keys($response->json('data.application')));
+        $this->assertSame(['applicant_number', 'status', 'cycle', 'created_at', 'submitted_at', 'is_converted', 'converted_at',
+            'admission_completed', 'eligible_for_enrollment', 'student_identity_created', 'completed_at', 'admitted_program', 'admitted_curriculum'], array_keys($response->json('data.application')));
         $this->assertDatabaseHas('admission_audit_events', ['applicant_id' => $applicant->id, 'actor_user_id' => $guest->id, 'action' => 'admission.identity_created']);
         $this->postJson('/api/admission/applications')->assertStatus(409)->assertJsonPath('code', 'application_exists');
         $this->assertDatabaseCount('admission_applicants', 1);

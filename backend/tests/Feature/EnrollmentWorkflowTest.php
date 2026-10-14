@@ -11,7 +11,6 @@ use App\Models\Semester;
 use App\Models\Student;
 use App\Models\StudentDocument;
 use App\Models\User;
-use App\Services\Admission\AdmissionConversionService;
 use App\Services\Enrollment\EnrollmentAuditWriter;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
@@ -38,12 +37,7 @@ class EnrollmentWorkflowTest extends TestCase
         $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
         $this->fixture = AdmissionConversionFixture::create('workflow');
         $case = $this->fixture['cases'][0];
-        $applicant = $case['applicant'];
-        $service = app(AdmissionConversionService::class);
-        $input = ['version' => $applicant->version, 'result_id' => $case['result']->id, 'result_version' => $case['result']->version, 'course_id' => $this->fixture['course']->id, 'curriculum_id' => $this->fixture['curriculum']->id, 'confirmed' => true];
-        $service->accept($this->fixture['registrar'], $applicant->id, $input);
-        $input['version'] = $applicant->fresh()->version;
-        $service->convert($this->fixture['registrar'], $applicant->id, $input + ['student_number' => '26-WORKFLOW', 'admission_date' => now()->toDateString()]);
+        AdmissionConversionFixture::legacyStudent($this->fixture, $case, 'LEGACY-WORKFLOW');
         $this->user = $case['user']->fresh();
         $this->student = $this->user->student;
         $semester = Semester::firstOrCreate(['semester_name' => 'First'], ['semester_order' => 1, 'status' => 'active']);
@@ -155,7 +149,7 @@ class EnrollmentWorkflowTest extends TestCase
         $a = $this->create('transferee');
         foreach ([Role::ADMIN, Role::REGISTRAR_STAFF] as $role) {
             $this->staff($role);
-            $this->getJson('/api/enrollment/applications?search=26-WORKFLOW&classification=transferee&status=draft&course_id='.$this->student->course_id.'&period_id='.$this->period->id.'&sort=oldest')->assertOk()->assertJsonPath('data.applications.total', 1);
+            $this->getJson('/api/enrollment/applications?search='.urlencode($this->student->student_number).'&classification=transferee&status=draft&course_id='.$this->student->course_id.'&period_id='.$this->period->id.'&sort=oldest')->assertOk()->assertJsonPath('data.applications.total', 1);
             $this->getJson('/api/enrollment/applications/'.$a['id'])->assertOk();
             $this->getJson('/api/enrollment/applications?search='.urlencode($this->student->userProfile->first_name.' '.$this->student->userProfile->last_name))->assertOk()->assertJsonPath('data.applications.total', 1);
             $this->getJson('/api/enrollment/periods')->assertOk();

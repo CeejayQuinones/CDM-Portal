@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Admission\AdmissionApplicationController;
 use App\Http\Controllers\Api\Admission\AdmissionIdentityController;
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentAcademicController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentWorkflowController;
@@ -26,6 +27,8 @@ use App\Http\Controllers\Api\RegistrarStudentDocumentController;
 use App\Http\Controllers\Api\StepUpAuthenticationController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentDocumentRequestController;
+use App\Http\Controllers\Api\StudentRecordProductivityController;
+use App\Http\Controllers\Api\StudentRecordReportController;
 use App\Http\Controllers\Api\StudentSettingsController;
 use App\Http\Middleware\EnrollmentBoundary;
 use Illuminate\Support\Facades\Route;
@@ -38,15 +41,18 @@ Route::post('/registration/email-verification/verify', [AuthController::class, '
     ->middleware('throttle:5,1');
 
 Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void {
+    Route::get('/student/dashboard', [DashboardSummaryController::class, 'student'])->middleware('role.student');
+    Route::get('/professor/dashboard', [DashboardSummaryController::class, 'professor'])->middleware(['role.professor', 'professor.web']);
     Route::middleware('event.platform:promotion')->group(function (): void {
         Route::get('/event-promotions', [EventPromotionController::class, 'index'])->middleware('throttle:60,1');
         Route::get('/event-promotions/{event}', [EventPromotionController::class, 'show'])->whereNumber('event')->middleware('throttle:60,1');
     });
-    Route::prefix('grading')->group(function (): void {
+    Route::prefix('grading')->middleware('professor.web')->group(function (): void {
         Route::middleware('role.registrar-or-admin')->group(function (): void {
             Route::get('/periods', [GradingController::class, 'periods']);
             Route::post('/periods', [GradingController::class, 'storePeriod']);
             Route::put('/periods/{gradePeriodSchedule}', [GradingController::class, 'updatePeriod']);
+            Route::delete('/periods/{gradePeriodSchedule}', [GradingController::class, 'destroyPeriod']);
             Route::patch('/periods/{gradePeriodSchedule}/archive', [GradingController::class, 'archivePeriod']);
             Route::get('/reviews', [GradingController::class, 'reviews']);
             Route::get('/reviews/{gradeSheet}', [GradingController::class, 'reviewDetail']);
@@ -110,9 +116,9 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::put('/events/{event}/personnel/{assignment}', [EventPersonnelController::class, 'update'])->whereNumber(['event', 'assignment'])->middleware('throttle:30,1');
         Route::post('/events/{event}/personnel/{assignment}/revoke', [EventPersonnelController::class, 'revoke'])->whereNumber(['event', 'assignment'])->middleware('throttle:30,1');
     });
-    Route::get('/enrollment/status', EnrollmentStatusController::class);
-    Route::get('/enrollment/eligibility', EnrollmentStatusController::class);
-    Route::prefix('enrollment')->middleware(EnrollmentBoundary::class)->controller(EnrollmentWorkflowController::class)->group(function (): void {
+    Route::get('/enrollment/status', EnrollmentStatusController::class)->middleware('professor.web');
+    Route::get('/enrollment/eligibility', EnrollmentStatusController::class)->middleware('professor.web');
+    Route::prefix('enrollment')->middleware([EnrollmentBoundary::class, 'professor.web'])->controller(EnrollmentWorkflowController::class)->group(function (): void {
         Route::get('/periods', 'periods');
         Route::post('/periods', 'savePeriod')->middleware('throttle:30,1');
         Route::put('/periods/{id}', 'savePeriod')->whereNumber('id')->middleware('throttle:30,1');
@@ -124,7 +130,7 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::post('/applications/{id}/documents', 'upload')->whereNumber('id')->middleware('throttle:10,1');
         Route::get('/applications/{id}/documents/{document}', 'download')->whereNumber(['id', 'document']);
     });
-    Route::prefix('enrollment/academic')->middleware(EnrollmentBoundary::class)->controller(EnrollmentAcademicController::class)->group(function (): void {
+    Route::prefix('enrollment/academic')->middleware([EnrollmentBoundary::class, 'professor.web'])->controller(EnrollmentAcademicController::class)->group(function (): void {
         Route::get('/options', 'options');
         Route::get('/sections', 'sections');
         Route::post('/sections', 'saveSection')->middleware('throttle:30,1');
@@ -173,6 +179,20 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::post('/registrar/settings/avatar', [RegistrarSettingsController::class, 'updateAvatar']);
         Route::delete('/registrar/settings/avatar', [RegistrarSettingsController::class, 'removeAvatar']);
         Route::get('/students', [StudentController::class, 'index']);
+        Route::get('/students/quick-search', [StudentController::class, 'quickSearch'])->middleware('throttle:60,1');
+        Route::get('/student-records/productivity', [StudentRecordProductivityController::class, 'show']);
+        Route::post('/student-records/saved-filters', [StudentRecordProductivityController::class, 'storeFilter']);
+        Route::put('/student-records/saved-filters/{savedFilter}', [StudentRecordProductivityController::class, 'updateFilter']);
+        Route::delete('/student-records/saved-filters/{savedFilter}', [StudentRecordProductivityController::class, 'destroyFilter']);
+        Route::put('/student-records/preferences', [StudentRecordProductivityController::class, 'preferences']);
+        Route::get('/student-record-reports/options', [StudentRecordReportController::class, 'options']);
+        Route::get('/student-record-reports/{reportType}', [StudentRecordReportController::class, 'index']);
+        Route::get('/student-record-reports/{reportType}/export', [StudentRecordReportController::class, 'export'])
+            ->middleware('throttle:20,1');
+        Route::get('/student-record-reports/{reportType}/export/excel', [StudentRecordReportController::class, 'excel'])
+            ->middleware('throttle:10,1');
+        Route::get('/student-record-reports/{reportType}/export/pdf', [StudentRecordReportController::class, 'pdf'])
+            ->middleware('throttle:10,1');
         Route::get('/students/bulk-options', [StudentController::class, 'bulkOptions']);
         Route::patch('/students/bulk', [StudentController::class, 'bulkUpdate'])->middleware('step-up');
         Route::get('/students/{student}', [StudentController::class, 'show']);

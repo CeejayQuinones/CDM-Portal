@@ -31,9 +31,8 @@ Route::middleware(['auth:sanctum', 'client.platform', AdmissionBoundary::class.'
     Route::post('recommendation', [Workflow::class, 'recommendation'])->middleware('throttle:5,1');
 });
 Route::middleware(['auth:sanctum', 'client.platform', AdmissionBoundary::class.':review'])->prefix('admission/registrar')->group(function () {
-    Route::get('applicants/{id}/conversion', [Workflow::class, 'conversion'])->whereNumber('id');
+    Route::get('applicants/{id}/handoff', [Workflow::class, 'handoff'])->whereNumber('id');
     Route::post('applicants/{id}/accept', [Workflow::class, 'acceptApplicant'])->whereNumber('id')->middleware(['step-up:admission', 'throttle:10,1']);
-    Route::post('applicants/{id}/convert', [Workflow::class, 'convertApplicant'])->whereNumber('id')->middleware(['step-up:admission', 'throttle:10,1']);
     Route::get('cycles', [Workflow::class, 'registrarCycles']);
     Route::get('applicants/{id}', [Workflow::class, 'applicant'])->whereNumber('id');
     Route::get('applicants', [Workflow::class, 'applicants']);

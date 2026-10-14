@@ -106,6 +106,11 @@ class PhysicalRecordsTest extends TestCase
             'student_id' => $student->id,
             'cabinet_slot_id' => $secondSlot->id,
         ]);
+        $this->assertSame(2, DB::table('student_record_audit_events')
+            ->where('student_id', $student->id)
+            ->where('actor_user_id', $registrar->id)
+            ->where('action', 'physical_record_location_changed')
+            ->count());
 
         $this->getJson("/api/students/{$student->id}")
             ->assertOk()

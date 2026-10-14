@@ -2,13 +2,14 @@ import { apiClient } from '../../services/apiClient'
 
 const data = (response) => response.data.data
 export const gradingValidationErrors = (error) => error.response?.data?.errors || {}
-export const gradingError = (error) => Object.values(gradingValidationErrors(error)).flat().find(Boolean) || error.response?.data?.message || 'Unable to complete the grading request.'
+export const gradingError = (error) => Object.values(gradingValidationErrors(error)).flat().find(Boolean) || error.response?.data?.message || error.message || 'Unable to complete the grading request.'
 export const gradingService = {
   students: (params = {}) => apiClient.get('/students', { params }).then((response) => response.data),
   studentOptions: () => apiClient.get('/students/bulk-options').then(data),
   periods: (params = {}) => apiClient.get('/grading/periods', { params }).then(data),
   createPeriod: (payload) => apiClient.post('/grading/periods', payload).then(data),
   updatePeriod: (id, payload) => apiClient.put(`/grading/periods/${id}`, payload).then(data),
+  deletePeriod: (id, version) => apiClient.delete(`/grading/periods/${id}`, { data: { version, confirmed: true } }).then(data),
   archivePeriod: (id, version) => apiClient.patch(`/grading/periods/${id}/archive`, { version }).then(data),
   classes: (params = {}) => apiClient.get('/grading/classes', { params }).then(data),
   workspace: (id) => apiClient.post(`/grading/classes/${id}/workspace`).then(data),

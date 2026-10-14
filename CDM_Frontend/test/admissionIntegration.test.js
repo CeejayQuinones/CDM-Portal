@@ -14,7 +14,7 @@ import { ROLES } from '../src/config/accessControl.js'
 const frontend = fileURLToPath(new URL('../', import.meta.url))
 const groups = {
   [ROLES.GUEST]: ['/admission', '/admission/exam', '/admission/result', '/admission/recommendation'],
-  [ROLES.STUDENT]: ['/admission', '/admission/exam', '/admission/result', '/admission/recommendation'],
+  [ROLES.STUDENT]: ['/admission'],
   [ROLES.REGISTRAR_STAFF]: ['/registrar/admissions', '/admin/admissions/programs', '/admin/admissions/exams', '/admin/admissions/questions', '/registrar/admissions/results', '/registrar/admissions/history'],
   [ROLES.ADMIN]: ['/registrar/admissions', '/admin/admissions/programs', '/admin/admissions/exams', '/admin/admissions/questions', '/registrar/admissions/results', '/registrar/admissions/history'],
 }
@@ -32,7 +32,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
           export { useNavigationStore } from './src/stores/navigation.js';
           export { auth } from './src/stores/authStore';
           export { default as AdmissionDialog } from './src/modules/admission/components/AdmissionDialog.vue';
-          export { default as AdmissionConversionPanel } from './src/modules/admission/components/AdmissionConversionPanel.vue';
+          export { default as AdmissionHandoffPanel } from './src/modules/admission/components/AdmissionHandoffPanel.vue';
           export { default as AdmissionView } from './src/modules/admission/AdmissionView.vue';
           export { apiState } from './src/services/apiClient';`,
         resolveDir: frontend,
@@ -73,7 +73,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         },
       }],
     })
-    const { router, auth, useNavigationStore, AdmissionView, AdmissionConversionPanel, AdmissionDialog, apiState } = await import(pathToFileURL(path.join(temporary, 'harness.mjs')))
+    const { router, auth, useNavigationStore, AdmissionView, AdmissionHandoffPanel, AdmissionDialog, apiState } = await import(pathToFileURL(path.join(temporary, 'harness.mjs')))
     setActivePinia(createPinia())
     const navigation = useNavigationStore()
     for (const role of Object.values(ROLES)) {
@@ -86,13 +86,14 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
           assert.deepEqual(visible.children.filter(item => !item.disabled).map(item => item.path), groups[role])
           assert.equal(visible.children.filter(item => item.disabled).length, 0)
         } else {
-          assert.deepEqual(visible?.children.map(item => item.path) || [], groups[role] || [])
+          assert.deepEqual(visible?.children.map(item => item.path) || [], role === ROLES.STUDENT ? [] : groups[role] || [])
         }
         for (const target of Object.values(groups).flat()) {
           await router.push(target)
           const legacyAccess = target === '/admission' && [ROLES.REGISTRAR_STAFF, ROLES.ADMIN].includes(role)
           const allowed = groups[role]?.includes(target) || legacyAccess
-          assert.equal(router.currentRoute.value.name === 'unauthorized', !allowed, `${role}: ${target}`)
+          const workflowRedirect = role === ROLES.STUDENT && ['/admission/exam', '/admission/result', '/admission/recommendation'].includes(target) && router.currentRoute.value.name === 'admission'
+          assert.equal(router.currentRoute.value.name === 'unauthorized' || workflowRedirect, !allowed, `${role}: ${target}`)
           if (allowed) {
             assert.equal(router.currentRoute.value.path, target)
             const record = router.currentRoute.value.matched.at(-1)
@@ -432,12 +433,12 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
     })
     await t.test('History renders a timeline and Applicant inspection opens the selected record in a dialog', async () => {
       auth.currentRole = ROLES.REGISTRAR_STAFF
-      const applicant = {id:1,name:'Example Applicant',applicant_number:'APP-1',cycle:'Intake',status:'draft',exam_status:'finalized',latest_result:'RETAKE',acceptance_status:'not_accepted',conversion_status:'not_converted',attempts:[{attempt_number:1,status:'finalized',outcome:'RETAKE'}]}
+      const applicant = {id:1,name:'Example Applicant',applicant_number:'APP-1',cycle:'Intake',status:'draft',exam_status:'finalized',latest_result:'RETAKE',acceptance_status:'not_completed',student_identity_status:'not_created',attempts:[{attempt_number:1,status:'finalized',outcome:'RETAKE'}]}
       const secondApplicant = {...applicant,id:2,name:'Second Applicant',applicant_number:'APP-2',attempts:[]}
       apiState.workflow = async config => {
         if (config.url.endsWith('/history')) return {timeline:{data:[{id:'event-1',action:'Application created',actor:'Example Applicant',subject:'Example Applicant',applicant_number:'APP-1',cycle:'Intake',summary:'Application created recorded for APP-1.',created_at:'2026-09-26'}],last_page:1}}
         if (config.url.endsWith('/cycles')) return []
-        if (config.url.endsWith('/conversion')) return {can_accept:false,can_convert:false,reason:'Latest result must be passed.',courses:[],curriculums:[]}
+        if (config.url.endsWith('/handoff')) return {can_complete:false,completed:false,reason:'Latest result must be passed.',courses:[],curriculums:[]}
         if (config.url.endsWith('/applicants/1')) return applicant
         if (config.url.endsWith('/applicants/2')) return secondApplicant
         return {data:[applicant,secondApplicant],last_page:1}
@@ -455,7 +456,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
             let dialogs = allNodes(root,node => node.props?.role === 'dialog')
             assert.equal(dialogs.length,1); assert.equal(dialogs[0].props['aria-modal'],'true')
             assert.match(textOf(dialogs[0]),/Example Applicant/); assert.match(textOf(dialogs[0]),/Exam attempts/); assert.match(textOf(dialogs[0]),/RETAKE/)
-            assert.equal(findButtonByText(root,'Convert to Student'),undefined)
+            assert.equal(findButtonByText(root,'Approve for Enrollment'),undefined)
             findButtonByText(root,'Close').props.onClick(); await nextTick()
             assert.equal(allNodes(root,node => node.props?.role === 'dialog').length,0)
             assert.doesNotMatch(textOf(root),/Exam attempts/)
@@ -534,50 +535,81 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
       assert.doesNotMatch(css, /(?:^|\n)(?:body|:root|\.sidebar|\.navbar)\s*\{/)
     })
 
-    await t.test('conversion hides ineligible actions and requires final confirmation', async () => {
-      const base = { id: 5, version: 2, applicant_number: 'APP-conversion', name: 'Applicant Example',
+    await t.test('handoff hides ineligible actions and completes Admission without Student creation', async () => {
+      const base = { id: 5, version: 2, applicant_number: 'APP-handoff', name: 'Applicant Example',
         result_id: 8, result_version: 3, course_id: 1, curriculum_id: 2,
-        courses: [{id:1,course_name:'Information Technology'}], curriculums: [{id:2,course_id:1,curriculum_code:'IT-2026'}] }
+        courses: [{id:1,course_name:'Information Technology'}], curriculums: [{id:2,course_id:1,curriculum_code:'IT-2026',curriculum_name:'IT 2026'}] }
       const find = (node, tag) => node.tag === tag ? node : (node.children || []).map(child => find(child, tag)).find(Boolean)
       for (const eligible of [false, true]) {
-        let converted = false
+        let completed = false
         const writes = []
         apiState.workflow = async config => {
-          if (config.method === 'post') { writes.push(config); converted = true; return {converted:true} }
-          return { ...base, can_accept: eligible, can_convert: eligible, reason: eligible ? null : 'Latest result must be published.',
-            student: converted ? {student_number:'26-01234',admission_date:'2026-09-25',year_level:1,student_status:'regular'} : null }
+          if (config.method === 'post') { writes.push(config); completed = true; return {accepted:true} }
+          return { ...base, can_complete: eligible, completed, reason: eligible ? null : 'Latest result must be published.', student: null }
         }
-        const root = {children:[]}, app = renderer.createApp(AdmissionConversionPanel,{applicantId:5})
+        const root = {children:[]}, app = renderer.createApp(AdmissionHandoffPanel,{applicantId:5})
         app.use(router); app.mount(root)
         try {
           await settle()
           if (!eligible) {
-            assert.equal(findButtonByText(root,'Convert to Student'), undefined)
+            assert.equal(findButtonByText(root,'Approve for Enrollment'), undefined)
             assert.match(textOf(root), /Latest result must be published/)
           } else {
-            assert.ok(findButtonByText(root,'Convert to Student'))
+            assert.ok(findButtonByText(root,'Approve for Enrollment'))
             find(root,'form').props.onSubmit({preventDefault(){}})
             await nextTick()
-            assert.match(textOf(root), /Confirm final conversion/)
+            assert.match(textOf(root), /Complete Admission/)
             assert.equal(writes.length,0)
             findButtonByText(root,'Cancel').props.onClick()
             await nextTick()
             assert.equal(writes.length,0)
             find(root,'form').props.onSubmit({preventDefault(){}})
             await nextTick()
-            const button = findButtonByText(root,'Confirm conversion')
+            const button = findButtonByText(root,'Confirm completion')
             button.props.onClick(); button.props.onClick()
             await settle()
             assert.equal(writes.length,1)
-            assert.equal(writes[0].url,'/admission/registrar/applicants/5/convert')
+            assert.equal(writes[0].url,'/admission/registrar/applicants/5/accept')
             assert.equal(writes[0].data.confirmed,true)
             assert.equal(writes[0].data.result_version,3)
-            assert.match(textOf(root), /Converted to Student/)
-            assert.match(textOf(root), /26-01234/)
-            assert.equal(findButtonByText(root,'Convert to Student'),undefined)
+            assert.equal('student_number' in writes[0].data,false)
+            assert.match(textOf(root), /Admission completed/)
+            assert.match(textOf(root), /Student identity.*Not created yet/s)
+            assert.equal(findButtonByText(root,'Approve for Enrollment'),undefined)
           }
         } finally { app.unmount() }
       }
+    })
+
+    await t.test('handoff refreshes a stale conflict and replaces the stale payload', async () => {
+      const current = { id: 5, version: 4, applicant_number: 'APP-handoff', name: 'Applicant Example',
+        result_id: 8, result_version: 6, course_id: 1, curriculum_id: 2, can_complete: true, completed: false, reason: null,
+        courses: [{id:1,course_name:'Information Technology'}], curriculums: [{id:2,course_id:1,curriculum_code:'IT-2026',curriculum_name:'IT 2026'}], student: null }
+      let reads = 0
+      apiState.workflow = async config => {
+        if (config.method === 'post') {
+          const conflict = new Error('conflict')
+          conflict.response = { status: 409, data: { code: 'ADMISSION_STATE_CHANGED', message: 'changed', current_version: 4, current_result_version: 6 } }
+          throw conflict
+        }
+        reads++
+        return reads === 1 ? { ...current, version: 3, result_version: 5 } : current
+      }
+      const root = {children:[]}, app = renderer.createApp(AdmissionHandoffPanel,{applicantId:5})
+      app.use(router); app.mount(root)
+      try {
+        await settle()
+        const find = (node, tag) => node.tag === tag ? node : (node.children || []).map(child => find(child, tag)).find(Boolean)
+        const form = find(root, 'form')
+        form.props.onSubmit({preventDefault(){}})
+        await nextTick()
+        findButtonByText(root,'Confirm completion').props.onClick()
+        await settle()
+        assert.equal(reads, 2)
+        assert.match(textOf(root), /Eligibility was refreshed/)
+        assert.doesNotMatch(textOf(root), /action is no longer available/)
+        assert.ok(findButtonByText(root,'Approve for Enrollment'))
+      } finally { app.unmount() }
     })
 
     await t.test('late response from a previous user cannot replace the current identity', async () => {

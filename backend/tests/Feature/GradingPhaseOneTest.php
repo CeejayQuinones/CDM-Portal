@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Enrollment;
 use App\Models\EnrollmentSubject;
 use App\Models\GradePeriodSchedule;
+use App\Models\GradeSheet;
 use App\Models\Professor;
 use App\Models\Role;
 use App\Models\SectionSubject;
@@ -59,9 +60,27 @@ class GradingPhaseOneTest extends TestCase
         Sanctum::actingAs($this->f['registrar']);
         $payload = ['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'midterm_opens_at' => now()->subDay()->toIso8601String(), 'midterm_deadline' => now()->addDay()->toIso8601String(), 'finals_opens_at' => now()->addDays(2)->toIso8601String(), 'finals_deadline' => now()->addDays(3)->toIso8601String()];
         $this->postJson('/api/grading/periods', $payload, $this->desktop)->assertCreated()->assertJsonPath('data.midterm_state.state', 'Open')->assertJsonPath('data.finals_state.state', 'Upcoming');
+        $this->getJson('/api/grading/periods', $this->desktop)
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.periods.total', 1)
+            ->assertJsonPath('data.periods.data.0.id', 1)
+            ->assertJsonPath('data.periods.data.0.academic_year.id', $this->f['year']->id)
+            ->assertJsonPath('data.periods.data.0.semester.id', $this->f['semester']->id)
+            ->assertJsonPath('data.periods.data.0.midterm_state.state', 'Open')
+            ->assertJsonPath('data.periods.data.0.finals_state.state', 'Upcoming')
+            ->assertJsonStructure(['data' => ['periods' => ['data' => [['id', 'version', 'status', 'academic_year', 'semester', 'midterm_opens_at', 'midterm_deadline', 'finals_opens_at', 'finals_deadline', 'midterm_state', 'finals_state']]]]]);
         $this->postJson('/api/grading/periods', $payload, $this->desktop)->assertUnprocessable()->assertJsonPath('errors.academic_year_id.0', 'A grade period schedule already exists for the selected academic term.');
         $this->putJson('/api/grading/periods/1', $payload + ['version' => 99], $this->desktop)->assertConflict();
         $this->assertDatabaseHas('grade_audit_events', ['action' => 'grading_period.created']);
+
+        $equalDates = array_replace($payload, [
+            'midterm_deadline' => $payload['midterm_opens_at'],
+            'version' => 1,
+        ]);
+        $this->putJson('/api/grading/periods/1', $equalDates, $this->desktop)
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.midterm_deadline.0', 'The Midterm deadline must be after its opening date.');
 
         $admin = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id]);
         Sanctum::actingAs($admin);
@@ -85,6 +104,92 @@ class GradingPhaseOneTest extends TestCase
             ->assertJsonPath('errors.semester_id.0', 'Select a semester.')
             ->assertJsonPath('errors.midterm_opens_at.0', 'Enter when Midterm grading opens.')
             ->assertJsonPath('errors.finals_opens_at.0', 'Enter when Finals grading opens.');
+    }
+
+    public function test_registrar_edits_the_same_schedule_and_professor_immediately_sees_finals_open(): void
+    {
+        Carbon::setTestNow('2026-10-07 12:00:00');
+        Sanctum::actingAs($this->f['registrar']);
+        $payload = [
+            'academic_year_id' => $this->f['year']->id,
+            'semester_id' => $this->f['semester']->id,
+            'midterm_opens_at' => now()->subDay()->toIso8601String(),
+            'midterm_deadline' => now()->addHour()->toIso8601String(),
+            'finals_opens_at' => '2026-11-05T08:00:00+08:00',
+            'finals_deadline' => '2026-11-06T17:00:00+08:00',
+        ];
+        $created = $this->postJson('/api/grading/periods', $payload, $this->desktop)
+            ->assertCreated()
+            ->assertJsonPath('data.finals_state.state', 'Upcoming')
+            ->json('data');
+
+        $updated = $this->putJson('/api/grading/periods/'.$created['id'], array_replace($payload, [
+            'finals_opens_at' => now()->subMinute()->toIso8601String(),
+            'finals_deadline' => now()->addDay()->toIso8601String(),
+            'version' => $created['version'],
+        ]), $this->desktop)
+            ->assertOk()
+            ->assertJsonPath('data.id', $created['id'])
+            ->assertJsonPath('data.finals_state.state', 'Open')
+            ->assertJsonPath('data.finals_state.editable', true)
+            ->json('data');
+
+        $this->assertDatabaseCount('grade_period_schedules', 1);
+        $this->assertSame($created['id'], $updated['id']);
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->getJson('/api/grading/classes')
+            ->assertOk()
+            ->assertJsonPath('data.data.0.schedule.finals_state.state', 'Open');
+        $workspace = $this->postJson('/api/grading/classes/'.$this->assignment->id.'/workspace')
+            ->assertOk()
+            ->assertJsonPath('data.schedule.finals_state.editable', true)
+            ->json('data');
+        $this->postJson('/api/grading/sheets/'.$workspace['sheet']['id'].'/assessments', [
+            'period' => 'finals',
+            'label' => 'Finals test assessment',
+            'category' => 'Quiz',
+            'max_score' => 20,
+            'display_order' => 1,
+        ])->assertCreated();
+    }
+
+    public function test_unused_schedule_deletes_but_used_and_locked_history_is_preserved(): void
+    {
+        Sanctum::actingAs($this->f['registrar']);
+        $period = $this->period();
+        $this->deleteJson('/api/grading/periods/'.$period->id, ['version' => $period->version, 'confirmed' => true], $this->desktop)
+            ->assertOk();
+        $this->assertDatabaseCount('grade_period_schedules', 0);
+        $this->assertDatabaseHas('grade_audit_events', ['action' => 'grading_period.deleted']);
+
+        $period = $this->period();
+        Sanctum::actingAs($this->f['professorUser']);
+        $workspace = $this->workspace();
+        $sheet = GradeSheet::findOrFail($workspace['sheet']['id']);
+        $sheet->update(['status' => 'published', 'published_at' => now()]);
+
+        Sanctum::actingAs($this->f['registrar']);
+        $this->deleteJson('/api/grading/periods/'.$period->id, ['version' => $period->version, 'confirmed' => true], $this->desktop)
+            ->assertConflict()
+            ->assertJsonPath('message', 'This grade period cannot be deleted because grading activity already exists. Edit the schedule instead.');
+        $this->putJson('/api/grading/periods/'.$period->id, [
+            'academic_year_id' => $period->academic_year_id,
+            'semester_id' => $period->semester_id,
+            'midterm_opens_at' => now()->subDays(2)->toIso8601String(),
+            'midterm_deadline' => now()->addDay()->toIso8601String(),
+            'finals_opens_at' => now()->addDays(2)->toIso8601String(),
+            'finals_deadline' => now()->addDays(3)->toIso8601String(),
+            'version' => $period->version,
+        ], $this->desktop)
+            ->assertConflict()
+            ->assertJsonPath('message', 'Grade period dates cannot be changed because submitted, approved, or published grading history already exists.');
+        $this->assertDatabaseHas('grade_period_schedules', ['id' => $period->id]);
+        $this->assertDatabaseHas('grade_sheets', ['id' => $sheet->id, 'status' => 'published']);
+
+        $this->withHeader('X-CDM-Client', 'web')
+            ->deleteJson('/api/grading/periods/'.$period->id, ['version' => $period->version, 'confirmed' => true])
+            ->assertForbidden();
     }
 
     public function test_professor_window_and_assessment_use_grade_period_schedule_not_legacy_periods(): void
@@ -201,6 +306,9 @@ class GradingPhaseOneTest extends TestCase
         $this->getJson('/api/grading/classes')->assertForbidden();
         Sanctum::actingAs($this->f['professorUser']);
         $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/classes')->assertOk();
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/grading/classes')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'Professor academic work is available through the Web client.');
         $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/grading/classes')->assertForbidden();
         Sanctum::actingAs($this->f['registrar']);
         $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/grading/periods')->assertOk();

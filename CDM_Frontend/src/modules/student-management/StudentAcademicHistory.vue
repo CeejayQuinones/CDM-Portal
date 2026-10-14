@@ -14,7 +14,7 @@ const exporting = ref(false)
 const gradeYear = ref('')
 const gradeSemester = ref('')
 let request = 0
-watch(() => props.studentId, async id => {
+async function loadHistory(id = props.studentId) {
   const current = ++request
   data.value = null
   error.value = ''
@@ -38,20 +38,22 @@ watch(() => props.studentId, async id => {
   } catch {
     if (current === request) error.value = 'Unable to load academic history.'
   }
-}, { immediate: true })
+}
+watch(() => props.studentId, loadHistory, { immediate: true })
 const label = value => String(value || 'Not available').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
 async function loadGrades(){gradeLoading.value=true;gradeError.value='';try{grades.value=await gradingService.staffStudentGrades(props.studentId,{academic_year_id:gradeYear.value||undefined,semester_id:gradeSemester.value||undefined});gradeYear.value=String(grades.value.selected_term?.academic_year_id||'');gradeSemester.value=String(grades.value.selected_term?.semester_id||'')}catch(e){gradeError.value=e.response?.data?.message||'Unable to load published grades.'}finally{gradeLoading.value=false}}
 async function exportGrades(){exporting.value=true;gradeError.value='';try{const response=await gradingService.staffStudentExport(props.studentId,{academic_year_id:gradeYear.value||undefined,semester_id:gradeSemester.value||undefined});const url=URL.createObjectURL(response.data),anchor=document.createElement('a');anchor.href=url;anchor.download=response.headers['content-disposition']?.match(/filename="?([^";]+)"?/)?.[1]||'academic-grade-summary.csv';anchor.click();URL.revokeObjectURL(url)}catch(e){gradeError.value=e.response?.data?.message||'Unable to export published grades.'}finally{exporting.value=false}}
+defineExpose({ showRecordActivity: () => { tab.value = 'record activity' } })
 </script>
 
 <template>
   <section class="record-card" aria-label="Connected academic history">
     <h2>Admission and Enrollment</h2>
-    <p v-if="error" role="alert">{{ error }}</p>
+    <p v-if="error" role="alert">{{ error }} <button type="button" @click="loadHistory()">Retry</button></p>
     <p v-else-if="!data">Loading connected history…</p>
     <template v-else>
       <nav class="history-tabs" aria-label="Academic record sections">
-        <button v-for="item in ['overview', 'admission', 'enrollment', 'academic history', 'grades']" :key="item" type="button" :aria-current="tab === item ? 'page' : undefined" @click="tab = item">{{ label(item) }}</button>
+        <button v-for="item in ['overview', 'admission', 'enrollment', 'academic history', 'grades', 'record activity']" :key="item" type="button" :aria-current="tab === item ? 'page' : undefined" @click="tab = item">{{ label(item) }}</button>
       </nav>
       <div v-if="tab === 'overview'" class="information-grid">
         <div><strong>Student number</strong><p>{{ data.overview.student_number }}</p></div>
@@ -95,13 +97,21 @@ async function exportGrades(){exporting.value=true;gradeError.value='';try{const
           <p v-if="term.subjects.length">{{ term.subjects.map(subject => subject.code).join(', ') }}</p>
         </article>
       </div>
-      <div v-else class="registrar-grade-history">
+      <div v-else-if="tab === 'grades'" class="registrar-grade-history">
         <div class="grade-history-heading"><div><h3>Published Academic Grades</h3><p>Official released submission snapshots only.</p></div><button type="button" :disabled="exporting || !grades?.grades?.length" @click="exportGrades">{{ exporting ? 'Preparing…' : 'Export CSV' }}</button></div>
-        <p v-if="gradeError" role="alert">{{gradeError}}</p>
+        <p v-if="gradeError" role="alert">{{gradeError}} <button type="button" :disabled="gradeLoading" @click="loadGrades">Retry</button></p>
         <form v-if="grades?.terms?.length" class="grade-history-filter" @submit.prevent="loadGrades"><label>Academic Year<select v-model="gradeYear"><option v-for="term in grades.terms" :key="`year-${term.academic_year_id}`" :value="term.academic_year_id">{{term.academic_year}}</option></select></label><label>Semester<select v-model="gradeSemester"><option v-for="term in grades.terms.filter(item=>String(item.academic_year_id)===String(gradeYear))" :key="term.semester_id" :value="term.semester_id">{{term.semester}}</option></select></label><button type="submit">View Term</button></form>
         <p v-if="gradeLoading">Loading published grades…</p>
         <p v-else-if="!grades?.grades?.length">No published grades are available for this term.</p>
         <template v-else><p><strong>{{label(grades.summary.completion)}}</strong> · {{grades.summary.published_subjects}} / {{grades.summary.expected_subjects}} subjects · {{grades.summary.total_units}} units · GWA: {{grades.summary.gwa.message}}</p><div class="grade-history-table"><table><thead><tr><th>Subject</th><th>Professor</th><th>Section</th><th>Units</th><th>Midterm</th><th>Finals</th><th>Final Grade</th><th>Grade Point</th><th>Remarks</th><th>Published</th></tr></thead><tbody><tr v-for="grade in grades.grades" :key="grade.grade_sheet_id"><td><strong>{{grade.subject_code}}</strong><small>{{grade.subject_name}}</small></td><td>{{grade.professor}}</td><td>{{grade.section}}</td><td>{{grade.units}}</td><td>{{grade.midterm_grade}}</td><td>{{grade.finals_grade}}</td><td><strong>{{grade.final_grade}}</strong></td><td>{{grade.grade_point??'N/A'}}</td><td>{{grade.remarks??'Not configured'}}</td><td>{{grade.published_at?new Date(grade.published_at).toLocaleDateString():'—'}}</td></tr></tbody></table></div></template>
+      </div>
+      <div v-else>
+        <p v-if="!data.record_activity?.length">No Student Records activity has been recorded.</p>
+        <article v-for="activity in data.record_activity" :key="activity.id" class="history-entry">
+          <h3>{{ label(activity.action) }}</h3>
+          <p>{{ activity.occurred_at ? new Date(activity.occurred_at).toLocaleString() : 'Date unavailable' }} · {{ activity.staff_name || 'Staff unavailable' }} · {{ activity.staff_role || 'Role unavailable' }}</p>
+          <p v-if="activity.metadata?.changed_fields?.length">Fields: {{ activity.metadata.changed_fields.map(label).join(', ') }}</p>
+        </article>
       </div>
     </template>
   </section>
@@ -109,8 +119,8 @@ async function exportGrades(){exporting.value=true;gradeError.value='';try{const
 
 <style scoped>
 .history-tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
-.history-tabs button { border: 1px solid var(--color-dartmouth-green); border-radius: .5rem; background: transparent; color: var(--color-dartmouth-green); padding: .45rem .7rem; cursor: pointer; }
-.history-tabs button[aria-current="page"] { background: var(--color-dartmouth-green); color: white; }
+.history-tabs button { border: 1px solid var(--border-strong, var(--color-dartmouth-green)); border-radius: .5rem; background: var(--surface-2, transparent); color: var(--tab-inactive, var(--color-dartmouth-green)); padding: .45rem .7rem; cursor: pointer; }
+.history-tabs button[aria-current="page"] { background: var(--accent); color: var(--text-on-accent); }
 .history-entry { padding: .75rem 0; border-top: 1px solid #ddd; }
 .grade-history-heading { align-items: center; display: flex; justify-content: space-between; gap: 1rem; }
 .grade-history-heading h3,.grade-history-heading p { margin: .25rem 0; }

@@ -7,7 +7,7 @@ const navigationStore = useNavigationStore()
 const authStore = useAuthStore()
 
 const moduleCards = computed(() =>
-  navigationStore.menuItemsForRole(authStore.currentRole).filter((item) => item.name !== 'dashboard'),
+  navigationStore.menuItemsForRole(authStore.currentRole, authStore.currentUser?.admission).filter((item) => item.name !== 'dashboard'),
 )
 </script>
 
