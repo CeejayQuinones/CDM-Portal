@@ -23,7 +23,7 @@ use App\Models\Semester;
 use App\Models\Student;
 use App\Models\Subject;
 use App\Models\User;
-use App\Services\Admission\AdmissionConversionService;
+use App\Services\Admission\AdmissionCompletionService;
 use App\Services\Admission\ProgramMatcher;
 use App\Services\Enrollment\EnrollmentAcademicService;
 use App\Services\Enrollment\EnrollmentEligibilityService;
@@ -49,7 +49,7 @@ class PortalDevelopmentSeed extends Command
 
     protected $description = 'Explicit local/testing Admission and Enrollment demo fixture';
 
-    public function handle(AdmissionConversionService $conversion): int
+    public function handle(): int
     {
         if (! app()->environment('local', 'testing')) {
             $this->error('portal:dev-seed is available only in local/testing environments.');
@@ -65,13 +65,13 @@ class PortalDevelopmentSeed extends Command
         }
 
         try {
-            $summary = DB::transaction(function () use ($conversion) {
+            $summary = DB::transaction(function () {
                 if ($this->option('cleanup')) {
                     return $this->cleanup();
                 }
                 $cleanup = $this->option('refresh') ? $this->refreshStudents().' ' : '';
 
-                return $cleanup.$this->seed($conversion);
+                return $cleanup.$this->seed();
             }, 3);
             $this->info($summary);
 
@@ -101,7 +101,7 @@ class PortalDevelopmentSeed extends Command
             ->where('record_type', $type)->pluck('record_id')->all();
     }
 
-    private function seed(AdmissionConversionService $conversion): string
+    private function seed(): string
     {
         $year = AcademicYear::where('status', 'active')->orderByDesc('id')->firstOrFail();
         $semester = Semester::where('status', 'active')->orderBy('semester_order')->firstOrFail();
@@ -231,7 +231,7 @@ class PortalDevelopmentSeed extends Command
             $this->seedApplication($student, $period, $admin, $professor,
                 $sections[$student->course_id][$student->year_level]['A'], $reused);
         }
-        // One Admission conversion example, plus only enough fallbacks for scenario coverage.
+        // One admitted-Guest handoff example, plus only enough fallbacks for scenario coverage.
         $syntheticTarget = max(1, 8 - $reused);
         for ($i = 1; $i <= $syntheticTarget; $i++) {
             $course = $eligible[($i - 1) % $eligible->count()];
@@ -283,11 +283,10 @@ class PortalDevelopmentSeed extends Command
                 $input = ['version' => $applicant->version, 'result_id' => $result->id,
                     'result_version' => $result->version, 'course_id' => $course->id,
                     'curriculum_id' => $curriculum->id, 'confirmed' => true];
-                $conversion->accept($admin, $applicant->id, $input);
-                $input['version'] = $applicant->fresh()->version;
-                $conversion->convert($admin, $applicant->id, $input + [
-                    'student_number' => sprintf('DEV-ENR-%02d', $i), 'admission_date' => now()->toDateString()]);
-                $student = $user->student;
+                app(AdmissionCompletionService::class)->accept($admin, $applicant->id, $input);
+
+                // Phase 1 ends at an admitted Guest. Student creation belongs to Enrollment finalization.
+                continue;
             } else {
                 $student = Student::create(['user_id' => $user->id, 'user_profile_id' => $profile->id,
                     'course_id' => $course->id, 'curriculum_id' => $curriculum->id,
@@ -362,7 +361,7 @@ class PortalDevelopmentSeed extends Command
         }
         $classification = ['regular', 'irregular', 'transferee', 'returnee'][($i - 1) % 4];
         $status = ['draft', 'submitted', 'under_review', 'approved', 'enrolled', 'rejected'][($i - 1) % 6];
-        $application = EnrollmentApplication::create(['student_id' => $student->id, 'period_id' => $period->id,
+        $application = EnrollmentApplication::create(['student_id' => $student->id, 'owner_user_id' => $student->user_id, 'period_id' => $period->id,
             'academic_year_id' => $period->academic_year_id, 'semester_id' => $period->semester_id,
             'course_id' => $student->course_id, 'curriculum_id' => $student->curriculum_id,
             'year_level' => $student->year_level, 'classification' => $classification, 'status' => $status,

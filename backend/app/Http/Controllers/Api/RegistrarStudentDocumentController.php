@@ -9,7 +9,9 @@ use App\Jobs\AnalyzeStudentDocument;
 use App\Models\Student;
 use App\Models\StudentDocument;
 use App\Models\StudentDocumentAiAnalysis;
+use App\Services\StudentRecords\StudentRecordAuditWriter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -20,6 +22,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class RegistrarStudentDocumentController extends Controller
 {
     private const DISK = 'local';
+
+    public function __construct(private readonly StudentRecordAuditWriter $audit) {}
 
     public function analyzeAll(Student $student): JsonResponse
     {
@@ -92,13 +96,19 @@ class RegistrarStudentDocumentController extends Controller
         $oldPath = $studentDocument->file_path;
 
         try {
-            DB::transaction(function () use ($studentDocument, $newPath): void {
+            DB::transaction(function () use ($request, $studentDocument, $newPath, $oldPath): void {
                 $studentDocument->update([
                     'file_path' => $newPath,
                     'availability_status' => 'available',
                     'verification_status' => 'pending',
                     'submitted_date' => today(),
                 ]);
+                $this->audit->record(
+                    $request->user(),
+                    $studentDocument->student_id,
+                    $oldPath ? 'document_file_replaced' : 'document_file_uploaded',
+                    ['document_type_id' => $studentDocument->document_type_id],
+                );
             });
         } catch (\Throwable $exception) {
             Storage::disk(self::DISK)->delete($newPath);
@@ -139,18 +149,21 @@ class RegistrarStudentDocumentController extends Controller
         ]);
     }
 
-    public function destroy(StudentDocument $studentDocument): JsonResponse
+    public function destroy(Request $request, StudentDocument $studentDocument): JsonResponse
     {
         $oldPath = $studentDocument->file_path;
 
         abort_unless($oldPath && $this->isManagedPath($studentDocument, $oldPath), 404, 'No stored document file is available.');
 
-        DB::transaction(function () use ($studentDocument): void {
+        DB::transaction(function () use ($request, $studentDocument): void {
             $studentDocument->update([
                 'file_path' => null,
                 'availability_status' => 'missing',
                 'verification_status' => 'pending',
                 'submitted_date' => null,
+            ]);
+            $this->audit->record($request->user(), $studentDocument->student_id, 'document_file_deleted', [
+                'document_type_id' => $studentDocument->document_type_id,
             ]);
         });
 

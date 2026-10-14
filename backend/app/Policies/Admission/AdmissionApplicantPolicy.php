@@ -6,13 +6,14 @@ use App\Models\Admission\AdmissionApplicant;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Admission\AdmissionAccess;
+use App\Services\Admission\AdmissionHandoffService;
 
 class AdmissionApplicantPolicy
 {
     public function create(User $user): bool
     {
         return $user->status === 'active' && $user->role?->role_name === Role::GUEST
-            && ! $user->student()->exists();
+            && ! $user->student()->exists() && ! app(AdmissionHandoffService::class)->isAdmittedGuest($user);
     }
 
     public function viewOwn(User $user): bool

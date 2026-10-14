@@ -9,7 +9,6 @@ use App\Models\Section;
 use App\Models\Semester;
 use App\Models\Subject;
 use App\Models\User;
-use App\Services\Admission\AdmissionConversionService;
 use App\Services\Enrollment\EnrollmentWorkflowService;
 
 class EnrollmentAcademicFixture
@@ -18,12 +17,7 @@ class EnrollmentAcademicFixture
     {
         $f = AdmissionConversionFixture::create($nonce);
         $case = $f['cases'][0];
-        $service = app(AdmissionConversionService::class);
-        $a = $case['applicant'];
-        $input = ['version' => $a->version, 'result_id' => $case['result']->id, 'result_version' => $case['result']->version, 'course_id' => $f['course']->id, 'curriculum_id' => $f['curriculum']->id, 'confirmed' => true];
-        $service->accept($f['registrar'], $a->id, $input);
-        $input['version'] = $a->fresh()->version;
-        $service->convert($f['registrar'], $a->id, $input + ['student_number' => 'AC-'.$nonce, 'admission_date' => now()->toDateString()]);
+        AdmissionConversionFixture::legacyStudent($f, $case, 'LEGACY-'.$nonce);
         $user = $case['user']->fresh();
         $student = $user->student;
         $semester = Semester::create(['semester_name' => 'Academic '.$nonce, 'semester_order' => 1, 'status' => 'active']);

@@ -59,6 +59,20 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       assert.equal(router.currentRoute.value.name,'login')
       auth.isAuthenticated=true
     })
+    await t.test('only an authoritative admitted Guest sees the Enrollment handoff',async()=>{
+      auth.currentRole=ROLES.GUEST;auth.currentUser={id:1,admission:{completed:false,admitted_guest:false}}
+      assert.equal(navigation.menuItemsForRole(auth.currentRole,auth.currentUser.admission).find(i=>i.name==='enrollment'),undefined)
+      await router.push('/');await router.push('/enrollment/status');assert.equal(router.currentRoute.value.name,'unauthorized')
+      auth.currentUser.admission={completed:true,admitted_guest:true}
+      const items=navigation.menuItemsForRole(auth.currentRole,auth.currentUser.admission)
+      const enrollment=items.find(i=>i.name==='enrollment')
+      assert.deepEqual(enrollment.children.map(i=>i.label),['Status'])
+      assert.equal(items.find(i=>i.name==='admission-menu'),undefined)
+      assert.ok(items.find(i=>i.name==='event-attendance'))
+      await router.push('/enrollment/status');assert.equal(router.currentRoute.value.name,'enrollment-status')
+      await router.push('/admission/exam');assert.equal(router.currentRoute.value.name,'admission')
+      auth.currentRole=ROLES.STUDENT;auth.currentUser={id:1}
+    })
     const renderer=createRenderer({
       createElement:tag=>({tag,tagName:tag.toUpperCase(),children:[],props:{},listeners:{},addEventListener(name,fn){this.listeners[name]=fn},removeEventListener(){},setAttribute(){},removeAttribute(){},get options(){return this.children},get value(){return this.props.value},set value(v){this.props.value=v}}),createText:text=>({text}),createComment:()=>({text:''}),
       setText:(node,text)=>{node.text=text},setElementText:(node,text)=>{node.text=text;node.children=[]},
@@ -103,6 +117,19 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
         await click(root,'Go back');await click(root,'Submit application');await click(root,'Confirm submit');assert.match(textOf(root),/awaiting staff review/);assert.equal(apiState.calls.filter(c=>c.url.endsWith('/submit')).length,1)
       }finally{app.unmount()}
     })
+    await t.test('admitted Guest can apply without a Student number',async()=>{
+      auth.currentRole=ROLES.GUEST;auth.currentUser={id:2,admission:{completed:true,admitted_guest:true}};record=null
+      const guestState={academic_ready:false,eligible:true,reason:'student_identity_pending',applications_enabled:true,period,enrollments:[],student:null,admitted_guest:true,admission:{name:'Admitted Guest',applicant_number:'APP-2026-00001',course:{course_name:'Computing'},curriculum:{curriculum_name:'Computing 2026'}}}
+      apiState.handler=(method,url,payload)=>url==='/enrollment/status'?response(guestState):handler(method,url,payload)
+      await router.push('/enrollment/status')
+      const {root,app}=mount()
+      try{
+        await settle();assert.match(textOf(root),/Student identity Not created yet/);assert.doesNotMatch(textOf(root),/Student number.*26-/)
+        await click(root,'Start enrollment application');assert.match(textOf(root),/official Student number will be assigned only after staff finalize Enrollment/)
+        await click(root,'Continue');await click(root,'Continue');await click(root,'Continue');assert.match(textOf(root),/Admitted Guest · APP-2026-00001/)
+      }finally{app.unmount()}
+      auth.currentRole=ROLES.STUDENT;auth.currentUser={id:1}
+    })
     await t.test('upcoming and closed periods block creation and show the correct state',async()=>{
       record=null
       for(const status of ['upcoming','closed']){
@@ -122,7 +149,7 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       for(const role of [ROLES.ADMIN,ROLES.REGISTRAR_STAFF]){
         auth.currentRole=role;await router.push('/enrollment/applications')
         const nav=navigation.menuItemsForRole(role).find(n=>n.name==='enrollment');assert.deepEqual(nav.children.map(n=>n.label),['Applications','Enrollment Periods','Sections','Scheduling','Enrollment Records'])
-        const {root,app}=mount();try{await settle();assert.match(textOf(root),/Student name or number/);const form=find(root,'form');await form.props.onSubmit({preventDefault(){}});await settle();assert.equal(apiState.calls.at(-1).url,'/enrollment/applications');await router.push('/enrollment/periods');await settle();await click(root,'Create period');assert.match(textOf(root),/Required documents by classification/);assert.match(textOf(root),/Enable period/)}finally{app.unmount()}
+        const {root,app}=mount();try{await settle();assert.match(textOf(root),/Applicant name or number/);const form=find(root,'form');await form.props.onSubmit({preventDefault(){}});await settle();assert.equal(apiState.calls.at(-1).url,'/enrollment/applications');await router.push('/enrollment/periods');await settle();await click(root,'Create period');assert.match(textOf(root),/Required documents by classification/);assert.match(textOf(root),/Enable period/)}finally{app.unmount()}
       }
     })
     await t.test('both staff roles confirm review and approval, with rejection notes required',async()=>{

@@ -2,9 +2,6 @@
 
 namespace App\Http\Requests;
 
-use App\Models\Student;
-use Illuminate\Validation\Rule;
-
 class UpdateStudentRequest extends ApiFormRequest
 {
     public function authorize(): bool
@@ -15,19 +12,8 @@ class UpdateStudentRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'student_number' => [
-                'sometimes',
-                'required',
-                'string',
-                'max:20',
-                Rule::unique('students', 'student_number')->ignore($this->route('student') instanceof Student
-                    ? $this->route('student')->getKey()
-                    : $this->route('student')),
-            ],
             'first_name' => ['required', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
-            'course_id' => ['required', 'integer', 'exists:courses,id'],
-            'year_level' => ['required', 'integer', 'between:1,20'],
             'student_status' => ['required', 'in:regular,irregular,graduated,transferred,dropped,leave_of_absence'],
             'middle_name' => ['nullable', 'string', 'max:100'],
             'suffix' => ['nullable', 'string', 'max:30'],

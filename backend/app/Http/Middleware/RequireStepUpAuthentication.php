@@ -28,7 +28,8 @@ class RequireStepUpAuthentication
 
         $user->loadMissing('role');
 
-        if ($scope !== 'admission' && $user->role?->role_name !== Role::REGISTRAR_STAFF) {
+        $requiresAllStaff = in_array($scope, ['admission', 'staff'], true);
+        if (! $requiresAllStaff && $user->role?->role_name !== Role::REGISTRAR_STAFF) {
             return $next($request);
         }
 

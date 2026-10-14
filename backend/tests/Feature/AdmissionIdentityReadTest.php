@@ -37,7 +37,8 @@ class AdmissionIdentityReadTest extends TestCase
             ->assertJsonPath('data.application.status', 'draft')
             ->assertJsonPath('data.application.is_converted', false);
         $data = $response->json('data.application');
-        $this->assertSame(['applicant_number', 'status', 'cycle', 'created_at', 'submitted_at', 'is_converted', 'converted_at'], array_keys($data));
+        $this->assertSame(['applicant_number', 'status', 'cycle', 'created_at', 'submitted_at', 'is_converted', 'converted_at',
+            'admission_completed', 'eligible_for_enrollment', 'student_identity_created', 'completed_at', 'admitted_program', 'admitted_curriculum'], array_keys($data));
         $this->assertSame(['code', 'name', 'status', 'opens_at', 'closes_at', 'confirmation_closes_at'], array_keys($data['cycle']));
         $this->assertStringNotContainsString('private-', $response->getContent());
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));

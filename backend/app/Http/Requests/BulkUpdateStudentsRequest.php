@@ -10,18 +10,12 @@ class BulkUpdateStudentsRequest extends ApiFormRequest
 {
     public const CHANGE_STATUS = 'change_status';
 
-    public const CHANGE_YEAR_LEVEL = 'change_year_level';
-
-    public const CHANGE_COURSE = 'change_course';
-
     public const ASSIGN_RECORD_LOCATION = 'assign_record_location';
 
     public const UPDATE_DOCUMENT_AVAILABILITY = 'update_document_availability';
 
     public const ACTIONS = [
         self::CHANGE_STATUS,
-        self::CHANGE_YEAR_LEVEL,
-        self::CHANGE_COURSE,
         self::ASSIGN_RECORD_LOCATION,
         self::UPDATE_DOCUMENT_AVAILABILITY,
     ];
@@ -65,14 +59,6 @@ class BulkUpdateStudentsRequest extends ApiFormRequest
                     'dropped',
                     'leave_of_absence',
                 ])],
-            ],
-            self::CHANGE_YEAR_LEVEL => [
-                ...$rules,
-                'value' => ['required', 'integer', 'between:1,20'],
-            ],
-            self::CHANGE_COURSE => [
-                ...$rules,
-                'value' => ['required', 'integer', 'exists:courses,id'],
             ],
             self::ASSIGN_RECORD_LOCATION => [
                 ...$rules,

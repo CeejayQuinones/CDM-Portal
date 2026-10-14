@@ -5,6 +5,7 @@ import PaginationControls from '../../components/PaginationControls.vue'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
 import { documentRequestReturnContext } from '../document-request/documentRequestNavigation'
 import { physicalRecordsService as api } from './physicalRecordsService'
+import { profilePhotoUrl } from '../../utils/profilePhoto'
 
 const route = useRoute()
 const router = useRouter()
@@ -48,6 +49,9 @@ let slotTrigger = null
 let previousBodyOverflow = ''
 
 const students = computed(() => selectedSlot.value?.students?.data || [])
+const failedPhotos = ref(new Set())
+const studentPhoto = (student) => failedPhotos.value.has(student.id) ? '' : profilePhotoUrl(student)
+const markPhotoFailed = (studentId) => { failedPhotos.value = new Set([...failedPhotos.value, studentId]) }
 const pagination = computed(() => ({
   currentPage: selectedSlot.value?.students?.current_page || 1,
   lastPage: selectedSlot.value?.students?.last_page || 1,
@@ -338,7 +342,7 @@ onBeforeUnmount(() => {
   </section>
 
   <p v-if="success" class="notice success" role="status">{{ success }}</p>
-  <p v-if="error" class="notice error" role="alert">{{ error }}</p>
+  <p v-if="error" class="notice error" role="alert">{{ error }} <button type="button" @click="loadCabinets">Retry</button></p>
 
   <section v-if="showCreateForm" class="records-panel create-panel">
     <div class="section-heading">
@@ -466,7 +470,7 @@ onBeforeUnmount(() => {
           @click="viewStudent(student.id)"
         >
           <span class="student-photo">
-            <img v-if="student.profile_photo" :src="student.profile_photo" :alt="`${student.full_name} photo`" />
+            <img v-if="studentPhoto(student)" :src="studentPhoto(student)" :alt="`${student.full_name} photo`" @error="markPhotoFailed(student.id)" />
             <span v-else>
               {{
                 student.full_name

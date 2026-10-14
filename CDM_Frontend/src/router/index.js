@@ -3,6 +3,7 @@ import { admissionRoutes } from '../modules/admission/routes.js'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
 import { performanceMonitor } from '../services/performance/performanceMonitor'
+import { clientPlatform } from '../config/clientPlatform'
 
 const AuthLayout = () => import('../layouts/AuthLayout.vue')
 const DashboardLayout = () => import('../layouts/DashboardLayout.vue')
@@ -12,11 +13,13 @@ const PublicLegalView = () => import('../views/PublicLegalView.vue')
 const UnauthorizedView = () => import('../views/UnauthorizedView.vue')
 const GuestDashboardView = () => import('../views/GuestDashboardView.vue')
 const RoleDashboardView = () => import('../views/RoleDashboardView.vue')
+const StudentDashboardView = () => import('../modules/dashboard/StudentDashboardView.vue')
+const ProfessorDashboardView = () => import('../modules/dashboard/ProfessorDashboardView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
-const ComingSoonView = () => import('../views/ComingSoonView.vue')
 const EnrollmentAcademicView = () => import('../modules/enrollment/EnrollmentAcademicView.vue')
 const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
 const GradingView = () => import('../modules/grading/GradingView.vue')
+const StudentGradeHistoryView = () => import('../modules/grading/StudentGradeHistoryView.vue')
 const MonitoringView = () => import('../modules/monitoring/MonitoringView.vue')
 const AdviserAlertsView = () => import('../modules/monitoring/AdviserAlertsView.vue')
 const StudyPlansView = () => import('../modules/monitoring/StudyPlansView.vue')
@@ -30,13 +33,26 @@ const StudentRecordsView = () => import('../modules/student-management/StudentRe
 const StudentProfileView = () => import('../modules/student-management/StudentProfileView.vue')
 const StudentDocumentsView = () => import('../modules/student-management/StudentDocumentsView.vue')
 const PhysicalRecordsView = () => import('../modules/student-management/PhysicalRecordsView.vue')
+const StudentRecordReportsView = () => import('../modules/student-management/StudentRecordReportsView.vue')
 const EventAttendanceView = () => import('../modules/event-attendance/EventAttendanceView.vue')
+const EventPromotionView = () => import('../modules/event-attendance/EventPromotionView.vue')
+const EventReportsView = () => import('../modules/event-attendance/EventReportsView.vue')
 const RegistrarDashboardView = () => import('../modules/registrar-dashboard/RegistrarDashboardView.vue')
 
 const protectedRoute = (route) => ({
   ...route,
   meta: { requiresAuth: true, ...route.meta },
 })
+
+const canAccessEventClient = (role) =>
+  clientPlatform === 'web' ||
+  (['Admin', 'Professor'].includes(role) && clientPlatform === 'desktop') ||
+  (['Professor', 'Student'].includes(role) && clientPlatform === 'mobile')
+
+const landingForRole = (role) =>
+  role === ROLES.PROFESSOR && clientPlatform === 'mobile'
+    ? { name: 'event-attendance' }
+    : dashboardForRole(role)
 
 const routes = [
   {
@@ -88,6 +104,13 @@ const routes = [
         meta: { title: 'Settings', roles: [ROLES.STUDENT] },
       }),
       protectedRoute({
+        path: 'registrar/settings',
+        name: 'registrar-settings',
+        component: SettingsView,
+        props: { staffMode: true },
+        meta: { title: 'Registrar Settings', roles: ROUTE_ROLES['registrar-settings'] },
+      }),
+      protectedRoute({
         path: 'guest-dashboard',
         name: 'guest-dashboard',
         component: GuestDashboardView,
@@ -99,8 +122,7 @@ const routes = [
       protectedRoute({
         path: 'student-dashboard',
         name: 'student-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.STUDENT },
+        component: StudentDashboardView,
         meta: {
           title: 'Student Dashboard',
           roles: ROUTE_ROLES['student-dashboard'],
@@ -109,8 +131,7 @@ const routes = [
       protectedRoute({
         path: 'professor-dashboard',
         name: 'professor-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.PROFESSOR },
+        component: ProfessorDashboardView,
         meta: {
           title: 'Professor Dashboard',
           roles: ROUTE_ROLES['professor-dashboard'],
@@ -133,30 +154,6 @@ const routes = [
         meta: {
           title: 'Admin Dashboard',
           roles: ROUTE_ROLES['admin-dashboard'],
-        },
-      }),
-      protectedRoute({
-        path: 'profile',
-        name: 'guest-profile',
-        component: ComingSoonView,
-        props: {
-          title: 'My Profile',
-          description: 'Profile management will be delivered by its assigned module team.',
-        },
-        meta: { title: 'My Profile', roles: ROUTE_ROLES['guest-profile'] },
-      }),
-      protectedRoute({
-        path: 'activate-student-account',
-        name: 'activate-student-account',
-        component: ComingSoonView,
-        props: {
-          title: 'Activate Student Account',
-          description:
-            'Student account activation will be available after registrar verification workflows are released.',
-        },
-        meta: {
-          title: 'Activate Student Account',
-          roles: ROUTE_ROLES['activate-student-account'],
         },
       }),
       ...admissionRoutes.map(protectedRoute),
@@ -198,10 +195,16 @@ const routes = [
         meta: { title: 'Grading', roles: ROUTE_ROLES.grading },
       }),
       protectedRoute({
+        path: 'grading/student-history',
+        name: 'grading-student-history',
+        component: StudentGradeHistoryView,
+        meta: { title: 'Student Grade History', roles: ROUTE_ROLES['grading-student-history'] },
+      }),
+      protectedRoute({
         path: 'monitoring',
         name: 'monitoring',
         component: MonitoringView,
-        meta: { title: 'Monitoring', roles: ROUTE_ROLES.monitoring },
+        meta: { title: 'Academic Monitoring', roles: ROUTE_ROLES.monitoring },
       }),
       protectedRoute({
         path: 'document-requests',
@@ -228,7 +231,7 @@ const routes = [
         path: 'monitoring/adviser-alerts',
         name: 'monitoring-adviser-alerts',
         component: AdviserAlertsView,
-        meta: { title: 'Adviser Alerts', roles: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF] },
+        meta: { title: 'Adviser Alerts', roles: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN] },
       }),
       protectedRoute({
         path: 'monitoring/study-plans',
@@ -282,6 +285,15 @@ const routes = [
         },
       }),
       protectedRoute({
+        path: 'student-management/reports',
+        name: 'student-record-reports',
+        component: StudentRecordReportsView,
+        meta: {
+          title: 'Student Records Reports',
+          roles: ROUTE_ROLES['student-record-reports'],
+        },
+      }),
+      protectedRoute({
         path: 'student-management/physical-records',
         name: 'physical-records',
         component: PhysicalRecordsView,
@@ -311,11 +323,18 @@ const routes = [
       protectedRoute({
         path: 'event-attendance',
         name: 'event-attendance',
-        component: EventAttendanceView,
+        component: clientPlatform === 'web' ? EventPromotionView : EventAttendanceView,
         meta: {
-          title: 'Event Attendance',
+          title: clientPlatform === 'web' ? 'Events' : 'Event Operations',
           roles: ROUTE_ROLES['event-attendance'],
+          eventModule: true,
         },
+      }),
+      protectedRoute({
+        path: 'event-attendance/reports',
+        name: 'event-attendance-reports',
+        component: EventReportsView,
+        meta: { title: 'Event Reports', roles: ['Admin', 'Professor'], eventModule: true, desktopEventOnly: true },
       }),
       protectedRoute({
         path: 'unauthorized',
@@ -336,11 +355,20 @@ router.beforeEach(async (to) => {
   await authStore.initialize()
 
   if (to.matched.some((record) => record.meta.guestOnly) && authStore.isAuthenticated)
-    return dashboardForRole(authStore.currentRole)
+    return landingForRole(authStore.currentRole)
   if (!to.matched.some((record) => record.meta.requiresAuth)) return true
   if (!authStore.isAuthenticated) return { name: 'login', query: { redirect: to.fullPath } }
-  if (to.name === 'home') return dashboardForRole(authStore.currentRole)
+  if (to.name === 'home') return landingForRole(authStore.currentRole)
+  if (authStore.currentRole === ROLES.PROFESSOR && clientPlatform === 'mobile' && !to.meta.eventModule)
+    return { name: 'event-attendance' }
   if (!canAccess(authStore.currentRole, to.meta.roles || ALL_ROLES)) return { name: 'unauthorized' }
+  const admission = authStore.currentUser?.admission || {}
+  if (authStore.currentRole === ROLES.GUEST && to.path.startsWith('/enrollment') && !admission.admitted_guest)
+    return { name: 'unauthorized' }
+  if ((admission.completed || authStore.currentRole === ROLES.STUDENT) && ['/admission/exam', '/admission/result', '/admission/recommendation'].includes(to.path))
+    return { name: 'admission' }
+  if (to.meta.eventModule && !canAccessEventClient(authStore.currentRole)) return { name: 'unauthorized' }
+  if (to.meta.desktopEventOnly && clientPlatform !== 'desktop') return { name: 'unauthorized' }
   return true
 })
 

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\ClientPlatform;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -10,6 +11,8 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthenticationService
 {
+    public function __construct(private readonly ClientPlatformAccessService $clientAccess) {}
+
     /**
      * Authenticate an active user and create a Sanctum token.
      *
@@ -18,7 +21,7 @@ class AuthenticationService
      *
      * @throws AuthenticationException
      */
-    public function login(array $credentials): array
+    public function login(array $credentials, string $client): array
     {
         $user = User::query()
             ->with(['role', 'profile'])
@@ -31,13 +34,18 @@ class AuthenticationService
             throw new AuthenticationException('Invalid username or password.');
         }
 
+        $this->clientAccess->ensureUserMayUse($user, $client);
+
         $user->forceFill([
             'last_login' => now(),
         ])->save();
 
         return [
             'user' => $user->fresh(['role', 'profile']),
-            'token' => $user->createToken('CDM Portal API Token')->plainTextToken,
+            'token' => $user->createToken(
+                'CDM Portal API Token ('.$client.')',
+                [ClientPlatform::ability($client)],
+            )->plainTextToken,
         ];
     }
 

@@ -13,6 +13,7 @@ use App\Models\Cabinet;
 use App\Models\CabinetSlot;
 use App\Models\Student;
 use App\Models\StudentRecordLocation;
+use App\Services\StudentRecords\StudentRecordAuditWriter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,6 +22,8 @@ use Illuminate\Validation\ValidationException;
 
 class RegistrarCabinetController extends Controller
 {
+    public function __construct(private readonly StudentRecordAuditWriter $audit) {}
+
     public function index(): JsonResponse
     {
         $cabinets = $this->summaryQuery()->get();
@@ -138,7 +141,7 @@ class RegistrarCabinetController extends Controller
                 ] : null,
                 'year_level' => $student->year_level,
                 'student_status' => $student->student_status,
-                'profile_photo' => $profile->profile_photo,
+                'profile_photo_url' => $profile->profile_photo_url,
                 'assigned_at' => $location->assigned_at?->toISOString(),
                 'location_remarks' => $location->remarks,
                 'documents' => $documents,
@@ -229,7 +232,7 @@ class RegistrarCabinetController extends Controller
     ): JsonResponse {
         $attributes = $request->validated();
 
-        $location = DB::transaction(function () use ($student, $attributes): StudentRecordLocation {
+        $location = DB::transaction(function () use ($request, $student, $attributes): StudentRecordLocation {
             Student::query()->whereKey($student->id)->lockForUpdate()->firstOrFail();
             $slot = CabinetSlot::query()->whereKey($attributes['cabinet_slot_id'])->lockForUpdate()->firstOrFail();
 
@@ -256,6 +259,7 @@ class RegistrarCabinetController extends Controller
                 ->where('student_id', $student->id)
                 ->lockForUpdate()
                 ->first();
+            $previousSlotId = $location?->cabinet_slot_id;
 
             $locationAttributes = [
                 'cabinet_slot_id' => $slot->id,
@@ -265,14 +269,19 @@ class RegistrarCabinetController extends Controller
 
             if ($location) {
                 $location->update($locationAttributes);
-
-                return $location;
+            } else {
+                $location = StudentRecordLocation::query()->create([
+                    'student_id' => $student->id,
+                    ...$locationAttributes,
+                ]);
             }
 
-            return StudentRecordLocation::query()->create([
-                'student_id' => $student->id,
-                ...$locationAttributes,
+            $this->audit->record($request->user(), $student->id, 'physical_record_location_changed', [
+                'previous_cabinet_slot_id' => $previousSlotId,
+                'cabinet_slot_id' => $slot->id,
             ]);
+
+            return $location;
         });
 
         $location->load('cabinetSlot.cabinet');

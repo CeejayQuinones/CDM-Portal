@@ -43,7 +43,7 @@ const initials = computed(() =>
     .join('')
     .toUpperCase(),
 )
-const menuItems = computed(() => navigationStore.menuItemsForRole(authStore.currentRole))
+const menuItems = computed(() => navigationStore.menuItemsForRole(authStore.currentRole, authStore.currentUser?.admission))
 const isExpanded = (name) => expandedItems.value.includes(name)
 const isChildActive = (item) =>
   item.children?.some((child) => child.path === route.path || child.activeRoutes?.includes(route.name))
@@ -139,19 +139,26 @@ const logout = async () => {
               <path d="m7 5 5 5-5 5" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
-          <div v-show="isExpanded(item.name)" class="nav-children">
-            <RouterLink
-              v-for="child in item.children"
-              :key="child.name"
-              :to="child.path"
-              class="nav-link nav-child"
-              active-class=""
-              exact-active-class="router-link-active"
-              @click="emit('close')"
-            >
-              {{ child.label }}
-            </RouterLink>
-          </div>
+          <Transition name="nav-children">
+            <div v-if="isExpanded(item.name)" class="nav-children">
+              <template v-for="child in item.children" :key="child.name">
+              <span v-if="child.comingSoon" class="nav-link nav-child is-disabled" aria-disabled="true">
+                {{ child.label }} <small>{{ child.phaseLabel || 'Coming soon' }}</small>
+              </span>
+              <RouterLink
+                v-else
+                :key="child.name"
+                :to="child.path"
+                class="nav-link nav-child"
+                active-class=""
+                exact-active-class="router-link-active"
+                @click="emit('close')"
+              >
+                {{ child.label }}
+              </RouterLink>
+              </template>
+            </div>
+          </Transition>
         </div>
 
         <RouterLink v-else :to="item.path" class="nav-link" @click="emit('close')">
@@ -335,6 +342,28 @@ const logout = async () => {
   display: grid;
   gap: 3px;
   margin: 4px 0 3px 29px;
+  overflow: hidden;
+}
+
+.nav-child.is-disabled { cursor: not-allowed; opacity: .52; }
+.nav-child.is-disabled small { font-size: .58rem; margin-left: auto; text-transform: uppercase; }
+
+.nav-children-enter-active,
+.nav-children-leave-active {
+  max-height: 440px;
+  opacity: 1;
+  transition:
+    max-height 190ms ease,
+    opacity 160ms ease,
+    margin 190ms ease;
+}
+
+.nav-children-enter-from,
+.nav-children-leave-to {
+  margin-bottom: 0;
+  margin-top: 0;
+  max-height: 0;
+  opacity: 0;
 }
 
 .nav-child {
@@ -450,12 +479,29 @@ const logout = async () => {
 
 @media (max-width: 860px) {
   .sidebar {
+    width: min(86vw, 320px);
+    height: 100vh;
+    height: 100dvh;
     box-shadow: 12px 0 32px rgba(3, 32, 18, 0.3);
+    padding:
+      calc(18px + env(safe-area-inset-top))
+      13px
+      calc(14px + env(safe-area-inset-bottom));
     transform: translateX(-100%);
   }
 
   .sidebar.is-open {
     transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .nav-link,
+  .nav-chevron,
+  .nav-children-enter-active,
+  .nav-children-leave-active {
+    transition-duration: 0.01ms;
   }
 }
 </style>

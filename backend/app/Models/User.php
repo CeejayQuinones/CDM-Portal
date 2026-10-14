@@ -103,4 +103,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(RiskNotification::class, 'sender_user_id');
     }
+
+    public function eventRoleAssignments(): HasMany
+    {
+        return $this->hasMany(EventRoleAssignment::class);
+    }
 }

@@ -801,6 +801,91 @@ onMounted(loadDashboard)
   margin: 5px 0 0;
 }
 
+/* Shared semantic palette keeps this operational dashboard aligned in both themes. */
+.dashboard-header .page-title,
+.summary-card strong,
+.quick-action strong,
+.activity-copy strong,
+.appointment-copy strong,
+.empty-appointments strong {
+  color: var(--text-primary);
+}
+
+.dashboard-error {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border-color));
+  color: var(--danger);
+}
+
+.summary-card,
+.dashboard-panel,
+.activity-item,
+.appointment-item {
+  background: var(--surface-1);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-soft);
+}
+
+.summary-card:first-child {
+  background: linear-gradient(145deg, #063c26 0%, #07532f 64%, #0a4229 100%);
+  border-color: var(--border-strong);
+}
+
+.card-icon,
+.action-icon,
+.panel-heading,
+.table-heading,
+.empty-appointments > span {
+  background: var(--surface-2);
+  border-color: var(--border-color);
+}
+
+.panel-heading {
+  border-bottom-color: var(--border-color);
+}
+
+.quick-action {
+  background: var(--surface-2);
+  border-color: var(--border-color);
+}
+
+.quick-action:hover,
+.activity-item:hover,
+.appointment-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.summary-card div > span,
+.quick-action span,
+.activity-copy span,
+.activity-copy small,
+.activity-item time,
+.appointment-copy small,
+.empty-appointments {
+  color: var(--text-secondary);
+}
+
+.view-link,
+.appointment-item > time {
+  color: var(--accent);
+}
+
+.status-badge,
+.status-badge.confirmed,
+.status-badge.completed {
+  background: var(--success-bg);
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border-color));
+  color: var(--success);
+}
+
+.status-badge.cancelled,
+.status-badge.no_show {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border-color));
+  color: var(--danger);
+}
+
 @media (max-width: 1100px) {
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

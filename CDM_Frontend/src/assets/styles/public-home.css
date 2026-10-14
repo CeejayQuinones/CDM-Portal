@@ -1333,8 +1333,14 @@
 
 @media (max-width: 430px) {
   .hero-copy h1 {
-    font-size: 2.55rem;
+    font-size: 2.15rem;
   }
+
+  .hero-shell { padding: 40px 0 68px; }
+  .login-card { padding: 22px 17px 20px; }
+  .announcements-section,
+  .events-section,
+  .about-section { padding: 58px 0; }
 
   .hero-copy h1 br {
     display: none;

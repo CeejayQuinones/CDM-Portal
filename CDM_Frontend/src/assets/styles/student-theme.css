@@ -1,64 +1,316 @@
-/* Loaded by the Student shell. The html attribute is removed on role change/logout.
-   Teleported Student dialogs share the palette without theming staff or the sidebar. */
-html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
-  --student-page: #17221b;
-  --student-page-background: #17221b;
-  --student-surface: #213127;
-  --student-surface-soft: #19271f;
-  --student-field: #19271f;
-  --student-panel-header: #19271f;
-  --student-text: #edf6ef;
-  --student-heading: #edf6ef;
-  --student-muted: #b9cabc;
-  --student-border: #587061;
-  --student-accent: #a5e0b8;
-  --student-selected: #294434;
-  --student-focus: #82c69b;
-  --student-toggle: #587061;
-  --student-save: #1e3728;
-  --student-success: #24452f;
-  --student-danger: #ffb4aa;
-  --student-danger-bg: #442822;
-  --student-danger-border: #925a50;
-  --student-note: #3c3822;
+/* One root attribute restores Student and Registrar/Admin appearance across navigation. */
+html[data-student-theme='dark'] {
+  --bg-page: #0b1711;
+  --bg-surface: #10251a;
+  --bg-surface-alt: #153020;
+  --bg-surface-raised: #1a3927;
+  --bg-sidebar: #052f20;
+  --bg-input: #1b3526;
+  --bg-hover: #21452f;
+  --bg-header: rgb(7 52 29 / 97%);
+  --text-primary: #f1f4ef;
+  --text-secondary: #c2cec4;
+  --text-muted: #9fb2a3;
+  --tab-inactive: var(--text-secondary);
+  --tab-active: var(--accent);
+  --tab-hover: var(--bg-hover);
+  --border-color: #315a40;
+  --border-strong: #4a7658;
+  --brand-primary: #106a2e;
+  --brand-active: #168443;
+  --accent: #69c585;
+  --accent-hover: #82d49a;
+  --text-on-accent: #07170f;
+  --danger: #ef9a91;
+  --danger-bg: #492925;
+  --warning: #d9b94e;
+  --warning-bg: #3b341d;
+  --success: #a9d9b3;
+  --success-bg: #1c432c;
+  --info: #a7c8b0;
+  --info-bg: #173526;
+  --color-dartmouth-green: var(--brand-primary);
+  --color-dark-spring-green: var(--brand-active);
+  --color-naples-yellow: #d9b94e;
+  --shadow-soft: 0 10px 28px rgb(0 0 0 / 28%);
+  --shadow-raised: 0 16px 38px rgb(0 0 0 / 38%);
+  --surface-1: var(--bg-surface);
+  --surface-2: var(--bg-surface-alt);
+  --surface-3: var(--bg-surface-raised);
+  --skeleton-base: #1a3927;
+  --skeleton-highlight: #285039;
+  /* Legacy Student component aliases must live at root for Teleported dialogs. */
+  --student-page: var(--bg-page);
+  --student-page-background: var(--bg-page);
+  --student-surface: var(--bg-surface);
+  --student-surface-soft: var(--bg-surface-alt);
+  --student-field: var(--bg-input);
+  --student-panel-header: var(--bg-surface-alt);
+  --student-text: var(--text-primary);
+  --student-heading: var(--text-primary);
+  --student-muted: var(--text-muted);
+  --student-border: var(--border-color);
+  --student-accent: var(--accent);
+  --student-primary: var(--accent);
+  --student-on-primary: var(--text-on-accent);
+  --student-selected: var(--bg-hover);
+  --student-focus: var(--accent-hover);
+  --student-note: var(--warning-bg);
+  --student-danger: var(--danger);
+  --student-danger-bg: var(--danger-bg);
+  color-scheme: dark;
+}
+
+html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .registrar-theme-shell, .registrar-theme-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
+  --student-page: var(--bg-page);
+  --student-page-background: var(--bg-page);
+  --student-surface: var(--bg-surface);
+  --student-surface-soft: var(--bg-surface-alt);
+  --student-field: var(--bg-input);
+  --student-panel-header: var(--bg-surface-alt);
+  --student-text: var(--text-primary);
+  --student-heading: var(--text-primary);
+  --student-muted: var(--text-muted);
+  --student-border: var(--border-color);
+  --student-accent: var(--accent);
+  --student-primary: var(--accent);
+  --student-on-primary: var(--text-on-accent);
+  --student-selected: var(--bg-hover);
+  --student-focus: var(--accent-hover);
+  --student-toggle: var(--border-strong);
+  --student-save: var(--bg-surface-raised);
+  --student-success: var(--success-bg);
+  --student-danger: var(--danger);
+  --student-danger-bg: var(--danger-bg);
+  --student-danger-border: #915b54;
+  --student-note: var(--warning-bg);
   --student-shadow: 0 5px 18px #0004;
   --student-card-shadow: 0 10px 30px #0004;
   --student-card-shadow-hover: 0 18px 34px #0005;
   --student-color-scheme: dark;
+  --color-anti-flash-white: var(--student-page);
+  --color-surface: var(--student-surface);
+  --color-eerie-black: var(--student-text);
+  --color-muted: var(--student-muted);
+  --color-border: var(--student-border);
+  --color-dartmouth-green: var(--brand-primary);
+  --color-green-tint: var(--student-selected);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-student-theme='system'] :is(.student-portal-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
-    --student-page: #17221b;
-    --student-page-background: #17221b;
-    --student-surface: #213127;
-    --student-surface-soft: #19271f;
-    --student-field: #19271f;
-    --student-panel-header: #19271f;
-    --student-text: #edf6ef;
-    --student-heading: #edf6ef;
-    --student-muted: #b9cabc;
-    --student-border: #587061;
-    --student-accent: #a5e0b8;
-    --student-selected: #294434;
-    --student-focus: #82c69b;
-    --student-toggle: #587061;
-    --student-save: #1e3728;
-    --student-success: #24452f;
-    --student-danger: #ffb4aa;
-    --student-danger-bg: #442822;
-    --student-danger-border: #925a50;
-    --student-note: #3c3822;
+  html[data-student-theme='system'] {
+    --bg-page: #0b1711;
+    --bg-surface: #10251a;
+    --bg-surface-alt: #153020;
+    --bg-surface-raised: #1a3927;
+    --bg-sidebar: #052f20;
+    --bg-input: #1b3526;
+    --bg-hover: #21452f;
+    --bg-header: rgb(7 52 29 / 97%);
+    --text-primary: #f1f4ef;
+    --text-secondary: #c2cec4;
+    --text-muted: #9fb2a3;
+    --border-color: #315a40;
+    --border-strong: #4a7658;
+    --brand-primary: #106a2e;
+    --brand-active: #168443;
+    --accent: #69c585;
+    --accent-hover: #82d49a;
+    --text-on-accent: #07170f;
+    --danger: #ef9a91;
+    --danger-bg: #492925;
+    --warning: #d9b94e;
+    --warning-bg: #3b341d;
+    --success: #a9d9b3;
+    --success-bg: #1c432c;
+    --info: #a7c8b0;
+    --info-bg: #173526;
+    --color-dartmouth-green: var(--brand-primary);
+    --color-dark-spring-green: var(--brand-active);
+    --color-naples-yellow: #d9b94e;
+    --shadow-soft: 0 10px 28px rgb(0 0 0 / 28%);
+    --shadow-raised: 0 16px 38px rgb(0 0 0 / 38%);
+    --surface-1: var(--bg-surface);
+    --surface-2: var(--bg-surface-alt);
+    --surface-3: var(--bg-surface-raised);
+    --skeleton-base: #1a3927;
+    --skeleton-highlight: #285039;
+    --student-page: var(--bg-page);
+    --student-page-background: var(--bg-page);
+    --student-surface: var(--bg-surface);
+    --student-surface-soft: var(--bg-surface-alt);
+    --student-field: var(--bg-input);
+    --student-panel-header: var(--bg-surface-alt);
+    --student-text: var(--text-primary);
+    --student-heading: var(--text-primary);
+    --student-muted: var(--text-muted);
+    --student-border: var(--border-color);
+    --student-accent: var(--accent);
+    --student-primary: var(--accent);
+    --student-on-primary: var(--text-on-accent);
+    --student-selected: var(--bg-hover);
+    --student-focus: var(--accent-hover);
+    --student-note: var(--warning-bg);
+    --student-danger: var(--danger);
+    --student-danger-bg: var(--danger-bg);
+    color-scheme: dark;
+  }
+
+  html[data-student-theme='system'] :is(.student-portal-shell .shell-content, .registrar-theme-shell, .registrar-theme-shell .shell-content, .student-workflow-backdrop, .step-up-backdrop) {
+    --student-page: var(--bg-page);
+    --student-page-background: var(--bg-page);
+    --student-surface: var(--bg-surface);
+    --student-surface-soft: var(--bg-surface-alt);
+    --student-field: var(--bg-input);
+    --student-panel-header: var(--bg-surface-alt);
+    --student-text: var(--text-primary);
+    --student-heading: var(--text-primary);
+    --student-muted: var(--text-muted);
+    --student-border: var(--border-color);
+    --student-accent: var(--accent);
+    --student-primary: var(--accent);
+    --student-on-primary: var(--text-on-accent);
+    --student-selected: var(--bg-hover);
+    --student-focus: var(--accent-hover);
+    --student-toggle: var(--border-strong);
+    --student-save: var(--bg-surface-raised);
+    --student-success: var(--success-bg);
+    --student-danger: var(--danger);
+    --student-danger-bg: var(--danger-bg);
+    --student-danger-border: #915b54;
+    --student-note: var(--warning-bg);
     --student-shadow: 0 5px 18px #0004;
     --student-card-shadow: 0 10px 30px #0004;
     --student-card-shadow-hover: 0 18px 34px #0005;
     --student-color-scheme: dark;
+    --color-anti-flash-white: var(--student-page);
+    --color-surface: var(--student-surface);
+    --color-eerie-black: var(--student-text);
+    --color-muted: var(--student-muted);
+    --color-border: var(--student-border);
+    --color-dartmouth-green: var(--brand-primary);
+    --color-green-tint: var(--student-selected);
   }
+}
+
+html[data-student-theme] .registrar-theme-shell,
+html[data-student-theme] .registrar-theme-shell .shell-content {
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
+html[data-student-theme] .registrar-theme-shell .main-content {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+html[data-student-theme] .registrar-theme-shell :is(input, select, textarea) {
+  background: var(--bg-input);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+html[data-student-theme] .registrar-theme-shell :is(table, th, td) {
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+html[data-student-theme] .registrar-theme-shell tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+html[data-student-theme] .registrar-theme-shell .sidebar {
+  border-right: 1px solid var(--border-color);
 }
 
 html[data-student-theme] :is(.student-workflow-backdrop, .step-up-backdrop) {
   color: var(--student-text, #1f1f1f);
   color-scheme: var(--student-color-scheme, light);
+}
+
+/* Shared authenticated dark presentation. Module CSS continues to consume the same tokens. */
+html[data-student-theme='dark'] .app-shell :is(.page-title, .monitoring-header h1, .grading-hero h1) {
+  color: var(--text-primary);
+}
+
+html[data-student-theme='dark'] .app-shell :is(.page-kicker, .eyebrow, .grading-eyebrow) {
+  color: var(--accent) !important;
+}
+
+html[data-student-theme='dark'] .app-shell :is(.page-description, .monitoring-header > div > p:last-child, .section-heading p, .empty-state p) {
+  color: var(--text-secondary);
+}
+
+html[data-student-theme='dark'] .app-shell .main-content form label {
+  color: var(--text-secondary);
+}
+
+html[data-student-theme='dark'] .app-shell :is([role='dialog'], .grading-modal, .admission-dialog, .en-dialog) {
+  background: var(--surface-1);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+html[data-student-theme='dark'] .app-shell :is(table, .data-table) {
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+html[data-student-theme='dark'] .app-shell :is(th, [role='columnheader']) {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+html[data-student-theme='dark'] .app-shell :is(.navbar-label, .page-header a:focus-visible) {
+  color: var(--color-naples-yellow);
+}
+
+html[data-student-theme='dark'] .app-shell .navbar {
+  background: var(--bg-header);
+  color: var(--text-primary);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-student-theme='system'] .app-shell :is(.page-title, .monitoring-header h1, .grading-hero h1) {
+    color: var(--text-primary);
+  }
+
+  html[data-student-theme='system'] .app-shell :is(.page-kicker, .eyebrow, .grading-eyebrow) {
+    color: var(--accent) !important;
+  }
+
+  html[data-student-theme='system'] .app-shell :is(.page-description, .monitoring-header > div > p:last-child, .section-heading p, .empty-state p) {
+    color: var(--text-secondary);
+  }
+
+  html[data-student-theme='system'] .app-shell .main-content form label {
+    color: var(--text-secondary);
+  }
+
+  html[data-student-theme='system'] .app-shell :is([role='dialog'], .grading-modal, .admission-dialog, .en-dialog) {
+    background: var(--surface-1);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+  }
+
+  html[data-student-theme='system'] .app-shell :is(table, .data-table) {
+    background: var(--surface-1);
+    color: var(--text-primary);
+  }
+
+  html[data-student-theme='system'] .app-shell :is(th, [role='columnheader']) {
+    background: var(--surface-2);
+    color: var(--text-secondary);
+  }
+
+  html[data-student-theme='system'] .app-shell :is(.navbar-label, .page-header a:focus-visible) {
+    color: var(--color-naples-yellow);
+  }
+
+  html[data-student-theme='system'] .app-shell .navbar {
+    background: var(--bg-header);
+    color: var(--text-primary);
+  }
 }
 
 .student-portal-shell .main-content :is(table, th, td) {

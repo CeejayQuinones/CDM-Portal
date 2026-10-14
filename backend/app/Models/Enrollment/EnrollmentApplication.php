@@ -3,6 +3,7 @@
 namespace App\Models\Enrollment;
 
 use App\Models\AcademicYear;
+use App\Models\Admission\AdmissionApplicant;
 use App\Models\Course;
 use App\Models\Curriculum;
 use App\Models\Enrollment;
@@ -10,6 +11,7 @@ use App\Models\Section;
 use App\Models\Semester;
 use App\Models\Student;
 use App\Models\Subject;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 
 class EnrollmentApplication extends Model
@@ -20,12 +22,32 @@ class EnrollmentApplication extends Model
 
     protected function casts(): array
     {
-        return ['submitted_at' => 'immutable_datetime', 'reviewed_at' => 'immutable_datetime'];
+        return ['submitted_at' => 'immutable_datetime', 'reviewed_at' => 'immutable_datetime', 'finalized_at' => 'immutable_datetime'];
     }
 
     public function student()
     {
         return $this->belongsTo(Student::class);
+    }
+
+    public function owner()
+    {
+        return $this->belongsTo(User::class, 'owner_user_id');
+    }
+
+    public function admissionApplicant()
+    {
+        return $this->belongsTo(AdmissionApplicant::class);
+    }
+
+    public function scopeOwnedBy($query, User $user)
+    {
+        return $query->where('owner_user_id', $user->id);
+    }
+
+    public function isFirstTime(): bool
+    {
+        return $this->admission_applicant_id !== null && $this->student_id === null;
     }
 
     public function period()

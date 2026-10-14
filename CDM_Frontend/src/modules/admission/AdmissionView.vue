@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { admissionApi } from './services/workflowService'
 import { ROLES } from '../../config/accessControl.js'
 import { useAuthStore } from '../../stores/authStore'
-import AdmissionPlaceholder from './components/AdmissionPlaceholder.vue'
+import AdmissionStaffWorkspace from './components/AdmissionStaffWorkspace.vue'
 import { fetchAdmissionIdentity, fetchAdmissionAvailability, createAdmissionApplication, admissionCreationMessage } from './services/admissionService.js'
 
 defineProps({ title: { type: String, default: 'Admission Status' } })
@@ -19,6 +19,7 @@ const submitting = ref(false)
 const creationMessage = ref('')
 const exam = ref(null), result = ref(null), workflowFailed = ref(false)
 const nextStep = computed(() => {
+  if (application.value?.admission_completed) return { stage: 5, text: 'Admission is complete. Continue to Enrollment using this account.', label: 'Continue to Enrollment', to: '/enrollment/status' }
   if (application.value?.is_converted) return { stage: 4, text: 'You are now an academic Student. Your Admission history is read-only.', label: 'View Recommendation', to: '/admission/recommendation' }
   if (workflowFailed.value) return { stage: 0, text: 'Unable to load your next step. Please refresh.' }
   if (auth.currentRole === ROLES.GUEST && exam.value?.session && !exam.value.session.exam_completed) return { stage: 1, text: 'Your exam is in progress.', label: 'Resume Exam', to: '/admission/exam' }
@@ -74,7 +75,7 @@ async function loadIdentity() {
     const identity = await fetchAdmissionIdentity()
     if (version !== requestVersion) return
     application.value = identity.application
-    if (identity.application) await loadWorkflow(version)
+    if (identity.application && !identity.application.admission_completed) await loadWorkflow(version)
     if (!identity.application && auth.currentRole === ROLES.GUEST) {
       try {
         const value = await fetchAdmissionAvailability()
@@ -99,7 +100,7 @@ async function createApplication() {
     const identity = await createAdmissionApplication()
     if (version !== requestVersion) return
     application.value = identity.application
-    if (identity.application) await loadWorkflow(version)
+    if (identity.application && !identity.application.admission_completed) await loadWorkflow(version)
     if (version !== requestVersion) return
     confirming.value = false
     availability.value = null
@@ -123,8 +124,7 @@ onBeforeUnmount(() => { requestVersion++ })
 </script>
 
 <template>
-  <!-- Preserve staff's legacy landing URL without calling the self-service API. -->
-  <AdmissionPlaceholder v-if="!canReadIdentity" :title="title" />
+  <AdmissionStaffWorkspace v-if="!canReadIdentity" :title="title" description="Choose an Admission workspace below."><p class="placeholder-panel panel">Applicants, Programs, Exams, Exam Questions, Results, and Admission History use the same staff permissions.</p></AdmissionStaffWorkspace>
   <section v-else class="admission-workflow admission-applicant" aria-labelledby="admission-page-title" :aria-busy="loading">
     <header class="page-header">
       <p class="page-kicker">Admission</p>
@@ -152,8 +152,9 @@ onBeforeUnmount(() => { requestVersion++ })
           <div><dt>Admission Cycle</dt><dd>{{ application.cycle.name }} <span class="admission-cycle-code">({{ application.cycle.code }})</span></dd></div>
           <div><dt>Application record status</dt><dd><span class="badge">{{ status[0] }}</span></dd></div>
         </dl></div>
-        <ol class="progress-steps" aria-label="Admission progress"><li v-for="(step,index) in ['Application','Exam','Review','Result','Recommendation']" :key="step" :aria-current="index === nextStep.stage ? 'step' : undefined" :class="{ current: index === nextStep.stage, complete: index < nextStep.stage }"><span class="step-number" aria-hidden="true">{{ index < nextStep.stage ? '✓' : index + 1 }}</span><span>{{ step }}<small>{{ index < nextStep.stage ? 'Completed' : index === nextStep.stage ? 'Current step' : 'Upcoming' }}</small></span></li></ol>
-        <div class="placeholder-panel panel next-step"><h2>Your next step</h2><p role="status">{{ nextStep.text }}</p><router-link v-if="nextStep.label" class="link-button primary" :to="nextStep.to">{{ nextStep.label }}</router-link><button v-else type="button" @click="loadIdentity">Refresh status</button><p v-if="result?.published"><router-link to="/admission/result">View published result</router-link></p></div>
+        <div v-if="application.admission_completed" class="placeholder-panel panel next-step"><h2>Admission completed</h2><p role="status">Your Admission workflow is complete and read-only.</p><dl class="admission-details"><div v-if="application.admitted_program"><dt>Admitted program</dt><dd>{{ application.admitted_program.course_name }}</dd></div><div v-if="application.admitted_curriculum"><dt>Curriculum</dt><dd>{{ application.admitted_curriculum.curriculum_name }}</dd></div><div><dt>Current portal role</dt><dd>{{ application.eligible_for_enrollment ? 'Guest' : 'Student' }}</dd></div><div><dt>Student identity</dt><dd>{{ application.student_identity_created ? 'Existing identity preserved' : 'Not created yet' }}</dd></div></dl><p v-if="application.eligible_for_enrollment">You are eligible to continue to Enrollment. Student creation and official student-number assignment occur during Enrollment finalization in Phase 2.</p><p v-else>Your Student identity was created under the earlier lifecycle and remains unchanged.</p><router-link class="link-button primary" to="/enrollment/status">Continue to Enrollment</router-link></div>
+        <template v-else><ol class="progress-steps" aria-label="Admission progress"><li v-for="(step,index) in ['Application','Exam','Review','Result','Recommendation']" :key="step" :aria-current="index === nextStep.stage ? 'step' : undefined" :class="{ current: index === nextStep.stage, complete: index < nextStep.stage }"><span class="step-number" aria-hidden="true">{{ index < nextStep.stage ? '✓' : index + 1 }}</span><span>{{ step }}<small>{{ index < nextStep.stage ? 'Completed' : index === nextStep.stage ? 'Current step' : 'Upcoming' }}</small></span></li></ol>
+        <div class="placeholder-panel panel next-step"><h2>Your next step</h2><p role="status">{{ nextStep.text }}</p><router-link v-if="nextStep.label" class="link-button primary" :to="nextStep.to">{{ nextStep.label }}</router-link><button v-else type="button" @click="loadIdentity">Refresh status</button><p v-if="result?.published"><router-link to="/admission/result">View published result</router-link></p></div></template>
         <details class="placeholder-panel panel"><summary>Application details</summary><dl class="admission-details">
           <div><dt>Exam</dt><dd>{{ exam?.session && !exam.session.exam_completed ? 'In progress' : exam?.attempts_submitted ? exam.attempts_submitted + ' of ' + (exam.max_attempts || 2) + ' attempts submitted' : 'Not started' }}</dd></div>
           <div><dt>Result</dt><dd>{{ workflowFailed ? 'Status unavailable' : result?.published ? (result.result.outcome === 'PASSED' ? 'Published · Passed' : 'Published · Not Passed') : 'Not published' }}</dd></div>

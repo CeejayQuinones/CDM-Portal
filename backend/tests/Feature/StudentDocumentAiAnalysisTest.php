@@ -50,7 +50,8 @@ class StudentDocumentAiAnalysisTest extends TestCase
     {
         Queue::fake();
         $document = $this->createBirthCertificate();
-        Sanctum::actingAs($this->createUserWithRole(Role::REGISTRAR_STAFF));
+        $registrar = $this->createUserWithRole(Role::REGISTRAR_STAFF);
+        Sanctum::actingAs($registrar);
 
         $this->postJson("/api/registrar/student-documents/{$document->id}/upload", [
             'file' => UploadedFile::fake()->image('birth-certificate.jpg', 1200, 800),
@@ -67,6 +68,11 @@ class StudentDocumentAiAnalysisTest extends TestCase
             $document->file_path,
         );
         Storage::disk('local')->assertExists($document->file_path);
+        $this->assertDatabaseHas('student_record_audit_events', [
+            'student_id' => $document->student_id,
+            'actor_user_id' => $registrar->id,
+            'action' => 'document_file_uploaded',
+        ]);
         Queue::assertPushedOn('document-analysis', AnalyzeStudentDocument::class);
         Queue::assertPushed(AnalyzeStudentDocument::class, 1);
     }
@@ -203,6 +209,11 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $this->assertSame('missing', $document->availability_status);
         $this->assertSame('pending', $document->verification_status);
         $this->assertNull($document->aiAnalysis()->first());
+        $this->assertDatabaseHas('student_record_audit_events', [
+            'student_id' => $student->id,
+            'actor_user_id' => $registrar->id,
+            'action' => 'document_file_deleted',
+        ]);
         Storage::disk('local')->assertMissing($path);
     }
 

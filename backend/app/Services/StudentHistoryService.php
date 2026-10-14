@@ -10,6 +10,7 @@ use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Enrollment\EnrollmentApplication;
 use App\Models\Student;
+use App\Models\StudentRecordAuditEvent;
 
 class StudentHistoryService
 {
@@ -37,6 +38,10 @@ class StudentHistoryService
             ->join('semesters', 'semesters.id', '=', 'enrollments.semester_id')
             ->select('enrollments.*')->orderByDesc('academic_years.start_date')
             ->orderByDesc('semesters.semester_order')->orderByDesc('enrollments.enrollment_date')->get();
+        $recordActivity = StudentRecordAuditEvent::query()
+            ->with(['actor.profile:id,user_id,first_name,last_name', 'actor.role:id,role_name'])
+            ->where('student_id', $student->id)
+            ->latest('created_at')->latest('id')->limit(100)->get();
 
         $current = $student->currentEnrollment;
         $currentApplication = $current?->application;
@@ -99,6 +104,14 @@ class StudentHistoryService
                     'units' => (float) ($s->subject?->units ?? 0), 'status' => $s->subject_status,
                 ]),
                 'total_units' => (float) $e->enrollmentSubjects->sum(fn ($s) => $s->subject?->units ?? 0),
+            ]),
+            'record_activity' => $recordActivity->map(fn (StudentRecordAuditEvent $event) => [
+                'id' => $event->id,
+                'action' => $event->action,
+                'occurred_at' => $event->created_at?->toISOString(),
+                'staff_name' => trim(($event->actor?->profile?->first_name ?? '').' '.($event->actor?->profile?->last_name ?? '')) ?: $event->actor?->username,
+                'staff_role' => $event->actor?->role?->role_name,
+                'metadata' => $event->metadata,
             ]),
         ];
     }

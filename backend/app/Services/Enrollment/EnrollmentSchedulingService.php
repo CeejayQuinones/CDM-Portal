@@ -5,6 +5,7 @@ namespace App\Services\Enrollment;
 use App\Models\AcademicYear;
 use App\Models\Course;
 use App\Models\EnrollmentSubject;
+use App\Models\GradeSheet;
 use App\Models\Professor;
 use App\Models\Role;
 use App\Models\Section;
@@ -88,6 +89,7 @@ class EnrollmentSchedulingService
             $semester = Semester::lockForUpdate()->findOrFail($sectionRef->semester_id);
             $section = Section::lockForUpdate()->findOrFail($sectionRef->id);
             $s = $id ? SectionSubject::lockForUpdate()->findOrFail($id) : new SectionSubject;
+            $previousProfessorId = $id ? $s->professor_id : null;
             if ($id) {
                 abort_unless($s->version === $input['version'], 409, 'This schedule changed. Reload before continuing.');
             }
@@ -117,10 +119,21 @@ class EnrollmentSchedulingService
             if ($id) {
                 $s->version++;
             }$s->save();
+            if ($id && (int) $previousProfessorId !== (int) $s->professor_id) {
+                $sheet = GradeSheet::where('section_subject_id', $s->id)->lockForUpdate()->first();
+                if ($sheet) {
+                    abort_unless(in_array($sheet->status, ['draft', 'returned'], true), 409, 'A submitted, approved, or published grade sheet prevents Professor reassignment.');
+                    $sheet->forceFill(['professor_id' => $s->professor_id, 'version' => $sheet->version + 1])->save();
+                }
+            }
             if ($used) {
                 EnrollmentSubject::where('subject_id', $s->subject_id)->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id)->where('status', 'enrolled'))->update(['professor_id' => $s->professor_id]);
             }
-            $this->audit->record($actor, $id ? 'schedule_updated' : 'schedule_created', 'schedule', $s->id, ['version' => $s->version]);
+            $metadata = ['version' => $s->version];
+            if ($id && (int) $previousProfessorId !== (int) $s->professor_id) {
+                $metadata += ['previous_professor_id' => $previousProfessorId, 'professor_id' => $s->professor_id];
+            }
+            $this->audit->record($actor, $id ? 'schedule_updated' : 'schedule_created', 'schedule', $s->id, $metadata);
             $recipients = User::whereHas('student', fn ($q) => $q->whereHas('enrollments', fn ($e) => $e->where('section_id', $section->id)->where('status', 'enrolled')))->get();
             Notification::send($recipients, new EnrollmentNotice('schedule_changed', 'Your section schedule has changed. Review My Schedule.', $section->id));
 

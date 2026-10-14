@@ -121,7 +121,7 @@ class EnrollmentAcademicController extends Controller
 
     public function application(Request $r, int $id)
     {
-        $a = $this->academic->application($r->user(), $id)->load(['student.userProfile', 'course', 'curriculum', 'period.academicYear', 'period.semester', 'section', 'subjects']);
+        $a = $this->academic->application($r->user(), $id)->load(['student.userProfile', 'owner.profile', 'admissionApplicant', 'course', 'curriculum', 'period.academicYear', 'period.semester', 'section', 'subjects']);
         $sections = $this->counts(Section::with(['academicYear', 'semester'])->where('course_id', $a->course_id)->where('year_level', $a->year_level)->where('academic_year_id', $a->academic_year_id)->where('semester_id', $a->semester_id)->where('status', 'open'))->orderBy('section_name')->paginate(50);
 
         return $this->ok(['application' => $a, 'load' => $this->loads->proposal($a), 'sections' => $sections, 'total_units' => $a->subjects->sum('units')]);
@@ -205,11 +205,20 @@ class EnrollmentAcademicController extends Controller
         $actor = $r->user()->fresh('role');
         abort_unless($actor->status === 'active' && $actor->role?->role_name === Role::PROFESSOR, 403, 'Active Professor access required.');
         $p = Professor::where('user_id', $actor->id)->where('status', 'active')->firstOrFail();
-        $q = Section::where(fn ($q) => $q->where('adviser_id', $p->id)->orWhereHas('schedules', fn ($s) => $s->where('professor_id', $p->id)));
+        $q = Section::whereHas('schedules', fn ($s) => $s->where('professor_id', $p->id));
         if ($section) {
             $s = $q->findOrFail($section);
 
-            return $this->ok(Enrollment::with('student.userProfile')->where('section_id', $s->id)->where('status', 'enrolled')->latest('id')->paginate(25));
+            $subjectIds = $s->schedules()->where('professor_id', $p->id)->pluck('subject_id');
+
+            return $this->ok(Enrollment::with('student.userProfile')
+                ->where('section_id', $s->id)
+                ->where('status', 'enrolled')
+                ->whereHas('enrollmentSubjects', fn ($subjects) => $subjects
+                    ->whereIn('subject_id', $subjectIds)
+                    ->whereIn('subject_status', ['enrolled', 'completed']))
+                ->latest('id')
+                ->paginate(25));
         }
 
         return $this->ok($q->with(['course', 'academicYear', 'semester', 'schedules' => fn ($s) => $s->where('professor_id', $p->id)->with('subject')])->orderByDesc('id')->paginate(25));

@@ -102,7 +102,7 @@ restrictions are preserved.
 
 Applicants show application, exam, latest result, acceptance and conversion
 states with search/status/cycle filters. Inspection includes attempt summaries,
-latest outcome, and the existing acceptance/conversion panel with authoritative
+latest outcome, and the Admission completion/handoff panel with authoritative
 eligibility and converted Student identity. This remains the only staff
 conversion workflow.
 
@@ -147,12 +147,12 @@ Use local test accounts/data for mutating checks.
    reason and existing password step-up are required. Published corrections
    also retain step-up.
 8. Open Applicants, search/filter and Inspect applicant. Review attempts and
-   acceptance/conversion state. For an eligible current passed/published result,
-   use the existing Accept application and Convert to Student workflow with
-   valid course/curriculum and official Student number; explicitly confirm.
-   Ineligible applicants must not expose these actions.
+   Admission completion state. For an eligible current passed/published result,
+   use Approve for Enrollment with a valid course/curriculum and explicitly
+   confirm. The applicant remains Guest; no Student number is assigned.
+   Ineligible applicants must not expose the completion action.
 9. Open Admission History. Verify readable creation, exam, review, publication,
-   acceptance and conversion events as applicable. Keys, full answers and
+   acceptance and legacy conversion events as applicable. Keys, full answers and
    private reasons must not appear in the timeline.
 10. Repeat staff-page viewing on desktop, tablet and mobile. Tables scroll
     within their containers; idle dialogs close with Escape and retain existing

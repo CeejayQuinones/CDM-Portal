@@ -13,19 +13,28 @@ use App\Models\SectionSubject;
 use App\Models\Semester;
 use App\Models\Student;
 use App\Models\User;
+use App\Models\UserProfile;
 use App\Notifications\EnrollmentNotice;
+use App\Services\Admission\AdmissionHandoffService;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 class EnrollmentAcademicService
 {
-    public function __construct(private EnrollmentSubjectPolicy $subjects, private EnrollmentEligibilityService $eligibility, private EnrollmentAuditWriter $audit) {}
+    public function __construct(
+        private EnrollmentSubjectPolicy $subjects,
+        private EnrollmentEligibilityService $eligibility,
+        private EnrollmentAuditWriter $audit,
+        private AdmissionHandoffService $handoff,
+        private StudentNumberAllocator $numbers,
+    ) {}
 
     public function application(User $user, int $id): EnrollmentApplication
     {
         $staff = in_array($user->fresh('role')->role?->role_name, [Role::ADMIN, Role::REGISTRAR_STAFF], true);
         $actor = EnrollmentAccess::require($user, $staff);
 
-        return EnrollmentApplication::when(! $staff, fn ($q) => $q->whereHas('student', fn ($s) => $s->where('user_id', $actor->id)))->findOrFail($id);
+        return EnrollmentApplication::when(! $staff, fn ($q) => $q->ownedBy($actor))->findOrFail($id);
     }
 
     public function occupied(Section $section, bool $lock = true, ?int $except = null): int
@@ -42,12 +51,13 @@ class EnrollmentAcademicService
             $staff = in_array($user->fresh('role')->role?->role_name, [Role::ADMIN, Role::REGISTRAR_STAFF], true);
             $actor = EnrollmentAccess::require($user, $staff, true);
             $ref = $this->application($actor, $id);
-            $ownerId = Student::whereKey($ref->student_id)->value('user_id');
-            $owner = User::lockForUpdate()->findOrFail($ownerId);
+            $owner = User::with('role')->whereKey($ref->owner_user_id)->lockForUpdate()->firstOrFail();
+            $profile = UserProfile::where('user_id', $owner->id)->lockForUpdate()->first();
+            $owner->setRelation('profile', $profile);
             $year = AcademicYear::lockForUpdate()->findOrFail($ref->academic_year_id);
             $semester = Semester::lockForUpdate()->findOrFail($ref->semester_id);
-            $student = Student::lockForUpdate()->findOrFail($ref->student_id);
-            abort_unless($student->user_id === $owner->id && ($staff || $owner->id === $actor->id), 403, 'Enrollment ownership changed.');
+            $student = $ref->student_id ? Student::lockForUpdate()->findOrFail($ref->student_id) : null;
+            abort_unless((! $student || $student->user_id === $owner->id) && ($staff || $owner->id === $actor->id), 403, 'Enrollment ownership changed.');
             $a = EnrollmentApplication::lockForUpdate()->findOrFail($id);
             if ($action === 'finalize' && $staff && $a->status === 'enrolled' && $a->enrollment_id) {
                 return $a;
@@ -55,8 +65,17 @@ class EnrollmentAcademicService
             abort_unless($a->status === 'approved', 409, 'Only an approved application can proceed to academic enrollment.');
             abort_unless($a->version === $input['version'], 409, 'This application changed. Reload before continuing.');
             abort_unless($year->status === 'active' && $semester->status === 'active', 422, 'The academic term is not active.');
-            $state = $this->eligibility->status($owner, true);
-            abort_unless($state['academic_ready'] && $student->course_id === $a->course_id && $student->curriculum_id === $a->curriculum_id && $student->year_level === $a->year_level, 422, 'The Student academic identity needs review before finalization.');
+            if ($student) {
+                $state = $this->eligibility->status($owner, true);
+                abort_unless($state['academic_ready'] && $student->course_id === $a->course_id && $student->curriculum_id === $a->curriculum_id && $student->year_level === $a->year_level, 422, 'The Student academic identity needs review before finalization.');
+            } else {
+                $admission = $this->handoff->context($owner, true);
+                abort_unless($a->admission_applicant_id && $admission['admitted_guest']
+                    && $admission['applicant']->id === $a->admission_applicant_id
+                    && $admission['course']->id === $a->course_id
+                    && $admission['curriculum']->id === $a->curriculum_id,
+                    409, 'The Admission handoff is no longer valid for finalization.');
+            }
             if ($action === 'subjects') {
                 abort_unless($staff || $a->classification === 'irregular', 403, 'Only staff can prepare this subject load.');
                 $ids = $a->classification === 'regular' ? $this->subjects->candidates($a, true)->where('year_level', $a->year_level)->pluck('id')->all() : $input['subject_ids'];
@@ -80,7 +99,9 @@ class EnrollmentAcademicService
                 $section = Section::lockForUpdate()->findOrFail($a->section_id);
                 $this->validSection($a, $section);
                 abort_unless($this->occupied($section, true, $a->id) < $section->capacity, 409, 'The section is full.');
-                abort_if(Enrollment::where('student_id', $a->student_id)->where('academic_year_id', $a->academic_year_id)->where('semester_id', $a->semester_id)->lockForUpdate()->first(), 409, 'An academic enrollment already exists for this Student and term.');
+                if ($student) {
+                    abort_if(Enrollment::where('student_id', $student->id)->where('academic_year_id', $a->academic_year_id)->where('semester_id', $a->semester_id)->lockForUpdate()->first(), 409, 'An academic enrollment already exists for this Student and term.');
+                }
                 $ids = DB::table('enrollment_application_subjects')->where('application_id', $a->id)->lockForUpdate()->pluck('subject_id')->all();
                 $load = $this->subjects->validate($a, $ids);
                 $schedules = SectionSubject::where('section_id', $section->id)->whereIn('subject_id', $ids)->lockForUpdate()->get()->keyBy('subject_id');
@@ -94,7 +115,23 @@ class EnrollmentAcademicService
                     abort_unless($s->day && $s->start_time && $s->end_time && $s->start_time < $s->end_time && $s->room && in_array($s->professor_id, $activeProf), 422, 'Every subject needs a complete schedule and active Professor.');
                 }
                 app(EnrollmentSchedulingService::class)->assertFinalSchedules($schedules, $a->academic_year_id, $a->semester_id);
-                $e = Enrollment::create(['student_id' => $a->student_id, 'section_id' => $section->id, 'academic_year_id' => $a->academic_year_id, 'semester_id' => $a->semester_id, 'enrollment_date' => now()->toDateString(), 'status' => 'enrolled']);
+                if (! $student) {
+                    abort_unless($owner->role?->role_name === Role::GUEST && $owner->profile, 409, 'The admitted Guest identity needs review.');
+                    abort_if(Student::where('user_id', $owner->id)->orWhere('user_profile_id', $owner->profile->id)->lockForUpdate()->exists(), 409, 'A Student identity already exists for this account.');
+                    $studentRole = Role::where('role_name', Role::STUDENT)->lockForUpdate()->firstOrFail();
+                    $student = Student::create([
+                        'user_id' => $owner->id, 'user_profile_id' => $owner->profile->id,
+                        'course_id' => $a->course_id, 'curriculum_id' => $a->curriculum_id,
+                        'student_number' => $this->numbers->next(CarbonImmutable::parse($year->start_date)->year),
+                        'admission_date' => now()->toDateString(), 'year_level' => $section->year_level,
+                        'student_status' => $a->classification === 'irregular' ? 'irregular' : 'regular',
+                    ]);
+                    $a->student_id = $student->id;
+                    $owner->role_id = $studentRole->id;
+                    $owner->save();
+                    $owner->tokens()->delete();
+                }
+                $e = Enrollment::create(['student_id' => $student->id, 'section_id' => $section->id, 'academic_year_id' => $a->academic_year_id, 'semester_id' => $a->semester_id, 'enrollment_date' => now()->toDateString(), 'status' => 'enrolled']);
                 $rows = $load->map(fn ($s) => ['enrollment_id' => $e->id, 'subject_id' => $s->id, 'professor_id' => $schedules[$s->id]->professor_id, 'subject_status' => 'enrolled', 'remarks' => 'In Progress', 'created_at' => now(), 'updated_at' => now()])->all();
                 EnrollmentSubject::insert($rows);
                 $a->enrollment_id = $e->id;

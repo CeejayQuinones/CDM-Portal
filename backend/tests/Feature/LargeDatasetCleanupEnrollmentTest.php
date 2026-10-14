@@ -29,6 +29,7 @@ class LargeDatasetCleanupEnrollmentTest extends TestCase
         $student->fill(['user_id' => $user->id, 'user_profile_id' => $profile->id, 'student_number' => 'CLEANUP-1'])->save();
         $application = $this->fixture['application']->replicate();
         $application->student_id = $student->id;
+        $application->owner_user_id = $user->id;
         $application->save();
         $this->fixture['target'] = $student;
         $this->fixture['target_application'] = $application;

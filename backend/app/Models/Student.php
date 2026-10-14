@@ -95,6 +95,11 @@ class Student extends Model
         return $this->hasOne(StudentRecordLocation::class);
     }
 
+    public function recordAuditEvents(): HasMany
+    {
+        return $this->hasMany(StudentRecordAuditEvent::class);
+    }
+
     public function enrollments(): HasMany
     {
         return $this->hasMany(Enrollment::class);
@@ -108,5 +113,10 @@ class Student extends Model
     public function settings(): HasOne
     {
         return $this->hasOne(StudentSetting::class);
+    }
+
+    public function eventAttendances(): HasMany
+    {
+        return $this->hasMany(EventAttendance::class);
     }
 }

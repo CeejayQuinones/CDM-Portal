@@ -129,7 +129,7 @@ const resetDemo = async () => {
   justify-content: space-between;
   gap: 18px;
   border-bottom: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--bg-header);
   padding: 14px 28px;
   backdrop-filter: blur(12px);
 }
@@ -181,7 +181,7 @@ const resetDemo = async () => {
   background: transparent;
   border: 0;
   border-bottom: 3px solid transparent;
-  color: var(--color-muted);
+  color: var(--tab-inactive, var(--text-secondary));
   cursor: pointer;
   display: inline-flex;
   flex: 0 0 auto;
@@ -198,13 +198,13 @@ const resetDemo = async () => {
 }
 
 .contextual-nav-item:hover {
-  color: var(--color-dark-spring-green);
-  background: rgba(13, 120, 86, 0.045);
+  color: var(--text-primary);
+  background: var(--tab-hover, var(--bg-hover));
 }
 
 .contextual-nav-item.active {
   border-bottom-color: var(--color-naples-yellow);
-  color: var(--color-dartmouth-green);
+  color: var(--tab-active, var(--color-dartmouth-green));
 }
 
 .navbar-label {
@@ -252,7 +252,7 @@ h1 {
   border: 1px solid var(--color-dartmouth-green);
   border-radius: 8px;
   background: var(--color-dartmouth-green);
-  color: var(--color-anti-flash-white);
+  color: var(--text-on-accent);
   padding: 0 14px;
   font-weight: 700;
   cursor: pointer;
@@ -273,7 +273,14 @@ h1 {
 
 @media (max-width: 860px) {
   .navbar {
-    padding: 12px 18px;
+    min-height: 56px;
+    gap: 12px;
+    padding:
+      calc(7px + env(safe-area-inset-top))
+      max(16px, env(safe-area-inset-right))
+      7px
+      max(16px, env(safe-area-inset-left));
+    backdrop-filter: blur(8px);
   }
 
   .menu-button {
@@ -290,8 +297,12 @@ h1 {
   }
 
   .contextual-nav {
-    gap: 14px;
+    gap: 12px;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
   }
+
+  .contextual-nav::-webkit-scrollbar { display: none; }
 
   .contextual-nav-item {
     font-size: 0.84rem;
@@ -304,8 +315,9 @@ h1 {
 
 @media (max-width: 560px) {
   .navbar {
-    gap: 10px;
-    padding-inline: 12px;
+    gap: 8px;
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(12px, env(safe-area-inset-left));
   }
 
   .navbar-actions {
@@ -317,12 +329,15 @@ h1 {
   .demo-reset::after { content: 'Reset'; font-size: .68rem; }
 
   .navbar-label {
-    font-size: 0.65rem;
+    display: none;
   }
 
   .navbar-title h1 {
     font-size: 0.96rem;
   }
+
+  .contextual-nav { gap: 8px; }
+  .contextual-nav-item { min-height: 40px; font-size: 0.78rem; }
 }
 
 </style>

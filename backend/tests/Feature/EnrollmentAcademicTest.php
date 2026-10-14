@@ -3,17 +3,28 @@
 namespace Tests\Feature;
 
 use App\Models\AcademicYear;
+use App\Models\DocumentType;
 use App\Models\Enrollment;
+use App\Models\Enrollment\EnrollmentApplication;
 use App\Models\Enrollment\EnrollmentWorkflowEvent;
 use App\Models\EnrollmentSubject;
+use App\Models\GradeSheet;
 use App\Models\Professor;
 use App\Models\Role;
 use App\Models\Section;
 use App\Models\SectionSubject;
 use App\Models\Student;
 use App\Models\User;
+use App\Services\Admission\AdmissionCompletionService;
+use App\Services\EarlyWarningService;
+use App\Services\Enrollment\EnrollmentEligibilityService;
+use App\Services\Enrollment\EnrollmentWorkflowService;
+use App\Services\Enrollment\StudentNumberAllocator;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\EnrollmentAcademicFixture;
 use Tests\TestCase;
 
@@ -53,6 +64,183 @@ class EnrollmentAcademicTest extends TestCase
         $this->schedule(['subject_id' => $this->f['subjects'][1]->id, 'start_time' => '10:00', 'end_time' => '11:00'])->assertCreated();
         $this->action('subjects', ['subject_ids' => []])->assertOk();
         $this->action('assign', ['section_id' => $this->f['section']->id])->assertOk();
+    }
+
+    private function firstTimeApplication(int $caseIndex = 1)
+    {
+        $case = $this->f['cases'][$caseIndex];
+        app(AdmissionCompletionService::class)->accept($this->f['registrar'], $case['applicant']->id, [
+            'version' => $case['applicant']->version, 'result_id' => $case['result']->id,
+            'result_version' => $case['result']->version, 'course_id' => $this->f['course']->id,
+            'curriculum_id' => $this->f['curriculum']->id, 'confirmed' => true,
+        ]);
+        $workflow = app(EnrollmentWorkflowService::class);
+        $application = $workflow->create($case['user']->fresh(), [
+            'period_id' => $this->f['period']->id, 'classification' => 'regular',
+        ]);
+        foreach (['submit', 'review', 'approve'] as $action) {
+            $application = $workflow->mutate(
+                $action === 'submit' ? $case['user']->fresh() : $this->f['registrar'],
+                $application->id,
+                $action,
+                ['version' => $application->version, 'notes' => 'First-time review.'],
+            );
+        }
+
+        return [$case, $application];
+    }
+
+    private function prepareApplication(int $applicationId): void
+    {
+        $this->schedule()->assertCreated();
+        $this->schedule(['subject_id' => $this->f['subjects'][1]->id, 'start_time' => '10:00', 'end_time' => '11:00'])->assertCreated();
+        $application = EnrollmentApplication::findOrFail($applicationId);
+        $this->postJson($this->base().'/applications/'.$application->id.'/subjects', [
+            'version' => $application->version, 'subject_ids' => [],
+        ])->assertOk();
+        $application->refresh();
+        $this->postJson($this->base().'/applications/'.$application->id.'/assign', [
+            'version' => $application->version, 'section_id' => $this->f['section']->id,
+        ])->assertOk();
+    }
+
+    public function test_first_time_finalization_creates_identity_number_role_and_academic_records_atomically(): void
+    {
+        [$case, $application] = $this->firstTimeApplication();
+        $token = $case['user']->createToken('guest-before-finalization');
+        $studentCount = Student::count();
+
+        $this->assertNull($application->student_id);
+        $this->assertSame($case['user']->id, $application->owner_user_id);
+        $this->assertSame($case['applicant']->id, $application->admission_applicant_id);
+        $this->assertSame(Role::GUEST, $case['user']->fresh('role')->role->role_name);
+        $this->getJson('/api/enrollment/applications?search='.$case['applicant']->applicant_number)
+            ->assertOk()->assertJsonPath('data.applications.data.0.id', $application->id)
+            ->assertJsonPath('data.applications.data.0.student', null)
+            ->assertJsonPath('data.applications.data.0.owner.id', $case['user']->id);
+
+        $this->prepareApplication($application->id);
+        $application->refresh();
+        $response = $this->postJson($this->base().'/applications/'.$application->id.'/finalize', [
+            'version' => $application->version, 'confirmed' => true,
+        ])->assertOk()->assertJsonPath('data.status', 'enrolled');
+
+        $application->refresh();
+        $student = Student::findOrFail($application->student_id);
+        $prefix = substr((string) $this->f['year']->start_date, 2, 2);
+        $this->assertSame($studentCount + 1, Student::count());
+        $this->assertSame($case['user']->id, $student->user_id);
+        $this->assertSame($case['profile']->id, $student->user_profile_id);
+        $this->assertSame($this->f['course']->id, $student->course_id);
+        $this->assertSame($this->f['curriculum']->id, $student->curriculum_id);
+        $this->assertMatchesRegularExpression('/^'.preg_quote($prefix, '/').'-\d{5}$/', $student->student_number);
+        $this->assertSame(Role::STUDENT, $case['user']->fresh('role')->role->role_name);
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $token->accessToken->id]);
+        $this->assertDatabaseHas('enrollments', ['id' => $application->enrollment_id, 'student_id' => $student->id]);
+        $this->assertDatabaseCount('enrollment_subjects', 2);
+        $this->assertDatabaseHas('admission_applicants', ['id' => $case['applicant']->id, 'status' => 'accepted', 'converted_student_id' => null]);
+        $eligibility = app(EnrollmentEligibilityService::class)->status($case['user']->fresh());
+        $this->assertTrue($eligibility['academic_ready']);
+        $this->assertSame('term_enrollment_exists', $eligibility['reason']);
+
+        $this->postJson($this->base().'/applications/'.$application->id.'/finalize', [
+            'version' => $application->version - 1, 'confirmed' => true,
+        ])->assertOk()->assertJsonPath('data.enrollment_id', $response->json('data.enrollment_id'));
+        $this->assertSame($studentCount + 1, Student::count());
+    }
+
+    public function test_first_time_audit_failure_rolls_back_student_role_number_and_enrollment(): void
+    {
+        [$case, $application] = $this->firstTimeApplication(2);
+        $token = $case['user']->createToken('guest-rollback');
+        $studentCount = Student::count();
+        $enrollmentCount = Enrollment::count();
+        $this->prepareApplication($application->id);
+        $application->refresh();
+        EnrollmentWorkflowEvent::creating(function ($event) {
+            if ($event->action === 'enrollment.finalized') {
+                throw new \RuntimeException('private first-time rollback test');
+            }
+        });
+
+        $this->postJson($this->base().'/applications/'.$application->id.'/finalize', [
+            'version' => $application->version, 'confirmed' => true,
+        ])->assertStatus(503)->assertDontSee('private first-time rollback test');
+
+        $this->assertSame($studentCount, Student::count());
+        $this->assertSame($enrollmentCount, Enrollment::count());
+        $this->assertSame(Role::GUEST, $case['user']->fresh('role')->role->role_name);
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $token->accessToken->id]);
+        $this->assertNull($application->fresh()->student_id);
+        $this->assertNull($application->fresh()->enrollment_id);
+        $this->assertDatabaseHas('admission_applicants', ['id' => $case['applicant']->id, 'status' => 'accepted']);
+    }
+
+    public function test_student_number_sequence_uses_valid_maximum_resets_by_year_and_stops_at_limit(): void
+    {
+        $this->f['student']->update(['student_number' => '26-malformed']);
+        $user = User::factory()->create(['role_id' => Role::where('role_name', Role::STUDENT)->value('id')]);
+        $profile = $user->profile()->create(['first_name' => 'Number', 'last_name' => 'Fixture', 'gender' => 'Prefer not to say']);
+        Student::create([
+            'user_id' => $user->id, 'user_profile_id' => $profile->id,
+            'course_id' => $this->f['course']->id, 'curriculum_id' => $this->f['curriculum']->id,
+            'student_number' => '26-00127', 'admission_date' => now()->toDateString(),
+            'year_level' => 1, 'student_status' => 'regular',
+        ]);
+        $allocator = app(StudentNumberAllocator::class);
+
+        $this->assertSame('26-00128', DB::transaction(fn () => $allocator->next(2026)));
+        $this->assertSame('27-00001', DB::transaction(fn () => $allocator->next(2027)));
+        DB::table('student_number_sequences')->insert([
+            'year_prefix' => '28', 'last_number' => 99999, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        try {
+            DB::transaction(fn () => $allocator->next(2028));
+            $this->fail('An exhausted sequence must not allocate a six-digit Student number.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+    }
+
+    public function test_first_time_document_is_owned_by_application_without_student_identity(): void
+    {
+        Storage::fake('local');
+        $type = DocumentType::create([
+            'document_name' => 'First-time evidence', 'status' => 'active',
+            'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false,
+        ]);
+        $requirements = $this->f['period']->document_requirements;
+        $requirements['regular'] = [$type->id];
+        $this->f['period']->update(['document_requirements' => $requirements]);
+        $case = $this->f['cases'][1];
+        app(AdmissionCompletionService::class)->accept($this->f['registrar'], $case['applicant']->id, [
+            'version' => $case['applicant']->version, 'result_id' => $case['result']->id,
+            'result_version' => $case['result']->version, 'course_id' => $this->f['course']->id,
+            'curriculum_id' => $this->f['curriculum']->id, 'confirmed' => true,
+        ]);
+        Sanctum::actingAs($case['user']);
+        $application = app(EnrollmentWorkflowService::class)->create($case['user']->fresh(), [
+            'period_id' => $this->f['period']->id, 'classification' => 'regular',
+        ]);
+
+        $this->postJson('/api/enrollment/applications/'.$application->id.'/submit', [
+            'version' => $application->version, 'confirmed' => true,
+        ])->assertUnprocessable();
+        $this->post('/api/enrollment/applications/'.$application->id.'/documents', [
+            'version' => $application->version, 'document_type_id' => $type->id,
+            'file' => UploadedFile::fake()->create('evidence.pdf', 20, 'application/pdf'),
+        ], ['Accept' => 'application/json'])->assertCreated();
+
+        $application->refresh();
+        $this->assertNull($application->student_id);
+        $this->assertDatabaseHas('enrollment_documents', [
+            'application_id' => $application->id, 'document_type_id' => $type->id,
+            'student_document_id' => null,
+        ]);
+        $this->postJson('/api/enrollment/applications/'.$application->id.'/submit', [
+            'version' => $application->version, 'confirmed' => true,
+        ])->assertOk()->assertJsonPath('data.status', 'submitted');
     }
 
     public function test_scheduling_subjects_match_section_year_and_missing_curriculum_is_empty(): void
@@ -216,6 +404,7 @@ class EnrollmentAcademicTest extends TestCase
         $s = Student::create(['user_id' => $user->id, 'user_profile_id' => $profile->id, 'course_id' => $this->f['course']->id, 'curriculum_id' => $this->f['curriculum']->id, 'student_number' => 'ACADEMIC-SECOND', 'year_level' => 1, 'admission_date' => now()->toDateString(), 'student_status' => 'regular']);
         $a = $this->f['application']->replicate();
         $a->student_id = $s->id;
+        $a->owner_user_id = $user->id;
         $a->section_id = null;
         $a->save();
         $this->postJson($this->base().'/applications/'.$a->id.'/assign', ['version' => $a->version, 'section_id' => $this->f['section']->id])->assertConflict();
@@ -276,6 +465,90 @@ class EnrollmentAcademicTest extends TestCase
         $this->deleteJson($this->base().'/schedules/'.$s->id, ['version' => $s->fresh()->version, 'confirmed' => true])->assertConflict();
     }
 
+    public function test_staff_reassignment_transfers_draft_grading_and_all_professor_scopes(): void
+    {
+        $this->prepare();
+        $this->action('finalize')->assertOk();
+        $assignment = SectionSubject::query()->where('subject_id', $this->f['subjects'][0]->id)->firstOrFail();
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $sheet = $this->withHeader('X-CDM-Client', 'web')->postJson('/api/grading/classes/'.$assignment->id.'/workspace')
+            ->assertOk()
+            ->json('data.sheet');
+
+        $otherUser = User::factory()->create(['role_id' => Role::where('role_name', Role::PROFESSOR)->value('id')]);
+        $otherProfile = $otherUser->profile()->create(['first_name' => 'Replacement', 'last_name' => 'Professor', 'gender' => 'Prefer not to say']);
+        $other = Professor::create(['user_id' => $otherUser->id, 'user_profile_id' => $otherProfile->id, 'department_id' => $this->f['department']->id, 'employee_number' => 'REASSIGN-P', 'status' => 'active']);
+        $payload = [
+            'section_id' => $assignment->section_id,
+            'subject_id' => $assignment->subject_id,
+            'professor_id' => $other->id,
+            'day' => $assignment->day,
+            'start_time' => substr($assignment->start_time, 0, 5),
+            'end_time' => substr($assignment->end_time, 0, 5),
+            'room' => $assignment->room,
+            'version' => $assignment->version,
+        ];
+
+        Sanctum::actingAs($this->f['registrar']);
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, $payload)->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'desktop')->putJson($this->base().'/schedules/'.$assignment->id, $payload)
+            ->assertOk()
+            ->assertJsonPath('data.professor_id', $other->id);
+        $this->assertDatabaseHas('grade_sheets', ['id' => $sheet['id'], 'professor_id' => $other->id, 'status' => 'draft']);
+        $this->assertDatabaseHas('enrollment_subjects', ['subject_id' => $assignment->subject_id, 'professor_id' => $other->id]);
+
+        $secondAssignment = SectionSubject::query()->where('subject_id', $this->f['subjects'][1]->id)->firstOrFail();
+        $this->withHeader('X-CDM-Client', 'desktop')->putJson($this->base().'/schedules/'.$secondAssignment->id, [
+            'section_id' => $secondAssignment->section_id,
+            'subject_id' => $secondAssignment->subject_id,
+            'professor_id' => $other->id,
+            'day' => $secondAssignment->day,
+            'start_time' => substr($secondAssignment->start_time, 0, 5),
+            'end_time' => substr($secondAssignment->end_time, 0, 5),
+            'room' => $secondAssignment->room,
+            'version' => $secondAssignment->version,
+        ])->assertOk()->assertJsonPath('data.professor_id', $other->id);
+        $this->assertFalse(app(EarlyWarningService::class)->professorCanAccessStudent($this->f['professorUser']->id, $this->f['student']->id));
+        $this->assertTrue(app(EarlyWarningService::class)->professorCanAccessStudent($otherUser->id, $this->f['student']->id));
+
+        $this->f['section']->update(['adviser_id' => $this->f['professor']->id]);
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/classes')->assertOk()->assertJsonPath('data.total', 0);
+        $this->withHeader('X-CDM-Client', 'web')->postJson('/api/grading/classes/'.$assignment->id.'/workspace')->assertNotFound();
+        $this->withHeader('X-CDM-Client', 'web')->getJson($this->base().'/professor/sections/'.$this->f['section']->id)->assertNotFound();
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, $payload)->assertForbidden();
+
+        Sanctum::actingAs($otherUser);
+        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/classes')->assertOk()->assertJsonPath('data.total', 2);
+        $this->withHeader('X-CDM-Client', 'web')->postJson('/api/grading/classes/'.$assignment->id.'/workspace')->assertOk();
+        $this->withHeader('X-CDM-Client', 'web')->getJson($this->base().'/professor/sections/'.$this->f['section']->id)->assertOk();
+
+        Sanctum::actingAs($this->f['user']);
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, $payload)->assertForbidden();
+
+        $guest = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::GUEST])->id]);
+        Sanctum::actingAs($guest);
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, $payload)->assertForbidden();
+
+        $admin = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id]);
+        $current = $assignment->fresh();
+        Sanctum::actingAs($admin);
+        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, array_replace($payload, [
+            'professor_id' => $this->f['professor']->id,
+            'version' => $current->version,
+        ]))->assertOk()->assertJsonPath('data.professor_id', $this->f['professor']->id);
+
+        GradeSheet::findOrFail($sheet['id'])->update(['status' => 'published']);
+        $current = $assignment->fresh();
+        Sanctum::actingAs($this->f['registrar']);
+        $this->withHeader('X-CDM-Client', 'desktop')->putJson($this->base().'/schedules/'.$assignment->id, array_replace($payload, [
+            'version' => $current->version,
+        ]))->assertConflict()->assertJsonPath('message', 'A submitted, approved, or published grade sheet prevents Professor reassignment.');
+        $this->assertDatabaseHas('section_subjects', ['id' => $assignment->id, 'professor_id' => $this->f['professor']->id]);
+        $this->assertDatabaseHas('grade_sheets', ['id' => $sheet['id'], 'professor_id' => $this->f['professor']->id, 'status' => 'published']);
+    }
+
     public function test_both_staff_can_manage_sections_and_invalid_year_or_capacity_fails(): void
     {
         foreach ([Role::ADMIN, Role::REGISTRAR_STAFF] as $i => $role) {
@@ -309,7 +582,41 @@ class EnrollmentAcademicTest extends TestCase
         }
         Sanctum::actingAs($this->f['professorUser']);
         $this->getJson($this->base().'/professor')->assertOk()->assertJsonPath('data.total', 1);
-        $this->getJson($this->base().'/professor/sections/'.$this->f['section']->id)->assertOk()->assertJsonPath('data.total', 1);
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson($this->base().'/professor')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'Professor academic work is available through the Web client.');
+        $this->withHeader('X-CDM-Client', 'web')->getJson($this->base().'/professor/sections/'.$this->f['section']->id)->assertOk()->assertJsonPath('data.total', 1);
+
+        $unrelatedUser = User::factory()->create(['role_id' => Role::where('role_name', Role::STUDENT)->value('id')]);
+        $unrelatedProfile = $unrelatedUser->profile()->create(['first_name' => 'Unrelated', 'last_name' => 'Student', 'gender' => 'Prefer not to say']);
+        $unrelatedStudent = Student::create([
+            'user_id' => $unrelatedUser->id,
+            'user_profile_id' => $unrelatedProfile->id,
+            'course_id' => $this->f['course']->id,
+            'curriculum_id' => $this->f['curriculum']->id,
+            'student_number' => 'UNRELATED-SUBJECT',
+            'year_level' => 1,
+            'admission_date' => now()->toDateString(),
+            'student_status' => 'regular',
+        ]);
+        $unrelatedEnrollment = Enrollment::create([
+            'student_id' => $unrelatedStudent->id,
+            'section_id' => $this->f['section']->id,
+            'academic_year_id' => $this->f['year']->id,
+            'semester_id' => $this->f['semester']->id,
+            'enrollment_date' => now()->toDateString(),
+            'status' => 'enrolled',
+        ]);
+        EnrollmentSubject::create([
+            'enrollment_id' => $unrelatedEnrollment->id,
+            'subject_id' => $this->f['subjects'][2]->id,
+            'subject_status' => 'enrolled',
+        ]);
+        $this->getJson($this->base().'/professor/sections/'.$this->f['section']->id)
+            ->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonMissing(['student_number' => 'UNRELATED-SUBJECT']);
+
         $other = $this->f['section']->replicate();
         $other->section_name = 'UNASSIGNED';
         $other->save();

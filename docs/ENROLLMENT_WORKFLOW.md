@@ -1,12 +1,20 @@
 # Enrollment Phase 2: core workflow
 
+> Lifecycle note (2026-10-09): the paragraph below records the original Student-first
+> workflow. New Admission completions remain authoritative admitted Guests. Phase 1
+> permits their Enrollment status/handoff view but intentionally disables application
+> creation because `enrollment_applications.student_id` is required. Student creation,
+> official number allocation, and application enablement move to the future lifecycle
+> Phase 2 finalization change. Existing converted and continuing Students continue to
+> use the implemented workflow unchanged.
+
 Phase 2 adds Student enrollment applications and staff review. **Approved is not
 academically enrolled.** Existing `enrollments`, `enrollment_subjects`, sections,
 subjects and schedules are not written by this workflow.
 
 ## Admission handoff and identity
 
-Admission converts the accepted applicant into a Student using the existing User
+For legacy converted identities, Admission converted the accepted applicant into a Student using the existing User
 and UserProfile, accepted Course, Curriculum and official Student number. The
 Student signs in normally after conversion and opens Enrollment. Enrollment
 reuses the foundation eligibility service and checks the persisted conversion
@@ -177,8 +185,8 @@ also removes a newly stored file. Application history and Admission history rema
 
 ## Validation and academic finalization
 
-Backend feature tests cover real Admission conversion before application, identity
-counts, eligibility, role/status/ownership boundaries, draft/classification,
+Backend feature tests cover legacy converted Students and the admitted-Guest handoff,
+identity counts, eligibility, role/status/ownership boundaries, draft/classification,
 submission replay, DB uniqueness, transitions, stale staff decisions, both staff
 roles, periods, required document reuse/privacy/upload, and audit/file rollback.
 Frontend mounted-component tests cover protected navigation, period states, the
@@ -192,6 +200,41 @@ sections, schedules, Professor rosters, Student timetables, and an academic COR.
 Its rules and schema are documented in
 [ENROLLMENT_ACADEMIC_FLOW.md](ENROLLMENT_ACADEMIC_FLOW.md). No credit-equivalence,
 fee, payment, or signature subsystem was inferred from absent source data.
+
+## Admission handoff and first official enrollment
+
+An accepted Admission applicant remains a Guest until the first Enrollment is
+finalized. `enrollment_applications.owner_user_id` is the durable owner for every
+application. Existing applications are backfilled through `students.user_id`;
+first-time applications additionally carry the accepted
+`admission_applicant_id` and have a null `student_id` until finalization. The
+owner/term unique key prevents a Guest and their later Student identity from
+creating two applications for the same term.
+
+The server revalidates the authoritative Admission handoff when a Guest creates
+or submits an application and again under locks at finalization. Course and
+curriculum come from the accepted Admission decision. A first-time intake starts
+at year level 1; the assigned first-year Section must match before finalization.
+Enrollment documents remain owned by the application and therefore do not need
+a temporary Student row. Staff lists and details use the owner profile and show
+“First-time admitted Guest” while the Student number is pending.
+
+Finalization is one database transaction. It locks the application, owner,
+profile, academic configuration and Section; validates the approved load and
+schedules; allocates a `YY-NNNNN` number from the academic year's start year;
+creates the Student with the same User/Profile and accepted Course/Curriculum;
+links the application; creates the official Enrollment and subjects; changes
+Guest to Student; records `enrollment.finalized`; and deletes existing personal
+access tokens. Any exception, including audit failure, rolls all of those writes
+back. The accepted Admission record remains historical and is not rewritten to
+the legacy converted state.
+
+`student_number_sequences` has one locked row per two-digit year. Its initial
+value is the highest existing valid number for that prefix; malformed legacy
+numbers are ignored. The allocator rescans under the transaction lock, the
+existing unique `students.student_number` constraint remains the final guard,
+and 99999 returns a conflict instead of producing a six-digit suffix. Returning
+Students retain their current Student row and number.
 
 ## Changed files
 
