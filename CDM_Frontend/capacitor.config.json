@@ -1,9 +1,0 @@
-{
-  "appId": "edu.cdm.portal",
-  "appName": "CDM Portal",
-  "webDir": "dist",
-  "bundledWebRuntime": false,
-  "server": {
-    "androidScheme": "http"
-  }
-}
