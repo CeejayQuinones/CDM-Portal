@@ -13,6 +13,8 @@ const PublicLegalView = () => import('../views/PublicLegalView.vue')
 const UnauthorizedView = () => import('../views/UnauthorizedView.vue')
 const GuestDashboardView = () => import('../views/GuestDashboardView.vue')
 const RoleDashboardView = () => import('../views/RoleDashboardView.vue')
+const StudentDashboardView = () => import('../modules/dashboard/StudentDashboardView.vue')
+const ProfessorDashboardView = () => import('../modules/dashboard/ProfessorDashboardView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const EnrollmentAcademicView = () => import('../modules/enrollment/EnrollmentAcademicView.vue')
 const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
@@ -31,6 +33,7 @@ const StudentRecordsView = () => import('../modules/student-management/StudentRe
 const StudentProfileView = () => import('../modules/student-management/StudentProfileView.vue')
 const StudentDocumentsView = () => import('../modules/student-management/StudentDocumentsView.vue')
 const PhysicalRecordsView = () => import('../modules/student-management/PhysicalRecordsView.vue')
+const StudentRecordReportsView = () => import('../modules/student-management/StudentRecordReportsView.vue')
 const EventAttendanceView = () => import('../modules/event-attendance/EventAttendanceView.vue')
 const EventPromotionView = () => import('../modules/event-attendance/EventPromotionView.vue')
 const EventReportsView = () => import('../modules/event-attendance/EventReportsView.vue')
@@ -45,6 +48,11 @@ const canAccessEventClient = (role) =>
   clientPlatform === 'web' ||
   (['Admin', 'Professor'].includes(role) && clientPlatform === 'desktop') ||
   (['Professor', 'Student'].includes(role) && clientPlatform === 'mobile')
+
+const landingForRole = (role) =>
+  role === ROLES.PROFESSOR && clientPlatform === 'mobile'
+    ? { name: 'event-attendance' }
+    : dashboardForRole(role)
 
 const routes = [
   {
@@ -114,8 +122,7 @@ const routes = [
       protectedRoute({
         path: 'student-dashboard',
         name: 'student-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.STUDENT },
+        component: StudentDashboardView,
         meta: {
           title: 'Student Dashboard',
           roles: ROUTE_ROLES['student-dashboard'],
@@ -124,8 +131,7 @@ const routes = [
       protectedRoute({
         path: 'professor-dashboard',
         name: 'professor-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.PROFESSOR },
+        component: ProfessorDashboardView,
         meta: {
           title: 'Professor Dashboard',
           roles: ROUTE_ROLES['professor-dashboard'],
@@ -279,6 +285,15 @@ const routes = [
         },
       }),
       protectedRoute({
+        path: 'student-management/reports',
+        name: 'student-record-reports',
+        component: StudentRecordReportsView,
+        meta: {
+          title: 'Student Records Reports',
+          roles: ROUTE_ROLES['student-record-reports'],
+        },
+      }),
+      protectedRoute({
         path: 'student-management/physical-records',
         name: 'physical-records',
         component: PhysicalRecordsView,
@@ -340,11 +355,18 @@ router.beforeEach(async (to) => {
   await authStore.initialize()
 
   if (to.matched.some((record) => record.meta.guestOnly) && authStore.isAuthenticated)
-    return dashboardForRole(authStore.currentRole)
+    return landingForRole(authStore.currentRole)
   if (!to.matched.some((record) => record.meta.requiresAuth)) return true
   if (!authStore.isAuthenticated) return { name: 'login', query: { redirect: to.fullPath } }
-  if (to.name === 'home') return dashboardForRole(authStore.currentRole)
+  if (to.name === 'home') return landingForRole(authStore.currentRole)
+  if (authStore.currentRole === ROLES.PROFESSOR && clientPlatform === 'mobile' && !to.meta.eventModule)
+    return { name: 'event-attendance' }
   if (!canAccess(authStore.currentRole, to.meta.roles || ALL_ROLES)) return { name: 'unauthorized' }
+  const admission = authStore.currentUser?.admission || {}
+  if (authStore.currentRole === ROLES.GUEST && to.path.startsWith('/enrollment') && !admission.admitted_guest)
+    return { name: 'unauthorized' }
+  if ((admission.completed || authStore.currentRole === ROLES.STUDENT) && ['/admission/exam', '/admission/result', '/admission/recommendation'].includes(to.path))
+    return { name: 'admission' }
   if (to.meta.eventModule && !canAccessEventClient(authStore.currentRole)) return { name: 'unauthorized' }
   if (to.meta.desktopEventOnly && clientPlatform !== 'desktop') return { name: 'unauthorized' }
   return true

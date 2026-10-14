@@ -49,18 +49,18 @@ class PortalDevelopmentSeedTest extends TestCase
     public function test_seed_is_repeatable_and_cleanup_is_scoped_to_its_ledger(): void
     {
         $this->assertSame(0, Artisan::call('portal:dev-seed'), Artisan::output());
-        $this->assertSame(8, DB::table('students')->count());
+        $this->assertSame(7, DB::table('students')->count());
         $this->assertSame(16, DB::table('sections')->count());
         $this->assertSame(4, DB::table('students')->distinct()->count('year_level'));
-        $this->assertSame(1, DB::table('admission_applicants')->where('status', 'converted')->count());
+        $this->assertSame(1, DB::table('admission_applicants')->where('status', 'accepted')->count());
         $this->assertSame(5, DB::table('admission_applicants')->count());
         $this->assertSame(400, DB::table('admission_exam_session_questions')->count());
         $this->assertSame(300, DB::table('admission_exam_answers')->count());
         $this->assertSame(1, DB::table('admission_recommendations')->count());
-        $this->assertSame(8, DB::table('enrollment_applications')->count());
+        $this->assertSame(7, DB::table('enrollment_applications')->count());
         $this->assertGreaterThan(0, DB::table('enrollments')->count());
         $this->artisan('portal:dev-seed')->assertExitCode(0);
-        $this->assertSame(8, DB::table('students')->count());
+        $this->assertSame(7, DB::table('students')->count());
         $this->artisan('portal:dev-seed', ['--cleanup' => true])->assertExitCode(0);
         $this->assertSame(0, DB::table('students')->count());
         $this->assertSame(0, DB::table('sections')->count());
@@ -73,36 +73,31 @@ class PortalDevelopmentSeedTest extends TestCase
     {
         $this->assertSame(0, Artisan::call('portal:dev-seed'), Artisan::output());
         Sanctum::actingAs(User::whereHas('role', fn ($q) => $q->where('role_name', Role::ADMIN))->firstOrFail());
-        $converted = DB::table('students')->where('student_number', 'DEV-ENR-01')->value('id');
         $legacy = DB::table('students')->where('student_number', 'DEV-ENR-02')->value('id');
-        $this->getJson('/api/students/'.$converted.'/history')->assertOk()
-            ->assertJsonPath('data.entry_classification', 'Freshman')
-            ->assertJsonPath('data.admission.status', 'converted')
-            ->assertJsonPath('data.admission.result', 'PASSED');
         $this->getJson('/api/students/'.$legacy.'/history')->assertOk()
             ->assertJsonPath('data.admission', null)
             ->assertJsonPath('data.entry_classification', 'Continuing');
-        $this->getJson('/api/students?search=DEV-ENR-01')->assertOk()
-            ->assertJsonPath('data.0.admission_record', 'Available')
-            ->assertJsonPath('data.0.enrollment_application_available', true);
         $this->getJson('/api/students?search=DEV-ENR-02')->assertOk()
             ->assertJsonPath('data.0.admission_record', 'No linked Admission record')
             ->assertJsonPath('data.0.enrollment_application_available', true);
         $registrar = User::factory()->create(['role_id' => Role::where('role_name', Role::REGISTRAR_STAFF)->value('id'), 'status' => 'active']);
         Sanctum::actingAs($registrar);
-        $this->getJson('/api/students/'.$converted.'/history')->assertOk()
-            ->assertJsonPath('data.admission.status', 'converted');
+        $this->getJson('/api/students/'.$legacy.'/history')->assertOk()
+            ->assertJsonPath('data.admission', null);
         DB::enableQueryLog();
-        $this->getJson('/api/students')->assertOk()->assertJsonCount(8, 'data');
+        $this->getJson('/api/students')->assertOk()->assertJsonCount(7, 'data');
         $queries = count(DB::getQueryLog());
         DB::disableQueryLog();
         $this->assertLessThanOrEqual(14, $queries);
         Sanctum::actingAs(User::where('username', 'dev_enr_01')->firstOrFail());
+        $this->getJson('/api/enrollment/status')->assertOk()
+            ->assertJsonPath('data.admitted_guest', true)
+            ->assertJsonPath('data.applications_enabled', true);
         $this->getJson('/api/students/'.$legacy.'/history')->assertForbidden();
         Sanctum::actingAs(User::where('username', 'dev_enr_professor')->firstOrFail());
-        $this->getJson('/api/students/'.$converted.'/history')->assertForbidden();
+        $this->getJson('/api/students/'.$legacy.'/history')->assertForbidden();
         Sanctum::actingAs(User::where('username', 'dev_enr_guest_draft')->firstOrFail());
-        $this->getJson('/api/students/'.$converted.'/history')->assertForbidden();
+        $this->getJson('/api/students/'.$legacy.'/history')->assertForbidden();
     }
 
     public function test_existing_students_are_reused_without_admission_and_refresh_preserves_identity_and_sections(): void
@@ -118,8 +113,8 @@ class PortalDevelopmentSeedTest extends TestCase
             $snapshots[$student->id] = $student->fresh()->getAttributes();
         }
         $this->assertSame(0, Artisan::call('portal:dev-seed'), Artisan::output());
-        $this->assertDatabaseCount('students', 13);
-        $this->assertDatabaseCount('enrollment_applications', 13);
+        $this->assertDatabaseCount('students', 12);
+        $this->assertDatabaseCount('enrollment_applications', 12);
         foreach ($snapshots as $id => $snapshot) {
             $student = Student::findOrFail($id);
             $this->assertSame($snapshot, $student->getAttributes());
@@ -129,8 +124,8 @@ class PortalDevelopmentSeedTest extends TestCase
         }
         $sectionIds = DB::table('sections')->orderBy('id')->pluck('id')->all();
         $this->assertSame(0, Artisan::call('portal:dev-seed'), Artisan::output());
-        $this->assertDatabaseCount('students', 13);
-        $this->assertDatabaseCount('enrollment_applications', 13);
+        $this->assertDatabaseCount('students', 12);
+        $this->assertDatabaseCount('enrollment_applications', 12);
         $this->assertSame(0, Artisan::call('portal:dev-seed', ['--refresh' => true]), Artisan::output());
         $this->assertSame($sectionIds, DB::table('sections')->orderBy('id')->pluck('id')->all());
         foreach ($snapshots as $id => $snapshot) {
@@ -149,7 +144,7 @@ class PortalDevelopmentSeedTest extends TestCase
         $before = DB::table('generated_data_records')->count();
         $this->assertSame(1, Artisan::call('portal:dev-seed', ['--cleanup' => true]));
         $this->assertStringContainsString('cleanup refused', Artisan::output());
-        $this->assertDatabaseCount('students', 8);
+        $this->assertDatabaseCount('students', 7);
         $this->assertSame($before, DB::table('generated_data_records')->count());
         $this->assertDatabaseHas('enrollment_applications', ['id' => $application->id]);
     }
@@ -168,7 +163,7 @@ class PortalDevelopmentSeedTest extends TestCase
 
         $this->assertSame(0, Artisan::call('portal:dev-seed'), Artisan::output());
         $this->assertDatabaseMissing('enrollment_applications', ['student_id' => $student->id]);
-        $this->assertSame(8, DB::table('enrollment_applications')->count());
+        $this->assertSame(7, DB::table('enrollment_applications')->count());
     }
 
     public function test_refresh_preserves_protected_student_and_cleans_only_untouched_students(): void
@@ -181,7 +176,7 @@ class PortalDevelopmentSeedTest extends TestCase
         $before = $a->fresh()->getAttributes();
         $this->assertSame(0, Artisan::call('portal:dev-seed', ['--refresh' => true]), Artisan::output());
         $this->assertSame($before, $a->fresh()->getAttributes());
-        $this->assertDatabaseCount('students', 8);
+        $this->assertDatabaseCount('students', 7);
         $this->assertDatabaseCount('sections', 16);
     }
 

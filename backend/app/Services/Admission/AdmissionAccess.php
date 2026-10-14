@@ -20,6 +20,7 @@ class AdmissionAccess
         abort_unless($actor && $actor->status === 'active' && in_array($actor->role?->role_name, $roles, true), 403, 'Admission access denied.');
         if ($capability === 'write') {
             abort_if($actor->student()->exists(), 403, 'Admission access is read only.');
+            abort_if(app(AdmissionHandoffService::class)->isAdmittedGuest($actor), 403, 'Admission is completed. Continue to Enrollment.');
         }
 
         return $actor;

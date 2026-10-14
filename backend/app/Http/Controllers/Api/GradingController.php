@@ -64,6 +64,14 @@ class GradingController extends Controller
             $period = GradePeriodSchedule::lockForUpdate()->findOrFail($gradePeriodSchedule->id);
             abort_unless($period->version === (int) $input['version'], 409, 'This grade period changed. Reload before continuing.');
             $old = $period->only(['academic_year_id', 'semester_id', 'midterm_opens_at', 'midterm_deadline', 'finals_opens_at', 'finals_deadline', 'status']);
+            $termChanged = (int) $period->academic_year_id !== (int) $input['academic_year_id']
+                || (int) $period->semester_id !== (int) $input['semester_id'];
+            abort_if($termChanged && $this->termHasGradingActivity($period), 409, 'The academic term cannot be changed because grading activity already exists. Edit the schedule dates instead.');
+
+            $datesChanged = collect(['midterm_opens_at', 'midterm_deadline', 'finals_opens_at', 'finals_deadline'])
+                ->contains(fn ($field) => ! $period->{$field}->equalTo($input[$field]));
+            abort_if($datesChanged && $this->termHasLockedGradingHistory($period), 409, 'Grade period dates cannot be changed because submitted, approved, or published grading history already exists.');
+
             unset($input['version']);
             $period->fill($input + ['updated_by' => $request->user()->id]);
             $period->version++;
@@ -74,6 +82,22 @@ class GradingController extends Controller
         });
 
         return $this->ok($this->grading->scheduleData($period->load(['academicYear', 'semester'])));
+    }
+
+    public function destroyPeriod(Request $request, GradePeriodSchedule $gradePeriodSchedule)
+    {
+        $input = $request->validate(['version' => 'required|integer|min:1', 'confirmed' => 'required|accepted']);
+        DB::transaction(function () use ($request, $input, $gradePeriodSchedule) {
+            $period = GradePeriodSchedule::lockForUpdate()->findOrFail($gradePeriodSchedule->id);
+            abort_unless($period->version === (int) $input['version'], 409, 'This grade period changed. Reload before continuing.');
+            abort_if($this->termHasGradingActivity($period), 409, 'This grade period cannot be deleted because grading activity already exists. Edit the schedule instead.');
+
+            $snapshot = $period->only(['id', 'academic_year_id', 'semester_id', 'midterm_opens_at', 'midterm_deadline', 'finals_opens_at', 'finals_deadline', 'status', 'version']);
+            $this->grading->audit($request->user(), 'grading_period.deleted', null, $period, ['deleted' => $snapshot]);
+            $period->delete();
+        });
+
+        return $this->ok(null);
     }
 
     public function archivePeriod(Request $request, GradePeriodSchedule $gradePeriodSchedule)
@@ -206,7 +230,7 @@ class GradingController extends Controller
         $ignore = $updating ? $request->route('gradePeriodSchedule')?->id : null;
 
         return $request->validate(
-            ['academic_year_id' => ['required', 'integer', 'exists:academic_years,id', Rule::unique('grade_period_schedules')->where(fn ($q) => $q->where('semester_id', $request->input('semester_id')))->ignore($ignore)], 'semester_id' => 'required|integer|exists:semesters,id', 'midterm_opens_at' => 'required|date', 'midterm_deadline' => 'required|date|after_or_equal:midterm_opens_at', 'finals_opens_at' => 'required|date', 'finals_deadline' => 'required|date|after_or_equal:finals_opens_at', 'status' => ['sometimes', Rule::in(['active', 'archived'])], 'version' => $updating ? 'required|integer|min:1' : 'sometimes|integer'],
+            ['academic_year_id' => ['required', 'integer', 'exists:academic_years,id', Rule::unique('grade_period_schedules')->where(fn ($q) => $q->where('semester_id', $request->input('semester_id')))->ignore($ignore)], 'semester_id' => 'required|integer|exists:semesters,id', 'midterm_opens_at' => 'required|date', 'midterm_deadline' => 'required|date|after:midterm_opens_at', 'finals_opens_at' => 'required|date', 'finals_deadline' => 'required|date|after:finals_opens_at', 'status' => ['sometimes', Rule::in(['active', 'archived'])], 'version' => $updating ? 'required|integer|min:1' : 'sometimes|integer'],
             [
                 'academic_year_id.required' => 'Select an academic year.',
                 'academic_year_id.exists' => 'The selected academic year is unavailable.',
@@ -215,12 +239,34 @@ class GradingController extends Controller
                 'semester_id.exists' => 'The selected semester is unavailable.',
                 'midterm_opens_at.required' => 'Enter when Midterm grading opens.',
                 'midterm_deadline.required' => 'Enter the Midterm grading deadline.',
-                'midterm_deadline.after_or_equal' => 'The Midterm deadline must be at or after its opening date.',
+                'midterm_deadline.after' => 'The Midterm deadline must be after its opening date.',
                 'finals_opens_at.required' => 'Enter when Finals grading opens.',
                 'finals_deadline.required' => 'Enter the Finals grading deadline.',
-                'finals_deadline.after_or_equal' => 'The Finals deadline must be at or after its opening date.',
+                'finals_deadline.after' => 'The Finals deadline must be after its opening date.',
             ],
         );
+    }
+
+    private function termHasGradingActivity(GradePeriodSchedule $period): bool
+    {
+        return $this->termGradeSheets($period)->exists()
+            || GradeReleaseSchedule::where('academic_year_id', $period->academic_year_id)
+                ->where('semester_id', $period->semester_id)
+                ->exists();
+    }
+
+    private function termHasLockedGradingHistory(GradePeriodSchedule $period): bool
+    {
+        return $this->termGradeSheets($period)
+            ->whereIn('grade_sheets.status', ['submitted', 'approved', 'published'])
+            ->exists();
+    }
+
+    private function termGradeSheets(GradePeriodSchedule $period)
+    {
+        return GradeSheet::query()->whereHas('sectionSubject.section', fn ($section) => $section
+            ->where('academic_year_id', $period->academic_year_id)
+            ->where('semester_id', $period->semester_id));
     }
 
     private function assessmentRules(bool $updating = false): array

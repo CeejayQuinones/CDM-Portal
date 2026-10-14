@@ -5,9 +5,14 @@ namespace App\Services;
 use App\Http\Requests\BulkUpdateStudentsRequest;
 use App\Models\Admission\AdmissionApplicant;
 use App\Models\CabinetSlot;
+use App\Models\Course;
 use App\Models\Student;
 use App\Models\StudentDocument;
 use App\Models\StudentRecordLocation;
+use App\Models\User;
+use App\Models\UserProfile;
+use App\Services\StudentRecords\StudentRecordAuditWriter;
+use App\Services\StudentRecords\StudentRecordCompletenessService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +20,11 @@ use Illuminate\Validation\ValidationException;
 
 class StudentService
 {
+    public function __construct(
+        private readonly StudentRecordAuditWriter $audit,
+        private readonly StudentRecordCompletenessService $completeness,
+    ) {}
+
     /** @param array<string, mixed> $filters */
     public function paginate(array $filters): LengthAwarePaginator
     {
@@ -26,14 +36,8 @@ class StudentService
                 ->whereColumn('admission_applicants.converted_student_id', 'students.id')
                 ->limit(1)])
             ->withExists('enrollmentApplications as has_enrollment_application')
-            ->when($filters['search'] ?? null, function ($query, string $search): void {
-                $query->where(function ($studentQuery) use ($search): void {
-                    $studentQuery->where('student_number', 'like', "%{$search}%")
-                        ->orWhereHas('userProfile', fn ($profileQuery) => $profileQuery
-                            ->where('first_name', 'like', "%{$search}%")
-                            ->orWhere('last_name', 'like', "%{$search}%"));
-                });
-            })
+            ->withExists('physicalRecordLocation as has_physical_record')
+            ->when($filters['search'] ?? null, fn (Builder $query, string $search) => $this->applySearch($query, $search))
             ->when($filters['course'] ?? null, function ($query, string $course): void {
                 $query->where(function ($courseQuery) use ($course): void {
                     $courseQuery->where('course_id', $course)
@@ -49,14 +53,38 @@ class StudentService
                 });
             })
             ->when($filters['student_status'] ?? null, fn ($query, string $status) => $query->where('student_status', $status))
-            ->orderBy('student_number')
+            ->when(($filters['physical_record_status'] ?? null) === 'available', fn (Builder $query) => $query->whereHas('physicalRecordLocation'))
+            ->when(($filters['physical_record_status'] ?? null) === 'unavailable', fn (Builder $query) => $query->whereDoesntHave('physicalRecordLocation'))
+            ->when($filters['attention'] ?? null, fn (Builder $query, string $attention) => $this->applyAttention($query, $attention))
+            ->tap(fn (Builder $query) => $this->applySort($query, $filters['sort'] ?? 'student_number', $filters['direction'] ?? 'asc'))
             ->paginate(15)
             ->withQueryString();
     }
 
+    /** @return array{exact: bool, results: list<array<string, mixed>>} */
+    public function quickSearch(string $search): array
+    {
+        $query = $this->withCurrentEnrollment(Student::query())
+            ->with(['userProfile:id,first_name,middle_name,last_name,suffix', 'course:id,course_code']);
+        $this->applySearch($query, $search);
+        $results = $query->orderByRaw('CASE WHEN student_number = ? THEN 0 ELSE 1 END', [$search])
+            ->orderBy('student_number')->limit(12)->get();
+
+        return [
+            'exact' => $results->count() === 1 && $results->first()->student_number === $search,
+            'results' => $results->map(fn (Student $student): array => [
+                'id' => $student->id,
+                'student_number' => $student->student_number,
+                'name' => trim(collect([$student->userProfile?->first_name, $student->userProfile?->middle_name, $student->userProfile?->last_name, $student->userProfile?->suffix])->filter()->join(' ')),
+                'program' => $student->course?->course_code,
+                'section' => $student->currentEnrollmentApplication?->section?->section_name ?? $student->currentEnrollment?->section?->section_name,
+            ])->all(),
+        ];
+    }
+
     public function find(int $studentId): Student
     {
-        return $this->withCurrentEnrollment(Student::query(), true)
+        $student = $this->withCurrentEnrollment(Student::query(), true)
             ->with([
                 'user.role',
                 'userProfile',
@@ -71,6 +99,57 @@ class StudentService
                     ->limit(10),
             ])
             ->findOrFail($studentId);
+        $student->setAttribute('record_completeness', $this->completeness->evaluate($student));
+        $student->setAttribute('duplicate_warnings', $this->completeness->duplicateWarnings($student));
+        $student->setAttribute('physical_record_locator', $this->completeness->physicalLocator($student));
+
+        return $student;
+    }
+
+    private function applySearch(Builder $query, string $search): void
+    {
+        $terms = collect(preg_split('/\s+/', trim($search)) ?: [])->filter()->values();
+        $query->where(function (Builder $studentQuery) use ($search, $terms): void {
+            $studentQuery->where('student_number', 'like', "%{$search}%")
+                ->orWhereHas('userProfile', function (Builder $profileQuery) use ($terms): void {
+                    foreach ($terms as $term) {
+                        $profileQuery->where(fn (Builder $part) => $part
+                            ->where('first_name', 'like', "%{$term}%")
+                            ->orWhere('middle_name', 'like', "%{$term}%")
+                            ->orWhere('last_name', 'like', "%{$term}%")
+                            ->orWhere('suffix', 'like', "%{$term}%"));
+                    }
+                });
+        });
+    }
+
+    private function applyAttention(Builder $query, string $attention): void
+    {
+        $profile = fn (Builder $q) => $q->whereNull('birth_date')->orWhereNull('email')->orWhereNull('contact_number')->orWhereNull('address');
+        $documents = fn (Builder $q) => $q->where('availability_status', 'missing')->orWhere('verification_status', 'pending');
+        $query->where(function (Builder $attentionQuery) use ($attention, $profile, $documents): void {
+            if (in_array($attention, ['any', 'physical_record'], true)) {
+                $attentionQuery->orWhereDoesntHave('physicalRecordLocation');
+            }
+            if (in_array($attention, ['any', 'profile'], true)) {
+                $attentionQuery->orWhereHas('userProfile', $profile);
+            }
+            if (in_array($attention, ['any', 'documents'], true)) {
+                $attentionQuery->orWhereDoesntHave('documents')->orWhereHas('documents', $documents);
+            }
+        });
+    }
+
+    private function applySort(Builder $query, string $sort, string $direction): void
+    {
+        $column = match ($sort) {
+            'name' => UserProfile::query()->select('first_name')->whereColumn('user_profiles.id', 'students.user_profile_id')->limit(1),
+            'program' => Course::query()->select('course_code')->whereColumn('courses.id', 'students.course_id')->limit(1),
+            'year_level' => 'year_level',
+            'student_status' => 'student_status',
+            default => 'student_number',
+        };
+        $query->orderBy($column, $direction)->orderBy('student_number');
     }
 
     public function withCurrentEnrollment(Builder $query, bool $detail = false): Builder
@@ -135,19 +214,18 @@ class StudentService
     }
 
     /** @param array<string, mixed> $attributes */
-    public function update(int $studentId, array $attributes): Student
+    public function update(User $actor, int $studentId, array $attributes): Student
     {
-        return DB::transaction(function () use ($studentId, $attributes): Student {
+        return DB::transaction(function () use ($actor, $studentId, $attributes): Student {
             $student = Student::query()->with('userProfile')->findOrFail($studentId);
 
-            $student->update([
-                'student_number' => $attributes['student_number'] ?? $student->student_number,
-                'course_id' => $attributes['course_id'],
-                'year_level' => $attributes['year_level'],
+            $student->fill([
                 'student_status' => $attributes['student_status'],
             ]);
+            $studentFields = array_keys($student->getDirty());
+            $student->save();
 
-            $student->userProfile->update([
+            $student->userProfile->fill([
                 'first_name' => $attributes['first_name'],
                 'middle_name' => $attributes['middle_name'] ?? null,
                 'last_name' => $attributes['last_name'],
@@ -159,6 +237,19 @@ class StudentService
                 'contact_number' => $attributes['contact_number'] ?? null,
                 'address' => $attributes['address'] ?? null,
             ]);
+            $profileFields = array_keys($student->userProfile->getDirty());
+            $student->userProfile->save();
+
+            if ($profileFields !== []) {
+                $this->audit->record($actor, $student->id, 'student_profile_updated', [
+                    'changed_fields' => array_map(fn (string $field): string => 'profile.'.$field, $profileFields),
+                ]);
+            }
+            if ($studentFields !== []) {
+                $this->audit->record($actor, $student->id, 'student_status_changed', [
+                    'changed_fields' => $studentFields,
+                ]);
+            }
 
             return $this->find($student->id);
         });
@@ -168,11 +259,11 @@ class StudentService
      * @param  list<int>  $studentIds
      * @return array{updated_count: int, action: string}
      */
-    public function bulkUpdate(array $studentIds, string $action, mixed $value): array
+    public function bulkUpdate(User $actor, array $studentIds, string $action, mixed $value): array
     {
         $studentIds = array_values(array_unique(array_map('intval', $studentIds)));
 
-        return DB::transaction(function () use ($studentIds, $action, $value): array {
+        return DB::transaction(function () use ($actor, $studentIds, $action, $value): array {
             $lockedStudentIds = Student::query()
                 ->whereKey($studentIds)
                 ->lockForUpdate()
@@ -192,16 +283,6 @@ class StudentService
                     'student_status',
                     $value,
                 ),
-                BulkUpdateStudentsRequest::CHANGE_YEAR_LEVEL => $this->updateStudentColumn(
-                    $lockedStudentIds,
-                    'year_level',
-                    (int) $value,
-                ),
-                BulkUpdateStudentsRequest::CHANGE_COURSE => $this->updateStudentColumn(
-                    $lockedStudentIds,
-                    'course_id',
-                    (int) $value,
-                ),
                 BulkUpdateStudentsRequest::ASSIGN_RECORD_LOCATION => $this->assignRecordLocation(
                     $lockedStudentIds,
                     (int) $value['cabinet_slot_id'],
@@ -213,6 +294,23 @@ class StudentService
                 ),
                 default => throw new \LogicException('Unsupported student bulk action.'),
             };
+
+            $auditAction = match ($action) {
+                BulkUpdateStudentsRequest::CHANGE_STATUS => 'student_status_changed',
+                BulkUpdateStudentsRequest::ASSIGN_RECORD_LOCATION => 'physical_record_location_changed',
+                BulkUpdateStudentsRequest::UPDATE_DOCUMENT_AVAILABILITY => 'document_availability_changed',
+            };
+            $metadata = match ($action) {
+                BulkUpdateStudentsRequest::CHANGE_STATUS => ['changed_fields' => ['student_status']],
+                BulkUpdateStudentsRequest::ASSIGN_RECORD_LOCATION => ['cabinet_slot_id' => (int) $value['cabinet_slot_id']],
+                BulkUpdateStudentsRequest::UPDATE_DOCUMENT_AVAILABILITY => [
+                    'document_type_id' => (int) $value['document_type_id'],
+                    'availability_status' => $value['availability_status'],
+                ],
+            };
+            foreach ($lockedStudentIds as $lockedStudentId) {
+                $this->audit->record($actor, $lockedStudentId, $auditAction, $metadata);
+            }
 
             return [
                 'updated_count' => $updatedCount,

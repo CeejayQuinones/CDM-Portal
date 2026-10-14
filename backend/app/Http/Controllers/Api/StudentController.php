@@ -9,12 +9,12 @@ use App\Http\Requests\UpdateStudentRequest;
 use App\Http\Resources\StudentDocumentResource;
 use App\Http\Resources\StudentResource;
 use App\Models\Cabinet;
-use App\Models\Course;
 use App\Models\DocumentType;
 use App\Models\Role;
 use App\Models\Student;
 use App\Models\User;
 use App\Services\StudentHistoryService;
+use App\Services\StudentRecords\StudentRecordProductivityService;
 use App\Services\StudentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,13 +35,22 @@ class StudentController extends Controller
             ->response();
     }
 
-    public function show(Student $student): JsonResponse
+    public function show(Request $request, Student $student, StudentRecordProductivityService $productivity): JsonResponse
     {
+        $productivity->recordView($request->user(), $student);
+
         return response()->json([
             'success' => true,
             'message' => 'Student record retrieved successfully.',
             'data' => new StudentResource($this->studentService->find($student->id)),
         ]);
+    }
+
+    public function quickSearch(Request $request): JsonResponse
+    {
+        $attributes = $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']]);
+
+        return response()->json(['success' => true, 'data' => $this->studentService->quickSearch($attributes['q'])]);
     }
 
     public function history(Student $student, StudentHistoryService $history): JsonResponse
@@ -60,15 +69,9 @@ class StudentController extends Controller
             'data' => [
                 'actions' => array_values(array_filter([
                     ['value' => BulkUpdateStudentsRequest::CHANGE_STATUS, 'label' => 'Change Student Status'],
-                    ['value' => BulkUpdateStudentsRequest::CHANGE_YEAR_LEVEL, 'label' => 'Change Year Level'],
-                    ['value' => BulkUpdateStudentsRequest::CHANGE_COURSE, 'label' => 'Change Course'],
                     $isRegistrar ? ['value' => BulkUpdateStudentsRequest::ASSIGN_RECORD_LOCATION, 'label' => 'Assign / Change Physical Record Location'] : null,
                     $isRegistrar ? ['value' => BulkUpdateStudentsRequest::UPDATE_DOCUMENT_AVAILABILITY, 'label' => 'Update Student Document Availability'] : null,
                 ])),
-                'courses' => Course::query()
-                    ->where('status', 'active')
-                    ->orderBy('course_code')
-                    ->get(['id', 'course_code', 'course_name']),
                 'cabinets' => $isRegistrar ? Cabinet::query()
                     ->with(['slots' => fn ($query) => $query
                         ->where('status', 'active')
@@ -100,6 +103,7 @@ class StudentController extends Controller
     {
         $attributes = $request->validated();
         $result = $this->studentService->bulkUpdate(
+            $request->user(),
             $attributes['student_ids'],
             $attributes['action'],
             $attributes['value'],
@@ -117,7 +121,7 @@ class StudentController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Student record updated successfully.',
-            'data' => new StudentResource($this->studentService->update($student->id, $request->validated())),
+            'data' => new StudentResource($this->studentService->update($request->user(), $student->id, $request->validated())),
         ]);
     }
 

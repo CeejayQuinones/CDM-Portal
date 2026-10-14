@@ -11,6 +11,7 @@ class StudentResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $isDetailedRecord = $this->relationLoaded('documents');
         $enrollment = $this->relationLoaded('currentEnrollment') ? $this->currentEnrollment : null;
         $finalApplication = $enrollment?->relationLoaded('application') ? $enrollment->application : null;
         $assignedApplication = $this->relationLoaded('currentEnrollmentApplication') ? $this->currentEnrollmentApplication : null;
@@ -73,16 +74,18 @@ class StudentResource extends JsonResource
                 'middle_name' => $this->userProfile->middle_name,
                 'last_name' => $this->userProfile->last_name,
                 'suffix' => $this->userProfile->suffix,
-                'birth_date' => $this->userProfile->birth_date?->toDateString(),
-                'gender' => $this->userProfile->gender,
-                'civil_status' => $this->userProfile->civil_status,
-                'nationality' => $this->userProfile->nationality,
-                'email' => $this->userProfile->email,
-                'contact_number' => $this->userProfile->contact_number,
-                'address' => $this->userProfile->address,
                 'profile_photo_url' => $this->userProfile->profile_photo_url,
+                ...($isDetailedRecord ? [
+                    'birth_date' => $this->userProfile->birth_date?->toDateString(),
+                    'gender' => $this->userProfile->gender,
+                    'civil_status' => $this->userProfile->civil_status,
+                    'nationality' => $this->userProfile->nationality,
+                    'email' => $this->userProfile->email,
+                    'contact_number' => $this->userProfile->contact_number,
+                    'address' => $this->userProfile->address,
+                ] : []),
             ]),
-            'account' => $this->whenLoaded('user', fn () => [
+            'account' => $this->when($isDetailedRecord && $this->relationLoaded('user'), fn () => [
                 'username' => $this->user->username,
                 'status' => $this->user->status,
                 'last_login' => $this->user->last_login?->toISOString(),
@@ -120,6 +123,7 @@ class StudentResource extends JsonResource
             'admission_record' => $this->when(array_key_exists('has_admission_record', $this->resource->getAttributes()),
                 fn () => $this->has_admission_record ? 'Available' : 'No linked Admission record'),
             'enrollment_application_available' => $this->when(isset($this->has_enrollment_application), fn () => (bool) $this->has_enrollment_application),
+            'physical_record_status' => $this->when(isset($this->has_physical_record), fn () => $this->has_physical_record ? 'available' : 'unavailable'),
             'documents' => StudentDocumentResource::collection($this->whenLoaded('documents')),
             'physical_record_location' => $this->whenLoaded(
                 'physicalRecordLocation',
@@ -135,6 +139,9 @@ class StudentResource extends JsonResource
                 'release_date' => $documentRequest->release_date?->toDateString(),
                 'remarks' => $documentRequest->remarks,
             ])),
+            'record_completeness' => $this->when(array_key_exists('record_completeness', $this->resource->getAttributes()), fn () => $this->record_completeness),
+            'duplicate_warnings' => $this->when(array_key_exists('duplicate_warnings', $this->resource->getAttributes()), fn () => $this->duplicate_warnings),
+            'physical_record_locator' => $this->when(array_key_exists('physical_record_locator', $this->resource->getAttributes()), fn () => $this->physical_record_locator),
         ];
     }
 }

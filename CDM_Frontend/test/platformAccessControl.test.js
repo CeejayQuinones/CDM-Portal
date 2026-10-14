@@ -2,18 +2,19 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { apiBaseUrlForMode, clientPlatformForMode } from '../vite.config.js'
+import { apiBaseUrlForMode, assertProductionApiBaseUrl, clientPlatformForMode } from '../vite.config.js'
 import { loginErrorMessage, runLoginRequest } from '../src/utils/loginFlow.js'
 
 test('Vite modes select the fixed CDM client platform', () => {
   assert.equal(clientPlatformForMode('production'), 'web')
   assert.equal(clientPlatformForMode('development'), 'web')
   assert.equal(clientPlatformForMode('desktop'), 'desktop')
+  assert.equal(clientPlatformForMode('desktop-development'), 'desktop')
   assert.equal(clientPlatformForMode('mobile'), 'mobile')
   assert.equal(clientPlatformForMode('demo-mobile'), 'mobile')
 })
 
-test('desktop mode does not inherit the web or LAN API URL', () => {
+test('development modes retain explicit local API endpoints', () => {
   const env = {
     VITE_API_BASE_URL: 'http://192.168.100.34:8000/api',
   }
@@ -26,11 +27,63 @@ test('desktop mode does not inherit the web or LAN API URL', () => {
   )
 })
 
+test('production builds require explicit public HTTPS API endpoints', () => {
+  assert.throws(() => apiBaseUrlForMode('production', {}, 'build'), /VITE_API_BASE_URL is required/)
+  assert.throws(
+    () => apiBaseUrlForMode('desktop', { VITE_DESKTOP_API_BASE_URL: 'http://127.0.0.1:8000/api' }, 'build'),
+    /HTTPS and a non-development host/,
+  )
+  assert.throws(
+    () => apiBaseUrlForMode('mobile', { VITE_API_BASE_URL: 'http://10.0.2.2:8000/api' }, 'build'),
+    /HTTPS and a non-development host/,
+  )
+  assert.throws(
+    () => assertProductionApiBaseUrl('https://192.168.100.34/api', 'VITE_API_BASE_URL'),
+    /non-development host/,
+  )
+  assert.equal(
+    apiBaseUrlForMode('production', { VITE_API_BASE_URL: 'https://api.cdm.example/api/' }, 'build'),
+    'https://api.cdm.example/api',
+  )
+  assert.equal(
+    apiBaseUrlForMode('desktop', { VITE_DESKTOP_API_BASE_URL: 'https://api.cdm.example/api' }, 'build'),
+    'https://api.cdm.example/api',
+  )
+})
+
+test('Android release networking is HTTPS-only while debug keeps local HTTP support', async () => {
+  const [capacitor, releaseManifest, releaseNetwork, debugManifest, debugNetwork] = await Promise.all([
+    readFile(new URL('../capacitor.config.json', import.meta.url), 'utf8'),
+    readFile(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8'),
+    readFile(new URL('../android/app/src/main/res/xml/network_security_config.xml', import.meta.url), 'utf8'),
+    readFile(new URL('../android/app/src/debug/AndroidManifest.xml', import.meta.url), 'utf8'),
+    readFile(new URL('../android/app/src/debug/res/xml/network_security_config.xml', import.meta.url), 'utf8'),
+  ])
+
+  assert.match(capacitor, /"androidScheme": "https"/)
+  assert.match(releaseManifest, /usesCleartextTraffic="false"/)
+  assert.match(releaseNetwork, /cleartextTrafficPermitted="false"/)
+  assert.doesNotMatch(releaseNetwork, /192\.168\.|10\.0\.2\.2|127\.0\.0\.1/)
+  assert.match(debugManifest, /usesCleartextTraffic="true"/)
+  assert.match(debugNetwork, /cleartextTrafficPermitted="true"/)
+})
+
 test('the shared API client sends the build-owned platform header', async () => {
   const source = await readFile(new URL('../src/services/apiClient.js', import.meta.url), 'utf8')
 
   assert.match(source, /'X-CDM-Client': clientPlatform/)
   assert.doesNotMatch(source, /localStorage\.getItem\([^)]*client/i)
+})
+
+test('Professor Mobile navigation is restricted to Event participation', async () => {
+  const navigation = await readFile(new URL('../src/stores/navigation.js', import.meta.url), 'utf8')
+  const router = await readFile(new URL('../src/router/index.js', import.meta.url), 'utf8')
+
+  assert.match(navigation, /role === 'Professor' && clientPlatform === 'mobile'/)
+  assert.match(navigation, /item\.name !== 'event-attendance'/)
+  assert.match(router, /role === ROLES\.PROFESSOR && clientPlatform === 'mobile'/)
+  assert.match(router, /!to\.meta\.eventModule/)
+  assert.match(router, /name: 'event-attendance'/)
 })
 
 test('login renders failures in an accessible alert', async () => {

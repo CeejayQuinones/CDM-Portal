@@ -3,7 +3,9 @@ import { apiClient } from '../services/apiClient'
 import { useStudentProfileStore } from '../stores/studentProfile'
 
 const storageKeys = {
+  Guest: 'cdm-guest-appearance',
   Student: 'cdm-student-appearance',
+  Professor: 'cdm-professor-appearance',
   'Registrar Staff': 'cdm-registrar-appearance',
   Admin: 'cdm-admin-appearance',
 }

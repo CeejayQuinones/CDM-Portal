@@ -5,11 +5,16 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use LogicException;
 
 class LargeDatasetCleanupSeeder extends Seeder
 {
     public function run(): void
     {
+        if (app()->environment('production')) {
+            throw new LogicException('LargeDatasetCleanupSeeder is disabled in the production environment.');
+        }
+
         if (! Schema::hasTable('generated_data_records')) {
             $this->command?->info('No ownership ledger found; nothing deleted.');
 
@@ -122,7 +127,7 @@ class LargeDatasetCleanupSeeder extends Seeder
                     $progress = true;
                 }
                 if (! $progress) {
-                    throw new \LogicException('Cyclic fixture dependencies; cleanup rolled back without disabling foreign keys.');
+                    throw new LogicException('Cyclic fixture dependencies; cleanup rolled back without disabling foreign keys.');
                 }
             }
             $deletedRegistryIds = [];

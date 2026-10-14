@@ -35,9 +35,11 @@ html[data-student-theme] :is(.student-portal-shell .shell-content, .student-work
 }
 
 .student-portal-shell .navbar {
-  border-bottom-color: rgb(16 106 46 / 16%);
-  background: var(--student-surface, rgb(255 255 255 / 94%));
-  box-shadow: 0 8px 24px rgb(5 39 21 / 6%);
+  border-bottom-color: color-mix(in srgb, var(--student-cdm-yellow) 45%, var(--student-cdm-green));
+  background: linear-gradient(105deg,
+    color-mix(in srgb, var(--student-cdm-green) 88%, var(--bg-page)),
+    color-mix(in srgb, var(--student-cdm-spring) 76%, var(--bg-page)));
+  box-shadow: 0 8px 24px rgb(5 39 21 / 12%);
 }
 
 .student-portal-shell .navbar::after {
@@ -51,16 +53,27 @@ html[data-student-theme] :is(.student-portal-shell .shell-content, .student-work
 }
 
 .student-portal-shell .navbar-label {
-  color: var(--student-accent, var(--student-cdm-spring));
+  color: var(--student-cdm-yellow);
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .student-portal-shell .navbar-title h1 {
-  color: var(--student-heading, #133c24);
+  color: var(--student-cdm-white);
   font-weight: 900;
 }
+
+.student-portal-shell .navbar .menu-button {
+  border-color: color-mix(in srgb, var(--student-cdm-white) 35%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 12%, transparent);
+}
+
+.student-portal-shell .navbar .menu-button span { background: var(--student-cdm-white); }
+.student-portal-shell .navbar .contextual-nav-item { color: color-mix(in srgb, var(--student-cdm-white) 82%, transparent); }
+.student-portal-shell .navbar .contextual-nav-item:hover,
+.student-portal-shell .navbar .contextual-nav-item.active { color: var(--student-cdm-white); }
+.student-portal-shell .navbar .contextual-nav-item.active { border-bottom-color: var(--student-cdm-yellow); }
 
 .student-portal-shell .main-content {
   color: var(--student-cdm-ink);
@@ -418,6 +431,17 @@ html[data-student-theme] :is(.student-portal-shell .shell-content, .student-work
   .student-portal-shell .navbar::after {
     right: 18px;
   }
+}
+
+@media (max-width: 768px) {
+  .student-portal-shell .main-content .page-header { margin-bottom: 16px; }
+  .student-portal-shell .main-content .module-card,
+  .student-portal-shell .main-content .placeholder-panel,
+  .student-portal-shell .main-content .dr-panel,
+  .student-portal-shell .main-content .student-history-panel { border-radius: 12px; }
+  .student-portal-shell .main-content .module-card { padding: 15px; }
+  .student-portal-shell .main-content .student-summary-card { min-height: 0; padding: 13px; }
+  .student-portal-shell .main-content .student-detail-grid > div { padding: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

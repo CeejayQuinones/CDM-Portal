@@ -342,7 +342,7 @@ onBeforeUnmount(() => {
   </section>
 
   <p v-if="success" class="notice success" role="status">{{ success }}</p>
-  <p v-if="error" class="notice error" role="alert">{{ error }}</p>
+  <p v-if="error" class="notice error" role="alert">{{ error }} <button type="button" @click="loadCabinets">Retry</button></p>
 
   <section v-if="showCreateForm" class="records-panel create-panel">
     <div class="section-heading">

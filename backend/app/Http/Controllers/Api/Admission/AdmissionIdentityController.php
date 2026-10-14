@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admission;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admission\AdmissionApplicant;
+use App\Services\Admission\AdmissionHandoffService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 
 class AdmissionIdentityController extends Controller
 {
-    public function __invoke(Request $request): JsonResponse
+    public function __invoke(Request $request, AdmissionHandoffService $handoff): JsonResponse
     {
         $user = $request->user()->fresh('role');
         Gate::forUser($user)->authorize('viewOwn', AdmissionApplicant::class);
@@ -29,7 +30,7 @@ class AdmissionIdentityController extends Controller
                 ->with('cycle:id,code,name,status,opens_at,closes_at,confirmation_closes_at')
                 ->orderByDesc('created_at')->orderByDesc('id')->first();
 
-            return $this->identityResponse($applicant);
+            return $this->identityResponse($applicant, $handoff->context($user));
         } catch (QueryException $exception) {
             report($exception);
 
@@ -37,7 +38,7 @@ class AdmissionIdentityController extends Controller
         }
     }
 
-    public function identityResponse(?AdmissionApplicant $applicant): JsonResponse
+    public function identityResponse(?AdmissionApplicant $applicant, array $handoff = []): JsonResponse
     {
         $application = null;
         if ($applicant !== null) {
@@ -60,6 +61,12 @@ class AdmissionIdentityController extends Controller
                 'submitted_at' => $applicant->submitted_at?->toIso8601String(),
                 'is_converted' => $applicant->status === AdmissionApplicant::CONVERTED,
                 'converted_at' => $applicant->converted_at?->toIso8601String(),
+                'admission_completed' => (bool) ($handoff['completed'] ?? false),
+                'eligible_for_enrollment' => (bool) ($handoff['admitted_guest'] ?? false),
+                'student_identity_created' => $applicant->converted_student_id !== null,
+                'completed_at' => ($handoff['completed_at'] ?? null)?->toIso8601String(),
+                'admitted_program' => ($handoff['course'] ?? null)?->only(['id', 'course_code', 'course_name']),
+                'admitted_curriculum' => ($handoff['curriculum'] ?? null)?->only(['id', 'curriculum_code', 'curriculum_name']),
             ];
         }
 

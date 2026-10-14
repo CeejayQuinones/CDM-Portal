@@ -17,6 +17,8 @@ test('Professor Phase 2 workflow exposes readiness, submission, locks, return, a
 test('Registrar Phase 2 workflow exposes review, approve, return, and release scheduling', () => {
   for (const text of ['Grade Approval', 'Pending Review', 'Review Grade Sheet', 'Approve', 'Reject &amp; Return', 'Release &amp; Schedule', 'Create Release Schedule', 'Release Now']) assert.match(view, new RegExp(text, 'i'))
   for (const endpoint of ['/grading/reviews', '/grading/releases', '/approve', '/return', '/execute']) assert.match(service, new RegExp(endpoint.replaceAll('/', '\\/')))
+  assert.match(view, /No submitted grade sheets are awaiting review\./)
+  assert.match(view, /No approved grade sheets are ready for release\./)
 })
 
 test('review and release surfaces preserve semantic dark mode and responsive behavior', () => {

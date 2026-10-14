@@ -481,7 +481,7 @@ class AdmissionWorkflowTest extends TestCase
         $this->getJson('/api/admission/registrar/results?tab=retake')->assertJsonCount(1, 'data.data');
         $a = $this->guest->admissionApplications()->first();
         $this->getJson('/api/admission/registrar/applicants/'.$a->id)->assertJsonPath('data.latest_result', 'RETAKE')->assertJsonCount(1, 'data.attempts')
-            ->assertJsonPath('data.acceptance_status', 'not_accepted')->assertJsonPath('data.conversion_status', 'not_converted');
+            ->assertJsonPath('data.acceptance_status', 'not_completed')->assertJsonPath('data.student_identity_status', 'not_created');
         $timeline = $this->getJson('/api/admission/registrar/history?applicant_id='.$a->id)->assertOk()->json('data.timeline.data');
         $this->assertContains('Application created', array_column($timeline, 'action'));
         $this->assertContains('Result published', array_column($timeline, 'action'));

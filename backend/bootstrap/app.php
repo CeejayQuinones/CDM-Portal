@@ -1,11 +1,13 @@
 <?php
 
+use App\Exceptions\AdmissionConflictException;
 use App\Exceptions\ClientPlatformException;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureClientPlatformAccess;
 use App\Http\Middleware\EnsureEventPlatformAccess;
 use App\Http\Middleware\EnsureMonitoringAccess;
 use App\Http\Middleware\EnsureProfessorRole;
+use App\Http\Middleware\EnsureProfessorWebAccess;
 use App\Http\Middleware\EnsureRegistrarOrAdminRole;
 use App\Http\Middleware\EnsureRegistrarStaffRole;
 use App\Http\Middleware\EnsureStudentRole;
@@ -26,12 +28,20 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_PREFIX,
+        );
+
         $middleware->alias([
             'role.admin' => EnsureAdminRole::class,
             'client.platform' => EnsureClientPlatformAccess::class,
             'event.platform' => EnsureEventPlatformAccess::class,
             'role.registrar-staff' => EnsureRegistrarStaffRole::class,
             'role.professor' => EnsureProfessorRole::class,
+            'professor.web' => EnsureProfessorWebAccess::class,
             'role.student' => EnsureStudentRole::class,
             'role.registrar-or-admin' => EnsureRegistrarOrAdminRole::class,
             'role.monitoring' => EnsureMonitoringAccess::class,
@@ -77,6 +87,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (Throwable $exception, Request $request) {
             if (! $request->is('api/admission/*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
                 return null;
+            }
+            if ($exception instanceof AdmissionConflictException) {
+                return response()->json([
+                    'success' => false,
+                    'code' => $exception->conflictCode,
+                    'message' => $exception->getMessage(),
+                    ...$exception->context,
+                ], 409)->header('Cache-Control', 'private, no-store');
             }
             if ($exception instanceof HttpExceptionInterface) {
                 $status = $exception->getStatusCode();

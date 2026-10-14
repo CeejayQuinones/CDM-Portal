@@ -8,38 +8,20 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $this->call([
-
-            // Core
-            RolesSeeder::class,
-            DepartmentsSeeder::class,
-            AcademicYearsSeeder::class,
-            SemestersSeeder::class,
-            AppointmentBlockedDateSeeder::class,
-
-            // Academic
-            CoursesSeeder::class,
-            CurriculumsSeeder::class,
-            SubjectsSeeder::class,
-            GradingPeriodsSeeder::class,
-
-            // Accounts
-            UsersSeeder::class,
-            UserProfilesSeeder::class,
-
-            // Personnel
-            RegistrarStaffSeeder::class,
-            StudentsSeeder::class,
-            ProfessorsSeeder::class,
-
-            // Registrar services
-            DocumentTypesSeeder::class,
-            StudentDocumentsSeeder::class,
-            PhysicalRecordsSeeder::class,
-        ]);
+        $this->call(ProductionReferenceSeeder::class);
 
         if (app()->environment(['local', 'testing'])) {
-            $this->call(EventRoleTestingSeeder::class);
+            $this->call([
+                AppointmentBlockedDateSeeder::class,
+                UsersSeeder::class,
+                UserProfilesSeeder::class,
+                RegistrarStaffSeeder::class,
+                StudentsSeeder::class,
+                ProfessorsSeeder::class,
+                StudentDocumentsSeeder::class,
+                PhysicalRecordsSeeder::class,
+                EventRoleTestingSeeder::class,
+            ]);
         }
     }
 }

@@ -26,7 +26,7 @@ class StudentBulkUpdateTest extends TestCase
     public function test_registrar_can_bulk_update_an_allowed_field_after_step_up(): void
     {
         $students = $this->createStudents(3);
-        $this->signInAs(Role::REGISTRAR_STAFF, stepUp: true);
+        $actor = $this->signInAs(Role::REGISTRAR_STAFF, stepUp: true);
 
         $this->patchJson('/api/students/bulk', [
             'student_ids' => $students->pluck('id')->all(),
@@ -39,6 +39,7 @@ class StudentBulkUpdateTest extends TestCase
             ->assertJsonPath('message', '3 student records updated successfully.');
 
         $this->assertSame(3, Student::query()->where('student_status', 'graduated')->count());
+        $this->assertSame(3, DB::table('student_record_audit_events')->where('actor_user_id', $actor->id)->where('action', 'student_status_changed')->count());
     }
 
     public function test_student_cannot_use_the_bulk_endpoint(): void
@@ -76,13 +77,13 @@ class StudentBulkUpdateTest extends TestCase
 
         $this->patchJson('/api/students/bulk', [
             'student_ids' => [$student->id],
-            'action' => 'change_year_level',
-            'value' => 4,
+            'action' => 'change_status',
+            'value' => 'irregular',
         ])
             ->assertStatus(428)
             ->assertJsonPath('code', 'STEP_UP_REQUIRED');
 
-        $this->assertSame(1, $student->fresh()->year_level);
+        $this->assertSame('regular', $student->fresh()->student_status);
     }
 
     public function test_invalid_student_ids_are_rejected_without_partial_updates(): void
@@ -118,7 +119,7 @@ class StudentBulkUpdateTest extends TestCase
         $this->assertNotSame('UNSAFE-NUMBER', $student->fresh()->student_number);
     }
 
-    public function test_bulk_year_level_and_course_updates_use_validated_values(): void
+    public function test_bulk_academic_identity_changes_are_rejected(): void
     {
         $students = $this->createStudents(2);
         $newCourse = $this->createCourse('BSCS');
@@ -128,16 +129,16 @@ class StudentBulkUpdateTest extends TestCase
             'student_ids' => $students->pluck('id')->all(),
             'action' => 'change_year_level',
             'value' => 3,
-        ])->assertOk();
+        ])->assertUnprocessable()->assertJsonValidationErrors(['action']);
 
         $this->patchJson('/api/students/bulk', [
             'student_ids' => $students->pluck('id')->all(),
             'action' => 'change_course',
             'value' => $newCourse->id,
-        ])->assertOk();
+        ])->assertUnprocessable()->assertJsonValidationErrors(['action']);
 
-        $this->assertSame(2, Student::query()->where('year_level', 3)->count());
-        $this->assertSame(2, Student::query()->where('course_id', $newCourse->id)->count());
+        $this->assertSame(2, Student::query()->where('year_level', 1)->count());
+        $this->assertSame(0, Student::query()->where('course_id', $newCourse->id)->count());
     }
 
     public function test_bulk_cabinet_assignment_respects_capacity_and_is_atomic(): void
@@ -196,6 +197,42 @@ class StudentBulkUpdateTest extends TestCase
             ->assertJsonValidationErrors(['student_ids']);
 
         $this->assertSame('available', $document->fresh()->availability_status);
+        $this->assertDatabaseCount('student_record_audit_events', 0);
+    }
+
+    public function test_bulk_document_availability_change_is_audited_for_each_student(): void
+    {
+        $students = $this->createStudents(2);
+        $documentType = DocumentType::query()->create([
+            'document_name' => 'Form 137',
+            'processing_fee' => 0,
+            'processing_days' => 1,
+            'requires_appointment' => false,
+            'status' => 'active',
+        ]);
+        foreach ($students as $student) {
+            StudentDocument::query()->create([
+                'student_id' => $student->id,
+                'document_type_id' => $documentType->id,
+                'verification_status' => 'verified',
+                'availability_status' => 'available',
+            ]);
+        }
+        $actor = $this->signInAs(Role::REGISTRAR_STAFF, stepUp: true);
+
+        $this->patchJson('/api/students/bulk', [
+            'student_ids' => $students->pluck('id')->all(),
+            'action' => 'update_document_availability',
+            'value' => [
+                'document_type_id' => $documentType->id,
+                'availability_status' => 'missing',
+            ],
+        ])->assertOk()->assertJsonPath('data.updated_count', 2);
+
+        $this->assertSame(2, DB::table('student_record_audit_events')
+            ->where('actor_user_id', $actor->id)
+            ->where('action', 'document_availability_changed')
+            ->count());
     }
 
     public function test_read_only_student_listing_is_unchanged_by_bulk_support(): void

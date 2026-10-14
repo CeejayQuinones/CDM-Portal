@@ -66,7 +66,7 @@ class EnrollmentWorkflowController extends Controller
     {
         $actor = EnrollmentAccess::require($r->user());
 
-        return $this->ok(EnrollmentApplication::whereHas('student', fn ($q) => $q->where('user_id', $actor->id))->with(['period.academicYear', 'period.semester', 'course', 'curriculum'])->latest('id')->paginate(10));
+        return $this->ok(EnrollmentApplication::ownedBy($actor)->with(['period.academicYear', 'period.semester', 'course', 'curriculum'])->latest('id')->paginate(10));
     }
 
     public function create(Request $r)
@@ -81,7 +81,7 @@ class EnrollmentWorkflowController extends Controller
     {
         EnrollmentAccess::require($r->user(), true);
         $in = $r->validate(['search' => 'nullable|string|max:100', 'course_id' => 'nullable|integer', 'period_id' => 'nullable|integer', 'classification' => ['nullable', Rule::in(['regular', 'irregular', 'transferee', 'returnee'])], 'status' => ['nullable', Rule::in(['draft', 'submitted', 'under_review', 'approved', 'enrolled', 'rejected', 'cancelled'])], 'sort' => ['nullable', Rule::in(['newest', 'oldest'])]]);
-        $q = EnrollmentApplication::with(['student.userProfile', 'course', 'curriculum', 'period.academicYear', 'period.semester']);
+        $q = EnrollmentApplication::with(['student.userProfile', 'owner.profile', 'admissionApplicant', 'course', 'curriculum', 'period.academicYear', 'period.semester']);
         foreach (['course_id', 'period_id', 'classification', 'status'] as $key) {
             if (! empty($in[$key])) {
                 $q->where($key, $in[$key]);
@@ -90,7 +90,11 @@ class EnrollmentWorkflowController extends Controller
         if (! empty($in['search'])) {
             foreach (preg_split('/\s+/', trim($in['search']), -1, PREG_SPLIT_NO_EMPTY) as $part) {
                 $search = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $part).'%';
-                $q->whereHas('student', fn ($s) => $s->where(fn ($w) => $w->whereRaw("student_number LIKE ? ESCAPE '!'", [$search])->orWhereHas('userProfile', fn ($p) => $p->whereRaw("first_name LIKE ? ESCAPE '!'", [$search])->orWhereRaw("last_name LIKE ? ESCAPE '!'", [$search]))));
+                $q->where(function ($owner) use ($search): void {
+                    $owner->whereHas('student', fn ($student) => $student->whereRaw("student_number LIKE ? ESCAPE '!'", [$search]))
+                        ->orWhereHas('admissionApplicant', fn ($applicant) => $applicant->whereRaw("applicant_number LIKE ? ESCAPE '!'", [$search]))
+                        ->orWhereHas('owner.profile', fn ($profile) => $profile->whereRaw("first_name LIKE ? ESCAPE '!'", [$search])->orWhereRaw("last_name LIKE ? ESCAPE '!'", [$search]));
+                });
             }
         }
 
@@ -103,12 +107,12 @@ class EnrollmentWorkflowController extends Controller
         $staff = in_array($r->user()->fresh('role')->role?->role_name, [Role::ADMIN, Role::REGISTRAR_STAFF], true);
         $actor = EnrollmentAccess::require($r->user(), $staff);
 
-        return EnrollmentApplication::when(! $staff, fn ($q) => $q->whereHas('student', fn ($s) => $s->where('user_id', $actor->id)))->findOrFail($id);
+        return EnrollmentApplication::when(! $staff, fn ($q) => $q->ownedBy($actor))->findOrFail($id);
     }
 
     public function show(Request $r, int $id)
     {
-        $a = $this->authorized($r, $id)->load(['student.userProfile', 'course', 'curriculum', 'period.academicYear', 'period.semester', 'documents']);
+        $a = $this->authorized($r, $id)->load(['student.userProfile', 'owner.profile', 'admissionApplicant', 'course', 'curriculum', 'period.academicYear', 'period.semester', 'documents']);
 
         return $this->ok(['application' => $a, 'requirements' => $this->workflow->requirements($a)]);
     }

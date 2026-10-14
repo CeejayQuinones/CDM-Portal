@@ -5,17 +5,44 @@ namespace Tests\Support;
 use App\Models\AcademicYear;
 use App\Models\Admission\AdmissionApplicant;
 use App\Models\Admission\AdmissionCycle;
+use App\Models\Admission\AdmissionDecision;
 use App\Models\Admission\AdmissionExamResult;
 use App\Models\Admission\AdmissionExamSession;
 use App\Models\Course;
 use App\Models\Curriculum;
 use App\Models\Department;
 use App\Models\Role;
+use App\Models\Student;
 use App\Models\User;
 use Illuminate\Support\Str;
 
 class AdmissionConversionFixture
 {
+    public static function legacyStudent(array $fixture, array $case, string $studentNumber): Student
+    {
+        $student = Student::create([
+            'user_id' => $case['user']->id, 'user_profile_id' => $case['profile']->id,
+            'course_id' => $fixture['course']->id, 'curriculum_id' => $fixture['curriculum']->id,
+            'student_number' => $studentNumber, 'admission_date' => now()->toDateString(),
+            'year_level' => 1, 'student_status' => 'regular',
+        ]);
+        $case['user']->update(['role_id' => Role::where('role_name', Role::STUDENT)->value('id')]);
+        $case['applicant']->forceFill([
+            'status' => AdmissionApplicant::CONVERTED, 'accepted_at' => now(),
+            'accepted_course_id' => $fixture['course']->id, 'accepted_curriculum_id' => $fixture['curriculum']->id,
+            'converted_student_id' => $student->id, 'converted_at' => now(), 'version' => $case['applicant']->version + 1,
+        ])->save();
+        AdmissionDecision::create([
+            'applicant_id' => $case['applicant']->id, 'result_id' => $case['result']->id,
+            'actor_user_id' => $fixture['registrar']->id, 'action' => 'student_converted',
+            'operation_key' => (string) Str::uuid(), 'application_version' => $case['applicant']->version,
+            'result_version' => $case['result']->version, 'before' => [],
+            'after' => ['student_id' => $student->id], 'created_at' => now(),
+        ]);
+
+        return $student;
+    }
+
     public static function create(string $nonce): array
     {
         foreach ([Role::GUEST, Role::STUDENT, Role::REGISTRAR_STAFF] as $role) {

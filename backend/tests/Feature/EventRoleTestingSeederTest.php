@@ -75,6 +75,6 @@ class EventRoleTestingSeederTest extends TestCase
         app()->detectEnvironment(fn (): string => 'production');
 
         $this->expectException(LogicException::class);
-        $this->seed(EventRoleTestingSeeder::class);
+        app(EventRoleTestingSeeder::class)->run();
     }
 }

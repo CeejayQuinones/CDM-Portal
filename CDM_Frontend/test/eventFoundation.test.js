@@ -187,6 +187,13 @@ test('Student scanner handles camera, image fallback, success, duplicate, and sc
 test('Event presentation uses theme tokens, responsive layout, and reduced motion', async () => {
   const css = await read('../src/modules/event-attendance/event.css')
   assert.match(css, /var\(--bg-surface\)/)
-  assert.match(css, /@media \(max-width: 700px\)/)
+  assert.match(css, /@media \(max-width: 768px\)/)
+  assert.match(css, /\.event-toolbar label \{ flex: 0 0 auto;/)
   assert.match(css, /prefers-reduced-motion/)
+})
+
+test('Event transition feedback uses correct past-tense labels', async () => {
+  const source = await read('../src/modules/event-attendance/EventAttendanceView.vue')
+  assert.match(source, /archive:\s*'archived'/)
+  assert.doesNotMatch(source, /`\$\{action\}ed`/)
 })

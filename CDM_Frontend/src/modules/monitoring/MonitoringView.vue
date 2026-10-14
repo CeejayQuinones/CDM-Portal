@@ -338,10 +338,25 @@ onMounted(load)
 
 <style scoped>
 .monitoring-page {
-  width: min(1420px, 100%);
+  width: 100%;
+  max-width: 1420px;
+  min-width: 0;
   margin: 0 auto;
   padding: clamp(16px, 2.5vw, 32px);
   color: var(--text-primary);
+}
+
+.monitoring-tab-panel,
+.monitoring-workspace,
+.assessment-panel,
+.assessment-panel > section,
+.assessment-metrics,
+.method-card,
+.assessment-heading > div,
+.section-heading > div,
+.student-panel,
+.student-list button > span {
+  min-width: 0;
 }
 
 .monitoring-header,
@@ -365,7 +380,8 @@ onMounted(load)
 .assessment-heading p,
 .section-heading p {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--tab-inactive, var(--text-secondary));
+  overflow-wrap: anywhere;
 }
 
 .eyebrow {
@@ -399,13 +415,13 @@ onMounted(load)
 }
 
 .monitoring-tabs button:hover {
-  background: var(--bg-surface-alt);
+  background: var(--tab-hover, var(--bg-surface-alt));
   color: var(--text-primary);
 }
 
 .monitoring-tabs button.active {
   border-bottom-color: var(--accent);
-  color: var(--accent);
+  color: var(--tab-active, var(--accent));
 }
 
 .monitoring-tab-panel {
@@ -503,6 +519,7 @@ onMounted(load)
 .summary-grid article {
   position: relative;
   overflow: hidden;
+  min-width: 0;
   min-height: 116px;
   border-radius: 12px;
   padding: 16px 18px;
@@ -541,7 +558,7 @@ onMounted(load)
 
 .monitoring-workspace {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   align-items: start;
   gap: 16px;
 }
@@ -595,6 +612,13 @@ onMounted(load)
   cursor: pointer;
 }
 
+.student-list button :is(strong, small),
+.assessment-metrics :is(strong, small),
+.reason-card li,
+.method-card p {
+  overflow-wrap: anywhere;
+}
+
 .student-list button:hover,
 .student-list button.active {
   background: var(--bg-surface-alt);
@@ -633,6 +657,7 @@ table td small {
   font-style: normal;
   font-weight: 800;
   text-transform: capitalize;
+  flex-shrink: 0;
 }
 
 .risk-badge.large {
@@ -651,6 +676,7 @@ table td small {
 }
 
 .assessment-metrics article {
+  min-width: 0;
   min-height: 92px;
   border: 1px solid var(--border-color);
   border-radius: 10px;
@@ -687,7 +713,11 @@ table td small {
 }
 
 .table-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
   margin-top: 12px;
   border: 1px solid var(--border-color);
   border-radius: 10px;
@@ -695,7 +725,7 @@ table td small {
 
 table {
   width: 100%;
-  min-width: 830px;
+  min-width: 760px;
   border-collapse: collapse;
 }
 
@@ -763,7 +793,7 @@ tbody tr:last-child td {
   color: var(--text-primary);
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 1400px) {
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -773,7 +803,18 @@ tbody tr:last-child td {
   }
 
   .monitoring-workspace {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  }
+
+  .assessment-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1200px) {
+
+  .monitoring-workspace {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .student-panel {
@@ -789,7 +830,7 @@ tbody tr:last-child td {
 
 @media (max-width: 680px) {
   .monitoring-page {
-    padding: 14px;
+    padding: 0;
   }
 
   .monitoring-header,
@@ -798,10 +839,20 @@ tbody tr:last-child td {
   }
 
   .filters,
-  .summary-grid,
-  .assessment-metrics,
   .student-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .summary-grid,
+  .assessment-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .summary-grid article,
+  .assessment-metrics article {
+    min-height: 78px;
+    padding: 12px;
   }
 
   .filter-actions,
@@ -811,13 +862,18 @@ tbody tr:last-child td {
   }
 
   .assessment-panel {
-    padding: 16px;
+    padding: 14px;
   }
 
   .monitoring-tabs {
-    margin-right: -14px;
-    margin-left: -14px;
-    padding: 0 14px;
+    margin-right: -12px;
+    margin-left: -12px;
+    padding: 0 12px 4px;
   }
+}
+
+@media (max-width: 380px) {
+  .summary-grid,
+  .assessment-metrics { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

@@ -58,7 +58,8 @@ Authenticated API routes use `auth:sanctum` and `client.platform` before their r
 | Section offering/schedule | `sections`, `section_subjects` | Term-specific Section and scheduled subject data |
 | Event definition/audience | `events`, `event_audiences` | Optional sub-events remain Events linked to a parent |
 | Event attendance | `event_attendances` | QR and manual records converge on one attendance model |
-| Physical file location | `student_record_locations` | Current physical record location and history |
+| Physical file location | `student_record_locations` | Current physical record location |
+| Student Records audit history | `student_record_audit_events` | Actor-linked profile/status changes, physical record movements, and document file/status actions |
 
 Student Records shows the approved current Enrollment Application Section before finalization. Once finalized, `enrollments.section_id` is authoritative. Student Settings now follows the same finalized active-term rule, uses `academic_years.school_year`, and labels fallback data as `latest`.
 

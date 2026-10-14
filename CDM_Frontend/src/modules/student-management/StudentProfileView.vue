@@ -29,6 +29,7 @@ const locationLoading = ref(false)
 const locationSaving = ref(false)
 const locationError = ref('')
 const locationForm = reactive({ cabinet_slot_id: '', remarks: '' })
+const historyPanel = ref(null)
 const text = (value) =>
   value
     ? String(value)
@@ -150,13 +151,21 @@ function viewCabinet() {
   })
 }
 
+function scrollTo(sectionId) {
+  document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function showRecordActivity() {
+  historyPanel.value?.showRecordActivity()
+  scrollTo('academic-history')
+}
+
 function returnToSource() {
   if (returnContext.value) router.push(returnContext.value.to)
 }
 
 function startEdit() {
   Object.assign(form, {
-    student_number: student.value.student_number || '',
     first_name: student.value.profile?.first_name || '',
     middle_name: student.value.profile?.middle_name || '',
     last_name: student.value.profile?.last_name || '',
@@ -167,8 +176,6 @@ function startEdit() {
     nationality: student.value.profile?.nationality || '',
     contact_number: student.value.profile?.contact_number || '',
     address: student.value.profile?.address || '',
-    course_id: student.value.course?.id || '',
-    year_level: student.value.year_level,
     student_status: student.value.student_status,
   })
   validationErrors.value = {}
@@ -216,7 +223,7 @@ onMounted(loadProfile)
 
   <section v-if="loading" class="record-card state">Loading student profile…</section>
   <section v-else-if="error && !student" class="record-card state error" role="alert">
-    {{ error }}
+    {{ error }} <button type="button" @click="loadProfile">Retry</button>
   </section>
 
   <template v-else-if="student">
@@ -273,7 +280,9 @@ onMounted(loadProfile)
       <button v-if="!editMode && !returnContext" class="back" type="button" @click="router.push({ name: 'student-management' })">
         ← Back to Student List
       </button>
-      <button v-if="!editMode" type="button" @click="startEdit">✏ Edit Student</button>
+      <button v-if="!editMode" type="button" @click="startEdit">✏ Edit Allowed Profile Information</button>
+      <button v-if="!editMode" type="button" @click="scrollTo('academic-history')">Academic History</button>
+      <button v-if="!editMode" type="button" @click="scrollTo('physical-record')">Physical Record</button>
       <button
         v-if="!editMode"
         type="button"
@@ -281,14 +290,34 @@ onMounted(loadProfile)
       >
         📁 Documents
       </button>
-      <button v-if="!editMode" type="button" disabled>🖨 Print</button>
+      <button v-if="!editMode" type="button" @click="showRecordActivity">Activity History</button>
+      <button v-if="!editMode" type="button" @click="router.push({ name: 'student-record-reports', query: { search: student.student_number } })">Reports</button>
       <button v-if="editMode" type="button" @click="cancelEdit">Cancel</button>
       <button v-if="editMode" class="back" type="button" :disabled="saving" @click="saveChanges">
         {{ saving ? 'Saving…' : 'Save Changes' }}
       </button>
     </nav>
 
-    <section class="record-card">
+    <section class="record-health" aria-label="Student record completeness">
+      <div>
+        <p class="section-kicker">Record health</p>
+        <h2><span class="completeness-badge" :class="student.record_completeness?.status">{{ student.record_completeness?.label || 'Unavailable' }}</span></h2>
+      </div>
+      <ul v-if="student.record_completeness?.issues?.length">
+        <li v-for="issue in student.record_completeness.issues" :key="issue.key">{{ issue.label }}</li>
+      </ul>
+      <p v-else>All tracked Student Records information is complete.</p>
+    </section>
+
+    <section v-if="student.duplicate_warnings?.length" class="duplicate-warning" role="status">
+      <strong>Possible duplicate identity — review only</strong>
+      <p>This warning does not merge or change records.</p>
+      <button v-for="warning in student.duplicate_warnings" :key="warning.student_id" type="button" @click="router.push({ name: 'student-details', params: { id: warning.student_id } })">
+        Compare {{ warning.student_number }} · {{ warning.student_name }}
+      </button>
+    </section>
+
+    <section id="personal-information" class="record-card">
       <h2>Personal Information</h2>
       <dl class="information-grid">
         <div>
@@ -381,19 +410,11 @@ onMounted(loadProfile)
       <dl class="information-grid">
         <div>
           <dt>Student Number</dt>
-          <dd>
-            <input v-if="editMode" v-model.trim="form.student_number" maxlength="20" />
-            <template v-else>{{ student.student_number }}</template>
-            <small v-if="validationErrors.student_number">{{ validationErrors.student_number[0] }}</small>
-          </dd>
+          <dd>{{ student.student_number }}</dd>
         </div>
         <div>
           <dt>Course</dt>
-          <dd>
-            <input v-if="editMode" v-model.number="form.course_id" type="number" min="1" />
-            <template v-else>{{ student.course?.code }} — {{ student.course?.name }}</template>
-            <small v-if="validationErrors.course_id">{{ validationErrors.course_id[0] }}</small>
-          </dd>
+          <dd>{{ student.course?.code }} — {{ student.course?.name }}</dd>
         </div>
         <div>
           <dt>Curriculum</dt>
@@ -405,11 +426,7 @@ onMounted(loadProfile)
         </div>
         <div>
           <dt>Year Level</dt>
-          <dd>
-            <input v-if="editMode" v-model.number="form.year_level" type="number" min="1" max="20" />
-            <template v-else>Year {{ student.year_level }}</template>
-            <small v-if="validationErrors.year_level">{{ validationErrors.year_level[0] }}</small>
-          </dd>
+          <dd>Year {{ student.current_enrollment?.year_level || student.year_level }}</dd>
         </div>
         <div>
           <dt>Student Status</dt>
@@ -489,7 +506,7 @@ onMounted(loadProfile)
       </dl>
     </section>
 
-    <section class="record-card physical-location-card">
+    <section id="physical-record" class="record-card physical-location-card">
       <div class="section-heading">
         <div>
           <p class="section-kicker">Paper records storage</p>
@@ -505,6 +522,10 @@ onMounted(loadProfile)
 
       <div v-if="physicalLocation && !locationEditing" class="location-summary">
         <div>
+          <span>Availability</span>
+          <strong>{{ text(student.physical_record_locator?.availability) }}</strong>
+        </div>
+        <div>
           <span>Cabinet</span>
           <strong>{{ physicalLocation.cabinet_slot.cabinet.cabinet_code }}</strong>
         </div>
@@ -519,6 +540,14 @@ onMounted(loadProfile)
         <div class="location-remarks">
           <span>Remarks</span>
           <strong>{{ physicalLocation.remarks || 'No remarks' }}</strong>
+        </div>
+        <div>
+          <span>Last Movement</span>
+          <strong>{{ student.physical_record_locator?.last_moved_at ? new Date(student.physical_record_locator.last_moved_at).toLocaleString() : 'No movement recorded' }}</strong>
+        </div>
+        <div>
+          <span>Moved By</span>
+          <strong>{{ student.physical_record_locator?.last_moved_by || 'Not recorded' }}</strong>
         </div>
       </div>
       <p v-else-if="!locationEditing" class="empty-state">No physical record location assigned.</p>
@@ -559,7 +588,7 @@ onMounted(loadProfile)
       </form>
     </section>
 
-    <section class="record-card">
+    <section id="student-documents" class="record-card">
       <div class="section-heading">
         <h2>Document Records</h2>
         <button
@@ -593,7 +622,9 @@ onMounted(loadProfile)
       </div>
     </section>
 
-    <StudentAcademicHistory :student-id="student.id" />
+    <div id="academic-history">
+      <StudentAcademicHistory ref="historyPanel" :student-id="student.id" />
+    </div>
 
     <section class="record-card">
       <h2>Recent Document Requests</h2>
@@ -628,7 +659,7 @@ onMounted(loadProfile)
   align-self: flex-start;
   background: transparent;
   border: 0;
-  color: var(--color-dartmouth-green);
+  color: var(--accent);
   cursor: pointer;
   display: inline-flex;
   font-weight: 800;
@@ -646,9 +677,28 @@ onMounted(loadProfile)
   margin-bottom: 20px;
   padding: 24px;
 }
+.record-health,
+.duplicate-warning {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  margin-bottom: 20px;
+  padding: 18px 22px;
+}
+.record-health { align-items: start; display: grid; gap: 18px; grid-template-columns: minmax(180px, .55fr) 1fr; }
+.record-health h2,.record-health p { margin: 4px 0; }
+.record-health ul { color: var(--color-muted); margin: 0; padding-left: 20px; }
+.completeness-badge { border-radius: 999px; display: inline-flex; font-size: .82rem; padding: 6px 10px; }
+.completeness-badge.complete { background: var(--success-bg); color: var(--success); }
+.completeness-badge.needs_attention { background: var(--warning-bg); color: var(--warning); }
+.completeness-badge.incomplete { background: var(--danger-bg); color: var(--danger); }
+.duplicate-warning { background: var(--warning-bg); color: var(--warning); }
+.duplicate-warning p { margin: 5px 0 10px; }
+.duplicate-warning button { background: var(--color-surface); border: 1px solid currentColor; border-radius: 7px; color: inherit; cursor: pointer; margin: 4px 8px 0 0; padding: 8px 10px; }
 .student-id-card {
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
   border-radius: 18px;
   box-shadow: 0 14px 32px rgba(16, 86, 50, 0.14);
   margin-bottom: 20px;
@@ -674,15 +724,15 @@ onMounted(loadProfile)
 }
 .id-card-body {
   align-items: center;
-  background: linear-gradient(135deg, #fff 0%, #f0f8f2 72%, #fff7d6 100%);
+  background: linear-gradient(135deg, var(--surface-1) 0%, var(--surface-2) 72%, color-mix(in srgb, var(--warning-bg) 46%, var(--surface-1)) 100%);
   display: grid;
   gap: 24px;
   grid-template-columns: auto 1fr auto;
   padding: 26px;
 }
 .id-photo-frame {
-  background: #fff;
-  border: 5px solid #fff;
+  background: var(--surface-3);
+  border: 5px solid var(--surface-3);
   border-radius: 14px;
   box-shadow: 0 5px 18px rgba(0, 0, 0, 0.16);
   height: 145px;
@@ -718,7 +768,7 @@ onMounted(loadProfile)
   margin: 4px 0;
 }
 .id-number {
-  color: var(--color-dartmouth-green);
+  color: var(--accent);
   font-size: 1rem;
   font-weight: 800;
   margin: 0 0 15px;
@@ -746,14 +796,14 @@ onMounted(loadProfile)
 }
 .id-account {
   align-self: start;
-  background: #fff;
+  background: var(--surface-1);
   border: 1px solid var(--color-border);
   border-radius: 9px;
   padding: 9px 12px;
   text-align: right;
 }
 .id-account strong {
-  color: var(--color-dartmouth-green);
+  color: var(--accent);
   font-size: 0.85rem;
 }
 .badge {
@@ -766,23 +816,23 @@ onMounted(loadProfile)
 .student-status,
 .badge.available,
 .badge.released {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--success-bg);
+  color: var(--success);
 }
 .badge.missing,
 .badge.rejected,
 .badge.cancelled {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 .badge.pending {
-  background: #fff4cc;
-  color: #8a6100;
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 .badge.processing,
 .badge.ready_for_release {
-  background: #e0f2fe;
-  color: #075985;
+  background: var(--info-bg);
+  color: var(--info);
 }
 .action-bar {
   display: flex;
@@ -795,7 +845,7 @@ onMounted(loadProfile)
   background: var(--color-green-tint);
   border: 1px solid transparent;
   border-radius: 7px;
-  color: var(--color-dartmouth-green);
+  color: var(--accent);
   cursor: pointer;
   min-height: 40px;
   padding: 8px 13px;
@@ -862,7 +912,7 @@ onMounted(loadProfile)
   margin: 2px 0 0;
 }
 .section-kicker {
-  color: var(--color-dark-spring-green);
+  color: var(--accent);
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.09em;
@@ -882,7 +932,7 @@ onMounted(loadProfile)
   margin-top: 18px;
 }
 .location-summary > div {
-  background: linear-gradient(135deg, #f4faf6, #fffdf3);
+  background: linear-gradient(135deg, var(--surface-2), color-mix(in srgb, var(--warning-bg) 38%, var(--surface-1)));
   border: 1px solid var(--color-border);
   border-radius: 9px;
   padding: 13px;
@@ -896,7 +946,7 @@ onMounted(loadProfile)
   text-transform: uppercase;
 }
 .location-summary strong {
-  color: var(--color-dartmouth-green);
+  color: var(--accent);
 }
 .location-summary .location-remarks {
   grid-column: 1 / -1;
@@ -934,7 +984,7 @@ onMounted(loadProfile)
   background: var(--color-green-tint);
   border: 0;
   border-radius: 7px;
-  color: var(--color-dartmouth-green);
+  color: var(--accent);
   cursor: pointer;
   min-height: 40px;
   padding: 8px 13px;
@@ -985,13 +1035,13 @@ onMounted(loadProfile)
   padding: 12px;
 }
 .success {
-  background: #e2f4e7;
-  color: #106a2e;
+  background: var(--success-bg);
+  color: var(--success);
 }
 .save-error,
 .error {
-  background: #fce8e8;
-  color: #9c2222;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 .state {
   color: var(--color-muted);

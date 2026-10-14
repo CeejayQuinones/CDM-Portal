@@ -1,5 +1,21 @@
 # Enrollment foundation and Admission handoff
 
+## Lifecycle update — Admission handoff Phase 1 (2026-10-09)
+
+Admission completion now yields an authoritative admitted Guest, not a Student.
+The same User and profile remain active with the Guest role; no Student row or
+student number is created. A completed admitted Guest may open Enrollment status,
+where the accepted Course and Curriculum are shown and application creation is
+explicitly disabled pending Phase 2. Existing Students, including identities made
+under the earlier conversion flow and continuing Students without Admission history,
+remain supported without mutation.
+
+The completion signal is derived on the server from the accepted current applicant,
+published passing latest result, matching versioned acceptance decision, and active
+Course/Curriculum. It is not inferred from local storage or a client-supplied flag.
+Phase 2 will define Student creation and official number allocation at Enrollment
+finalization. That identity transition is not implemented in this phase.
+
 ## Current status — Phase 3
 
 The foundation below is retained as the Phase 1 design/validation record.
@@ -69,29 +85,26 @@ semester_id is the academic term identity.
 ## Admission -> Enrollment handoff
 
 Guest -> Admission application -> entrance exam -> published passing result ->
-program/curriculum acceptance -> atomic Student conversion -> normal sign-in as
-Student -> Enrollment status available.
+program/curriculum acceptance -> admitted Guest -> Enrollment handoff available.
 
-Conversion remains solely in AdmissionConversionService. Its transaction creates
-one Student with the same users.id and user_profiles.id, accepted course and
-curriculum, official number, year_level=1 and student_status=regular; changes
-Guest to Student; marks converted_student_id/converted_at; records the decision;
-and revokes old tokens. Enrollment neither calls conversion nor creates User,
-Profile or Student. No second credentials or password reset.
+Admission completion creates no User, Profile or Student, assigns no official
+number, changes no role, and does not revoke the Guest session. Enrollment checks
+the authoritative accepted applicant, published pass, matching acceptance decision,
+and active program/curriculum. Phase 1 presents that handoff but cannot persist a
+first-time application while `enrollment_applications.student_id` is mandatory.
 
-Enrollment checks the persisted handoff, never recalculates exam scores or
-replays acceptance rules. Admission-origin identities must have a converted
-application linked to the same Student and a student_converted decision.
-Valid legacy Students without Admission applications remain supported.
+Existing converted Students are compatibility cases: their linked Student and
+`student_converted` decision remain valid. Valid continuing Students without
+Admission applications also remain supported.
 Current Student academic links are authoritative after any later authorized
 academic change; historic Admission program data is not overwritten.
 
 ## Eligibility contract
 
-Only an authenticated active Student may read their own endpoint; caller IDs
-cannot select another Student. Guests, Professors, Admin and Registrar are not
-granted student-only endpoint access. Existing staff Enrollment placeholder
-navigation does not grant API review/configuration permissions.
+An authenticated active Student may read their own status. An active admitted
+Guest may read only the Phase 1 handoff status; ordinary Guests remain denied and
+cannot select another identity. Professors, Admin and Registrar retain their
+existing Enrollment boundaries.
 
 Academic readiness requires:
 - exactly the existing Student, with a matching owned UserProfile;
@@ -244,7 +257,7 @@ Guest and Professor navigation/access remain excluded.
 
 ## Validation scope
 
-Backend tests exercise actual Admission acceptance/conversion before status
+Backend tests exercise the authoritative admitted-Guest handoff before status
 lookup, valid legacy Students, active-role boundaries, record/profile/program/
 curriculum prerequisites, academic status restrictions, incomplete conversion,
 unconfigured/closed periods, existing same-term records and the real database
