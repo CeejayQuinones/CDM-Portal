@@ -18,7 +18,8 @@ return [
     'quiz_critical_percent' => (float) env('MONITORING_QUIZ_CRITICAL_PERCENT', 60),
 
     /*
-    | Grade risk, period drop, weak quizzes, incomplete/missing work.
+    | Grade risk, period drop, weak graded scores, incomplete/missing work.
+    | A graded score is any recorded class score, not only a quiz.
     | Weights should sum to 1.
     */
     'weights' => [

@@ -1,5 +1,4 @@
 export const ROLES = Object.freeze({
-  GUEST: 'Guest',
   STUDENT: 'Student',
   PROFESSOR: 'Professor',
   REGISTRAR_STAFF: 'Registrar Staff',
@@ -7,7 +6,6 @@ export const ROLES = Object.freeze({
 })
 
 export const ROLE_DASHBOARDS = Object.freeze({
-  [ROLES.GUEST]: '/guest-dashboard',
   [ROLES.STUDENT]: '/student-dashboard',
   [ROLES.PROFESSOR]: '/professor-dashboard',
   [ROLES.REGISTRAR_STAFF]: '/registrar-dashboard',
@@ -18,19 +16,16 @@ export const dashboardForRole = (role) => ROLE_DASHBOARDS[role] || '/unauthorize
 
 export const ROUTE_ROLES = Object.freeze({
   home: Object.values(ROLES),
-  'guest-dashboard': [ROLES.GUEST],
   'student-dashboard': [ROLES.STUDENT],
   'professor-dashboard': [ROLES.PROFESSOR],
   'registrar-dashboard': [ROLES.REGISTRAR_STAFF],
   'admin-dashboard': [ROLES.ADMIN],
-  'guest-profile': [ROLES.GUEST],
   'student-document-requests': [ROLES.STUDENT],
   'student-document-appointments': [ROLES.STUDENT],
   'registrar-document-types': [ROLES.REGISTRAR_STAFF],
   'registrar-document-requests': [ROLES.REGISTRAR_STAFF],
   'registrar-document-appointments': [ROLES.REGISTRAR_STAFF],
   'registrar-document-request-history': [ROLES.REGISTRAR_STAFF],
-  'activate-student-account': [ROLES.GUEST],
   settings: [ROLES.STUDENT],
   admission: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   enrollment: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
@@ -48,20 +43,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
     path: '/registrar-dashboard',
     icon: 'DB',
     roles: ROUTE_ROLES['registrar-dashboard'],
-  },
-  {
-    name: 'guest-dashboard',
-    label: 'Dashboard',
-    path: '/guest-dashboard',
-    icon: 'DB',
-    roles: ROUTE_ROLES['guest-dashboard'],
-  },
-  {
-    name: 'guest-profile',
-    label: 'My Profile',
-    path: '/profile',
-    icon: 'PR',
-    roles: ROUTE_ROLES['guest-profile'],
   },
   {
     name: 'document-requests-menu',
@@ -100,14 +81,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
         roles: ROUTE_ROLES['registrar-document-request-history'],
       },
     ],
-  },
-  {
-    name: 'activate-student-account',
-    label: 'Activate Student Account',
-    path: '/activate-student-account',
-    icon: 'AC',
-    roles: ROUTE_ROLES['activate-student-account'],
-    comingSoon: true,
   },
   {
     name: 'student-dashboard',

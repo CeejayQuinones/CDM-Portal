@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Grade;
 use App\Models\MonitoringPerformanceRecord;
 use App\Models\MonitoringSentPlan;
 use App\Models\RiskNotification;
@@ -140,9 +141,9 @@ class MonitoringController extends Controller
     public function storePerformanceRecord(Request $request, int $student): JsonResponse
     {
         $role = $request->user()->role?->role_name;
-        $allowed = [Role::PROFESSOR, Role::STUDENT, Role::ADMIN, Role::REGISTRAR_STAFF];
+        $allowed = [Role::PROFESSOR, Role::STUDENT];
         if (! in_array($role, $allowed, true)) {
-            return $this->forbidden('You cannot add monitoring files/records with this account.');
+            return $this->forbidden('Class scores are recorded by the professor. Registrar staff approve the official grade, and admin only views the record.');
         }
 
         if ($role === Role::STUDENT) {
@@ -260,11 +261,56 @@ class MonitoringController extends Controller
         ]);
     }
 
+    public function submittedGrades(Request $request): JsonResponse
+    {
+        $role = $request->user()->role?->role_name;
+        if (! in_array($role, [Role::REGISTRAR_STAFF, Role::ADMIN], true)) {
+            return $this->forbidden('Submitted grades are reviewed by the registrar. Admin may view the queue.');
+        }
+
+        $grades = Grade::query()
+            ->with([
+                'gradingPeriod:id,period_name',
+                'enrollmentSubject.subject:id,subject_code,subject_name',
+                'enrollmentSubject.enrollment.student.userProfile',
+            ])
+            ->where('status', 'submitted')
+            ->orderBy('submitted_at')
+            ->limit(100)
+            ->get()
+            ->map(fn (Grade $grade) => $this->submittedGrade($grade));
+
+        return $this->ok([
+            'grades' => $grades,
+            'can_approve' => $role === Role::REGISTRAR_STAFF,
+        ]);
+    }
+
+    public function approveGrade(Request $request, int $grade): JsonResponse
+    {
+        if ($request->user()->role?->role_name !== Role::REGISTRAR_STAFF) {
+            return $this->forbidden('Only registrar staff can approve a grade onto the official record.');
+        }
+
+        $row = Grade::query()->with('gradingPeriod:id,period_name')->find($grade);
+        if (! $row || $row->status !== 'submitted') {
+            return $this->notFound('That grade is not waiting for registrar approval.');
+        }
+
+        $row->update(['status' => 'approved']);
+
+        return $this->ok($this->submittedGrade($row->fresh([
+            'gradingPeriod:id,period_name',
+            'enrollmentSubject.subject:id,subject_code,subject_name',
+            'enrollmentSubject.enrollment.student.userProfile',
+        ])));
+    }
+
     public function generateGradeStudyPlan(Request $request, int $student): JsonResponse
     {
         $role = $request->user()->role?->role_name;
-        if (! in_array($role, [Role::PROFESSOR, Role::ADMIN, Role::REGISTRAR_STAFF], true)) {
-            return $this->forbidden('Only professors, admins, and registrar staff can generate study plans from grades.');
+        if ($role !== Role::PROFESSOR) {
+            return $this->forbidden('Only a professor can draft a study plan. Registrar staff approve grades, and admin only views the record.');
         }
         if ($response = $this->authorizeStudent($request, $student)) {
             return $response;
@@ -671,6 +717,26 @@ class MonitoringController extends Controller
             'is_read' => (bool) $n->read_at,
             'read_at' => $n->read_at?->toIso8601String(),
             'created_at' => $n->created_at?->toIso8601String(),
+        ];
+    }
+
+    private function submittedGrade(Grade $grade): array
+    {
+        $student = $grade->enrollmentSubject?->enrollment?->student;
+        $profile = $student?->userProfile;
+        $name = trim(implode(' ', array_filter([$profile?->first_name, $profile?->last_name])));
+
+        return [
+            'id' => $grade->id,
+            'student_name' => $name !== '' ? $name : 'Student',
+            'student_number' => $student?->student_number,
+            'subject_code' => $grade->enrollmentSubject?->subject?->subject_code,
+            'subject_name' => $grade->enrollmentSubject?->subject?->subject_name,
+            'period' => $grade->gradingPeriod?->period_name,
+            'grade' => $grade->grade,
+            'remarks' => $grade->remarks,
+            'status' => $grade->status,
+            'submitted_at' => $grade->submitted_at?->toIso8601String(),
         ];
     }
 

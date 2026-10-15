@@ -30,7 +30,7 @@ test('web app allows every portal role', () => {
 
 test('mobile app allows students and blocks staff roles', () => {
   assert.equal(shellBlockMessage(APP_SHELLS.MOBILE, ROLES.STUDENT), '')
-  for (const role of [ROLES.PROFESSOR, ROLES.ADMIN, ROLES.REGISTRAR_STAFF, ROLES.GUEST]) {
+  for (const role of [ROLES.PROFESSOR, ROLES.ADMIN, ROLES.REGISTRAR_STAFF]) {
     assert.equal(shellBlockMessage(APP_SHELLS.MOBILE, role), MOBILE_SHELL_MESSAGE)
   }
 })
@@ -40,5 +40,4 @@ test('desktop app allows staff roles and blocks students', () => {
     assert.equal(shellBlockMessage(APP_SHELLS.DESKTOP, role), '')
   }
   assert.equal(shellBlockMessage(APP_SHELLS.DESKTOP, ROLES.STUDENT), DESKTOP_SHELL_MESSAGE)
-  assert.equal(shellBlockMessage(APP_SHELLS.DESKTOP, ROLES.GUEST), DESKTOP_SHELL_MESSAGE)
 })

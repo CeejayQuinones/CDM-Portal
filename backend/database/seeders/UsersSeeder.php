@@ -12,7 +12,6 @@ class UsersSeeder extends Seeder
     public function run(): void
     {
         $roleNames = [
-            'Guest',
             'Admin',
             'Registrar Staff',
             'Professor',
@@ -30,7 +29,6 @@ class UsersSeeder extends Seeder
         }
 
         $users = [
-            ['username' => 'ken', 'password' => 'ken123!', 'role' => 'Guest'],
             ['username' => 'admin', 'password' => 'Admin123!', 'role' => 'Admin'],
             ['username' => 'registrar1', 'password' => 'Registrar123!', 'role' => 'Registrar Staff'],
             ['username' => 'professor1', 'password' => 'Professor123!', 'role' => 'Professor'],

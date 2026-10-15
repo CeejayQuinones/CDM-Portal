@@ -27,7 +27,7 @@ class StudentSettingsTest extends TestCase
 
     public function test_non_student_roles_are_denied(): void
     {
-        foreach ([Role::GUEST, Role::REGISTRAR_STAFF, Role::PROFESSOR, Role::ADMIN] as $roleName) {
+        foreach ([Role::REGISTRAR_STAFF, Role::PROFESSOR, Role::ADMIN] as $roleName) {
             $role = Role::query()->firstOrCreate(['role_name' => $roleName]);
             $user = User::factory()->create(['role_id' => $role->id]);
             $this->actingAs($user)->getJson('/api/student/settings')->assertForbidden();

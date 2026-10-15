@@ -20,7 +20,6 @@ const ROLE_FILTERS = [
   { value: 'Registrar Staff', label: 'Registrar' },
   { value: 'Professor', label: 'Professor' },
   { value: 'Student', label: 'Student' },
-  { value: 'Guest', label: 'Guest' },
 ]
 
 const STATUS_FILTERS = [
@@ -113,7 +112,6 @@ function roleTone(roleName) {
     'Registrar Staff': 'amber',
     Professor: 'blue',
     Student: 'teal',
-    Guest: 'muted',
   }
   return map[roleName] || 'muted'
 }
@@ -153,7 +151,7 @@ onMounted(loadUsers)
         <p class="admin-kicker">Administration</p>
         <h1 class="admin-title">Admin Dashboard</h1>
         <p class="admin-description">
-          View every portal account — professors, registrar staff, students, admins, and guests.
+          View every portal account — professors, registrar staff, students, and admins.
         </p>
         <div class="admin-meta">
           <span class="admin-pill">

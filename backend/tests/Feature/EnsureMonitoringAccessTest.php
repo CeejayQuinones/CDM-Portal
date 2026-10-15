@@ -39,7 +39,7 @@ class EnsureMonitoringAccessTest extends TestCase
 
     public static function deniedRoles(): array
     {
-        return [[Role::GUEST]];
+        return [['Guest']];
     }
 
     private function runMiddleware(string $roleName): Response

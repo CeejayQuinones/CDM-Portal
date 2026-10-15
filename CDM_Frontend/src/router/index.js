@@ -10,11 +10,9 @@ const DashboardView = () => import('../views/DashboardView.vue')
 const LoginView = () => import('../views/LoginView.vue')
 const PublicLegalView = () => import('../views/PublicLegalView.vue')
 const UnauthorizedView = () => import('../views/UnauthorizedView.vue')
-const GuestDashboardView = () => import('../views/GuestDashboardView.vue')
 const RoleDashboardView = () => import('../views/RoleDashboardView.vue')
 const StudentDashboardView = () => import('../views/StudentDashboardView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
-const ComingSoonView = () => import('../views/ComingSoonView.vue')
 const AdmissionView = () => import('../modules/admission/AdmissionView.vue')
 const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
 const GradingView = () => import('../modules/grading/GradingView.vue')
@@ -52,12 +50,6 @@ const routes = [
         component: LoginView,
         meta: { title: 'Sign in', guestOnly: true },
       },
-      {
-        path: '/register',
-        name: 'register',
-        redirect: { name: 'login', query: { signup: '1' } },
-        meta: { title: 'Register', guestOnly: true },
-      },
     ],
   },
   {
@@ -88,15 +80,6 @@ const routes = [
         name: 'settings',
         component: SettingsView,
         meta: { title: 'Settings', roles: [ROLES.STUDENT] },
-      }),
-      protectedRoute({
-        path: 'guest-dashboard',
-        name: 'guest-dashboard',
-        component: GuestDashboardView,
-        meta: {
-          title: 'Guest Dashboard',
-          roles: ROUTE_ROLES['guest-dashboard'],
-        },
       }),
       protectedRoute({
         path: 'student-dashboard',
@@ -133,30 +116,6 @@ const routes = [
         meta: {
           title: 'Admin Dashboard',
           roles: ROUTE_ROLES['admin-dashboard'],
-        },
-      }),
-      protectedRoute({
-        path: 'profile',
-        name: 'guest-profile',
-        component: ComingSoonView,
-        props: {
-          title: 'My Profile',
-          description: 'Profile management will be delivered by its assigned module team.',
-        },
-        meta: { title: 'My Profile', roles: ROUTE_ROLES['guest-profile'] },
-      }),
-      protectedRoute({
-        path: 'activate-student-account',
-        name: 'activate-student-account',
-        component: ComingSoonView,
-        props: {
-          title: 'Activate Student Account',
-          description:
-            'Student account activation will be available after registrar verification workflows are released.',
-        },
-        meta: {
-          title: 'Activate Student Account',
-          roles: ROUTE_ROLES['activate-student-account'],
         },
       }),
       protectedRoute({

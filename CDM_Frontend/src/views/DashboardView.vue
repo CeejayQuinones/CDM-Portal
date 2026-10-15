@@ -19,7 +19,6 @@ const MODULE_META = {
 
 const DASHBOARD_NAMES = new Set([
   'dashboard',
-  'guest-dashboard',
   'student-dashboard',
   'professor-dashboard',
   'registrar-dashboard',

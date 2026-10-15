@@ -95,33 +95,6 @@ const ROLE_COPY = {
       'Use Student Management for records and document review.',
     ],
   },
-  Guest: {
-    kicker: 'Applicant portal',
-    title: 'Guest Dashboard',
-    description: 'Complete your profile and prepare for student account activation.',
-    highlights: [
-      {
-        label: 'Profile',
-        detail: 'Keep your details current',
-        icon: 'M5 20v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2M12 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
-      },
-      {
-        label: 'Activation',
-        detail: 'Ready your student account',
-        icon: 'M12 3l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V7l8-4z',
-      },
-      {
-        label: 'Support',
-        detail: 'Registrar assistance',
-        icon: 'M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z',
-      },
-    ],
-    tips: [
-      'Review My Profile to confirm personal information.',
-      'Prepare required documents before activation.',
-      'Contact the registrar if account activation is delayed.',
-    ],
-  },
 }
 
 const MODULE_META = {
@@ -161,18 +134,9 @@ const MODULE_META = {
     description: 'Cabinets and physical file locations',
     icon: 'M4 5h16v15H4zM4 10h16M9 7.5h6M9 14h6',
   },
-  'guest-profile': {
-    description: 'Update your applicant information',
-    icon: 'M5 20v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2M12 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
-  },
-  'activate-student-account': {
-    description: 'Begin student account activation',
-    icon: 'M12 3l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V7l8-4z',
-  },
 }
 
 const DASHBOARD_ROUTE_NAMES = new Set([
-  'guest-dashboard',
   'student-dashboard',
   'professor-dashboard',
   'registrar-dashboard',

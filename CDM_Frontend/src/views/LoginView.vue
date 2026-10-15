@@ -1,7 +1,6 @@
 <script setup>
 import { nextTick, onMounted, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import RegistrationWizard from '../components/RegistrationWizard.vue'
 import { useAuthStore } from '../stores/authStore'
 import { dashboardForRole } from '../utils/roleDashboard'
 import { APP_SHELLS, SHELL_BLOCK_STORAGE_KEY, detectAppShell, shellBlockMessage } from '../config/appShell'
@@ -15,8 +14,6 @@ const errors = ref({})
 const formError = ref('')
 const isLoading = ref(false)
 const showPassword = ref(false)
-const showRegistration = ref(route.query.signup === '1')
-const registrationSuccess = ref(Boolean(route.query.registered))
 const mobileMenuOpen = ref(false)
 
 // Placeholder homepage content: replace these arrays when a CMS or announcements backend is introduced.
@@ -84,12 +81,6 @@ const submit = async () => {
     isLoading.value = false
   }
 }
-
-const registrationComplete = () => {
-  showRegistration.value = false
-  registrationSuccess.value = true
-  scrollTo('login')
-}
 </script>
 
 <template>
@@ -131,7 +122,6 @@ const registrationComplete = () => {
             <p class="card-kicker">Account access</p>
             <h2 id="login-title">Welcome back</h2>
             <p class="login-intro">Sign in with your campus credentials. {{ shellLabel }}.</p>
-            <p v-if="registrationSuccess" class="registration-success" role="status">Account created successfully. You can now sign in.</p>
             <form novalidate @submit.prevent="submit">
               <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
               <label for="username">Username</label>
@@ -141,8 +131,6 @@ const registrationComplete = () => {
               <div class="input-with-icon password-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="password" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Enter your password" :aria-invalid="Boolean(errors.password)" /><button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Hide' : 'Show' }}</button></div>
               <p v-if="errors.password" class="field-error">{{ errors.password }}</p>
               <button class="sign-in-button" type="submit" :disabled="isLoading">{{ isLoading ? 'Signing in…' : 'Sign in to portal' }} <span>→</span></button>
-              <div class="divider"><span>New to CDM Portal?</span></div>
-              <button class="sign-up-button" type="button" @click="showRegistration = true">Create a Guest account</button>
             </form>
             <p class="legal-links"><RouterLink to="/terms">Terms & Conditions</RouterLink><span>·</span><RouterLink to="/privacy">Privacy Policy</RouterLink></p>
           </aside>
@@ -193,12 +181,10 @@ const registrationComplete = () => {
         </div>
       </section>
 
-      <section class="cta-section"><div class="cta-seal"><img :src="logoUrl" alt="" /></div><div><p class="section-kicker">Ready when you are</p><h2>Your CDM services are one sign-in away.</h2><p>Access your account or register as a Guest to begin using available public portal services.</p></div><button class="yellow-button" type="button" @click="scrollTo('login')">Go to login <span>↑</span></button></section>
+      <section class="cta-section"><div class="cta-seal"><img :src="logoUrl" alt="" /></div><div><p class="section-kicker">Ready when you are</p><h2>Your CDM services are one sign-in away.</h2><p>Sign in with the account issued by the school.</p></div><button class="yellow-button" type="button" @click="scrollTo('login')">Go to login <span>↑</span></button></section>
     </main>
 
     <footer class="site-footer"><div class="footer-shell"><div class="footer-brand"><img :src="logoUrl" alt="Colegio de Montalban seal" /><div><strong>Colegio de Montalban</strong><span>CDM Portal</span></div></div><p>Centralized access to academic and registrar services.</p><nav aria-label="Legal links"><RouterLink to="/terms">Terms & Conditions</RouterLink><RouterLink to="/privacy">Privacy Policy</RouterLink></nav></div><div class="footer-bottom"><span>© 2026 Colegio de Montalban. Project portal.</span><span>Designed for the CDM community.</span></div></footer>
-
-    <RegistrationWizard v-if="showRegistration" @close="showRegistration = false" @registered="registrationComplete" />
   </div>
 </template>
 

@@ -4,35 +4,14 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class UserProfilesSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('user_profiles')->insert([
-
-            // Guest
-            [
-                'user_id' => 1,
-                'first_name' => 'Kenneth',
-                'middle_name' => null,
-                'last_name' => 'Gallaza',
-                'suffix' => null,
-                'gender' => 'Male',
-                'birth_date' => null,
-                'civil_status' => 'Single',
-                'email' => 'ken@example.com',
-                'contact_number' => null,
-                'address' => 'Rodriguez, Rizal',
-                'profile_photo' => null,
-                'nationality' => 'Filipino',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-
-            // Admin
-            [
-                'user_id' => 2,
+        $profiles = [
+            'admin' => [
                 'first_name' => 'System',
                 'middle_name' => null,
                 'last_name' => 'Administrator',
@@ -45,13 +24,8 @@ class UserProfilesSeeder extends Seeder
                 'address' => null,
                 'profile_photo' => null,
                 'nationality' => 'Filipino',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
-
-            // Registrar
-            [
-                'user_id' => 3,
+            'registrar1' => [
                 'first_name' => 'Maria',
                 'middle_name' => 'Santos',
                 'last_name' => 'Cruz',
@@ -64,13 +38,8 @@ class UserProfilesSeeder extends Seeder
                 'address' => 'Rodriguez, Rizal',
                 'profile_photo' => null,
                 'nationality' => 'Filipino',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
-
-            // Professor
-            [
-                'user_id' => 4,
+            'professor1' => [
                 'first_name' => 'Juan',
                 'middle_name' => 'Dela',
                 'last_name' => 'Reyes',
@@ -83,13 +52,8 @@ class UserProfilesSeeder extends Seeder
                 'address' => 'Rodriguez, Rizal',
                 'profile_photo' => null,
                 'nationality' => 'Filipino',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
-
-            // Student
-            [
-                'user_id' => 5,
+            'student1' => [
                 'first_name' => 'John',
                 'middle_name' => 'A.',
                 'last_name' => 'Doe',
@@ -102,10 +66,26 @@ class UserProfilesSeeder extends Seeder
                 'address' => 'Rodriguez, Rizal',
                 'profile_photo' => null,
                 'nationality' => 'Filipino',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
+        ];
 
-        ]);
+        foreach ($profiles as $username => $profile) {
+            $userId = DB::table('users')->where('username', $username)->value('id');
+            if ($userId === null) {
+                throw new RuntimeException("The {$username} account could not be found. Run UsersSeeder before UserProfilesSeeder.");
+            }
+
+            $now = now();
+            $payload = $profile + ['updated_at' => $now];
+            $existing = DB::table('user_profiles')->where('user_id', $userId)->exists();
+            if ($existing) {
+                DB::table('user_profiles')->where('user_id', $userId)->update($payload);
+            } else {
+                DB::table('user_profiles')->insert($payload + [
+                    'user_id' => $userId,
+                    'created_at' => $now,
+                ]);
+            }
+        }
     }
 }

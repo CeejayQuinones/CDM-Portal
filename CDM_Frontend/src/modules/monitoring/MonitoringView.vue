@@ -11,6 +11,7 @@ import {
 } from './services/monitoringApi'
 import AiHelpChatbot from './components/AiHelpChatbot.vue'
 import ProfessorRecordPanel from './components/ProfessorRecordPanel.vue'
+import RegistrarGradePanel from './components/RegistrarGradePanel.vue'
 import StudentStudyStudio from './components/StudentStudyStudio.vue'
 
 const auth = useAuthStore()
@@ -26,7 +27,9 @@ const aiStatus = ref({ live_ai_configured: false, provider: 'gemini' })
 
 const isStudent = computed(() => auth.currentRole === ROLES.STUDENT)
 const isProfessor = computed(() => auth.currentRole === ROLES.PROFESSOR)
-const isAdmin = computed(() => auth.currentRole === ROLES.ADMIN || auth.currentRole === ROLES.REGISTRAR_STAFF)
+const isRegistrar = computed(() => auth.currentRole === ROLES.REGISTRAR_STAFF)
+const isAdmin = computed(() => auth.currentRole === ROLES.ADMIN)
+const seesSchoolList = computed(() => isRegistrar.value || isAdmin.value)
 
 const students = computed(() => data.value?.students || [])
 const filteredStudents = computed(() => {
@@ -45,11 +48,12 @@ const selected = computed(
 const title = computed(() => {
   if (isStudent.value) return 'My Academic Monitoring'
   if (isProfessor.value) return 'Faculty Monitoring'
-  return 'Academic Monitoring'
+  if (isRegistrar.value) return 'Registrar Records'
+  return 'Monitoring Overview'
 })
 
 watch(selected, (student) => {
-  if (student && !isStudent.value) loadPlans(student.student_id)
+  if (student && isProfessor.value) loadPlans(student.student_id)
   else sentPlans.value = []
 })
 
@@ -73,7 +77,7 @@ async function load() {
       data.value = await fetchMyRisk()
     } else {
       const params = {}
-      if (isAdmin.value) {
+      if (seesSchoolList.value) {
         if (filters.department) params.department = filters.department
         if (filters.course) params.course = filters.course
         if (filters.section) params.section = filters.section
@@ -128,8 +132,10 @@ onMounted(load)
             isStudent
               ? 'Upload a file and the AI writes a study guide automatically. You can still make flashcards or a quiz from the same file.'
               : isProfessor
-                ? 'Review assigned students, log weak topics, and send AI study plans.'
-                : 'Browse students by department, course, and section.'
+                ? 'Review students in your subjects, record every graded score, and send the study plan.'
+                : isRegistrar
+                  ? 'Approve the grades a professor submitted. You do not record class scores or send study plans.'
+                  : 'View the official school record. Approving grades is the registrar’s work, and study plans are the professor’s.'
           }}
         </p>
       </div>
@@ -150,7 +156,7 @@ onMounted(load)
       <div class="layout" :class="{ solo: isStudent }">
         <aside v-if="!isStudent" class="list">
           <input v-model="search" type="search" placeholder="Search student…" />
-          <template v-if="isAdmin">
+          <template v-if="seesSchoolList">
             <select v-model="filters.department" @change="load">
               <option value="">All departments</option>
               <option v-for="d in filterOptions.departments" :key="d" :value="d">{{ d }}</option>
@@ -213,8 +219,8 @@ onMounted(load)
                 <em>{{ selected.signals.trend_drop }}</em>
               </article>
               <article>
-                <strong>Quizzes</strong>
-                <span>{{ selected.signals.weak_quiz_count || 0 }} scored quizzes on this account</span>
+                <strong>Graded scores</strong>
+                <span>{{ selected.signals.weak_quiz_count || 0 }} scored records, not only quizzes</span>
                 <em>{{ selected.signals.weak_quizzes }}</em>
               </article>
               <article>
@@ -247,7 +253,7 @@ onMounted(load)
             <p v-else class="muted">No approved grades yet.</p>
           </div>
 
-          <div v-if="!isStudent" class="card">
+          <div v-if="isProfessor" class="card">
             <h3>Sent plans</h3>
             <article v-for="plan in sentPlans" :key="plan.id" class="plan" @click="openPlan(plan)">
               <strong>{{ plan.title }}</strong>
@@ -260,16 +266,21 @@ onMounted(load)
           <StudentStudyStudio v-if="isStudent" :key="`studio-${auth.currentUser?.id}`" />
 
           <ProfessorRecordPanel
-            v-if="selected && !isStudent"
+            v-if="selected && isProfessor"
             :key="`records-${auth.currentUser?.id}-${selected.student_id}`"
             :student-id="selected.student_id"
             :subjects="selected.subjects || []"
-            :viewer-role="isProfessor ? 'professor' : 'staff'"
+            viewer-role="professor"
             @sent="loadPlans(selected.student_id)"
           />
+
         </section>
 
-        <p v-else class="muted card">No academic record available.</p>
+        <p v-else-if="!isRegistrar" class="muted card">No academic record available.</p>
+
+        <div v-if="isRegistrar" class="card">
+          <RegistrarGradePanel :key="`registrar-${auth.currentUser?.id}`" />
+        </div>
       </div>
     </template>
 

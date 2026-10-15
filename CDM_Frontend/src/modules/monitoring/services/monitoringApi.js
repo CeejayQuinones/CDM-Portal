@@ -34,6 +34,11 @@ export const createPerformanceRecord = (studentId, formData) =>
     }),
   )
 
+export const fetchSubmittedGrades = () => unwrap(apiClient.get('/monitoring/grade-submissions'))
+
+export const approveSubmittedGrade = (gradeId) =>
+  unwrap(apiClient.post(`/monitoring/grades/${gradeId}/approve`))
+
 export const generateGradeStudyPlan = (studentId, subjectCode) =>
   unwrap(apiClient.post(`/monitoring/students/${studentId}/grade-plan`, { subject_code: subjectCode }))
 

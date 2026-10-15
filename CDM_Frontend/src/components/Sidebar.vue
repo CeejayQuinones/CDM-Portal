@@ -65,12 +65,10 @@ watch(
 const dashboardIcon = 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z'
 const iconPath = (name) =>
   ({
-    'guest-dashboard': dashboardIcon,
     'student-dashboard': dashboardIcon,
     'professor-dashboard': dashboardIcon,
     'registrar-dashboard': dashboardIcon,
     'admin-dashboard': dashboardIcon,
-    'guest-profile': 'M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z',
     'student-management': 'M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 10h.01M15 10h.01',
     'student-management-menu': 'M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 10h.01M15 10h.01',
     admission: 'M12 3v18M3 12h18',

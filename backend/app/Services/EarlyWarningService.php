@@ -118,7 +118,7 @@ class EarlyWarningService
             'enrollments.enrollmentSubjects.subject',
             'enrollments.enrollmentSubjects.grades' => fn ($q) => $q->where('status', 'approved'),
             'enrollments.enrollmentSubjects.grades.gradingPeriod',
-            'performanceRecords',
+            'performanceRecords.professor.role',
         ]);
     }
 
@@ -155,11 +155,34 @@ class EarlyWarningService
         ];
     }
 
+    /**
+     * Every numeric class score for this student. A study-file upload has no score, so it is left out.
+     *
+     * @return Collection<int, array{key: int, subject_code: string, subject_name: string, percent: float}>
+     */
+    private function gradedScores(Student $student): Collection
+    {
+        return $student->performanceRecords
+            ->filter(fn ($record) => (int) $record->student_id === (int) $student->id)
+            ->filter(fn ($record) => (int) ($student->user_id ?? 0) === 0 || (int) $record->professor_user_id !== (int) $student->user_id)
+            ->filter(fn ($record) => strtoupper((string) $record->subject_code) !== 'NOTES')
+            ->filter(fn ($record) => $record->score !== null && (float) $record->max_score > 0)
+            ->values()
+            ->map(fn ($record, int $index) => [
+                'key' => $index,
+                'subject_code' => (string) $record->subject_code,
+                'subject_name' => (string) ($record->subject_name ?: 'Subject'),
+                'percent' => round(((float) $record->score / (float) $record->max_score) * 100, 2),
+            ]);
+    }
+
     /** @return array<string,mixed> */
     private function assessment(Student $student): array
     {
         $subjects = [];
         $scores = [];
+        $usedScoreKeys = [];
+        $graded = $this->gradedScores($student);
         $latestEnrollment = $student->enrollments->sortByDesc('enrollment_date')->first();
         foreach ($student->enrollments as $enrollment) {
             foreach ($enrollment->enrollmentSubjects as $record) {
@@ -172,7 +195,16 @@ class EarlyWarningService
                     $periods[$periodName] = (float) $grade->grade;
                     $scores[] = (float) $grade->grade;
                 }
+                $subjectCode = $record->subject?->subject_code ?? 'N/A';
                 $values = array_values(array_filter($periods, fn ($v) => $v !== null));
+                foreach ($graded as $item) {
+                    if (isset($usedScoreKeys[$item['key']]) || strcasecmp($item['subject_code'], $subjectCode) !== 0) {
+                        continue;
+                    }
+                    $usedScoreKeys[$item['key']] = true;
+                    $values[] = $item['percent'];
+                    $scores[] = $item['percent'];
+                }
                 if (! $values) {
                     continue;
                 }
@@ -189,7 +221,7 @@ class EarlyWarningService
                     $level = 'moderate';
                 }
                 $subjects[] = [
-                    'subject_code' => $record->subject?->subject_code ?? 'N/A',
+                    'subject_code' => $subjectCode,
                     'subject_name' => $record->subject?->subject_name ?? 'Subject',
                     'periods' => $periods,
                     'average_grade' => $average,
@@ -201,18 +233,37 @@ class EarlyWarningService
                 ];
             }
         }
+        $unused = $graded->reject(fn (array $item) => isset($usedScoreKeys[$item['key']]));
+        foreach ($unused->groupBy(fn (array $item) => strtoupper($item['subject_code'])) as $code => $items) {
+            if ($code === '' || $code === 'NOTES') {
+                continue;
+            }
+            $values = $items->pluck('percent')->map(fn ($percent) => (float) $percent)->all();
+            foreach ($values as $value) {
+                $scores[] = $value;
+            }
+            $average = round(array_sum($values) / count($values), 2);
+            $level = $average < (float) config('monitoring.failing_average', 75)
+                ? 'high'
+                : ($average < (float) config('monitoring.watch_average', 82) ? 'moderate' : 'low');
+            $subjects[] = [
+                'subject_code' => $items->first()['subject_code'],
+                'subject_name' => $items->first()['subject_name'],
+                'periods' => ['Prelim' => null, 'Midterm' => null, 'Final' => null],
+                'average_grade' => $average,
+                'risk_level' => $level,
+                'risk_label' => ucfirst($level).' risk',
+                'status' => null,
+                'trend' => 'steady',
+                'missing_midterm' => false,
+            ];
+        }
         $average = $scores ? round(array_sum($scores) / count($scores), 2) : null;
         $prelim = collect($subjects)->pluck('periods.Prelim')->filter();
         $midterm = collect($subjects)->pluck('periods.Midterm')->filter();
         $trend = $prelim->isNotEmpty() && $midterm->isNotEmpty() && $midterm->avg() <= $prelim->avg() - (float) config('monitoring.decline_points', 3) ? 'declining' : 'steady';
 
-        $quizPercents = $student->performanceRecords
-            ->filter(fn ($record) => (int) $record->student_id === (int) $student->id)
-            ->filter(fn ($record) => (int) $record->professor_user_id !== (int) $student->user_id)
-            ->filter(fn ($record) => filled($record->attachment_path))
-            ->filter(fn ($record) => $record->score !== null && (float) $record->max_score > 0)
-            ->map(fn ($record) => ((float) $record->score / (float) $record->max_score) * 100)
-            ->values();
+        $quizPercents = $graded->pluck('percent')->map(fn ($percent) => (float) $percent)->values();
         $weakLine = (float) config('monitoring.quiz_weak_percent', 75);
         $criticalLine = (float) config('monitoring.quiz_critical_percent', 60);
         $weakQuizCount = $quizPercents->filter(fn (float $percent) => $percent < $weakLine)->count();
@@ -270,7 +321,7 @@ class EarlyWarningService
         $name = trim(implode(' ', array_filter([$student->userProfile?->first_name, $student->userProfile?->last_name]))) ?: 'Student';
         $warnings = collect($subjects)->whereIn('risk_level', ['high', 'moderate'])->map(fn ($s) => "{$s['subject_code']} needs attention (average {$s['average_grade']}".($s['trend'] === 'declining' ? ', declining' : '').').')->values();
         if ($weakQuizCount > 0) {
-            $warnings->push("{$weakQuizCount} quiz/topic record".($weakQuizCount === 1 ? '' : 's')." below {$weakLine}%.");
+            $warnings->push("{$weakQuizCount} graded score".($weakQuizCount === 1 ? '' : 's')." below {$weakLine}%.");
         }
         if ($missingMidterms > 0) {
             $warnings->push("{$missingMidterms} subject".($missingMidterms === 1 ? '' : 's').' still missing a midterm after prelim.');

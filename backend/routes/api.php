@@ -18,11 +18,6 @@ use App\Http\Controllers\Api\StudentSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
-Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
-Route::post('/registration/email-verification/send', [AuthController::class, 'sendEmailVerification'])
-    ->middleware('throttle:3,1');
-Route::post('/registration/email-verification/verify', [AuthController::class, 'verifyEmail'])
-    ->middleware('throttle:5,1');
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -45,6 +40,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/monitoring/performance-records/{record}/attachment', [MonitoringController::class, 'downloadPerformanceAttachment']);
         Route::post('/monitoring/students/{student}/performance-records/{record}/generate-plan', [MonitoringController::class, 'generateRecordStudyPlan'])->middleware('throttle:8,1');
         Route::post('/monitoring/students/{student}/performance-records/{record}/send-plan', [MonitoringController::class, 'sendRecordStudyPlan'])->middleware('throttle:10,1');
+        Route::get('/monitoring/grade-submissions', [MonitoringController::class, 'submittedGrades']);
+        Route::post('/monitoring/grades/{grade}/approve', [MonitoringController::class, 'approveGrade'])->middleware('throttle:30,1');
         Route::post('/monitoring/students/{student}/grade-plan', [MonitoringController::class, 'generateGradeStudyPlan'])->middleware('throttle:8,1');
         Route::post('/monitoring/students/{student}/grade-plan/send', [MonitoringController::class, 'sendGradeStudyPlan'])->middleware('throttle:10,1');
         Route::get('/monitoring/students/{student}/sent-plans', [MonitoringController::class, 'listSentPlans']);

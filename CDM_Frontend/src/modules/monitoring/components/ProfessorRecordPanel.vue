@@ -80,7 +80,7 @@ async function sendPlan(subject) {
       </div>
     </header>
     <p class="lead">
-      These cards are the student’s approved prelim, midterm, and final grades. Study files and sample quizzes are not listed here.
+      The average is made from the approved prelim, midterm, and final grades plus every other graded score for that subject, such as a quiz, exam, activity, or project. A study-file upload is not a grade.
     </p>
 
     <p v-if="error" class="error" role="alert">{{ error }}</p>

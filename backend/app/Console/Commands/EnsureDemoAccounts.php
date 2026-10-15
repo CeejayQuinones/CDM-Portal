@@ -21,8 +21,9 @@ class EnsureDemoAccounts extends Command
             return self::FAILURE;
         }
 
+        $this->removeGuestRole();
+
         $roles = [
-            1 => ['role_name' => 'Guest', 'description' => 'Public Portal User'],
             2 => ['role_name' => 'Admin', 'description' => 'System Administrator'],
             3 => ['role_name' => 'Registrar Staff', 'description' => 'Registrar Office Staff'],
             4 => ['role_name' => 'Professor', 'description' => 'Faculty Member'],
@@ -39,7 +40,6 @@ class EnsureDemoAccounts extends Command
         $roleIds = DB::table('roles')->pluck('id', 'role_name');
 
         $users = [
-            ['username' => 'ken', 'password' => 'ken123!', 'role' => 'Guest'],
             ['username' => 'admin', 'password' => 'Admin123!', 'role' => 'Admin'],
             ['username' => 'registrar1', 'password' => 'Registrar123!', 'role' => 'Registrar Staff'],
             ['username' => 'professor1', 'password' => 'Professor123!', 'role' => 'Professor'],
@@ -70,5 +70,16 @@ class EnsureDemoAccounts extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function removeGuestRole(): void
+    {
+        $roleId = DB::table('roles')->where('role_name', 'Guest')->value('id');
+        if ($roleId === null) {
+            return;
+        }
+
+        DB::table('users')->where('role_id', $roleId)->delete();
+        DB::table('roles')->where('id', $roleId)->delete();
     }
 }
