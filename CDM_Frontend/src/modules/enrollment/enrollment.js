@@ -6,6 +6,7 @@ export const classifications = [
 ]
 export const label = value => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
 export const termLabel = p => `${p?.academic_year?.school_year || p?.academic_year || 'Academic year'} · ${p?.semester?.semester_name || p?.semester || 'Semester'}`
+export const hasSavedSchedule = assignment => Boolean(assignment?.day && assignment?.start_time && assignment?.end_time && assignment?.room)
 export function safeError(e) {
   const status = e?.response?.status
   if (status === 422) return Object.values(e.response.data?.errors || {}).flat().join(' ') || e.response.data?.message || 'Please check the supplied fields.'

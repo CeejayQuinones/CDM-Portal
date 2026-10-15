@@ -97,6 +97,7 @@ class RegistrarStudentDocumentController extends Controller
 
         try {
             DB::transaction(function () use ($request, $studentDocument, $newPath, $oldPath): void {
+                $this->unlinkEnrollmentSources($studentDocument, $oldPath);
                 $studentDocument->update([
                     'file_path' => $newPath,
                     'availability_status' => 'available',
@@ -116,7 +117,7 @@ class RegistrarStudentDocumentController extends Controller
             throw $exception;
         }
 
-        if ($oldPath && $oldPath !== $newPath && $this->isManagedPath($studentDocument, $oldPath)) {
+        if ($oldPath && $oldPath !== $newPath && $this->isOwnedStudentDocumentPath($studentDocument, $oldPath)) {
             Storage::disk(self::DISK)->delete($oldPath);
         }
 
@@ -156,6 +157,7 @@ class RegistrarStudentDocumentController extends Controller
         abort_unless($oldPath && $this->isManagedPath($studentDocument, $oldPath), 404, 'No stored document file is available.');
 
         DB::transaction(function () use ($request, $studentDocument): void {
+            $this->unlinkEnrollmentSources($studentDocument, $studentDocument->file_path);
             $studentDocument->update([
                 'file_path' => null,
                 'availability_status' => 'missing',
@@ -167,7 +169,9 @@ class RegistrarStudentDocumentController extends Controller
             ]);
         });
 
-        Storage::disk(self::DISK)->delete($oldPath);
+        if ($this->isOwnedStudentDocumentPath($studentDocument, $oldPath)) {
+            Storage::disk(self::DISK)->delete($oldPath);
+        }
         $studentDocument->load(['documentType', 'aiAnalysis']);
 
         return response()->json([
@@ -223,8 +227,35 @@ class RegistrarStudentDocumentController extends Controller
 
     private function isManagedPath(StudentDocument $studentDocument, string $path): bool
     {
+        if ($this->isOwnedStudentDocumentPath($studentDocument, $path)) {
+            return true;
+        }
+
+        $source = $studentDocument->enrollmentSources()
+            ->where('file_path', $path)
+            ->first(['id', 'application_id', 'file_path']);
+
+        return $source
+            && str_starts_with($path, 'enrollment/'.$source->application_id.'/')
+            && ! str_contains($path, '..')
+            && ! str_contains($path, '\\');
+    }
+
+    private function isOwnedStudentDocumentPath(StudentDocument $studentDocument, string $path): bool
+    {
         return str_starts_with($path, 'student-documents/'.$studentDocument->student_id.'/')
             && ! str_contains($path, '..')
             && ! str_contains($path, '\\');
+    }
+
+    private function unlinkEnrollmentSources(StudentDocument $studentDocument, ?string $path): void
+    {
+        if (! $path || $this->isOwnedStudentDocumentPath($studentDocument, $path)) {
+            return;
+        }
+
+        $studentDocument->enrollmentSources()
+            ->where('file_path', $path)
+            ->update(['student_document_id' => null]);
     }
 }

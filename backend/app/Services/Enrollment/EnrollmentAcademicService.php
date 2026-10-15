@@ -27,6 +27,7 @@ class EnrollmentAcademicService
         private EnrollmentAuditWriter $audit,
         private AdmissionHandoffService $handoff,
         private StudentNumberAllocator $numbers,
+        private EnrollmentDocumentHandoffService $documentHandoff,
     ) {}
 
     public function application(User $user, int $id): EnrollmentApplication
@@ -60,6 +61,9 @@ class EnrollmentAcademicService
             abort_unless((! $student || $student->user_id === $owner->id) && ($staff || $owner->id === $actor->id), 403, 'Enrollment ownership changed.');
             $a = EnrollmentApplication::lockForUpdate()->findOrFail($id);
             if ($action === 'finalize' && $staff && $a->status === 'enrolled' && $a->enrollment_id) {
+                $completedStudent = Student::lockForUpdate()->findOrFail($a->student_id);
+                $this->documentHandoff->link($actor, $a, $completedStudent);
+
                 return $a;
             }
             abort_unless($a->status === 'approved', 409, 'Only an approved application can proceed to academic enrollment.');
@@ -131,6 +135,7 @@ class EnrollmentAcademicService
                     $owner->save();
                     $owner->tokens()->delete();
                 }
+                $this->documentHandoff->link($actor, $a, $student);
                 $e = Enrollment::create(['student_id' => $student->id, 'section_id' => $section->id, 'academic_year_id' => $a->academic_year_id, 'semester_id' => $a->semester_id, 'enrollment_date' => now()->toDateString(), 'status' => 'enrolled']);
                 $rows = $load->map(fn ($s) => ['enrollment_id' => $e->id, 'subject_id' => $s->id, 'professor_id' => $schedules[$s->id]->professor_id, 'subject_status' => 'enrolled', 'remarks' => 'In Progress', 'created_at' => now(), 'updated_at' => now()])->all();
                 EnrollmentSubject::insert($rows);

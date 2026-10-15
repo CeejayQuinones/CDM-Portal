@@ -80,6 +80,8 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
     const professor={id:1,employee_number:'P-001',user:{profile:{first_name:'Test',last_name:'Professor'}}}
     const replacementProfessor={id:2,employee_number:'P-002',user:{profile:{first_name:'Replacement',last_name:'Professor'}}}
     const schedule={id:1,section_id:1,subject_id:10,professor_id:1,subject,professor,day:'Monday',start_time:'09:00:00',end_time:'10:00:00',room:'Lab 1',version:1}
+    const unscheduledSubject={...subject,id:11,subject_code:'IT101',subject_name:'Computer Programming 1'}
+    const unscheduled={id:2,section_id:1,subject_id:11,professor_id:1,subject:unscheduledSubject,professor,day:null,start_time:null,end_time:null,room:null,version:1}
     const academicRecord={id:42,student_number:'26-ACADEMIC',name:'Academic Student',course:'Computing',year_level:1,academic_year:'2026–2027',semester:'First',section:'CS-1A',enrollment_date:'2026-09-27',subjects:[{...subject,schedule}],total_units:3}
     const recordRow={...period,id:42,status:'enrolled',section,student:{student_number:'26-ACADEMIC',user_profile:{first_name:'Academic',last_name:'Student'},course:section.course},application:{classification:'regular'}}
     let classification='regular',selected=[],conflict=false
@@ -93,7 +95,7 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
       if(url==='/enrollment/academic/sections')return response(method==='post'?section:pagination([section]))
       if(url==='/enrollment/academic/schedules'){
         if(method==='post'){if(conflict)throw {response:{status:409,data:{message:'Schedule overlaps an existing section, Professor or room meeting.'}}};return response(schedule)}
-        return response({section,schedules:pagination([schedule]),subjects:[subject],days:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']})
+        return response({section,schedules:pagination([schedule,unscheduled]),subjects:[subject,unscheduledSubject],days:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']})
       }
       if(url==='/enrollment/academic/schedules/1'&&method==='put')return response({...schedule,...payload,professor:replacementProfessor,version:2})
       if(url==='/enrollment/academic/records')return response(pagination([recordRow]))
@@ -108,8 +110,8 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
     await t.test('new routes restrict staff, Student and Professor operations',async()=>{
       for(const role of Object.values(ROLES)){
         auth.currentRole=role
-        for(const name of ['sections','scheduling','records','subjects','schedule','cor','teaching']){
-          const allowed=['sections','scheduling','records'].includes(name)?[ROLES.ADMIN,ROLES.REGISTRAR_STAFF].includes(role):name==='teaching'?role===ROLES.PROFESSOR:role===ROLES.STUDENT
+        for(const name of ['sections','subject-management','scheduling','records','subjects','schedule','cor','teaching']){
+          const allowed=['sections','subject-management','scheduling','records'].includes(name)?[ROLES.ADMIN,ROLES.REGISTRAR_STAFF].includes(role):name==='teaching'?role===ROLES.PROFESSOR:role===ROLES.STUDENT
           await router.push('/');await router.push('/enrollment/'+name);assert.equal(router.currentRoute.value.name==='unauthorized',!allowed)
         }
       }
@@ -131,6 +133,26 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
       auth.currentRole=ROLES.REGISTRAR_STAFF;apiState.handler=handler;await router.push('/enrollment/scheduling');const {root,app}=mount()
       try{await settle();const selector=all(root,'select').find(n=>n.props.onChange);await model(selector,1);await selector.props.onChange();await settle();assert.match(textOf(root),/Programming/);await click(root,'Timetable');assert.match(textOf(root),/Monday/);await click(root,'List');assert.match(textOf(root),/Room \/ Professor/);await click(root,'Copy');const form=all(root,'form').at(-1);assert.match(textOf(form),/copy destination/);conflict=true;await form.props.onSubmit({preventDefault(){}});await settle();assert.match(textOf(root),/Schedule overlaps/)}finally{conflict=false;app.unmount()}
     })
+    await t.test('unscheduled assignments use Add Schedule and POST while saved schedules use Edit and PUT',async()=>{
+      auth.currentRole=ROLES.REGISTRAR_STAFF;apiState.handler=handler;apiState.calls=[];await router.push('/enrollment/scheduling');const {root,app}=mount()
+      try{
+        await settle();const selector=all(root,'select').find(n=>n.props.onChange);await model(selector,1);await selector.props.onChange();await settle()
+        assert.ok(button(root,'Add Schedule'));assert.equal(all(root,'button').filter(n=>textOf(n).trim()==='Edit').length,1)
+        await click(root,'Timetable');assert.match(textOf(root),/Unscheduled/);assert.ok(button(root,'Add Schedule'))
+        await click(root,'List');assert.ok(button(root,'Add Schedule'));assert.equal(all(root,'button').filter(n=>textOf(n).trim()==='Edit').length,1)
+        await click(root,'Cards');await click(root,'Add Schedule')
+        const addForm=all(root,'form').at(-1)
+        assert.equal(field(addForm,'Section / copy destination','select').props.disabled,true)
+        assert.equal(field(addForm,'Subject','select').props.disabled,true)
+        await model(field(addForm,'Day','select'),'Tuesday');await model(field(addForm,'Start time','input'),'10:00');await model(field(addForm,'End time','input'),'11:00');await model(field(addForm,'Room','input'),'Room 101')
+        await addForm.props.onSubmit({preventDefault(){}});await settle()
+        const post=apiState.calls.find(c=>c.method==='post'&&c.url==='/enrollment/academic/schedules')
+        assert.ok(post);assert.equal(post.payload.assignment_id,2);assert.equal(post.payload.id,undefined);assert.equal(post.payload.section_id,1);assert.equal(post.payload.subject_id,11);assert.equal(post.payload.professor_id,1)
+        await click(root,'Edit');const editForm=all(root,'form').at(-1);await editForm.props.onSubmit({preventDefault(){}});await settle()
+        assert.ok(apiState.calls.find(c=>c.method==='put'&&c.url==='/enrollment/academic/schedules/1'))
+        assert.equal(apiState.calls.some(c=>c.url.includes('/undefined')),false)
+      }finally{app.unmount()}
+    })
     await t.test('Professor reassignment requires explicit confirmation',async()=>{
       auth.currentRole=ROLES.REGISTRAR_STAFF;apiState.handler=handler;apiState.calls=[];await router.push('/enrollment/scheduling');const {root,app}=mount()
       try{await settle();const selector=all(root,'select').find(n=>n.props.onChange);await model(selector,1);await selector.props.onChange();await settle();await click(root,'Edit');const form=all(root,'form').at(-1);await model(field(form,'Professor','select'),2);await form.props.onSubmit({preventDefault(){}});await settle();assert.match(textOf(root),/Reassign this teaching assignment/);assert.equal(apiState.calls.some(c=>c.method==='put'),false);await click(root,'Confirm reassignment');assert.equal(apiState.calls.find(c=>c.method==='put').payload.professor_id,2)}finally{app.unmount()}
@@ -143,7 +165,7 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
         return result
       }
       const {root,app}=mount()
-      try{await settle();const selector=all(root,'select').find(n=>n.props.onChange);await model(selector,1);await selector.props.onChange();await settle();assert.match(textOf(root),/No active curriculum subjects are configured/)}finally{app.unmount();apiState.handler=handler}
+      try{await settle();const selector=all(root,'select').find(n=>n.props.onChange);await model(selector,1);await selector.props.onChange();await settle();assert.match(textOf(root),/No subjects are configured for this curriculum/);assert.match(textOf(root),/Open Subject Management/)}finally{app.unmount();apiState.handler=handler}
     })
     await t.test('Student sees real schedule and printable COR; Professor sees assigned roster',async()=>{
       auth.currentRole=ROLES.STUDENT;apiState.handler=handler;await router.push('/enrollment/schedule');const mounted=mount()

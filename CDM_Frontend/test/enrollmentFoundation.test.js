@@ -148,7 +148,7 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       apiState.handler=handler;record=null
       for(const role of [ROLES.ADMIN,ROLES.REGISTRAR_STAFF]){
         auth.currentRole=role;await router.push('/enrollment/applications')
-        const nav=navigation.menuItemsForRole(role).find(n=>n.name==='enrollment');assert.deepEqual(nav.children.map(n=>n.label),['Applications','Enrollment Periods','Sections','Scheduling','Enrollment Records'])
+        const nav=navigation.menuItemsForRole(role).find(n=>n.name==='enrollment');assert.deepEqual(nav.children.map(n=>n.label),['Applications','Enrollment Periods','Sections','Subjects','Scheduling','Enrollment Records'])
         const {root,app}=mount();try{await settle();assert.match(textOf(root),/Applicant name or number/);const form=find(root,'form');await form.props.onSubmit({preventDefault(){}});await settle();assert.equal(apiState.calls.at(-1).url,'/enrollment/applications');await router.push('/enrollment/periods');await settle();await click(root,'Create period');assert.match(textOf(root),/Required documents by classification/);assert.match(textOf(root),/Enable period/)}finally{app.unmount()}
       }
     })

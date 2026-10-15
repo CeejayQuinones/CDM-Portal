@@ -6,6 +6,7 @@ use App\Models\AcademicYear;
 use App\Models\DocumentType;
 use App\Models\Enrollment;
 use App\Models\Enrollment\EnrollmentApplication;
+use App\Models\Enrollment\EnrollmentDocument;
 use App\Models\Enrollment\EnrollmentWorkflowEvent;
 use App\Models\EnrollmentSubject;
 use App\Models\GradeSheet;
@@ -14,6 +15,8 @@ use App\Models\Role;
 use App\Models\Section;
 use App\Models\SectionSubject;
 use App\Models\Student;
+use App\Models\StudentDocument;
+use App\Models\StudentRecordAuditEvent;
 use App\Models\User;
 use App\Services\Admission\AdmissionCompletionService;
 use App\Services\EarlyWarningService;
@@ -149,12 +152,117 @@ class EnrollmentAcademicTest extends TestCase
         $this->assertSame($studentCount + 1, Student::count());
     }
 
+    public function test_first_time_finalization_links_supported_enrollment_documents_without_copying_files(): void
+    {
+        Storage::fake('local');
+        $supported = DocumentType::create([
+            'document_name' => 'Form 137', 'status' => 'active',
+            'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false,
+        ]);
+        $unsupported = DocumentType::create([
+            'document_name' => 'Birth Certificate', 'status' => 'active',
+            'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false,
+        ]);
+        $requirements = $this->f['period']->document_requirements;
+        $requirements['regular'] = [$supported->id, $unsupported->id];
+        $this->f['period']->update(['document_requirements' => $requirements]);
+
+        $case = $this->f['cases'][1];
+        app(AdmissionCompletionService::class)->accept($this->f['registrar'], $case['applicant']->id, [
+            'version' => $case['applicant']->version, 'result_id' => $case['result']->id,
+            'result_version' => $case['result']->version, 'course_id' => $this->f['course']->id,
+            'curriculum_id' => $this->f['curriculum']->id, 'confirmed' => true,
+        ]);
+        $workflow = app(EnrollmentWorkflowService::class);
+        $application = $workflow->create($case['user']->fresh(), [
+            'period_id' => $this->f['period']->id, 'classification' => 'regular',
+        ]);
+
+        Sanctum::actingAs($case['user']);
+        foreach ([$supported, $unsupported] as $type) {
+            $this->post('/api/enrollment/applications/'.$application->id.'/documents', [
+                'version' => $application->fresh()->version,
+                'document_type_id' => $type->id,
+                'file' => UploadedFile::fake()->create(strtolower(str_replace(' ', '-', $type->document_name)).'.pdf', 20, 'application/pdf'),
+            ], ['Accept' => 'application/json'])->assertCreated();
+        }
+        $application = $workflow->mutate($case['user']->fresh(), $application->id, 'submit', [
+            'version' => $application->fresh()->version, 'confirmed' => true,
+        ]);
+        foreach (['review', 'approve'] as $action) {
+            $application = $workflow->mutate($this->f['registrar'], $application->id, $action, [
+                'version' => $application->version, 'notes' => 'Document handoff review.',
+            ]);
+        }
+
+        Sanctum::actingAs($this->f['registrar']);
+        $this->prepareApplication($application->id);
+        $application->refresh();
+        $this->postJson($this->base().'/applications/'.$application->id.'/finalize', [
+            'version' => $application->version, 'confirmed' => true,
+        ])->assertOk();
+
+        $application->refresh();
+        $supportedSource = EnrollmentDocument::where('application_id', $application->id)
+            ->where('document_type_id', $supported->id)->firstOrFail();
+        $unsupportedSource = EnrollmentDocument::where('application_id', $application->id)
+            ->where('document_type_id', $unsupported->id)->firstOrFail();
+        $destination = StudentDocument::findOrFail($supportedSource->student_document_id);
+
+        $this->assertSame($application->student_id, $destination->student_id);
+        $this->assertSame($supportedSource->file_path, $destination->file_path);
+        $this->assertSame('available', $destination->availability_status);
+        $this->assertSame('pending', $destination->verification_status);
+        $this->assertNull($unsupportedSource->student_document_id);
+        $this->assertDatabaseCount('student_documents', 1);
+        $this->assertCount(2, Storage::disk('local')->allFiles());
+        $this->assertDatabaseHas('student_record_audit_events', [
+            'student_id' => $destination->student_id,
+            'actor_user_id' => $this->f['registrar']->id,
+            'action' => 'enrollment_document_linked',
+        ]);
+        $event = StudentRecordAuditEvent::where('action', 'enrollment_document_linked')->firstOrFail();
+        $this->assertSame($supportedSource->id, $event->metadata['enrollment_document_id']);
+        $this->assertArrayNotHasKey('file_path', $event->metadata);
+
+        $this->getJson('/api/students/'.$destination->student_id.'/documents')
+            ->assertOk()
+            ->assertJsonPath('data.documents.0.name', 'Form 137')
+            ->assertJsonPath('data.documents.0.has_file', true)
+            ->assertJsonPath('data.documents.0.availability_status', 'available')
+            ->assertJsonPath('data.documents.0.verification_status', 'pending')
+            ->assertJsonMissingPath('data.documents.0.file_path');
+        $this->get('/api/registrar/student-documents/'.$destination->id.'/view')
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private');
+
+        $this->postJson($this->base().'/applications/'.$application->id.'/finalize', [
+            'version' => $application->version - 1, 'confirmed' => true,
+        ])->assertOk();
+        $this->assertDatabaseCount('student_documents', 1);
+        $this->assertSame(1, StudentRecordAuditEvent::where('action', 'enrollment_document_linked')->count());
+        $this->assertCount(2, Storage::disk('local')->allFiles());
+    }
+
     public function test_first_time_audit_failure_rolls_back_student_role_number_and_enrollment(): void
     {
+        Storage::fake('local');
         [$case, $application] = $this->firstTimeApplication(2);
+        $type = DocumentType::create([
+            'document_name' => 'Good Moral Certificate', 'status' => 'active',
+            'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false,
+        ]);
+        $path = 'enrollment/'.$application->id.'/good-moral.pdf';
+        Storage::disk('local')->put($path, 'accepted evidence');
+        $source = EnrollmentDocument::create([
+            'application_id' => $application->id,
+            'document_type_id' => $type->id,
+            'file_path' => $path,
+        ]);
         $token = $case['user']->createToken('guest-rollback');
         $studentCount = Student::count();
         $enrollmentCount = Enrollment::count();
+        $documentCount = StudentDocument::count();
         $this->prepareApplication($application->id);
         $application->refresh();
         EnrollmentWorkflowEvent::creating(function ($event) {
@@ -169,6 +277,10 @@ class EnrollmentAcademicTest extends TestCase
 
         $this->assertSame($studentCount, Student::count());
         $this->assertSame($enrollmentCount, Enrollment::count());
+        $this->assertSame($documentCount, StudentDocument::count());
+        $this->assertNull($source->fresh()->student_document_id);
+        $this->assertSame(0, StudentRecordAuditEvent::where('action', 'enrollment_document_linked')->count());
+        Storage::disk('local')->assertExists($path);
         $this->assertSame(Role::GUEST, $case['user']->fresh('role')->role->role_name);
         $this->assertDatabaseHas('personal_access_tokens', ['id' => $token->accessToken->id]);
         $this->assertNull($application->fresh()->student_id);
@@ -201,6 +313,42 @@ class EnrollmentAcademicTest extends TestCase
         } catch (HttpException $exception) {
             $this->assertSame(409, $exception->getStatusCode());
         }
+    }
+
+    public function test_returning_student_handoff_preserves_an_existing_verified_document(): void
+    {
+        Storage::fake('local');
+        $type = DocumentType::create([
+            'document_name' => 'Certificate of Enrollment', 'status' => 'active',
+            'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false,
+        ]);
+        $verifiedPath = 'student-documents/'.$this->f['student']->id.'/verified-certificate.pdf';
+        $enrollmentPath = 'enrollment/'.$this->f['application']->id.'/new-certificate.pdf';
+        Storage::disk('local')->put($verifiedPath, 'verified historical evidence');
+        Storage::disk('local')->put($enrollmentPath, 'new enrollment evidence');
+        $existing = StudentDocument::create([
+            'student_id' => $this->f['student']->id,
+            'document_type_id' => $type->id,
+            'file_path' => $verifiedPath,
+            'availability_status' => 'available',
+            'verification_status' => 'verified',
+            'submitted_date' => now()->subYear(),
+        ]);
+        $source = EnrollmentDocument::create([
+            'application_id' => $this->f['application']->id,
+            'document_type_id' => $type->id,
+            'file_path' => $enrollmentPath,
+        ]);
+
+        $this->prepare();
+        $this->action('finalize')->assertOk();
+
+        $this->assertDatabaseCount('student_documents', 1);
+        $this->assertSame($verifiedPath, $existing->fresh()->file_path);
+        $this->assertSame('verified', $existing->fresh()->verification_status);
+        $this->assertNull($source->fresh()->student_document_id);
+        Storage::disk('local')->assertExists($verifiedPath);
+        Storage::disk('local')->assertExists($enrollmentPath);
     }
 
     public function test_first_time_document_is_owned_by_application_without_student_identity(): void
@@ -451,6 +599,48 @@ class EnrollmentAcademicTest extends TestCase
         $this->schedule(['subject_id' => $this->f['subjects'][1]->id, 'start_time' => '10:00', 'end_time' => '11:00'])->assertCreated();
         $this->schedule(['subject_id' => $this->f['subjects'][2]->id, 'start_time' => '11:00', 'end_time' => '10:00'])->assertUnprocessable();
         $this->schedule(['day' => 'Invalid'])->assertUnprocessable();
+    }
+
+    public function test_post_completes_an_existing_unscheduled_teaching_assignment(): void
+    {
+        $assignment = SectionSubject::create([
+            'section_id' => $this->f['section']->id,
+            'subject_id' => $this->f['subjects'][0]->id,
+            'professor_id' => $this->f['professor']->id,
+        ]);
+
+        $payload = [
+            'assignment_id' => $assignment->id,
+            'section_id' => $this->f['section']->id,
+            'subject_id' => $this->f['subjects'][0]->id,
+            'professor_id' => $this->f['professor']->id,
+            'day' => 'Tuesday',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'room' => 'Room 101',
+        ];
+
+        $this->postJson($this->base().'/schedules', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.id', $assignment->id)
+            ->assertJsonPath('data.day', 'Tuesday')
+            ->assertJsonPath('data.room', 'ROOM 101');
+
+        $this->assertDatabaseCount('section_subjects', 1);
+        $this->assertDatabaseHas('section_subjects', [
+            'id' => $assignment->id,
+            'professor_id' => $this->f['professor']->id,
+            'day' => 'Tuesday',
+            'start_time' => '10:00:00',
+            'end_time' => '11:00:00',
+            'room' => 'ROOM 101',
+            'version' => 2,
+        ]);
+
+        $this->postJson($this->base().'/schedules', $payload)
+            ->assertConflict()
+            ->assertJsonPath('message', 'This subject already has a schedule. Reload before continuing.');
+        $this->assertDatabaseCount('section_subjects', 1);
     }
 
     public function test_schedule_versions_edits_deletion_and_referenced_protection(): void

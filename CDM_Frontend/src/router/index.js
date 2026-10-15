@@ -17,6 +17,7 @@ const StudentDashboardView = () => import('../modules/dashboard/StudentDashboard
 const ProfessorDashboardView = () => import('../modules/dashboard/ProfessorDashboardView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const EnrollmentAcademicView = () => import('../modules/enrollment/EnrollmentAcademicView.vue')
+const EnrollmentSubjectManagement = () => import('../modules/enrollment/EnrollmentSubjectManagement.vue')
 const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
 const GradingView = () => import('../modules/grading/GradingView.vue')
 const StudentGradeHistoryView = () => import('../modules/grading/StudentGradeHistoryView.vue')
@@ -158,6 +159,7 @@ const routes = [
       }),
       ...admissionRoutes.map(protectedRoute),
       protectedRoute({ path: 'enrollment/sections', name: 'enrollment-sections', component: EnrollmentAcademicView, meta: { title: 'Sections', roles: ROUTE_ROLES['enrollment-sections'] } }),
+      protectedRoute({ path: 'enrollment/subject-management', name: 'enrollment-subject-management', component: EnrollmentSubjectManagement, meta: { title: 'Subjects', roles: ROUTE_ROLES['enrollment-subject-management'] } }),
       protectedRoute({ path: 'enrollment/scheduling', name: 'enrollment-scheduling', component: EnrollmentAcademicView, meta: { title: 'Scheduling', roles: ROUTE_ROLES['enrollment-scheduling'] } }),
       protectedRoute({ path: 'enrollment/records', name: 'enrollment-records', component: EnrollmentAcademicView, meta: { title: 'Enrollment Records', roles: ROUTE_ROLES['enrollment-records'] } }),
       protectedRoute({ path: 'enrollment/subjects', name: 'enrollment-subjects', component: EnrollmentAcademicView, meta: { title: 'Subjects', roles: ROUTE_ROLES['enrollment-subjects'] } }),

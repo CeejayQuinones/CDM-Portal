@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ROLES } from '../../config/accessControl'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
@@ -28,10 +28,15 @@ const uploadError = ref('')
 const uploadSuccess = ref('')
 const bulkSubmitting = ref(false)
 const refreshingAnalyses = ref(false)
+const previewStates = ref({})
+const viewerDocument = ref(null)
+const viewerCloseButton = ref(null)
 const canManageDocuments = computed(() => authStore.currentRole === ROLES.REGISTRAR_STAFF)
 const isReplacing = computed(() => Boolean(uploadDocument.value?.has_file))
 const activeAnalysisStatuses = ['pending', 'processing']
 let analysisPollTimer = null
+let viewerTrigger = null
+let previousBodyOverflow = ''
 
 const aiSummary = computed(() => ({
   uploaded: documents.value.filter((document) => document.has_file).length,
@@ -56,14 +61,6 @@ const bulkEligibleDocuments = computed(() =>
 const hasActiveAnalyses = computed(() =>
   documents.value.some((document) => activeAnalysisStatuses.includes(document.ai_analysis?.status)),
 )
-const supportedDocumentLabels = computed(() => [
-  ...new Set(
-    documents.value
-      .map((document) => document.ai_analysis_type?.label)
-      .filter(Boolean),
-  ),
-])
-
 const title = (value) =>
   value
     ? String(value)
@@ -107,6 +104,7 @@ async function loadDocuments({ silent = false } = {}) {
     const { data } = await apiClient.get(`/students/${route.params.id}/documents`)
     student.value = data.data.student
     documents.value = data.data.documents
+    syncDocumentPreviews()
   } catch (requestError) {
     if (!silent) {
       error.value =
@@ -117,6 +115,108 @@ async function loadDocuments({ silent = false } = {}) {
   } finally {
     if (silent) refreshingAnalyses.value = false
     else loading.value = false
+  }
+}
+
+function revokeDocumentPreview(documentId) {
+  const preview = previewStates.value[documentId]
+  if (preview?.url) URL.revokeObjectURL(preview.url)
+  const next = { ...previewStates.value }
+  delete next[documentId]
+  previewStates.value = next
+}
+
+function clearDocumentPreviews() {
+  Object.values(previewStates.value).forEach((preview) => {
+    if (preview?.url) URL.revokeObjectURL(preview.url)
+  })
+  previewStates.value = {}
+}
+
+function syncDocumentPreviews() {
+  const currentIds = new Set(documents.value.map((document) => String(document.id)))
+
+  Object.keys(previewStates.value).forEach((documentId) => {
+    if (!currentIds.has(documentId)) revokeDocumentPreview(documentId)
+  })
+
+  documents.value.forEach((document) => {
+    if (document.has_file && document.file_kind === 'image' && !previewStates.value[document.id]) {
+      loadDocumentPreview(document)
+    } else if ((!document.has_file || document.file_kind !== 'image') && previewStates.value[document.id]) {
+      revokeDocumentPreview(document.id)
+    }
+  })
+}
+
+async function loadDocumentPreview(document, force = false) {
+  if (!document.has_file || document.file_kind !== 'image') return false
+  const existing = previewStates.value[document.id]
+  if (!force && ['loading', 'ready'].includes(existing?.status)) return existing.status === 'ready'
+
+  if (existing?.url) URL.revokeObjectURL(existing.url)
+  const requestToken = Symbol(`preview-${document.id}`)
+  previewStates.value = {
+    ...previewStates.value,
+    [document.id]: { status: 'loading', url: null, requestToken },
+  }
+
+  try {
+    const response = await apiClient.get(`/registrar/student-documents/${document.id}/view`, {
+      responseType: 'blob',
+    })
+    if (!String(response.data?.type || '').startsWith('image/')) {
+      throw new Error('The stored file is not a supported image preview.')
+    }
+
+    const url = URL.createObjectURL(response.data)
+    if (
+      previewStates.value[document.id]?.requestToken !== requestToken ||
+      !documents.value.some((item) => item.id === document.id && item.has_file)
+    ) {
+      URL.revokeObjectURL(url)
+      return false
+    }
+    previewStates.value = {
+      ...previewStates.value,
+      [document.id]: { status: 'ready', url },
+    }
+    return true
+  } catch {
+    if (previewStates.value[document.id]?.requestToken !== requestToken) return false
+    previewStates.value = {
+      ...previewStates.value,
+      [document.id]: { status: 'error', url: null },
+    }
+    return false
+  }
+}
+
+async function openImageViewer(document, event) {
+  let ready = previewStates.value[document.id]?.status === 'ready'
+  if (!ready) ready = await loadDocumentPreview(document, previewStates.value[document.id]?.status === 'loading')
+  if (!ready) return
+
+  viewerTrigger = event?.currentTarget || window.document.activeElement
+  previousBodyOverflow = window.document.body.style.overflow
+  window.document.body.style.overflow = 'hidden'
+  viewerDocument.value = document
+  await nextTick()
+  viewerCloseButton.value?.focus()
+}
+
+function closeImageViewer() {
+  if (!viewerDocument.value) return
+  viewerDocument.value = null
+  window.document.body.style.overflow = previousBodyOverflow
+  nextTick(() => viewerTrigger?.focus?.())
+}
+
+function handleViewerKeydown(event) {
+  if (event.key === 'Escape') closeImageViewer()
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    viewerCloseButton.value?.focus()
   }
 }
 
@@ -246,6 +346,8 @@ async function submitUpload() {
     )
 
     replaceDocument(data.data)
+    if (data.data.file_kind === 'image') await loadDocumentPreview(data.data, true)
+    else revokeDocumentPreview(data.data.id)
     uploadDocument.value = data.data
     uploadProgress.value = 100
     uploadSuccess.value = data.message
@@ -284,6 +386,11 @@ async function viewDocument(document) {
   }
 }
 
+function openStoredDocument(document, event) {
+  if (document.file_kind === 'image') return openImageViewer(document, event)
+  return viewDocument(document)
+}
+
 async function downloadDocument(document) {
   activeAction.value = `download-${document.id}`
   actionError.value = ''
@@ -319,6 +426,7 @@ async function deleteDocumentFile(document) {
       apiClient.delete(`/registrar/student-documents/${document.id}/file`),
     )
     replaceDocument(data.data)
+    revokeDocumentPreview(data.data.id)
     success.value = data.message
   } catch (requestError) {
     if (isStepUpCancelled(requestError)) return
@@ -334,10 +442,16 @@ watch(hasActiveAnalyses, (active) => {
 })
 watch(() => route.params.id, () => {
   stopAnalysisPolling()
+  clearDocumentPreviews()
+  closeImageViewer()
   loadDocuments()
 })
 onMounted(loadDocuments)
-onBeforeUnmount(stopAnalysisPolling)
+onBeforeUnmount(() => {
+  stopAnalysisPolling()
+  clearDocumentPreviews()
+  closeImageViewer()
+})
 </script>
 
 <template>
@@ -387,8 +501,7 @@ onBeforeUnmount(stopAnalysisPolling)
           <p class="analysis-kicker">AI document analysis</p>
           <h2>Analyze All Documents</h2>
           <p>
-            Currently supports {{ supportedDocumentLabels.join(', ') || 'configured document types' }}.
-            Missing and unsupported documents are skipped.
+            Currently supports Form 137, Good Moral Certificate, and Certificate of Enrollment. Missing and unsupported documents are skipped.
           </p>
         </div>
         <button
@@ -418,58 +531,97 @@ onBeforeUnmount(stopAnalysisPolling)
     </section>
     <section v-else class="documents">
       <article v-for="document in documents" :key="document.id" class="document-card">
-        <div class="doc-head">
-          <div>
-            <h2>{{ document.name }}</h2>
-            <p class="file-state">{{ document.has_file ? 'Stored file available' : 'No file stored' }}</p>
+        <aside class="document-preview" :aria-label="`${document.name} preview`">
+          <div v-if="!document.has_file" class="preview-placeholder missing-preview">
+            <span class="preview-icon" aria-hidden="true">◇</span>
+            <strong>No document uploaded</strong>
           </div>
-          <span class="badge" :class="document.has_file ? 'available' : 'missing'">
-            {{ document.has_file ? 'Available' : 'Missing' }}
-          </span>
-        </div>
-        <dl>
-          <div>
-            <dt>Submitted Date</dt>
-            <dd>{{ date(document.submitted_date) }}</dd>
-          </div>
-          <div>
-            <dt>Verification</dt>
-            <dd>{{ title(document.verification_status) }}</dd>
-          </div>
-          <div>
-            <dt>Verified By</dt>
-            <dd>{{ document.verified_by || 'Not available' }}</dd>
-          </div>
-          <div class="remarks">
-            <dt>Remarks</dt>
-            <dd>{{ document.remarks || 'No remarks' }}</dd>
-          </div>
-        </dl>
-
-        <div v-if="canManageDocuments" class="document-actions">
-          <template v-if="document.has_file">
-            <button type="button" :disabled="activeAction" @click="viewDocument(document)">
-              {{ activeAction === `view-${document.id}` ? 'Opening…' : 'View' }}
+          <template v-else-if="document.file_kind === 'image'">
+            <div v-if="previewStates[document.id]?.status === 'loading'" class="preview-placeholder" role="status">
+              <span class="preview-spinner" aria-hidden="true"></span>
+              <strong>Loading preview…</strong>
+            </div>
+            <div v-else-if="previewStates[document.id]?.status === 'error'" class="preview-placeholder preview-error" role="alert">
+              <span class="preview-icon" aria-hidden="true">!</span>
+              <strong>Failed to load preview</strong>
+              <button type="button" @click="loadDocumentPreview(document, true)">Retry</button>
+            </div>
+            <button
+              v-else-if="previewStates[document.id]?.url"
+              class="image-preview-button"
+              type="button"
+              :aria-label="`Open ${document.name} image full screen`"
+              @click="openImageViewer(document, $event)"
+            >
+              <img :src="previewStates[document.id].url" :alt="`${document.name} document preview`" />
+              <span>Click to enlarge</span>
             </button>
-            <button type="button" :disabled="activeAction" @click="downloadDocument(document)">
-              {{ activeAction === `download-${document.id}` ? 'Downloading…' : 'Download' }}
-            </button>
-            <button class="primary" type="button" :disabled="activeAction" @click="openUpload(document)">
-              Replace
-            </button>
-            <details class="more-menu">
-              <summary>More</summary>
-              <button class="danger" type="button" :disabled="activeAction" @click="deleteDocumentFile(document)">
-                {{ activeAction === `delete-${document.id}` ? 'Deleting…' : 'Delete File' }}
-              </button>
-            </details>
           </template>
-          <button v-else class="primary" type="button" :disabled="activeAction" @click="openUpload(document)">
-            Upload
+          <button
+            v-else
+            class="preview-placeholder file-preview-button"
+            type="button"
+            :disabled="activeAction === `view-${document.id}`"
+            @click="viewDocument(document)"
+          >
+            <span class="preview-file-type">{{ document.file_kind === 'pdf' ? 'PDF' : 'FILE' }}</span>
+            <strong>{{ document.file_kind === 'pdf' ? 'PDF Document' : 'Document File' }}</strong>
+            <span>{{ activeAction === `view-${document.id}` ? 'Opening…' : 'Click to View' }}</span>
           </button>
-        </div>
+        </aside>
+        <div class="document-information">
+          <div class="doc-head">
+            <div>
+              <h2>{{ document.name }}</h2>
+              <p class="file-state">{{ document.has_file ? 'Stored file available' : 'No file stored' }}</p>
+            </div>
+            <span class="badge" :class="document.has_file ? 'available' : 'missing'">
+              {{ document.has_file ? 'Available' : 'Missing' }}
+            </span>
+          </div>
+          <dl>
+            <div>
+              <dt>Submitted Date</dt>
+              <dd>{{ date(document.submitted_date) }}</dd>
+            </div>
+            <div>
+              <dt>Verification</dt>
+              <dd>{{ title(document.verification_status) }}</dd>
+            </div>
+            <div>
+              <dt>Verified By</dt>
+              <dd>{{ document.verified_by || 'Not available' }}</dd>
+            </div>
+            <div class="remarks">
+              <dt>Remarks</dt>
+              <dd>{{ document.remarks || 'No remarks' }}</dd>
+            </div>
+          </dl>
 
-        <section v-if="document.is_ai_analysis_eligible && document.has_file" class="ai-analysis">
+          <div v-if="canManageDocuments" class="document-actions">
+            <template v-if="document.has_file">
+              <button type="button" :disabled="activeAction" @click="openStoredDocument(document, $event)">
+                {{ document.file_kind === 'image' ? 'Full Screen' : activeAction === `view-${document.id}` ? 'Opening…' : 'View' }}
+              </button>
+              <button type="button" :disabled="activeAction" @click="downloadDocument(document)">
+                {{ activeAction === `download-${document.id}` ? 'Downloading…' : 'Download' }}
+              </button>
+              <button class="primary" type="button" :disabled="activeAction" @click="openUpload(document)">
+                Replace
+              </button>
+              <details class="more-menu">
+                <summary>More</summary>
+                <button class="danger" type="button" :disabled="activeAction" @click="deleteDocumentFile(document)">
+                  {{ activeAction === `delete-${document.id}` ? 'Deleting…' : 'Delete File' }}
+                </button>
+              </details>
+            </template>
+            <button v-else class="primary" type="button" :disabled="activeAction" @click="openUpload(document)">
+              Upload
+            </button>
+          </div>
+
+          <section v-if="document.is_ai_analysis_eligible && document.has_file" class="ai-analysis">
           <div class="analysis-heading">
             <div>
               <p class="analysis-kicker">AI Analysis</p>
@@ -521,7 +673,8 @@ onBeforeUnmount(stopAnalysisPolling)
             Registrar can still review the document manually.
           </p>
           <p v-else class="analysis-message">The saved analysis status will update after the background worker finishes.</p>
-        </section>
+          </section>
+        </div>
       </article>
     </section>
     <footer class="back-bar">
@@ -570,6 +723,32 @@ onBeforeUnmount(stopAnalysisPolling)
       </form>
     </section>
   </div>
+
+  <Teleport to="body">
+    <div
+      v-if="viewerDocument"
+      class="image-viewer-backdrop"
+      role="presentation"
+      @mousedown.self="closeImageViewer"
+      @keydown="handleViewerKeydown"
+    >
+      <section
+        class="image-viewer"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="`${viewerDocument.name} full-screen preview`"
+      >
+        <div class="image-viewer-heading">
+          <strong>{{ viewerDocument.name }}</strong>
+          <button ref="viewerCloseButton" type="button" aria-label="Close full-screen preview" @click="closeImageViewer">×</button>
+        </div>
+        <img
+          :src="previewStates[viewerDocument.id]?.url"
+          :alt="`${viewerDocument.name} full-size document preview`"
+        />
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -659,8 +838,101 @@ dt {
 .analysis-status.failed { background: #fee2e2; color: #991b1b; }
 .analysis-status.pending { background: #fff4cc; color: #8a6100; }
 .analysis-status.processing { background: #e0f2fe; color: #075985; }
-.documents { display: grid; gap: 18px; }
-.document-card { margin: 0; }
+.documents { display: grid; gap: 18px; min-width: 0; }
+.document-card {
+  display: grid;
+  gap: 22px;
+  grid-template-columns: clamp(180px, 20vw, 230px) minmax(0, 1fr);
+  margin: 0;
+  min-width: 0;
+}
+.document-information { min-width: 0; }
+.document-preview {
+  align-self: start;
+  aspect-ratio: 4 / 5;
+  background: var(--color-anti-flash-white);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  display: grid;
+  min-height: 220px;
+  overflow: hidden;
+  place-items: stretch;
+}
+.preview-placeholder,
+.image-preview-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--color-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  justify-content: center;
+  min-height: 100%;
+  padding: 18px;
+  text-align: center;
+  width: 100%;
+}
+.image-preview-button,
+.file-preview-button { cursor: pointer; }
+.image-preview-button img {
+  height: 100%;
+  inset: 0;
+  object-fit: contain;
+  position: absolute;
+  width: 100%;
+}
+.image-preview-button {
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+}
+.image-preview-button span {
+  background: rgba(9, 28, 19, 0.82);
+  bottom: 0;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 800;
+  left: 0;
+  padding: 8px;
+  position: absolute;
+  right: 0;
+}
+.preview-icon {
+  align-items: center;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  display: inline-flex;
+  font-size: 1.25rem;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+.preview-file-type {
+  background: #991b1b;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 900;
+  padding: 7px 9px;
+}
+.preview-error button {
+  background: var(--color-dartmouth-green);
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  padding: 7px 12px;
+}
+.preview-spinner {
+  animation: preview-spin 800ms linear infinite;
+  border: 3px solid var(--color-border);
+  border-radius: 50%;
+  border-top-color: var(--color-dartmouth-green);
+  height: 30px;
+  width: 30px;
+}
+@keyframes preview-spin { to { transform: rotate(360deg); } }
 .doc-head,
 .analysis-heading,
 .modal-heading {
@@ -674,13 +946,13 @@ dt {
 .modal-heading h2 { margin: 0; }
 .doc-head h2 { font-size: 1.1rem; }
 .file-state { color: var(--color-muted); font-size: 0.82rem; margin: 4px 0 0; }
-.document-card > dl,
+.document-information > dl,
 .analysis-facts {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-.document-card > dl > div,
+.document-information > dl > div,
 .analysis-facts > div {
   background: var(--color-anti-flash-white);
   border-radius: 6px;
@@ -781,6 +1053,52 @@ dt {
   padding: 24px;
   width: 100%;
 }
+.image-viewer-backdrop {
+  align-items: center;
+  background: rgba(3, 9, 6, 0.92);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 1200;
+}
+.image-viewer {
+  display: flex;
+  flex-direction: column;
+  height: min(92vh, 1000px);
+  max-width: 1400px;
+  min-width: 0;
+  width: min(94vw, 1400px);
+}
+.image-viewer-heading {
+  align-items: center;
+  color: #fff;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 0 0 12px;
+}
+.image-viewer-heading button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 1.55rem;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+.image-viewer img {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  height: calc(100% - 54px);
+  object-fit: contain;
+  width: 100%;
+}
 .close-button { color: var(--color-muted); font-size: 1.5rem; padding: 2px 10px; }
 .upload-help,
 .selected-file,
@@ -794,13 +1112,18 @@ dt {
 @media (max-width: 850px) {
   .summary,
   .ai-summary,
-  .document-card > dl,
+  .document-information > dl,
   .analysis-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .document-card { grid-template-columns: minmax(160px, 200px) minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .document-card { grid-template-columns: 1fr; }
+  .document-preview { aspect-ratio: 16 / 10; min-height: 190px; width: 100%; }
 }
 @media (max-width: 500px) {
   .summary,
   .ai-summary,
-  .document-card > dl,
+  .document-information > dl,
   .analysis-facts { grid-template-columns: 1fr; }
   .panel,
   .summary,

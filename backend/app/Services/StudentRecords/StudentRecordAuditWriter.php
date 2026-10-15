@@ -16,6 +16,7 @@ class StudentRecordAuditWriter
         'document_file_uploaded',
         'document_file_replaced',
         'document_file_deleted',
+        'enrollment_document_linked',
     ];
 
     /** @param array<string, mixed> $metadata */

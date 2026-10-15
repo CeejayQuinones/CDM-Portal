@@ -130,6 +130,7 @@ class StudentController extends Controller
         $student = $this->studentService->find($student->id);
         $documents = $student->documents()
             ->with(['documentType', 'aiAnalysis'])
+            ->whereHas('documentType', fn ($query) => $query->where('document_name', '!=', 'Birth Certificate'))
             ->orderByDesc('submitted_date')
             ->get();
 

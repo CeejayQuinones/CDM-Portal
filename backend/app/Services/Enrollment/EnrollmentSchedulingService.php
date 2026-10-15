@@ -83,17 +83,23 @@ class EnrollmentSchedulingService
     {
         return DB::transaction(function () use ($user, $input, $id, $delete) {
             $actor = EnrollmentAccess::require($user, true, true);
-            $ref = $id ? SectionSubject::findOrFail($id) : null;
+            $assignmentId = $id ? null : ($input['assignment_id'] ?? null);
+            $recordId = $id ?? $assignmentId;
+            $ref = $recordId ? SectionSubject::findOrFail($recordId) : null;
             $sectionRef = Section::findOrFail($ref?->section_id ?? $input['section_id']);
             $year = AcademicYear::lockForUpdate()->findOrFail($sectionRef->academic_year_id);
             $semester = Semester::lockForUpdate()->findOrFail($sectionRef->semester_id);
             $section = Section::lockForUpdate()->findOrFail($sectionRef->id);
-            $s = $id ? SectionSubject::lockForUpdate()->findOrFail($id) : new SectionSubject;
-            $previousProfessorId = $id ? $s->professor_id : null;
+            $s = $recordId ? SectionSubject::lockForUpdate()->findOrFail($recordId) : new SectionSubject;
+            $previousProfessorId = $recordId ? $s->professor_id : null;
             if ($id) {
                 abort_unless($s->version === $input['version'], 409, 'This schedule changed. Reload before continuing.');
             }
-            $used = $id ? EnrollmentSubject::where('subject_id', $s->subject_id)->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id))->lockForUpdate()->first() : null;
+            if ($assignmentId) {
+                abort_unless($s->section_id === $input['section_id'] && $s->subject_id === $input['subject_id'], 422, 'The teaching assignment cannot change section or subject.');
+                abort_if($s->day || $s->start_time || $s->end_time || $s->room, 409, 'This subject already has a schedule. Reload before continuing.');
+            }
+            $used = $recordId ? EnrollmentSubject::where('subject_id', $s->subject_id)->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id))->lockForUpdate()->first() : null;
             if ($delete) {
                 abort_if($used, 409, 'A schedule referenced by academic enrollment cannot be deleted.');
                 $this->audit->record($actor, 'schedule_deleted', 'schedule', $s->id, ['version' => $s->version]);
@@ -102,13 +108,13 @@ class EnrollmentSchedulingService
                 return null;
             }
             abort_unless($section->status === 'open' && $year->status === 'active' && $semester->status === 'active', 422, 'Choose an open section in an active academic term.');
-            if ($id) {
+            if ($recordId) {
                 abort_unless($input['section_id'] === $section->id && (! $used || $input['subject_id'] === $s->subject_id), 422, 'Referenced schedules cannot change section or subject.');
             }
             $subject = Subject::with('curriculum')->whereKey($input['subject_id'])->lockForUpdate()->firstOrFail();
             abort_unless($subject->status === 'active' && $subject->curriculum?->course_id === $section->course_id && $subject->semester_id === $section->semester_id && (int) $subject->year_level === (int) $section->year_level && $subject->curriculum->status === 'active' && $subject->curriculum->effective_year <= now()->year, 422, 'Choose an active curriculum subject for this Course, year level and semester.');
             $this->professor($input['professor_id']);
-            abort_if(SectionSubject::where('section_id', $section->id)->where('subject_id', $subject->id)->when($id, fn ($q) => $q->where('id', '!=', $id))->lockForUpdate()->first(), 409, 'This subject already has a meeting in the section.');
+            abort_if(SectionSubject::where('section_id', $section->id)->where('subject_id', $subject->id)->when($recordId, fn ($q) => $q->where('id', '!=', $recordId))->lockForUpdate()->first(), 409, 'This subject already has a meeting in the section.');
             $s->fill(collect($input)->only(['section_id', 'subject_id', 'professor_id', 'day', 'start_time', 'end_time', 'room'])->all());
             $s->room = mb_strtoupper(trim(preg_replace('/\s+/u', ' ', $input['room'])));
             // All schedule writers hold the academic-year parent lock, including when no meeting exists yet.
@@ -116,10 +122,10 @@ class EnrollmentSchedulingService
             foreach ($others as $other) {
                 abort_if($this->conflicts($s, $other), 409, 'Schedule overlaps an existing section, Professor or room meeting.');
             }
-            if ($id) {
+            if ($recordId) {
                 $s->version++;
             }$s->save();
-            if ($id && (int) $previousProfessorId !== (int) $s->professor_id) {
+            if ($recordId && (int) $previousProfessorId !== (int) $s->professor_id) {
                 $sheet = GradeSheet::where('section_subject_id', $s->id)->lockForUpdate()->first();
                 if ($sheet) {
                     abort_unless(in_array($sheet->status, ['draft', 'returned'], true), 409, 'A submitted, approved, or published grade sheet prevents Professor reassignment.');
@@ -130,7 +136,7 @@ class EnrollmentSchedulingService
                 EnrollmentSubject::where('subject_id', $s->subject_id)->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id)->where('status', 'enrolled'))->update(['professor_id' => $s->professor_id]);
             }
             $metadata = ['version' => $s->version];
-            if ($id && (int) $previousProfessorId !== (int) $s->professor_id) {
+            if ($recordId && (int) $previousProfessorId !== (int) $s->professor_id) {
                 $metadata += ['previous_professor_id' => $previousProfessorId, 'professor_id' => $s->professor_id];
             }
             $this->audit->record($actor, $id ? 'schedule_updated' : 'schedule_created', 'schedule', $s->id, $metadata);

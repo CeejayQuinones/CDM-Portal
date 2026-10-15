@@ -18,6 +18,7 @@ class StudentDocumentResource extends JsonResource
             'name' => $this->whenLoaded('documentType', fn () => $this->documentType->document_name),
             'document_type_id' => $this->document_type_id,
             'has_file' => filled($this->file_path),
+            'file_kind' => $this->fileKind(),
             'is_ai_analysis_eligible' => $this->supportsAiAnalysis(),
             'ai_analysis_type' => $analysisType ? [
                 'key' => $analysisType['key'],
@@ -45,5 +46,18 @@ class StudentDocumentResource extends JsonResource
                 'analyzed_at' => $this->aiAnalysis->analyzed_at?->toISOString(),
             ] : null),
         ];
+    }
+
+    private function fileKind(): ?string
+    {
+        if (! filled($this->file_path)) {
+            return null;
+        }
+
+        return match (strtolower(pathinfo($this->file_path, PATHINFO_EXTENSION))) {
+            'jpg', 'jpeg', 'png', 'webp' => 'image',
+            'pdf' => 'pdf',
+            default => 'file',
+        };
     }
 }

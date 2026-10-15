@@ -36,3 +36,13 @@ test('staff history exposes real Student Records activity without raw storage pa
   assert.match(history, /activity\.occurred_at/)
   assert.doesNotMatch(history, /file_path|storage_path|raw_prompt/)
 })
+
+test('Student Documents renders handed-off document metadata from the private records response', () => {
+  assert.match(documents, /document\.name/)
+  assert.match(documents, /document\.has_file/)
+  assert.match(documents, /document\.submitted_date/)
+  assert.match(documents, /document\.verification_status/)
+  assert.match(documents, /document\.verified_by/)
+  assert.match(documents, /document\.remarks/)
+  assert.doesNotMatch(documents, /document\.file_path/)
+})

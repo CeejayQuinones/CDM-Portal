@@ -16,6 +16,7 @@ use App\Services\Ai\Analyzers\GeminiDocumentAnalyzer;
 use App\Services\Ai\Analyzers\MockDocumentAnalyzer;
 use App\Services\Ai\Contracts\DocumentAnalyzer;
 use App\Services\Ai\DocumentAnalysisService;
+use App\Services\Ai\DocumentAnalysisTypeRegistry;
 use App\Services\Ai\Exceptions\DocumentAnalyzerException;
 use App\Services\Demo\StudentDocumentDemoFixtureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -46,25 +47,35 @@ class StudentDocumentAiAnalysisTest extends TestCase
         Storage::fake('local');
     }
 
-    public function test_registrar_can_upload_a_valid_image_and_birth_certificate_analysis_is_queued(): void
+    public function test_ai_registry_supports_only_current_student_document_types(): void
+    {
+        $this->assertFalse(DocumentAnalysisTypeRegistry::supports('Birth Certificate'));
+        $this->assertSame(
+            ['certificate_of_enrollment', 'form_137', 'good_moral'],
+            array_keys(DocumentAnalysisTypeRegistry::all()),
+        );
+    }
+
+    public function test_registrar_can_upload_a_valid_image_and_supported_analysis_is_queued(): void
     {
         Queue::fake();
-        $document = $this->createBirthCertificate();
+        $document = $this->createSupportedDocument();
         $registrar = $this->createUserWithRole(Role::REGISTRAR_STAFF);
         Sanctum::actingAs($registrar);
 
         $this->postJson("/api/registrar/student-documents/{$document->id}/upload", [
-            'file' => UploadedFile::fake()->image('birth-certificate.jpg', 1200, 800),
+            'file' => UploadedFile::fake()->image('form-137.jpg', 1200, 800),
         ])
             ->assertOk()
             ->assertJsonPath('data.has_file', true)
+            ->assertJsonPath('data.file_kind', 'image')
             ->assertJsonPath('data.status', 'available')
             ->assertJsonPath('data.verification_status', 'pending')
             ->assertJsonPath('data.ai_analysis.status', 'pending');
 
         $document->refresh();
         $this->assertStringStartsWith(
-            "student-documents/{$document->student_id}/{$document->document_type_id}-birth-certificate/",
+            "student-documents/{$document->student_id}/{$document->document_type_id}-form-137/",
             $document->file_path,
         );
         Storage::disk('local')->assertExists($document->file_path);
@@ -119,8 +130,8 @@ class StudentDocumentAiAnalysisTest extends TestCase
     {
         Queue::fake();
         $student = $this->createStudent();
-        $type = $this->createDocumentType('Birth Certificate');
-        $oldPath = "student-documents/{$student->id}/{$type->id}-birth-certificate/original.pdf";
+        $type = $this->createDocumentType('Form 137');
+        $oldPath = "student-documents/{$student->id}/{$type->id}-form-137/original.pdf";
         Storage::disk('local')->put($oldPath, 'old document');
         $document = StudentDocument::query()->create([
             'student_id' => $student->id,
@@ -142,7 +153,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
         Queue::assertPushed(AnalyzeStudentDocument::class, 1);
     }
 
-    public function test_view_and_download_are_private_and_registrar_only(): void
+    public function test_view_and_download_are_private_and_staff_only(): void
     {
         Queue::fake();
         $student = $this->createStudent();
@@ -165,12 +176,17 @@ class StudentDocumentAiAnalysisTest extends TestCase
             ->assertDownload('form-137-'.$document->id.'.pdf');
 
         Sanctum::actingAs($this->createUserWithRole(Role::ADMIN));
-        $this->get("/api/registrar/student-documents/{$document->id}/view")->assertForbidden();
-        $this->get("/api/registrar/student-documents/{$document->id}/download")->assertForbidden();
+        $this->get("/api/registrar/student-documents/{$document->id}/view")->assertOk();
+        $this->get("/api/registrar/student-documents/{$document->id}/download")->assertOk();
 
-        Sanctum::actingAs($this->createUserWithRole(Role::STUDENT));
-        $this->get("/api/registrar/student-documents/{$document->id}/view")->assertForbidden();
-        $this->get("/api/registrar/student-documents/{$document->id}/download")->assertForbidden();
+        foreach ([Role::STUDENT, Role::PROFESSOR, Role::GUEST] as $role) {
+            Sanctum::actingAs($this->createUserWithRole($role));
+            $this->get("/api/registrar/student-documents/{$document->id}/view")->assertForbidden();
+            $this->get("/api/registrar/student-documents/{$document->id}/download")->assertForbidden();
+        }
+
+        $this->app['auth']->forgetGuards();
+        $this->getJson("/api/registrar/student-documents/{$document->id}/view")->assertUnauthorized();
     }
 
     public function test_deleting_a_file_requires_step_up_and_marks_the_document_missing(): void
@@ -404,7 +420,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $this->assertSame('likely_incorrect', $result['recommendation']);
     }
 
-    public function test_local_psa_demo_fixture_uses_private_storage_and_the_existing_ai_queue(): void
+    public function test_local_psa_demo_fixture_remains_private_but_is_no_longer_ai_supported(): void
     {
         $this->app->detectEnvironment(fn (): string => 'local');
         Queue::fake();
@@ -416,38 +432,30 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $document = $result['document'];
 
         $this->assertSame('Birth Certificate', $document->documentType->document_name);
-        $this->assertTrue($document->supportsAiAnalysis());
+        $this->assertFalse($document->supportsAiAnalysis());
         $this->assertStringStartsWith("student-documents/{$student->id}/", $document->file_path);
         $this->assertStringNotContainsString('CDM_Frontend', $document->file_path);
         Storage::disk('local')->assertExists($document->file_path);
-        $this->assertSame(StudentDocumentAiAnalysis::STATUS_PENDING, $document->aiAnalysis->status);
-        Queue::assertPushedOn('document-analysis', AnalyzeStudentDocument::class);
-
-        $this->configureGemini();
-        $this->fakeGemini(['detected_document_type' => 'Birth Certificate']);
-        Http::assertNothingSent();
-        $analysisResult = $this->app->make(DocumentAnalyzer::class)->analyze($document, 'Birth Certificate');
-
-        $this->assertSame('birth_certificate', $analysisResult['detected_document_type']);
-        $this->assertTrue($analysisResult['checks']['document_type_match']);
+        $this->assertNull($document->aiAnalysis);
+        Queue::assertNothingPushed();
     }
 
-    public function test_registration_form_demo_fixture_is_a_wrong_birth_certificate_with_mocked_gemini(): void
+    public function test_registration_form_demo_fixture_is_a_wrong_form_137_with_mocked_gemini(): void
     {
         $this->app->detectEnvironment(fn (): string => 'local');
         Queue::fake();
         $student = $this->createStudent();
-        $this->createDocumentType('Birth Certificate');
+        $this->createDocumentType('Form 137');
         $fixtures = $this->createSyntheticDemoFixtures(['registration-form-sample.jpg']);
         $document = (new StudentDocumentDemoFixtureService($fixtures))->install(
             $student,
             'registration-form',
-            'Birth Certificate',
+            'Form 137',
         )['document'];
         $this->configureGemini();
         $this->fakeGemini(['detected_document_type' => 'Registration Form']);
 
-        $result = $this->app->make(DocumentAnalyzer::class)->analyze($document, 'Birth Certificate');
+        $result = $this->app->make(DocumentAnalyzer::class)->analyze($document, 'Form 137');
 
         $this->assertFalse($result['checks']['document_type_match']);
         $this->assertSame('likely_incorrect', $result['recommendation']);
@@ -667,7 +675,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
 
     public function test_queued_provider_failure_stays_generic_and_records_gemini_metadata(): void
     {
-        $document = $this->createGeminiBirthCertificate();
+        $document = $this->createGeminiDocument('Form 137');
         $analysis = $document->aiAnalysis()->firstOrFail();
         $this->configureGemini();
         Http::fake(['*' => Http::response([
@@ -720,16 +728,16 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $this->assertNotNull($analysis->analyzed_at);
     }
 
-    public function test_birth_certificate_upload_creates_a_pending_analysis_and_dispatches_a_job(): void
+    public function test_supported_document_upload_creates_a_pending_analysis_and_dispatches_a_job(): void
     {
         Queue::fake();
         $student = $this->createStudent();
-        $documentType = $this->createDocumentType('Birth Certificate');
+        $documentType = $this->createDocumentType('Form 137');
 
         $document = StudentDocument::query()->create([
             'student_id' => $student->id,
             'document_type_id' => $documentType->id,
-            'file_path' => 'student-documents/fake/birth-certificate.pdf',
+            'file_path' => 'student-documents/fake/form-137.pdf',
             'availability_status' => 'available',
         ]);
 
@@ -751,7 +759,6 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $student = $this->createStudent();
 
         foreach ([
-            'Birth Certificate',
             'Certificate of Enrollment',
             'Form 137',
             'Good Moral Certificate',
@@ -766,7 +773,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
             $this->assertSame(StudentDocumentAiAnalysis::STATUS_PENDING, $document->aiAnalysis()->firstOrFail()->status);
         }
 
-        Queue::assertPushed(AnalyzeStudentDocument::class, 4);
+        Queue::assertPushed(AnalyzeStudentDocument::class, 3);
         Queue::assertPushedOn('document-analysis', AnalyzeStudentDocument::class);
     }
 
@@ -791,7 +798,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
     {
         config()->set('services.document_analysis.driver', 'mock');
         Queue::fake();
-        $document = $this->createBirthCertificate('student-documents/fake/birth-certificate.pdf');
+        $document = $this->createSupportedDocument('student-documents/fake/form-137.pdf');
         $analysis = $document->aiAnalysis()->firstOrFail();
 
         (new AnalyzeStudentDocument($analysis->id, $document->file_path))
@@ -800,7 +807,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $analysis->refresh();
 
         $this->assertSame(StudentDocumentAiAnalysis::STATUS_COMPLETED, $analysis->status);
-        $this->assertSame('birth_certificate', $analysis->detected_document_type);
+        $this->assertSame('form_137', $analysis->detected_document_type);
         $this->assertSame('0.9900', $analysis->confidence);
         $this->assertSame([], $analysis->extracted_data);
         $this->assertTrue($analysis->checks['development_mock']);
@@ -813,7 +820,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
     public function test_failed_analysis_is_recorded_without_changing_the_document(): void
     {
         Queue::fake();
-        $document = $this->createBirthCertificate('student-documents/fake/unreadable-birth-certificate.pdf');
+        $document = $this->createSupportedDocument('student-documents/fake/unreadable-form-137.pdf');
         $analysis = $document->aiAnalysis()->firstOrFail();
 
         $this->app->instance(DocumentAnalyzer::class, new class implements DocumentAnalyzer
@@ -834,14 +841,14 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $this->assertNull($analysis->analyzed_at);
         $this->assertDatabaseHas('student_documents', [
             'id' => $document->id,
-            'file_path' => 'student-documents/fake/unreadable-birth-certificate.pdf',
+            'file_path' => 'student-documents/fake/unreadable-form-137.pdf',
         ]);
     }
 
-    public function test_replacing_a_birth_certificate_resets_analysis_without_reanalyzing_unchanged_updates(): void
+    public function test_replacing_a_supported_document_resets_analysis_without_reanalyzing_unchanged_updates(): void
     {
         Queue::fake();
-        $document = $this->createBirthCertificate('student-documents/fake/birth-certificate-v1.pdf');
+        $document = $this->createSupportedDocument('student-documents/fake/form-137-v1.pdf');
         $analysis = $document->aiAnalysis()->firstOrFail();
         $analysis->update([
             'status' => StudentDocumentAiAnalysis::STATUS_COMPLETED,
@@ -851,7 +858,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
         ]);
 
         Queue::fake();
-        $document->update(['file_path' => 'student-documents/fake/birth-certificate-v2.pdf']);
+        $document->update(['file_path' => 'student-documents/fake/form-137-v2.pdf']);
 
         $analysis->refresh();
         $this->assertSame(StudentDocumentAiAnalysis::STATUS_PENDING, $analysis->status);
@@ -871,8 +878,8 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $student = $this->createStudent();
         $first = StudentDocument::query()->create([
             'student_id' => $student->id,
-            'document_type_id' => $this->createDocumentType('Birth Certificate')->id,
-            'file_path' => 'student-documents/fake/birth-certificate-one.pdf',
+            'document_type_id' => $this->createDocumentType('Good Moral Certificate')->id,
+            'file_path' => 'student-documents/fake/good-moral-one.pdf',
             'availability_status' => 'available',
         ]);
         $second = StudentDocument::query()->create([
@@ -920,7 +927,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $student = $this->createStudent();
         StudentDocument::query()->create([
             'student_id' => $student->id,
-            'document_type_id' => $this->createDocumentType('Birth Certificate')->id,
+            'document_type_id' => $this->createDocumentType('Form 137')->id,
             'file_path' => null,
             'availability_status' => 'missing',
         ]);
@@ -950,7 +957,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $student = $this->createStudent();
         $processing = StudentDocument::query()->create([
             'student_id' => $student->id,
-            'document_type_id' => $this->createDocumentType('Birth Certificate')->id,
+            'document_type_id' => $this->createDocumentType('Form 137')->id,
             'file_path' => 'student-documents/fake/processing.pdf',
             'availability_status' => 'available',
         ]);
@@ -996,10 +1003,10 @@ class StudentDocumentAiAnalysisTest extends TestCase
     public function test_registrar_document_get_returns_stored_summary_without_dispatching_analysis(): void
     {
         Queue::fake();
-        $document = $this->createBirthCertificate('student-documents/fake/birth-certificate.pdf');
+        $document = $this->createSupportedDocument('student-documents/fake/form-137.pdf');
         $document->aiAnalysis()->update([
             'status' => StudentDocumentAiAnalysis::STATUS_COMPLETED,
-            'detected_document_type' => 'birth_certificate',
+            'detected_document_type' => 'form_137',
             'confidence' => 0.9900,
             'checks' => ['development_mock' => true],
             'issues' => ['Development placeholder only.'],
@@ -1014,14 +1021,14 @@ class StudentDocumentAiAnalysisTest extends TestCase
         $this->getJson("/api/students/{$document->student_id}/documents")
             ->assertOk()
             ->assertJsonPath('data.documents.0.ai_analysis.status', 'completed')
-            ->assertJsonPath('data.documents.0.ai_analysis.detected_document_type', 'birth_certificate')
+            ->assertJsonPath('data.documents.0.ai_analysis.detected_document_type', 'form_137')
             ->assertJsonPath('data.documents.0.ai_analysis.confidence', '0.9900')
             ->assertJsonPath('data.documents.0.ai_analysis.checks.development_mock', true)
             ->assertJsonPath('data.documents.0.ai_analysis.recommendation', 'needs_review')
             ->assertJsonPath('data.documents.0.ai_analysis.provider', 'mock')
             ->assertJsonPath('data.documents.0.ai_analysis.is_mock', true)
-            ->assertJsonPath('data.documents.0.ai_analysis_type.key', 'birth_certificate')
-            ->assertJsonPath('data.documents.0.ai_analysis_type.label', 'Birth Certificate')
+            ->assertJsonPath('data.documents.0.ai_analysis_type.key', 'form_137')
+            ->assertJsonPath('data.documents.0.ai_analysis_type.label', 'Form 137')
             ->assertJsonMissingPath('data.documents.0.ai_analysis.extracted_data');
 
         Queue::assertNothingPushed();
@@ -1029,7 +1036,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
 
     public function test_student_document_analysis_output_preserves_registrar_and_admin_access_rules(): void
     {
-        $document = $this->createBirthCertificate();
+        $document = $this->createSupportedDocument();
 
         Sanctum::actingAs($this->createUserWithRole(Role::REGISTRAR_STAFF));
         $this->getJson("/api/students/{$document->student_id}/documents")->assertOk();
@@ -1054,12 +1061,39 @@ class StudentDocumentAiAnalysisTest extends TestCase
         ]);
     }
 
+    private function createSupportedDocument(?string $filePath = null): StudentDocument
+    {
+        $student = $this->createStudent();
+        $documentType = $this->createDocumentType('Form 137');
+
+        return StudentDocument::query()->create([
+            'student_id' => $student->id,
+            'document_type_id' => $documentType->id,
+            'file_path' => $filePath,
+            'availability_status' => 'available',
+        ]);
+    }
+
     private function createGeminiBirthCertificate(string $contents = '%PDF-test-document'): StudentDocument
     {
+        $this->enableLegacyBirthCertificateAnalyzerForTest();
         $document = $this->createGeminiDocument('Birth Certificate', $contents);
         $document->student->userProfile->update(['birth_date' => '2004-03-12']);
 
         return $document->fresh(['student.userProfile', 'student.course', 'documentType', 'aiAnalysis']);
+    }
+
+    private function enableLegacyBirthCertificateAnalyzerForTest(): void
+    {
+        config()->set('document_analysis.supported_types.birth_certificate', [
+            'label' => 'Birth Certificate',
+            'aliases' => ['Birth Certificate', 'Certificate of Live Birth'],
+            'extraction_fields' => [
+                'student_full_name' => ['type' => 'STRING', 'description' => 'Full student name.'],
+                'date_of_birth' => ['type' => 'STRING', 'description' => 'Birth date.'],
+                'place_of_birth' => ['type' => 'STRING', 'description' => 'Place of birth.'],
+            ],
+        ]);
     }
 
     private function createGeminiDocument(

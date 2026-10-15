@@ -173,17 +173,52 @@ class StudentRecordsTest extends TestCase
         ]);
     }
 
-    public function test_registrar_can_view_a_students_read_only_document_list(): void
+    public function test_staff_can_view_current_documents_without_exposing_historical_birth_certificate_or_private_paths(): void
     {
         $registrar = $this->createUserWithRole(Role::REGISTRAR_STAFF);
         $student = $this->createStudent('2026-000004', 'Donna', 'Santos', 'regular', 1);
+        $birthCertificate = StudentDocument::query()->create([
+            'student_id' => $student->id,
+            'document_type_id' => DocumentType::query()->create([
+                'document_name' => 'Birth Certificate',
+                'processing_fee' => 0,
+                'processing_days' => 1,
+                'requires_appointment' => false,
+                'status' => 'inactive',
+            ])->id,
+            'file_path' => "student-documents/{$student->id}/birth-certificate/history.pdf",
+            'availability_status' => 'available',
+        ]);
+        StudentDocument::query()->create([
+            'student_id' => $student->id,
+            'document_type_id' => DocumentType::query()->create([
+                'document_name' => 'Form 137',
+                'processing_fee' => 0,
+                'processing_days' => 1,
+                'requires_appointment' => false,
+                'status' => 'inactive',
+            ])->id,
+            'file_path' => "student-documents/{$student->id}/form-137/record.pdf",
+            'availability_status' => 'available',
+        ]);
         Sanctum::actingAs($registrar);
 
-        $this->getJson("/api/students/{$student->id}/documents")
+        $response = $this->getJson("/api/students/{$student->id}/documents")
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.student.id', $student->id)
-            ->assertJsonPath('data.documents', []);
+            ->assertJsonCount(1, 'data.documents')
+            ->assertJsonPath('data.documents.0.name', 'Form 137')
+            ->assertJsonPath('data.documents.0.file_kind', 'pdf')
+            ->assertJsonMissingPath('data.documents.0.file_path');
+
+        $this->assertSame('Form 137', $response->json('data.documents.0.name'));
+        $this->assertDatabaseHas('student_documents', ['id' => $birthCertificate->id]);
+
+        Sanctum::actingAs($this->createUserWithRole(Role::ADMIN));
+        $this->getJson("/api/students/{$student->id}/documents")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.documents');
     }
 
     public function test_student_photo_update_is_immediately_shared_with_registrar_records(): void
@@ -238,10 +273,10 @@ class StudentRecordsTest extends TestCase
         $this->seed(StudentDocumentsSeeder::class);
         $this->seed(StudentDocumentsSeeder::class);
 
-        $this->assertDatabaseCount('student_documents', 5);
+        $this->assertDatabaseCount('student_documents', 4);
         $records = $john->documents()->with('documentType')->get()->keyBy(fn (StudentDocument $document) => $document->documentType->document_name);
 
-        $this->assertSame('available', $records['Birth Certificate']->availability_status);
+        $this->assertArrayNotHasKey('Birth Certificate', $records->all());
         $this->assertSame('available', $records['Form 137']->availability_status);
         $this->assertSame('missing', $records['Good Moral Certificate']->availability_status);
         $this->assertSame('missing', $records['Certificate of Enrollment']->availability_status);

@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\Enrollment\EnrollmentDocument;
 use App\Services\Ai\DocumentAnalysisTypeRegistry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class StudentDocument extends Model
@@ -29,6 +31,11 @@ class StudentDocument extends Model
     public function aiAnalysis(): HasOne
     {
         return $this->hasOne(StudentDocumentAiAnalysis::class);
+    }
+
+    public function enrollmentSources(): HasMany
+    {
+        return $this->hasMany(EnrollmentDocument::class);
     }
 
     public function supportsAiAnalysis(): bool

@@ -2,29 +2,6 @@
 
 return [
     'supported_types' => [
-        'birth_certificate' => [
-            'label' => 'Birth Certificate',
-            'aliases' => [
-                'Birth Certificate',
-                'Certificate of Live Birth',
-                'PSA Birth Certificate',
-                'PSA Certificate of Live Birth',
-            ],
-            'extraction_fields' => [
-                'student_full_name' => [
-                    'type' => 'STRING',
-                    'description' => 'Full name of the person whose birth is recorded.',
-                ],
-                'date_of_birth' => [
-                    'type' => 'STRING',
-                    'description' => 'Birth date normalized to YYYY-MM-DD when legible.',
-                ],
-                'place_of_birth' => [
-                    'type' => 'STRING',
-                    'description' => 'Place of birth when legible.',
-                ],
-            ],
-        ],
         'certificate_of_enrollment' => [
             'label' => 'Certificate of Enrollment',
             'aliases' => [

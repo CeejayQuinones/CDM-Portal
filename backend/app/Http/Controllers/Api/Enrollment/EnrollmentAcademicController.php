@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Enrollment;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
 use App\Models\Course;
+use App\Models\Curriculum;
 use App\Models\Enrollment;
 use App\Models\Professor;
 use App\Models\Role;
@@ -16,13 +17,14 @@ use App\Notifications\EnrollmentNotice;
 use App\Services\Enrollment\EnrollmentAcademicService;
 use App\Services\Enrollment\EnrollmentAccess;
 use App\Services\Enrollment\EnrollmentSchedulingService;
+use App\Services\Enrollment\EnrollmentSubjectManagementService;
 use App\Services\Enrollment\EnrollmentSubjectPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class EnrollmentAcademicController extends Controller
 {
-    public function __construct(private EnrollmentAcademicService $academic, private EnrollmentSubjectPolicy $loads, private EnrollmentSchedulingService $scheduling) {}
+    public function __construct(private EnrollmentAcademicService $academic, private EnrollmentSubjectPolicy $loads, private EnrollmentSchedulingService $scheduling, private EnrollmentSubjectManagementService $subjectManagement) {}
 
     private function ok($data, int $status = 200)
     {
@@ -80,6 +82,70 @@ class EnrollmentAcademicController extends Controller
         return $this->ok($this->scheduling->section($r->user(), $in, $id), $id ? 200 : 201);
     }
 
+    public function subjects(Request $r)
+    {
+        $this->staff($r);
+        $in = $r->validate(['search' => 'nullable|string|max:100', 'course_id' => 'nullable|integer|exists:courses,id', 'curriculum_id' => 'nullable|integer|exists:curriculums,id', 'status' => ['nullable', Rule::in(['active', 'inactive'])]]);
+        $query = Subject::with(['curriculum.course', 'semester', 'prerequisite'])
+            ->withCount(['sectionSubjects', 'enrollmentSubjects']);
+        if (! empty($in['course_id'])) {
+            $query->whereHas('curriculum', fn ($curriculum) => $curriculum->where('course_id', $in['course_id']));
+        }
+        foreach (['curriculum_id', 'status'] as $key) {
+            if (! empty($in[$key])) {
+                $query->where($key, $in[$key]);
+            }
+        }
+        if (! empty($in['search'])) {
+            $search = '%'.$in['search'].'%';
+            $query->where(fn ($subject) => $subject->where('subject_code', 'like', $search)->orWhere('subject_name', 'like', $search));
+        }
+
+        return $this->ok([
+            'subjects' => $query->orderBy('subject_code')->paginate(50),
+            'courses' => Course::orderBy('course_code')->get(['id', 'course_code', 'course_name', 'years', 'status']),
+            'curriculums' => Curriculum::with('course:id,course_code,course_name,status')->orderByDesc('effective_year')->orderBy('curriculum_code')->get(),
+            'semesters' => Semester::orderBy('semester_order')->get(),
+        ]);
+    }
+
+    public function saveSubject(Request $r, ?int $id = null)
+    {
+        $this->staff($r);
+        $r->merge([
+            'subject_code' => EnrollmentSubjectManagementService::normalizeCode((string) $r->input('subject_code')),
+            'subject_name' => trim((string) $r->input('subject_name')),
+        ]);
+        $in = $r->validate([
+            'curriculum_id' => 'required|integer|exists:curriculums,id',
+            'semester_id' => ['required', 'integer', Rule::exists('semesters', 'id')->where('status', 'active')],
+            'subject_code' => ['required', 'string', 'min:2', 'max:20', 'regex:/^[A-Z0-9][A-Z0-9-]+$/'],
+            'subject_name' => 'required|string|max:150',
+            'year_level' => 'required|integer|min:1|max:20',
+            'units' => 'required|numeric|min:0|max:999.9',
+            'lecture_hours' => 'required|integer|min:0|max:40',
+            'laboratory_hours' => 'required|integer|min:0|max:40',
+            'prerequisite_subject_id' => 'nullable|integer|exists:subjects,id',
+            'status' => $id ? 'prohibited' : ['required', Rule::in(['active', 'inactive'])],
+        ]);
+        foreach (['curriculum_id', 'semester_id', 'year_level', 'lecture_hours', 'laboratory_hours', 'prerequisite_subject_id'] as $key) {
+            if (isset($in[$key])) {
+                $in[$key] = (int) $in[$key];
+            }
+        }
+        $in['units'] = (float) $in['units'];
+
+        return $this->ok($this->subjectManagement->save($r->user(), $in, $id), $id ? 200 : 201);
+    }
+
+    public function subjectStatus(Request $r, int $id, string $action)
+    {
+        $this->staff($r);
+        abort_unless(in_array($action, ['archive', 'reactivate'], true), 404);
+
+        return $this->ok($this->subjectManagement->setStatus($r->user(), $id, $action === 'archive' ? 'inactive' : 'active'));
+    }
+
     public function schedules(Request $r)
     {
         $this->staff($r);
@@ -98,8 +164,8 @@ class EnrollmentAcademicController extends Controller
     public function saveSchedule(Request $r, ?int $id = null)
     {
         $this->staff($r);
-        $in = $r->validate(['section_id' => 'required|integer|exists:sections,id', 'subject_id' => 'required|integer|exists:subjects,id', 'professor_id' => 'required|integer|exists:professors,id', 'day' => ['required', Rule::in(EnrollmentSchedulingService::DAYS)], 'start_time' => 'required|date_format:H:i', 'end_time' => 'required|date_format:H:i|after:start_time', 'room' => 'required|string|max:50', 'version' => $id ? 'required|integer|min:1' : 'sometimes|integer']);
-        foreach (['section_id', 'subject_id', 'professor_id', 'version'] as $key) {
+        $in = $r->validate(['assignment_id' => $id ? 'prohibited' : 'nullable|integer|exists:section_subjects,id', 'section_id' => 'required|integer|exists:sections,id', 'subject_id' => 'required|integer|exists:subjects,id', 'professor_id' => 'required|integer|exists:professors,id', 'day' => ['required', Rule::in(EnrollmentSchedulingService::DAYS)], 'start_time' => 'required|date_format:H:i', 'end_time' => 'required|date_format:H:i|after:start_time', 'room' => 'required|string|max:50', 'version' => $id ? 'required|integer|min:1' : 'sometimes|integer']);
+        foreach (['assignment_id', 'section_id', 'subject_id', 'professor_id', 'version'] as $key) {
             if (isset($in[$key])) {
                 $in[$key] = (int) $in[$key];
             }

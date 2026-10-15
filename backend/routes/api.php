@@ -135,6 +135,10 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::get('/sections', 'sections');
         Route::post('/sections', 'saveSection')->middleware('throttle:30,1');
         Route::put('/sections/{id}', 'saveSection')->whereNumber('id')->middleware('throttle:30,1');
+        Route::get('/subjects', 'subjects');
+        Route::post('/subjects', 'saveSubject')->middleware('throttle:30,1');
+        Route::put('/subjects/{id}', 'saveSubject')->whereNumber('id')->middleware('throttle:30,1');
+        Route::post('/subjects/{id}/{action}', 'subjectStatus')->whereNumber('id')->whereIn('action', ['archive', 'reactivate'])->middleware('throttle:30,1');
         Route::get('/schedules', 'schedules');
         Route::post('/schedules', 'saveSchedule')->middleware('throttle:30,1');
         Route::put('/schedules/{id}', 'saveSchedule')->whereNumber('id')->middleware('throttle:30,1');
@@ -198,6 +202,8 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::get('/students/{student}', [StudentController::class, 'show']);
         Route::get('/students/{student}/history', [StudentController::class, 'history']);
         Route::get('/students/{student}/documents', [StudentController::class, 'documents']);
+        Route::get('/registrar/student-documents/{studentDocument}/view', [RegistrarStudentDocumentController::class, 'view']);
+        Route::get('/registrar/student-documents/{studentDocument}/download', [RegistrarStudentDocumentController::class, 'download']);
         Route::patch('/students/{student}', [StudentController::class, 'update'])->middleware('step-up');
     });
 
@@ -237,8 +243,6 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::patch('/document-types/{documentType}', [RegistrarDocumentTypeController::class, 'update']);
         Route::post('/students/{student}/documents/analyze-all', [RegistrarStudentDocumentController::class, 'analyzeAll']);
         Route::post('/student-documents/{studentDocument}/upload', [RegistrarStudentDocumentController::class, 'upload']);
-        Route::get('/student-documents/{studentDocument}/view', [RegistrarStudentDocumentController::class, 'view']);
-        Route::get('/student-documents/{studentDocument}/download', [RegistrarStudentDocumentController::class, 'download']);
         Route::delete('/student-documents/{studentDocument}/file', [RegistrarStudentDocumentController::class, 'destroy'])
             ->middleware('step-up');
         Route::get('/document-requests', [RegistrarDocumentRequestController::class, 'index']);

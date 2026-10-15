@@ -13,7 +13,6 @@ class StudentDocumentsSeeder extends Seeder
     {
         $student = Student::query()->where('student_number', '26-00001')->firstOrFail();
         $records = [
-            ['name' => 'Birth Certificate', 'availability_status' => 'available'],
             ['name' => 'Form 137', 'availability_status' => 'available'],
             ['name' => 'Good Moral Certificate', 'availability_status' => 'missing'],
             ['name' => 'Certificate of Enrollment', 'availability_status' => 'missing'],
@@ -28,7 +27,7 @@ class StudentDocumentsSeeder extends Seeder
                     'processing_fee' => 0,
                     'processing_days' => 1,
                     'requires_appointment' => false,
-                    'status' => in_array($record['name'], ['Birth Certificate', 'Form 137'], true) ? 'inactive' : 'active',
+                    'status' => $record['name'] === 'Form 137' ? 'inactive' : 'active',
                 ],
             );
 
