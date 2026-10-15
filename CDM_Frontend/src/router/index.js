@@ -1,34 +1,37 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
+import { SHELL_BLOCK_STORAGE_KEY, detectAppShell, shellBlockMessage } from '../config/appShell'
+import { performanceMonitor } from '../services/performance/performanceMonitor'
 
-const ALL_ROLES = Object.values(ROLES)
-import AuthLayout from '../layouts/AuthLayout.vue'
-import DashboardLayout from '../layouts/DashboardLayout.vue'
-import DashboardView from '../views/DashboardView.vue'
-import LoginView from '../views/LoginView.vue'
-import PublicLegalView from '../views/PublicLegalView.vue'
-import UnauthorizedView from '../views/UnauthorizedView.vue'
-import GuestDashboardView from '../views/GuestDashboardView.vue'
-import RoleDashboardView from '../views/RoleDashboardView.vue'
-import SettingsView from '../views/SettingsView.vue'
-import ComingSoonView from '../views/ComingSoonView.vue'
-import AdmissionView from '../modules/admission/AdmissionView.vue'
-import EnrollmentView from '../modules/enrollment/EnrollmentView.vue'
-import GradingView from '../modules/grading/GradingView.vue'
-import MonitoringView from '../modules/monitoring/MonitoringView.vue'
-import DocumentTypesManagementView from '../modules/document-request/DocumentTypesManagementView.vue'
-import StudentDocumentRequestView from '../modules/document-request/StudentDocumentRequestView.vue'
-import StudentAppointmentsView from '../modules/document-request/StudentAppointmentsView.vue'
-import RegistrarDocumentRequestView from '../modules/document-request/RegistrarDocumentRequestView.vue'
-import RegistrarAppointmentsView from '../modules/document-request/RegistrarAppointmentsView.vue'
-import RegistrarDocumentRequestHistoryView from '../modules/document-request/RegistrarDocumentRequestHistoryView.vue'
-import StudentRecordsView from '../modules/student-management/StudentRecordsView.vue'
-import StudentProfileView from '../modules/student-management/StudentProfileView.vue'
-import StudentDocumentsView from '../modules/student-management/StudentDocumentsView.vue'
-import PhysicalRecordsView from '../modules/student-management/PhysicalRecordsView.vue'
-import EventAttendanceView from '../modules/event-attendance/EventAttendanceView.vue'
-import RegistrarDashboardView from '../modules/registrar-dashboard/RegistrarDashboardView.vue'
+const AuthLayout = () => import('../layouts/AuthLayout.vue')
+const DashboardLayout = () => import('../layouts/DashboardLayout.vue')
+const DashboardView = () => import('../views/DashboardView.vue')
+const LoginView = () => import('../views/LoginView.vue')
+const PublicLegalView = () => import('../views/PublicLegalView.vue')
+const UnauthorizedView = () => import('../views/UnauthorizedView.vue')
+const RoleDashboardView = () => import('../views/RoleDashboardView.vue')
+const StudentDashboardView = () => import('../views/StudentDashboardView.vue')
+const SettingsView = () => import('../views/SettingsView.vue')
+const AdmissionView = () => import('../modules/admission/AdmissionView.vue')
+const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
+const GradingView = () => import('../modules/grading/GradingView.vue')
+const MonitoringView = () => import('../modules/monitoring/MonitoringView.vue')
+const AdviserAlertsView = () => import('../modules/monitoring/AdviserAlertsView.vue')
+const StudyPlansView = () => import('../modules/monitoring/StudyPlansView.vue')
+const DocumentTypesManagementView = () => import('../modules/document-request/DocumentTypesManagementView.vue')
+const StudentDocumentRequestView = () => import('../modules/document-request/StudentDocumentRequestView.vue')
+const RegistrarDocumentRequestView = () => import('../modules/document-request/RegistrarDocumentRequestView.vue')
+const RegistrarAppointmentsView = () => import('../modules/document-request/RegistrarAppointmentsView.vue')
+const RegistrarDocumentRequestHistoryView = () =>
+  import('../modules/document-request/RegistrarDocumentRequestHistoryView.vue')
+const StudentRecordsView = () => import('../modules/student-management/StudentRecordsView.vue')
+const StudentProfileView = () => import('../modules/student-management/StudentProfileView.vue')
+const StudentDocumentsView = () => import('../modules/student-management/StudentDocumentsView.vue')
+const PhysicalRecordsView = () => import('../modules/student-management/PhysicalRecordsView.vue')
+const EventAttendanceView = () => import('../modules/event-attendance/EventAttendanceView.vue')
+const RegistrarDashboardView = () => import('../modules/registrar-dashboard/RegistrarDashboardView.vue')
+const AdminDashboardView = () => import('../modules/admin-dashboard/AdminDashboardView.vue')
 
 const protectedRoute = (route) => ({
   ...route,
@@ -46,12 +49,6 @@ const routes = [
         name: 'login',
         component: LoginView,
         meta: { title: 'Sign in', guestOnly: true },
-      },
-      {
-        path: '/register',
-        name: 'register',
-        redirect: { name: 'login', query: { signup: '1' } },
-        meta: { title: 'Register', guestOnly: true },
       },
     ],
   },
@@ -82,22 +79,12 @@ const routes = [
         path: 'settings',
         name: 'settings',
         component: SettingsView,
-        meta: { title: 'Settings', roles: ROUTE_ROLES.home },
-      }),
-      protectedRoute({
-        path: 'guest-dashboard',
-        name: 'guest-dashboard',
-        component: GuestDashboardView,
-        meta: {
-          title: 'Guest Dashboard',
-          roles: ROUTE_ROLES['guest-dashboard'],
-        },
+        meta: { title: 'Settings', roles: [ROLES.STUDENT] },
       }),
       protectedRoute({
         path: 'student-dashboard',
         name: 'student-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.STUDENT },
+        component: StudentDashboardView,
         meta: {
           title: 'Student Dashboard',
           roles: ROUTE_ROLES['student-dashboard'],
@@ -125,35 +112,10 @@ const routes = [
       protectedRoute({
         path: 'admin-dashboard',
         name: 'admin-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.ADMIN },
+        component: AdminDashboardView,
         meta: {
           title: 'Admin Dashboard',
           roles: ROUTE_ROLES['admin-dashboard'],
-        },
-      }),
-      protectedRoute({
-        path: 'profile',
-        name: 'guest-profile',
-        component: ComingSoonView,
-        props: {
-          title: 'My Profile',
-          description: 'Profile management will be delivered by its assigned module team.',
-        },
-        meta: { title: 'My Profile', roles: ROUTE_ROLES['guest-profile'] },
-      }),
-      protectedRoute({
-        path: 'activate-student-account',
-        name: 'activate-student-account',
-        component: ComingSoonView,
-        props: {
-          title: 'Activate Student Account',
-          description:
-            'Student account activation will be available after registrar verification workflows are released.',
-        },
-        meta: {
-          title: 'Activate Student Account',
-          roles: ROUTE_ROLES['activate-student-account'],
         },
       }),
       protectedRoute({
@@ -178,17 +140,7 @@ const routes = [
         path: 'monitoring',
         name: 'monitoring',
         component: MonitoringView,
-        meta: { title: 'AI Monitoring', roles: ROUTE_ROLES.monitoring },
-      }),
-      protectedRoute({
-        path: 'study-plans',
-        redirect: { name: 'monitoring', query: { tab: 'study-plans' } },
-        meta: { requiresAuth: true, roles: ROUTE_ROLES.monitoring },
-      }),
-      protectedRoute({
-        path: 'adviser-alerts',
-        redirect: { name: 'monitoring', query: { tab: 'alerts' } },
-        meta: { requiresAuth: true, roles: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN] },
+        meta: { title: 'Monitoring', roles: ROUTE_ROLES.monitoring },
       }),
       protectedRoute({
         path: 'document-requests',
@@ -202,11 +154,26 @@ const routes = [
       protectedRoute({
         path: 'document-requests/appointments',
         name: 'student-document-appointments',
-        component: StudentAppointmentsView,
+        redirect: (to) => ({
+          name: 'student-document-requests',
+          query: { ...to.query },
+        }),
         meta: {
-          title: 'Appointments',
+          title: 'Document Requests',
           roles: ROUTE_ROLES['student-document-appointments'],
         },
+      }),
+      protectedRoute({
+        path: 'monitoring/adviser-alerts',
+        name: 'monitoring-adviser-alerts',
+        component: AdviserAlertsView,
+        meta: { title: 'Adviser Alerts', roles: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN] },
+      }),
+      protectedRoute({
+        path: 'monitoring/study-plans',
+        name: 'monitoring-study-plans',
+        component: StudyPlansView,
+        meta: { title: 'Study Plans', roles: ROUTE_ROLES.monitoring },
       }),
       protectedRoute({
         path: 'registrar/document-types',
@@ -231,7 +198,7 @@ const routes = [
         name: 'registrar-document-appointments',
         component: RegistrarAppointmentsView,
         meta: {
-          title: 'Appointments',
+          title: 'Appointments & Release',
           roles: ROUTE_ROLES['registrar-document-appointments'],
         },
       }),
@@ -303,8 +270,23 @@ const routes = [
 const router = createRouter({ history: createWebHashHistory(), routes })
 
 router.beforeEach(async (to) => {
+  performanceMonitor.beginRoute(to.name || to.path)
   const authStore = useAuthStore()
   await authStore.initialize()
+
+  if (authStore.isAuthenticated) {
+    const blocked = shellBlockMessage(detectAppShell(), authStore.currentRole)
+    if (blocked) {
+      sessionStorage.setItem(SHELL_BLOCK_STORAGE_KEY, blocked)
+      try {
+        await authStore.logout()
+      } catch {
+        // The session is already cleared. Continue to the login screen.
+      }
+      if (to.name === 'login') return true
+      return { name: 'login' }
+    }
+  }
 
   if (to.matched.some((record) => record.meta.guestOnly) && authStore.isAuthenticated)
     return dashboardForRole(authStore.currentRole)
@@ -317,6 +299,7 @@ router.beforeEach(async (to) => {
 
 router.afterEach((to) => {
   document.title = to.meta.title ? `${to.meta.title} | CDM Portal` : 'CDM Portal'
+  requestAnimationFrame(() => performanceMonitor.markRouteRendered())
 })
 
 export default router

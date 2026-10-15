@@ -6,9 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class GradingPeriod extends Model
 {
-    protected $fillable = [
-        'period_name',
-        'period_order',
-        'status',
-    ];
+    protected $fillable = ['period_name', 'period_order', 'status'];
 }

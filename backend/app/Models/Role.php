@@ -17,8 +17,6 @@ class Role extends Model
 {
     use HasFactory;
 
-    public const GUEST = 'Guest';
-
     public const ADMIN = 'Admin';
 
     public const REGISTRAR_STAFF = 'Registrar Staff';

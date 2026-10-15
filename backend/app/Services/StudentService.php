@@ -50,6 +50,7 @@ class StudentService
                 'latestEnrollment.academicYear',
                 'latestEnrollment.semester',
                 'documents.documentType',
+                'documents.aiAnalysis',
                 'physicalRecordLocation.cabinetSlot.cabinet',
                 'documentRequests' => fn ($requests) => $requests
                     ->with('documentType:id,document_name')

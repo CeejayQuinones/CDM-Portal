@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AI Academic Monitoring — Flowchart, ERD, and DFD</title>
+<style>
+  :root { --ink:#1c2430; --line:#1c2430; --muted:#5c6775; --paper:#fff; --process:#f3f6fa; --decision:#fff6df; --store:#e7f4ee; --external:#eef2f6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; color: var(--ink); background: #e9edf2; }
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 64px; }
+  h1 { font-size: 28px; margin: 0 0 6px; }
+  h2 { font-size: 22px; margin: 0 0 8px; page-break-after: avoid; }
+  h3 { font-size: 16px; margin: 22px 0 8px; page-break-after: avoid; }
+  p, li { font-size: 14px; line-height: 1.45; }
+  .lead { color: var(--muted); margin-top: 0; }
+  section { background: var(--paper); border: 1px solid #d5dbe3; padding: 22px 22px 28px; margin-top: 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .sw { width: 18px; height: 14px; border: 1.5px solid var(--ink); display: inline-block; }
+  .sw.term { background: var(--ink); }
+  .sw.proc { background: var(--process); border-radius: 8px; }
+  .sw.ai { background: #d9e8ff; }
+  .sw.ext { background: var(--external); }
+  .sw.store { background: var(--store); border-left: 3px solid var(--ink); border-right: 3px solid var(--ink); }
+  svg { width: 100%; height: auto; display: block; }
+  .note { font-size: 13px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+  th, td { border: 1px solid #cfd6de; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f3f6fa; }
+  code { font-family: Consolas, monospace; font-size: 12px; }
+  .group { border: 1px solid #d5dbe3; padding: 16px; margin-top: 14px; }
+  .group h3 { margin-top: 0; }
+  .chain { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .entity { width: min(420px, 100%); border: 1.5px solid var(--ink); background: #fff; }
+  .entity header { background: var(--ink); color: #fff; padding: 6px 10px; font-weight: 650; font-size: 14px; }
+  .entity p { margin: 0; padding: 8px 10px 2px; font-size: 13px; }
+  .entity ul { margin: 4px 0 8px; padding: 0 10px 0 26px; font-size: 13px; }
+  .link { width: min(420px, 100%); text-align: center; color: var(--muted); font-size: 13px; padding: 8px 0 10px; }
+  .link b { color: var(--ink); }
+  .drow { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr) 120px minmax(0, 1.2fr) minmax(0, 1fr); gap: 8px; align-items: center; margin: 14px 0; }
+  .extbox, .storebox { border: 1.5px solid var(--ink); min-height: 64px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 8px; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+  .extbox { background: var(--external); }
+  .storebox { background: var(--store); border-left-width: 4px; border-right-width: 4px; font-weight: 550; }
+  .bubble { width: 110px; height: 110px; margin: 0 auto; border: 1.5px solid var(--ink); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: #fff; font-size: 13px; line-height: 1.25; }
+  .bubble b { display: block; font-size: 15px; }
+  .flows { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+  .go { background: #f7f8fa; border: 1px solid #d5dbe3; padding: 6px 8px; }
+  .lvl0 { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) 130px minmax(0, 1.2fr) minmax(0, 0.9fr); gap: 10px; align-items: center; }
+  .stack { display: flex; flex-direction: column; gap: 28px; }
+  .steps { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; }
+  .step-arrow { color: var(--muted); font-size: 13px; max-width: 140px; text-align: center; }
+  .chen { display: flex; align-items: center; justify-content: flex-start; gap: 0; margin: 8px 0 18px; }
+  .entb { width: 200px; border: 2px solid var(--ink); background: #fff; }
+  .entb strong { display: block; background: var(--ink); color: #fff; font-size: 12px; padding: 6px 8px; text-align: center; overflow-wrap: anywhere; }
+  .entb span { display: block; padding: 8px 10px 10px; font-size: 12px; line-height: 1.4; text-align: center; }
+  .arm { width: 42px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 13px; font-weight: 700; }
+  .arm i { display: block; width: 18px; border-top: 2px solid var(--ink); }
+  .dia { width: 86px; height: 86px; border: 2px solid var(--ink); transform: rotate(45deg); display: flex; align-items: center; justify-content: center; background: #fff; flex: none; }
+  .dia b { transform: rotate(-45deg); font-size: 12px; font-weight: 650; text-align: center; width: 72px; }
+  .flow { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
+  .tag { max-width: 180px; font-size: 12px; line-height: 1.35; text-align: center; color: var(--ink); }
+  .context { display: grid; grid-template-columns: minmax(0, 1fr) 150px minmax(0, 1fr); gap: 12px; align-items: center; }
+  .bigp { width: 150px; height: 150px; border: 2px solid var(--ink); border-radius: 50%; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 14px; line-height: 1.3; background: #fff; margin: 0 auto; }
+  .lane { display: flex; flex-direction: column; gap: 14px; }
+  .io { border: 1px solid #d5dbe3; background: #f7f8fa; padding: 8px 10px; font-size: 13px; line-height: 1.4; }
+  @media (max-width: 860px) {
+    .drow, .lvl0 { grid-template-columns: 1fr; }
+    .bubble { margin: 8px auto; }
+  }
+  @media print {
+    body { background: #fff; }
+    main { max-width: none; padding: 0; }
+    section { break-inside: avoid; border: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>AI Academic Monitoring diagrams</h1>
+  <p class="lead">CDM Portal, monitoring module only. Scope is early warning from every graded score that makes the student’s grades, study support from a student’s own file, and plans or notices sent to that same student. Source: monitoring routes, EarlyWarningService weights, and the monitoring tables.</p>
+
+  <section>
+    <h2>1. System flowchart</h2>
+    <div class="legend">
+      <span><i class="sw term"></i> Start / end</span>
+      <span><i class="sw proc"></i> Process</span>
+      <span><i class="sw ai"></i> AI generation</span>
+      <span><i class="sw dec"></i> Decision</span>
+    </div>
+    <svg viewBox="0 0 1100 1180" role="img" aria-label="AI monitoring flowchart">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1c2430"/></marker>
+      </defs>
+      <style>
+        .t { font: 14px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .ts { font: 12px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .tw { font: 14px "Segoe UI", Arial, sans-serif; fill:#fff; }
+        .box { fill:#f3f6fa; stroke:#1c2430; stroke-width:1.6; }
+        .ai { fill:#d9e8ff; stroke:#1c2430; stroke-width:1.8; }
+        .term { fill:#1c2430; }
+        .dec { fill:#fff6df; stroke:#1c2430; stroke-width:1.6; }
+        .ln { stroke:#1c2430; stroke-width:1.4; fill:none; marker-end:url(#arr); }
+      </style>
+
+      <rect class="term" x="450" y="8" width="200" height="36" rx="18"/>
+      <text class="tw" x="550" y="31" text-anchor="middle">Start</text>
+      <line class="ln" x1="550" y1="44" x2="550" y2="58"/>
+      <rect class="box" x="400" y="60" width="300" height="40" rx="8"/>
+      <text class="t" x="550" y="85" text-anchor="middle">Log in</text>
+      <line class="ln" x1="550" y1="100" x2="550" y2="118"/>
+      <polygon class="dec" points="550,120 710,175 550,230 390,175"/>
+      <text class="t" x="550" y="180" text-anchor="middle">Which role?</text>
+
+      <path class="ln" d="M390 175 H165 V248"/>
+      <text class="ts" x="250" y="166">Student</text>
+      <line class="ln" x1="550" y1="230" x2="550" y2="248"/>
+      <text class="ts" x="558" y="244">Professor</text>
+      <path class="ln" d="M710 175 H935 V248"/>
+      <text class="ts" x="730" y="166">Registrar</text>
+
+      <rect class="term" x="30" y="250" width="270" height="32" rx="8"/>
+      <text class="tw" x="165" y="271" text-anchor="middle">Student</text>
+      <rect class="term" x="415" y="250" width="270" height="32" rx="8"/>
+      <text class="tw" x="550" y="271" text-anchor="middle">Professor</text>
+      <rect class="term" x="800" y="250" width="270" height="32" rx="8"/>
+      <text class="tw" x="935" y="271" text-anchor="middle">Registrar</text>
+
+      <line class="ln" x1="165" y1="282" x2="165" y2="296"/>
+      <line class="ln" x1="550" y1="282" x2="550" y2="296"/>
+      <line class="ln" x1="935" y1="282" x2="935" y2="296"/>
+
+      <rect class="box" x="30" y="298" width="270" height="52" rx="8"/>
+      <text class="t" x="165" y="318" text-anchor="middle">Approved grades</text>
+      <text class="ts" x="165" y="336" text-anchor="middle">This student’s own record</text>
+      <rect class="box" x="415" y="298" width="270" height="52" rx="8"/>
+      <text class="t" x="550" y="318" text-anchor="middle">Approved grades</text>
+      <text class="ts" x="550" y="336" text-anchor="middle">Students in assigned subjects</text>
+      <rect class="box" x="800" y="298" width="270" height="52" rx="8"/>
+      <text class="t" x="935" y="318" text-anchor="middle">Official record</text>
+      <text class="ts" x="935" y="336" text-anchor="middle">School-wide approved grades</text>
+
+      <line class="ln" x1="165" y1="350" x2="165" y2="366"/>
+      <line class="ln" x1="550" y1="350" x2="550" y2="366"/>
+      <line class="ln" x1="935" y1="350" x2="935" y2="366"/>
+
+      <rect class="box" x="30" y="368" width="270" height="56" rx="8"/>
+      <text class="t" x="165" y="390" text-anchor="middle">All graded scores</text>
+      <text class="ts" x="165" y="408" text-anchor="middle">Quiz, exam, activity, project</text>
+      <rect class="box" x="415" y="368" width="270" height="56" rx="8"/>
+      <text class="t" x="550" y="390" text-anchor="middle">All graded scores</text>
+      <text class="ts" x="550" y="408" text-anchor="middle">These scores make the grade</text>
+      <rect class="box" x="800" y="368" width="270" height="56" rx="8"/>
+      <text class="t" x="935" y="390" text-anchor="middle">Professor submitted a grade</text>
+      <text class="ts" x="935" y="408" text-anchor="middle">Not official until you approve</text>
+
+      <line class="ln" x1="165" y1="424" x2="165" y2="440"/>
+      <line class="ln" x1="550" y1="424" x2="550" y2="440"/>
+      <line class="ln" x1="935" y1="424" x2="935" y2="440"/>
+
+      <rect class="box" x="30" y="442" width="270" height="48" rx="8"/>
+      <text class="t" x="165" y="462" text-anchor="middle">Compute the risk score</text>
+      <text class="ts" x="165" y="478" text-anchor="middle">High, Moderate, or Low</text>
+      <rect class="box" x="415" y="442" width="270" height="48" rx="8"/>
+      <text class="t" x="550" y="462" text-anchor="middle">Compute the risk score</text>
+      <text class="ts" x="550" y="478" text-anchor="middle">High, Moderate, or Low</text>
+      <rect class="box" x="800" y="442" width="270" height="48" rx="8"/>
+      <text class="t" x="935" y="462" text-anchor="middle">Check the record</text>
+      <text class="ts" x="935" y="478" text-anchor="middle">Student, subject, and period</text>
+
+      <line class="ln" x1="165" y1="490" x2="165" y2="508"/>
+      <polygon class="dec" points="165,510 285,565 165,620 45,565"/>
+      <text class="ts" x="165" y="560" text-anchor="middle">Upload a</text>
+      <text class="ts" x="165" y="576" text-anchor="middle">study file?</text>
+      <text class="ts" x="36" y="556">No</text>
+      <path class="ln" d="M45 565 H18 V1080 H30"/>
+      <text class="ts" x="178" y="612">Yes</text>
+      <line class="ln" x1="165" y1="620" x2="165" y2="636"/>
+      <rect class="box" x="40" y="638" width="250" height="40" rx="8"/>
+      <text class="t" x="165" y="663" text-anchor="middle">Save the file</text>
+      <line class="ln" x1="165" y1="678" x2="165" y2="694"/>
+      <polygon class="dec" points="165,696 280,746 165,796 50,746"/>
+      <text class="ts" x="165" y="742" text-anchor="middle">Text long</text>
+      <text class="ts" x="165" y="758" text-anchor="middle">enough?</text>
+      <text class="ts" x="52" y="732">No</text>
+      <path class="ln" d="M50 746 H8 V824 H30"/>
+      <rect class="box" x="30" y="802" width="130" height="44" rx="8"/>
+      <text class="ts" x="95" y="820" text-anchor="middle">Stop. Ask for</text>
+      <text class="ts" x="95" y="836" text-anchor="middle">a longer text file.</text>
+      <text class="ts" x="188" y="788">Yes</text>
+      <path class="ln" d="M280 746 H300 V880 H270"/>
+      <rect class="ai" x="40" y="880" width="250" height="52" rx="8"/>
+      <text class="t" x="165" y="900" text-anchor="middle">AI generates the study guide</text>
+      <text class="ts" x="165" y="918" text-anchor="middle">from the uploaded file</text>
+      <line class="ln" x1="165" y1="932" x2="165" y2="948"/>
+      <rect class="ai" x="30" y="950" width="270" height="56" rx="8"/>
+      <text class="t" x="165" y="972" text-anchor="middle">Optional flashcards or quiz</text>
+      <text class="ts" x="165" y="990" text-anchor="middle">From the file. Not used in the risk score.</text>
+      <line class="ln" x1="165" y1="1006" x2="165" y2="1028"/>
+      <rect class="box" x="30" y="1030" width="270" height="52" rx="8"/>
+      <text class="t" x="165" y="1050" text-anchor="middle">Student sees the result</text>
+      <text class="ts" x="165" y="1068" text-anchor="middle">Risk, guide, cards, or practice quiz</text>
+
+      <line class="ln" x1="550" y1="490" x2="550" y2="508"/>
+      <rect class="box" x="415" y="510" width="270" height="44" rx="8"/>
+      <text class="t" x="550" y="537" text-anchor="middle">Show Prelim, Midterm, Final</text>
+      <line class="ln" x1="550" y1="554" x2="550" y2="570"/>
+      <rect class="ai" x="415" y="572" width="270" height="52" rx="8"/>
+      <text class="t" x="550" y="592" text-anchor="middle">AI generates the study plan</text>
+      <text class="ts" x="550" y="610" text-anchor="middle">from those approved grades</text>
+      <line class="ln" x1="550" y1="624" x2="550" y2="640"/>
+      <rect class="box" x="415" y="642" width="270" height="52" rx="8"/>
+      <text class="t" x="550" y="662" text-anchor="middle">Professor sends the plan</text>
+      <text class="ts" x="550" y="680" text-anchor="middle">or a risk notice, to that student only</text>
+      <line class="ln" x1="550" y1="694" x2="550" y2="710"/>
+      <rect class="box" x="415" y="712" width="270" height="44" rx="8"/>
+      <text class="t" x="550" y="739" text-anchor="middle">The student receives it</text>
+
+      <line class="ln" x1="935" y1="490" x2="935" y2="508"/>
+      <rect class="box" x="800" y="510" width="270" height="52" rx="8"/>
+      <text class="t" x="935" y="530" text-anchor="middle">Approve the grade</text>
+      <text class="ts" x="935" y="548" text-anchor="middle">It becomes the official record</text>
+      <line class="ln" x1="935" y1="562" x2="935" y2="578"/>
+      <rect class="box" x="800" y="580" width="270" height="52" rx="8"/>
+      <text class="t" x="935" y="600" text-anchor="middle">Used in the risk score</text>
+      <text class="ts" x="935" y="618" text-anchor="middle">Only after registrar approval</text>
+      <line class="ln" x1="935" y1="632" x2="935" y2="648"/>
+      <rect class="term" x="835" y="650" width="200" height="36" rx="18"/>
+      <text class="tw" x="935" y="673" text-anchor="middle">End</text>
+      <text class="ts" x="935" y="710" text-anchor="middle">Admin only views this list.</text>
+      <text class="ts" x="935" y="726" text-anchor="middle">Admin does not approve or send.</text>
+
+      <line class="ln" x1="165" y1="1082" x2="165" y2="1098"/>
+      <rect class="term" x="65" y="1100" width="200" height="36" rx="18"/>
+      <text class="tw" x="165" y="1123" text-anchor="middle">End</text>
+
+      <text class="ts" x="30" y="1164">Blue boxes are AI generations. The study guide, flashcards, and practice quiz come from the student’s file and do not change the risk score.</text>
+    </svg>
+    <p class="note">The professor records every graded score and is the only one who sends a study plan or a risk notice. The registrar does not teach. The registrar checks the grade the professor submitted and approves it onto the official record. Monitoring uses that grade only after approval. Admin views the official list and does not approve grades or send plans.</p>
+  </section>
+
+  <section>
+    <h2>2. Entity-relationship diagram</h2>
+    <p>AI monitoring module only. The four roles are Student, Professor, Registrar staff, and Admin. Admission, enrollment, document requests, and account management are outside this diagram. 1 means one. M means many.</p>
+    <svg viewBox="0 0 1100 820" role="img" aria-label="AI monitoring ERD">
+      <style>
+        .e { fill:#fff; stroke:#1c2430; stroke-width:1.7; }
+        .h { fill:#1c2430; }
+        .ht { font: 600 13px "Segoe UI", Arial, sans-serif; fill:#fff; }
+        .a { font: 12px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .r { font: 12px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .ln { stroke:#1c2430; stroke-width:1.4; fill:none; }
+      </style>
+      <text class="r" x="16" y="22">Roles in AI monitoring</text>
+
+      <rect class="e" x="16" y="36" width="190" height="108"/>
+      <rect class="h" x="16" y="36" width="190" height="24"/>
+      <text class="ht" x="111" y="53" text-anchor="middle">Student</text>
+      <text class="a" x="28" y="78">student number</text>
+      <text class="a" x="28" y="96">year level</text>
+      <text class="a" x="28" y="114">one login</text>
+      <text class="a" x="28" y="132">receives plan and notice</text>
+
+      <rect class="e" x="230" y="36" width="210" height="108"/>
+      <rect class="h" x="230" y="36" width="210" height="24"/>
+      <text class="ht" x="335" y="53" text-anchor="middle">Professor</text>
+      <text class="a" x="242" y="78">one login</text>
+      <text class="a" x="242" y="96">assigned subjects</text>
+      <text class="a" x="242" y="114">records every score</text>
+      <text class="a" x="242" y="132">sends plan and notice</text>
+
+      <rect class="e" x="470" y="36" width="240" height="108"/>
+      <rect class="h" x="470" y="36" width="240" height="24"/>
+      <text class="ht" x="590" y="53" text-anchor="middle">Registrar staff</text>
+      <text class="a" x="482" y="78">one login</text>
+      <text class="a" x="482" y="96">checks the submitted grade</text>
+      <text class="a" x="482" y="114">approves the official record</text>
+      <text class="a" x="482" y="132">does not record scores</text>
+
+      <rect class="e" x="760" y="36" width="220" height="108"/>
+      <rect class="h" x="760" y="36" width="220" height="24"/>
+      <text class="ht" x="870" y="53" text-anchor="middle">Admin</text>
+      <text class="a" x="772" y="78">one login</text>
+      <text class="a" x="772" y="96">views the official list</text>
+      <text class="a" x="772" y="114">stores no record</text>
+      <text class="a" x="772" y="132">does not approve or send</text>
+
+      <rect class="e" x="300" y="196" width="400" height="112"/>
+      <rect class="h" x="300" y="196" width="400" height="24"/>
+      <text class="ht" x="500" y="213" text-anchor="middle">Approved grade</text>
+      <text class="a" x="312" y="238">Prelim, Midterm, or Final</text>
+      <text class="a" x="312" y="256">one score</text>
+      <text class="a" x="312" y="274">draft, submitted, or approved</text>
+      <text class="a" x="312" y="292">monitoring reads approved only</text>
+
+      <path class="ln" d="M111 144 V162 H320 V196"/>
+      <text class="r" x="118" y="184">M grades</text>
+      <path class="ln" d="M360 144 V176 H480 V196"/>
+      <text class="r" x="390" y="168">submits M</text>
+      <path class="ln" d="M680 144 V168 H660 V196"/>
+      <text class="r" x="600" y="160">approves M</text>
+
+      <text class="r" x="16" y="348">Records this module stores</text>
+
+      <rect class="e" x="16" y="360" width="230" height="124"/>
+      <rect class="h" x="16" y="360" width="230" height="24"/>
+      <text class="ht" x="131" y="377" text-anchor="middle">Graded score</text>
+      <text class="a" x="28" y="402">quiz, exam, activity, project</text>
+      <text class="a" x="28" y="420">score and maximum</text>
+      <text class="a" x="28" y="438">one student</text>
+      <text class="a" x="28" y="456">recorded by the professor</text>
+      <text class="a" x="28" y="474">used in the average</text>
+
+      <rect class="e" x="290" y="360" width="240" height="110"/>
+      <rect class="h" x="290" y="360" width="240" height="24"/>
+      <text class="ht" x="410" y="377" text-anchor="middle">Study file</text>
+      <text class="a" x="302" y="402">notes and topic</text>
+      <text class="a" x="302" y="420">attachment</text>
+      <text class="a" x="302" y="438">one student</text>
+      <text class="a" x="302" y="456">not a graded score</text>
+
+      <rect class="e" x="600" y="360" width="250" height="110"/>
+      <rect class="h" x="600" y="360" width="250" height="24"/>
+      <text class="ht" x="725" y="377" text-anchor="middle">Sent plan</text>
+      <text class="a" x="612" y="402">study plan text</text>
+      <text class="a" x="612" y="420">read or unread</text>
+      <text class="a" x="612" y="438">file link can be empty</text>
+      <text class="a" x="612" y="456">professor is the sender</text>
+
+      <rect class="e" x="600" y="560" width="250" height="96"/>
+      <rect class="h" x="600" y="560" width="250" height="24"/>
+      <text class="ht" x="725" y="577" text-anchor="middle">Risk notice</text>
+      <text class="a" x="612" y="602">warning message</text>
+      <text class="a" x="612" y="620">read or unread</text>
+      <text class="a" x="612" y="638">professor is the sender</text>
+
+      <path class="ln" d="M16 130 H8 V422 H16"/>
+      <text class="r" x="20" y="300">1 student, M scores</text>
+      <path class="ln" d="M230 144 H218 V332 H180 V360"/>
+      <text class="r" x="240" y="324">professor records M</text>
+      <path class="ln" d="M206 90 H208 V352 H410 V360"/>
+      <text class="r" x="300" y="356">1 student, M files</text>
+      <path class="ln" d="M230 144 H218 V316 H725 V360"/>
+      <text class="r" x="520" y="348">sends M plans</text>
+      <path class="ln" d="M850 410 H1080 V608 H850"/>
+      <text class="r" x="860" y="530">sends M notices</text>
+      <path class="ln" d="M16 144 H8 V740 H725 V656"/>
+      <text class="r" x="280" y="732">1 student, M notices</text>
+      <path class="ln" d="M131 484 V520 H725 V470"/>
+      <text class="r" x="280" y="512">1 student, M plans</text>
+      <line class="ln" x1="530" y1="410" x2="600" y2="410"/>
+      <text class="r" x="536" y="402">0 or M</text>
+    </svg>
+    <p class="note">Student, Professor, Registrar staff, and Admin each have one login. The professor submits the grade and records every graded score. The registrar staff approves the grade. Admin views the list and stores nothing. Monitoring reads a grade only when its status is approved. Graded score, Study file, Sent plan, and Risk notice are stored by AI monitoring. A study file is not a graded score. A grade plan can leave the file link empty.</p>
+  </section>
+
+  <section>
+    <h2>3. Data flow diagram — Level 0</h2>
+    <p>AI monitoring module only. The circle is that module, not the rest of the portal. The professor, the student, and the registrar are separate. Admin only views the official list.</p>
+    <svg viewBox="0 0 980 600" role="img" aria-label="DFD level 0">
+      <defs><marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1c2430"/></marker></defs>
+      <style>
+        .sq { fill:#eef2f6; stroke:#1c2430; stroke-width:1.6; }
+        .pc { fill:#fff; stroke:#1c2430; stroke-width:1.8; }
+        .tx { font: 14px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .sm { font: 12px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .ln { stroke:#1c2430; stroke-width:1.4; fill:none; marker-end:url(#b); }
+      </style>
+      <rect class="sq" x="16" y="16" width="180" height="48"/><text class="tx" x="106" y="46" text-anchor="middle">Student</text>
+      <rect class="sq" x="16" y="250" width="180" height="48"/><text class="tx" x="106" y="280" text-anchor="middle">Professor</text>
+      <rect class="sq" x="16" y="470" width="200" height="48"/><text class="tx" x="116" y="500" text-anchor="middle">Registrar</text>
+      <circle class="pc" cx="500" cy="280" r="88"/>
+      <text class="tx" x="500" y="274" text-anchor="middle">0</text>
+      <text class="sm" x="500" y="294" text-anchor="middle">AI monitoring</text>
+      <rect class="sq" x="760" y="248" width="200" height="64"/><text class="tx" x="860" y="274" text-anchor="middle">AI</text><text class="sm" x="860" y="294" text-anchor="middle">Gemini or Ollama</text>
+
+      <path class="ln" d="M196 32 H500 V192"/>
+      <text class="sm" x="250" y="24">Study file</text>
+      <path class="ln" d="M436 220 H24 V80 H106 V64"/>
+      <text class="sm" x="36" y="110">Own risk, guide,</text>
+      <text class="sm" x="36" y="126">cards, practice quiz</text>
+
+      <path class="ln" d="M196 266 H413"/>
+      <text class="sm" x="210" y="258">Graded scores</text>
+      <path class="ln" d="M413 294 H196"/>
+      <text class="sm" x="210" y="312">Class risk list</text>
+      <path class="ln" d="M196 298 V330 H428"/>
+      <text class="sm" x="210" y="354">Plan or risk notice to send</text>
+
+      <path class="ln" d="M116 470 V420 H500 V368"/>
+      <text class="sm" x="140" y="412">Submitted grade to approve</text>
+      <path class="ln" d="M572 330 H660 V494 H216"/>
+      <text class="sm" x="250" y="460">Official record</text>
+
+      <path class="ln" d="M586 262 H760"/>
+      <text class="sm" x="590" y="246">File text or grades</text>
+      <path class="ln" d="M760 298 H586"/>
+      <text class="sm" x="590" y="290">Guide, cards, quiz, or plan</text>
+    </svg>
+  </section>
+
+  <section>
+    <h2>4. Data flow diagram — Level 1</h2>
+    <p>This opens the AI monitoring circle only. Professor records every graded score that helps make the grade, and is the only one who sends.</p>
+    <svg viewBox="0 0 1000 780" role="img" aria-label="DFD level 1">
+      <defs><marker id="d1" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1c2430"/></marker></defs>
+      <style>
+        .sq { fill:#eef2f6; stroke:#1c2430; stroke-width:1.5; }
+        .pc { fill:#fff; stroke:#1c2430; stroke-width:1.6; }
+        .ai { fill:#d9e8ff; stroke:#1c2430; stroke-width:1.6; }
+        .st { fill:#e7f4ee; stroke:#1c2430; stroke-width:1.5; }
+        .tx { font: 13px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .sm { font: 12px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .ln { stroke:#1c2430; stroke-width:1.3; fill:none; marker-end:url(#d1); }
+      </style>
+      <rect class="sq" x="12" y="28" width="210" height="48"/><text class="tx" x="117" y="48" text-anchor="middle">Student, Professor,</text><text class="sm" x="117" y="64" text-anchor="middle">Admin, or Registrar</text>
+      <line class="ln" x1="222" y1="40" x2="300" y2="40"/>
+      <text class="sm" x="226" y="32">standing</text>
+      <path class="ln" d="M300 64 H222"/>
+      <text class="sm" x="226" y="84">risk level</text>
+      <circle class="pc" cx="348" cy="52" r="42"/><text class="tx" x="348" y="48" text-anchor="middle">1.0</text><text class="sm" x="348" y="64" text-anchor="middle">Check risk</text>
+      <line class="ln" x1="560" y1="28" x2="388" y2="40"/>
+      <text class="sm" x="400" y="24">approved grades</text>
+      <rect class="st" x="562" y="8" width="200" height="36"/><text class="sm" x="662" y="31" text-anchor="middle">D1 Approved grades</text>
+      <line class="ln" x1="562" y1="92" x2="388" y2="70"/>
+      <text class="sm" x="400" y="88">graded scores</text>
+      <rect class="st" x="562" y="72" width="280" height="36"/><text class="sm" x="702" y="95" text-anchor="middle">D2 All graded scores</text>
+
+      <rect class="sq" x="12" y="150" width="150" height="40"/><text class="tx" x="87" y="175" text-anchor="middle">Professor</text>
+      <line class="ln" x1="162" y1="162" x2="300" y2="162"/>
+      <text class="sm" x="170" y="154">records scores</text>
+      <circle class="pc" cx="348" cy="170" r="38"/><text class="tx" x="348" y="166" text-anchor="middle">2.1</text><text class="sm" x="348" y="182" text-anchor="middle">Record score</text>
+      <line class="ln" x1="386" y1="160" x2="562" y2="100"/>
+      <text class="sm" x="430" y="140">any graded score</text>
+
+      <rect class="sq" x="12" y="250" width="150" height="40"/><text class="tx" x="87" y="275" text-anchor="middle">Student</text>
+      <line class="ln" x1="162" y1="262" x2="300" y2="262"/>
+      <text class="sm" x="170" y="254">uploads a file</text>
+      <circle class="pc" cx="348" cy="270" r="38"/><text class="tx" x="348" y="266" text-anchor="middle">2.0</text><text class="sm" x="348" y="282" text-anchor="middle">Save file</text>
+      <line class="ln" x1="386" y1="270" x2="562" y2="270"/>
+      <text class="sm" x="400" y="262">not used in the risk score</text>
+      <rect class="st" x="562" y="250" width="250" height="40"/><text class="sm" x="687" y="275" text-anchor="middle">D2 Study file, same table</text>
+
+      <rect class="st" x="430" y="340" width="180" height="36"/><text class="sm" x="520" y="363" text-anchor="middle">D1 Approved grades</text>
+      <rect class="st" x="640" y="340" width="160" height="36"/><text class="sm" x="720" y="363" text-anchor="middle">D2 Study file</text>
+      <rect class="sq" x="12" y="400" width="210" height="52"/><text class="sm" x="117" y="422" text-anchor="middle">Student asks for guide, cards,</text><text class="sm" x="117" y="438" text-anchor="middle">or a practice quiz</text>
+      <line class="ln" x1="222" y1="416" x2="300" y2="416"/>
+      <path class="ln" d="M300 456 H222"/>
+      <text class="sm" x="226" y="476">shown on screen</text>
+      <circle class="ai" cx="352" cy="436" r="46"/><text class="tx" x="352" y="432" text-anchor="middle">3.0</text><text class="sm" x="352" y="448" text-anchor="middle">AI generate</text>
+      <line class="ln" x1="470" y1="376" x2="330" y2="408"/>
+      <text class="sm" x="360" y="390">grades for a plan</text>
+      <line class="ln" x1="640" y1="376" x2="380" y2="410"/>
+      <text class="sm" x="500" y="392">file text</text>
+      <line class="ln" x1="398" y1="424" x2="760" y2="400"/>
+      <text class="sm" x="500" y="416">file text or grades</text>
+      <path class="ln" d="M760 440 H398"/>
+      <text class="sm" x="470" y="458">guide, cards, practice quiz, or plan</text>
+      <rect class="sq" x="762" y="380" width="200" height="52"/><text class="sm" x="862" y="402" text-anchor="middle">AI provider</text><text class="sm" x="862" y="418" text-anchor="middle">Gemini or Ollama</text>
+
+      <rect class="sq" x="12" y="530" width="150" height="40"/><text class="tx" x="87" y="555" text-anchor="middle">Professor</text>
+      <line class="ln" x1="162" y1="550" x2="352" y2="482"/>
+      <text class="sm" x="180" y="530">asks for a grade plan</text>
+
+      <rect class="sq" x="12" y="640" width="150" height="40"/><text class="tx" x="87" y="665" text-anchor="middle">Professor</text>
+      <line class="ln" x1="162" y1="652" x2="300" y2="652"/>
+      <text class="sm" x="170" y="644">sends plan or notice</text>
+      <circle class="pc" cx="348" cy="660" r="38"/><text class="tx" x="348" y="656" text-anchor="middle">4.0</text><text class="sm" x="348" y="672" text-anchor="middle">Send</text>
+      <line class="ln" x1="386" y1="660" x2="520" y2="660"/>
+      <text class="sm" x="396" y="652">saved for that student</text>
+      <rect class="st" x="522" y="640" width="280" height="40"/><text class="sm" x="662" y="665" text-anchor="middle">D3 Sent plans and D4 Risk notices</text>
+    </svg>
+    <p class="note">1.0 reads a period grade only after the registrar has approved it, plus every other graded score the professor recorded. 2.0 stores the student’s own file and does not change the score. 2.1 is the professor, not the registrar. 3.0 shows a draft to the professor. Only 4.0, done by the professor, saves a sent plan or a risk notice. The registrar approves grades and does not send. Admin only views the official list.</p>
+  </section>
+
+  <section>
+    <h2>5. Data flow diagram — Level 2</h2>
+    <p>This opens process 3.0 inside AI monitoring. The practice quiz is a study aid. It is not one of the graded scores that make the student’s grade.</p>
+    <svg viewBox="0 0 980 460" role="img" aria-label="DFD level 2 AI generation">
+      <defs><marker id="d2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1c2430"/></marker></defs>
+      <style>
+        .sq { fill:#eef2f6; stroke:#1c2430; stroke-width:1.5; }
+        .ai { fill:#d9e8ff; stroke:#1c2430; stroke-width:1.6; }
+        .st { fill:#e7f4ee; stroke:#1c2430; stroke-width:1.5; }
+        .tx { font: 13px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .sm { font: 12px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .ln { stroke:#1c2430; stroke-width:1.3; fill:none; marker-end:url(#d2); }
+      </style>
+      <rect class="sq" x="16" y="16" width="150" height="36"/><text class="sm" x="91" y="39" text-anchor="middle">Student</text>
+      <rect class="st" x="16" y="70" width="170" height="40"/><text class="sm" x="101" y="95" text-anchor="middle">D2 Student’s study file</text>
+      <rect class="sq" x="16" y="250" width="190" height="48"/><text class="sm" x="111" y="278" text-anchor="middle">Professor</text>
+      <rect class="st" x="16" y="320" width="170" height="40"/><text class="sm" x="101" y="345" text-anchor="middle">D1 Approved grades</text>
+
+      <circle class="ai" cx="300" cy="100" r="46"/><text class="tx" x="300" y="96" text-anchor="middle">3.1</text><text class="sm" x="300" y="114" text-anchor="middle">Use the file</text>
+      <circle class="ai" cx="300" cy="340" r="46"/><text class="tx" x="300" y="336" text-anchor="middle">3.5</text><text class="sm" x="300" y="354" text-anchor="middle">Use grades</text>
+      <line class="ln" x1="166" y1="34" x2="260" y2="80"/>
+      <text class="sm" x="170" y="58">asks</text>
+      <line class="ln" x1="186" y1="90" x2="256" y2="100"/>
+      <text class="sm" x="190" y="112">file text</text>
+      <line class="ln" x1="206" y1="274" x2="260" y2="320"/>
+      <text class="sm" x="210" y="300">asks</text>
+      <line class="ln" x1="186" y1="340" x2="256" y2="340"/>
+      <text class="sm" x="188" y="322">approved grades</text>
+
+      <circle class="ai" cx="520" cy="40" r="40"/><text class="tx" x="520" y="36" text-anchor="middle">3.2</text><text class="sm" x="520" y="52" text-anchor="middle">Study guide</text>
+      <circle class="ai" cx="520" cy="130" r="40"/><text class="tx" x="520" y="126" text-anchor="middle">3.3</text><text class="sm" x="520" y="142" text-anchor="middle">Flashcards</text>
+      <circle class="ai" cx="520" cy="220" r="42"/><text class="tx" x="520" y="216" text-anchor="middle">3.4</text><text class="sm" x="520" y="232" text-anchor="middle">Practice quiz</text>
+      <circle class="ai" cx="520" cy="340" r="40"/><text class="tx" x="520" y="336" text-anchor="middle">3.6</text><text class="sm" x="520" y="352" text-anchor="middle">Study plan</text>
+
+      <line class="ln" x1="346" y1="80" x2="480" y2="40"/>
+      <line class="ln" x1="346" y1="100" x2="480" y2="130"/>
+      <line class="ln" x1="346" y1="120" x2="480" y2="220"/>
+      <text class="sm" x="370" y="70">from the file</text>
+      <line class="ln" x1="346" y1="340" x2="480" y2="340"/>
+      <text class="sm" x="360" y="332">from grades</text>
+
+      <rect class="sq" x="760" y="150" width="200" height="64"/><text class="sm" x="860" y="174" text-anchor="middle">Shown on screen</text><text class="sm" x="860" y="192" text-anchor="middle">Plan stays a draft until</text><text class="sm" x="860" y="208" text-anchor="middle">the professor sends it</text>
+      <line class="ln" x1="560" y1="40" x2="760" y2="160"/>
+      <line class="ln" x1="560" y1="130" x2="760" y2="170"/>
+      <line class="ln" x1="562" y1="220" x2="760" y2="186"/>
+      <line class="ln" x1="560" y1="340" x2="760" y2="200"/>
+    </svg>
+    <p class="note">3.2, 3.3, and 3.4 each read the student’s file on their own. They stop if the text is shorter than 40 characters. None of them produces the next one, and none of them changes the grade or the risk score. 3.5 reads the graded scores and 3.6 turns them into a study plan for the professor. The registrar is not in this diagram. The professor is the only role that can save that plan, or a risk notice, for the student.</p>
+  </section>
+</main>
+</body>
+</html>

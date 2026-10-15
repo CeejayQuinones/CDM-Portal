@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\AppointmentBlockedDate;
 use Illuminate\Validation\Rule;
 
 class UpdateAppointmentBlockedDateRequest extends ApiFormRequest
@@ -14,9 +15,9 @@ class UpdateAppointmentBlockedDateRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'blocked_date' => ['sometimes', 'date'],
-            'type' => ['sometimes', Rule::in(['holiday', 'maintenance', 'office_closure', 'school_event', 'other'])],
-            'reason' => ['sometimes', 'string', 'max:255'],
+            'blocked_date' => ['sometimes', 'required', 'date'],
+            'type' => ['sometimes', 'required', Rule::in(AppointmentBlockedDate::TYPES)],
+            'reason' => ['sometimes', 'required', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }

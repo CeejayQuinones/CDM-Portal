@@ -10,16 +10,6 @@ class RolesSeeder extends Seeder
     public function run(): void
     {
         DB::table('roles')->updateOrInsert(
-            ['id' => 1],
-            [
-                'role_name' => 'Guest',
-                'description' => 'Public Portal User',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]
-        );
-
-        DB::table('roles')->updateOrInsert(
             ['id' => 2],
             [
                 'role_name' => 'Admin',

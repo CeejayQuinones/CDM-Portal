@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\AppointmentBlockedDate;
 use Illuminate\Validation\Rule;
 
 class StoreAppointmentBlockedDateRequest extends ApiFormRequest
@@ -15,9 +16,9 @@ class StoreAppointmentBlockedDateRequest extends ApiFormRequest
     {
         return [
             'blocked_date' => ['required', 'date'],
-            'type' => ['required', Rule::in(['holiday', 'maintenance', 'office_closure', 'school_event', 'other'])],
+            'type' => ['required', Rule::in(AppointmentBlockedDate::TYPES)],
             'reason' => ['required', 'string', 'max:255'],
-            'is_active' => ['required', 'boolean'],
+            'is_active' => ['sometimes', 'boolean'],
         ];
     }
 }

@@ -7,22 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Grade extends Model
 {
-    protected $fillable = [
-        'enrollment_subject_id',
-        'grading_period_id',
-        'professor_id',
-        'grade',
-        'remarks',
-        'status',
-        'submitted_at',
-    ];
+    protected $fillable = ['enrollment_subject_id', 'grading_period_id', 'professor_id', 'grade', 'remarks', 'status', 'submitted_at'];
 
     protected function casts(): array
     {
-        return [
-            'grade' => 'float',
-            'submitted_at' => 'datetime',
-        ];
+        return ['grade' => 'float', 'submitted_at' => 'datetime'];
     }
 
     public function enrollmentSubject(): BelongsTo

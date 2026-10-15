@@ -1,185 +1,120 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useAuthStore } from '../../stores/authStore'
 import { ROLES } from '../../config/accessControl'
-import StudyPlansPanel from './components/StudyPlansPanel.vue'
-import AdviserAlertsPanel from './components/AdviserAlertsPanel.vue'
-import AiHelpChatbot from './components/AiHelpChatbot.vue'
 import {
   fetchAiStatus,
   fetchEarlyWarnings,
   fetchMyRisk,
-  fetchMyRiskNotifications,
-  generateSupportPlan,
-  markRiskNotificationRead,
-  sendRiskNotification,
+  fetchStudentSentPlans,
+  markSentPlanRead,
 } from './services/monitoringApi'
+import AiHelpChatbot from './components/AiHelpChatbot.vue'
+import ProfessorRecordPanel from './components/ProfessorRecordPanel.vue'
+import RegistrarGradePanel from './components/RegistrarGradePanel.vue'
+import StudentStudyStudio from './components/StudentStudyStudio.vue'
 
-const authStore = useAuthStore()
-const route = useRoute()
-const router = useRouter()
+const auth = useAuthStore()
+const data = ref(null)
+const selectedId = ref(null)
 const loading = ref(true)
 const error = ref('')
-const generating = ref(false)
-const sendingNotice = ref(false)
-const noticeSuccess = ref('')
-const noticeDraft = ref('')
-const overview = ref(null)
-const selectedId = ref(null)
-const supportPlan = ref(null)
-const aiStatus = ref({ live_ai_configured: false, provider: 'cdm-coach', model: null })
-const studentNotices = ref({ unread: 0, notifications: [] })
+const search = ref('')
+const filters = reactive({ department: '', course: '', section: '' })
+const filterOptions = reactive({ departments: [], courses: [], sections: [] })
+const sentPlans = ref([])
+const aiStatus = ref({ live_ai_configured: false, provider: 'gemini' })
 
-const isStudent = computed(() => authStore.currentRole === ROLES.STUDENT)
-const canNotifyStudents = computed(() => !isStudent.value)
-const canSeeAlerts = computed(() => !isStudent.value)
-const tabs = computed(() => {
-  const items = [
-    { id: 'warnings', label: 'Early Warnings' },
-    { id: 'study-plans', label: 'Study Plans' },
-  ]
-  if (canSeeAlerts.value) items.push({ id: 'alerts', label: 'Adviser Alerts' })
-  if (isStudent.value) {
-    const unread = studentNotices.value.unread || 0
-    items.push({ id: 'notices', label: unread ? `My Notices (${unread})` : 'My Notices' })
-  }
-  return items
+const isStudent = computed(() => auth.currentRole === ROLES.STUDENT)
+const isProfessor = computed(() => auth.currentRole === ROLES.PROFESSOR)
+const isRegistrar = computed(() => auth.currentRole === ROLES.REGISTRAR_STAFF)
+const isAdmin = computed(() => auth.currentRole === ROLES.ADMIN)
+const seesSchoolList = computed(() => isRegistrar.value || isAdmin.value)
+
+const students = computed(() => data.value?.students || [])
+const filteredStudents = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return students.value
+  return students.value.filter((s) =>
+    [s.student_name, s.student_number, s.course_code, s.section_name, s.department_name]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(q)),
+  )
 })
-const activeTab = computed(() => {
-  const tab = String(route.query.tab || 'warnings')
-  if (tab === 'alerts' && !canSeeAlerts.value) return 'warnings'
-  if (tab === 'notices' && !isStudent.value) return 'warnings'
-  if (tabs.value.some((item) => item.id === tab)) return tab
-  return 'warnings'
-})
-const students = computed(() => overview.value?.students || [])
-const summary = computed(() => overview.value?.summary || { high: 0, moderate: 0, low: 0, total: 0 })
-const selected = computed(() => students.value.find((item) => item.student_id === selectedId.value) || students.value[0] || null)
-const aiBadgeLive = computed(() => Boolean(aiStatus.value.live_ai_configured))
-const canSendToSelected = computed(() => {
-  if (!canNotifyStudents.value || !selected.value) return false
-  return ['high', 'moderate'].includes(selected.value.risk_level)
+const selected = computed(
+  () => filteredStudents.value.find((s) => s.student_id === selectedId.value) || filteredStudents.value[0] || null,
+)
+
+const title = computed(() => {
+  if (isStudent.value) return 'My Academic Monitoring'
+  if (isProfessor.value) return 'Faculty Monitoring'
+  if (isRegistrar.value) return 'Registrar Records'
+  return 'Monitoring Overview'
 })
 
-const setTab = (tab) => {
-  router.replace({ name: 'monitoring', query: tab === 'warnings' ? {} : { tab } })
-}
-
-const openStudentFromAlert = (studentId) => {
-  selectedId.value = studentId
-  supportPlan.value = students.value.find((item) => item.student_id === studentId)?.support_plan || null
-  setTab('warnings')
-}
-
-watch(canSeeAlerts, (allowed) => {
-  if (!allowed && route.query.tab === 'alerts') setTab('warnings')
+watch(selected, (student) => {
+  if (student && isProfessor.value) loadPlans(student.student_id)
+  else sentPlans.value = []
 })
 
-watch(isStudent, (student) => {
-  if (!student && route.query.tab === 'notices') setTab('warnings')
-})
+watch(
+  () => auth.currentUser?.id,
+  (next, prev) => {
+    if (!next || next === prev) return
+    data.value = null
+    selectedId.value = null
+    sentPlans.value = []
+    load()
+  },
+)
 
-const riskClass = (level) => ({
-  high: 'risk-high',
-  moderate: 'risk-moderate',
-  low: 'risk-low',
-}[level] || 'risk-low')
-
-const loadStudentNotices = async () => {
-  if (!isStudent.value) return
-  try {
-    studentNotices.value = await fetchMyRiskNotifications()
-  } catch {
-    studentNotices.value = { unread: 0, notifications: [] }
-  }
-}
-
-const load = async () => {
+async function load() {
   loading.value = true
   error.value = ''
-  supportPlan.value = null
-  noticeSuccess.value = ''
   try {
-    const [monitoringData, status] = await Promise.all([
-      isStudent.value ? fetchMyRisk() : fetchEarlyWarnings(),
-      fetchAiStatus().catch(() => ({ live_ai_configured: false, provider: 'cdm-coach' })),
-    ])
-    overview.value = monitoringData
-    aiStatus.value = status
-    selectedId.value = overview.value?.students?.[0]?.student_id ?? null
-    if (selected.value?.support_plan) supportPlan.value = selected.value.support_plan
-    await loadStudentNotices()
+    aiStatus.value = await fetchAiStatus().catch(() => ({ live_ai_configured: false, provider: 'gemini' }))
+    if (isStudent.value) {
+      data.value = await fetchMyRisk()
+    } else {
+      const params = {}
+      if (seesSchoolList.value) {
+        if (filters.department) params.department = filters.department
+        if (filters.course) params.course = filters.course
+        if (filters.section) params.section = filters.section
+      }
+      data.value = await fetchEarlyWarnings(params)
+      filterOptions.departments = data.value?.filters?.departments || []
+      filterOptions.courses = data.value?.filters?.courses || []
+      filterOptions.sections = data.value?.filters?.sections || []
+    }
+    selectedId.value = students.value[0]?.student_id || null
   } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to load AI monitoring data.'
+    const timedOut = err.code === 'ECONNABORTED'
+    error.value = timedOut
+      ? 'Faculty monitoring took too long to answer. The API may be unreachable.'
+      : err.response?.data?.message || 'Unable to load monitoring.'
   } finally {
     loading.value = false
   }
 }
 
-const selectStudent = (studentId) => {
-  selectedId.value = studentId
-  supportPlan.value = students.value.find((item) => item.student_id === studentId)?.support_plan || null
-  noticeDraft.value = ''
-  noticeSuccess.value = ''
-}
-
-const onGenerate = async () => {
-  if (!selected.value || generating.value) return
-  generating.value = true
-  error.value = ''
+async function loadPlans(studentId) {
   try {
-    const plan = await generateSupportPlan(selected.value.student_id)
-    supportPlan.value = plan
-    const target = students.value.find((item) => item.student_id === selected.value.student_id)
-    if (target) target.support_plan = plan
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to generate support plan.'
-  } finally {
-    generating.value = false
-  }
-}
-
-const onSendNotice = async () => {
-  if (!selected.value || !canSendToSelected.value || sendingNotice.value) return
-  sendingNotice.value = true
-  error.value = ''
-  noticeSuccess.value = ''
-  try {
-    await sendRiskNotification(selected.value.student_id, noticeDraft.value.trim())
-    noticeSuccess.value = `Notification sent to ${selected.value.student_name}.`
-    noticeDraft.value = ''
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Unable to send risk notification.'
-  } finally {
-    sendingNotice.value = false
-  }
-}
-
-const onOpenNotice = async (notice) => {
-  if (!notice?.is_read) {
-    try {
-      const updated = await markRiskNotificationRead(notice.id)
-      const idx = studentNotices.value.notifications.findIndex((item) => item.id === notice.id)
-      if (idx >= 0) studentNotices.value.notifications[idx] = updated
-      studentNotices.value.unread = studentNotices.value.notifications.filter((item) => !item.is_read).length
-    } catch {
-      // still allow navigation even if mark-read fails
-    }
-  }
-  router.push({ name: 'grading' })
-}
-
-const onPlanFromChat = (plan) => {
-  if (plan?.actions?.length) supportPlan.value = plan
-}
-
-const formatNoticeDate = (value) => {
-  if (!value) return ''
-  try {
-    return new Date(value).toLocaleString()
+    const payload = await fetchStudentSentPlans(studentId)
+    sentPlans.value = payload.plans || []
   } catch {
-    return value
+    sentPlans.value = []
+  }
+}
+
+async function openPlan(plan) {
+  if (isStudent.value && !plan.is_read) {
+    try {
+      const updated = await markSentPlanRead(plan.id)
+      sentPlans.value = sentPlans.value.map((p) => (p.id === plan.id ? updated : p))
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -187,617 +122,451 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="page-header">
-    <p class="page-kicker">AI Monitoring</p>
-    <h1 class="page-title">Academic Risk Center</h1>
-    <p class="page-description">
-      Early warnings, study plans, and risk notices — professors and admins can alert students so they can recover grades quickly.
-    </p>
-  </section>
-
-  <nav class="monitor-tabs" aria-label="AI Monitoring sections">
-    <button
-      v-for="tab in tabs"
-      :key="tab.id"
-      type="button"
-      class="tab-btn"
-      :class="{ active: activeTab === tab.id }"
-      @click="setTab(tab.id)"
-    >
-      {{ tab.label }}
-    </button>
-  </nav>
-
-  <div v-show="activeTab === 'warnings'">
-    <div v-if="error" class="banner-error" role="alert">
-      <span>{{ error }}</span>
-      <button type="button" class="retry-btn" @click="load">Retry</button>
-    </div>
-    <p v-if="loading" class="banner-muted">Analyzing grade signals…</p>
-
-    <template v-else-if="overview">
-      <section class="summary-row" aria-label="Risk summary">
-        <article>
-          <span>High risk</span>
-          <strong>{{ summary.high }}</strong>
-        </article>
-        <article>
-          <span>Moderate</span>
-          <strong>{{ summary.moderate }}</strong>
-        </article>
-        <article>
-          <span>Stable</span>
-          <strong>{{ summary.low }}</strong>
-        </article>
-        <article>
-          <span>Monitored</span>
-          <strong>{{ summary.total }}</strong>
-        </article>
-      </section>
-
-      <div class="workspace">
-        <section class="student-list" aria-label="Monitored students">
-          <h2>{{ isStudent ? 'Your academic risk' : 'Students needing attention' }}</h2>
-          <button
-            v-for="student in students"
-            :key="student.student_id"
-            type="button"
-            class="student-card"
-            :class="{ active: selected?.student_id === student.student_id }"
-            @click="selectStudent(student.student_id)"
-          >
-            <div>
-              <strong>{{ student.student_name }}</strong>
-              <small>{{ student.student_number }} · {{ student.course_code || 'Course' }}</small>
-            </div>
-            <span class="risk-badge" :class="riskClass(student.risk_level)">{{ student.risk_label }}</span>
-          </button>
-          <p v-if="!students.length" class="empty">No enrolled grade records to monitor yet.</p>
-        </section>
-
-        <section v-if="selected" class="detail-panel" aria-live="polite">
-          <header class="detail-head">
-            <div>
-              <p class="page-kicker">Student signal</p>
-              <h2>{{ selected.student_name }}</h2>
-              <p>{{ selected.headline }}</p>
-            </div>
-            <span class="risk-badge large" :class="riskClass(selected.risk_level)">{{ selected.risk_label }}</span>
-          </header>
-
-          <div class="metrics">
-            <div>
-              <span>Average grade</span>
-              <strong>{{ selected.average_grade ?? '—' }}</strong>
-            </div>
-            <div>
-              <span>Subjects at risk</span>
-              <strong>{{ selected.at_risk_subjects }}</strong>
-            </div>
-            <div>
-              <span>Trend</span>
-              <strong>{{ selected.trend_label }}</strong>
-            </div>
-          </div>
-
-          <h3>Early warnings</h3>
-          <ul class="warning-list">
-            <li v-for="(warning, index) in selected.warnings" :key="index">{{ warning }}</li>
-          </ul>
-
-          <h3>Subject grade monitor</h3>
-          <div class="subject-table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Subject</th>
-                  <th>Prelim</th>
-                  <th>Midterm</th>
-                  <th>Final</th>
-                  <th>Risk</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="subject in selected.subjects" :key="subject.subject_code">
-                  <td>
-                    <strong>{{ subject.subject_code }}</strong>
-                    <small>{{ subject.subject_name }}</small>
-                  </td>
-                  <td>{{ subject.periods.Prelim ?? '—' }}</td>
-                  <td>{{ subject.periods.Midterm ?? '—' }}</td>
-                  <td>{{ subject.periods.Final ?? '—' }}</td>
-                  <td><span class="risk-badge" :class="riskClass(subject.risk_level)">{{ subject.risk_label }}</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div v-if="canNotifyStudents" class="support-block notify-block">
-            <div class="support-head">
-              <h3>Notify student</h3>
-              <button
-                type="button"
-                class="generate-btn"
-                :disabled="!canSendToSelected || sendingNotice"
-                @click="onSendNotice"
-              >
-                {{ sendingNotice ? 'Sending…' : 'Send risk notice' }}
-              </button>
-            </div>
-            <p v-if="canSendToSelected" class="empty">
-              Send an in-app notice so {{ selected.student_name }} can open Grading and fix at-risk subjects right away.
-            </p>
-            <p v-else class="empty">
-              Notifications are for high or moderate risk students only.
-            </p>
-            <label class="ai-label" for="risk-notice">Optional message</label>
-            <textarea
-              id="risk-notice"
-              v-model="noticeDraft"
-              rows="3"
-              :disabled="!canSendToSelected || sendingNotice"
-              placeholder="Example: Please see me after class and prioritize IT102 recovery this week."
-            />
-            <p v-if="noticeSuccess" class="notice-success">{{ noticeSuccess }}</p>
-          </div>
-
-          <div class="support-block">
-            <div class="support-head">
-              <h3>Help support plan</h3>
-              <button type="button" class="generate-btn" :disabled="generating" @click="onGenerate">
-                {{ generating ? 'Generating…' : supportPlan ? 'Refresh help support' : 'Generate help support' }}
-              </button>
-            </div>
-            <template v-if="supportPlan">
-              <p class="support-summary">{{ supportPlan.summary }}</p>
-              <ol>
-                <li v-for="(step, index) in supportPlan.actions" :key="index">{{ step }}</li>
-              </ol>
-              <p class="support-note">{{ supportPlan.prevention_note }}</p>
-            </template>
-            <p v-else class="empty">Generate a personalized plan to prevent failing risk.</p>
-          </div>
-        </section>
-
-        <section v-else class="detail-panel">
-          <h2>No student selected</h2>
-          <p class="empty">Seed grades or enroll students to start AI Monitoring.</p>
-          <button type="button" class="generate-btn" @click="load">Reload monitoring</button>
-        </section>
-      </div>
-    </template>
-  </div>
-
-  <StudyPlansPanel
-    v-if="activeTab === 'study-plans'"
-    :student-id="isStudent ? selectedId : null"
-  />
-
-  <AdviserAlertsPanel
-    v-if="activeTab === 'alerts' && canSeeAlerts"
-    @open-student="openStudentFromAlert"
-  />
-
-  <section v-if="activeTab === 'notices' && isStudent" class="notices-panel">
-    <header class="notices-head">
+  <main class="page">
+    <header class="head">
       <div>
-        <h2>My risk notices</h2>
-        <p>Messages from your professor, registrar, or admin when you are at risk of failing.</p>
+        <p class="kicker">AI Monitoring</p>
+        <h1>{{ title }}</h1>
+        <p class="lead">
+          {{
+            isStudent
+              ? 'Upload a file and the AI writes a study guide automatically. You can still make flashcards or a quiz from the same file.'
+              : isProfessor
+                ? 'Review students in your subjects, record every graded score, and send the study plan.'
+                : isRegistrar
+                  ? 'Approve the grades a professor submitted. You do not record class scores or send study plans.'
+                  : 'View the official school record. Approving grades is the registrar’s work, and study plans are the professor’s.'
+          }}
+        </p>
       </div>
-      <button type="button" class="generate-btn" @click="loadStudentNotices">Refresh</button>
+      <button type="button" class="btn" @click="load">Refresh</button>
     </header>
 
-    <article
-      v-for="notice in studentNotices.notifications"
-      :key="notice.id"
-      class="notice-card"
-      :class="{ unread: !notice.is_read }"
-    >
-      <div class="notice-top">
-        <strong>{{ notice.title }}</strong>
-        <span class="risk-badge" :class="riskClass(notice.risk_level)">{{ notice.risk_level }}</span>
+    <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <p v-if="loading" class="muted">Loading…</p>
+
+    <template v-else>
+      <section v-if="!isStudent" class="stats">
+        <article><span>High</span><strong>{{ data?.summary?.high || 0 }}</strong></article>
+        <article><span>Moderate</span><strong>{{ data?.summary?.moderate || 0 }}</strong></article>
+        <article><span>Stable</span><strong>{{ data?.summary?.low || 0 }}</strong></article>
+        <article><span>Total</span><strong>{{ data?.summary?.total || students.length }}</strong></article>
+      </section>
+
+      <div class="layout" :class="{ solo: isStudent }">
+        <aside v-if="!isStudent" class="list">
+          <input v-model="search" type="search" placeholder="Search student…" />
+          <template v-if="seesSchoolList">
+            <select v-model="filters.department" @change="load">
+              <option value="">All departments</option>
+              <option v-for="d in filterOptions.departments" :key="d" :value="d">{{ d }}</option>
+            </select>
+            <select v-model="filters.course" @change="load">
+              <option value="">All courses</option>
+              <option v-for="c in filterOptions.courses" :key="c" :value="c">{{ c }}</option>
+            </select>
+            <select v-model="filters.section" @change="load">
+              <option value="">All sections</option>
+              <option v-for="s in filterOptions.sections" :key="s" :value="s">{{ s }}</option>
+            </select>
+          </template>
+
+          <button
+            v-for="student in filteredStudents"
+            :key="student.student_id"
+            type="button"
+            class="row"
+            :class="{ active: selected?.student_id === student.student_id }"
+            @click="selectedId = student.student_id"
+          >
+            <strong>{{ student.student_name }}</strong>
+            <span>{{ student.student_number }} · {{ student.course_code || '—' }} · {{ student.section_name || '—' }}</span>
+            <em :class="student.risk_level">{{ student.risk_label }}</em>
+          </button>
+          <p v-if="!filteredStudents.length" class="muted">No students found.</p>
+        </aside>
+
+        <section v-if="selected" class="detail">
+          <div class="card hero">
+            <div>
+              <h2>{{ isStudent ? 'Your standing' : selected.student_name }}</h2>
+              <p>{{ selected.headline }}</p>
+              <p class="meta">
+                <span v-if="selected.department_name">{{ selected.department_name }}</span>
+                <span v-if="selected.course_code">{{ selected.course_code }}</span>
+                <span v-if="selected.section_name">Sec {{ selected.section_name }}</span>
+              </p>
+            </div>
+            <div class="right">
+              <span class="pill" :class="selected.risk_level">{{ selected.risk_label }}</span>
+              <p v-if="selected.risk_score != null">Score <strong>{{ selected.risk_score }}/100</strong></p>
+              <p>Avg <strong>{{ selected.average_grade ?? '—' }}</strong></p>
+              <p>Trend <strong>{{ selected.trend_label || selected.trend }}</strong></p>
+            </div>
+          </div>
+
+          <div v-if="selected.signals" class="card">
+            <h3>Early warning signals</h3>
+            <div class="subjects">
+              <article>
+                <strong>Grades</strong>
+                <span>How far averages sit from a safe standing</span>
+                <em>{{ selected.signals.grade_risk }}</em>
+              </article>
+              <article>
+                <strong>Trend</strong>
+                <span>Drops and missing midterms</span>
+                <em>{{ selected.signals.trend_drop }}</em>
+              </article>
+              <article>
+                <strong>Graded scores</strong>
+                <span>{{ selected.signals.weak_quiz_count || 0 }} scored records, not only quizzes</span>
+                <em>{{ selected.signals.weak_quizzes }}</em>
+              </article>
+              <article>
+                <strong>Gaps</strong>
+                <span>Failed, incomplete, or missing work</span>
+                <em>{{ selected.signals.incomplete }}</em>
+              </article>
+            </div>
+            <ul v-if="selected.warnings?.length" class="warnings">
+              <li v-for="warning in selected.warnings" :key="warning">{{ warning }}</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h3>Subjects</h3>
+            <div v-if="selected.subjects?.length" class="subjects">
+              <article v-for="subject in selected.subjects" :key="subject.subject_code">
+                <strong>{{ subject.subject_code }}</strong>
+                <span>
+                  {{ subject.subject_name }}
+                  <template v-if="subject.periods">
+                    · Prelim {{ subject.periods.Prelim ?? '—' }}
+                    · Midterm {{ subject.periods.Midterm ?? '—' }}
+                    · Final {{ subject.periods.Final ?? '—' }}
+                  </template>
+                </span>
+                <em :class="subject.risk_level">{{ subject.average_grade }} · {{ subject.risk_level }}</em>
+              </article>
+            </div>
+            <p v-else class="muted">No approved grades yet.</p>
+          </div>
+
+          <div v-if="isProfessor" class="card">
+            <h3>Sent plans</h3>
+            <article v-for="plan in sentPlans" :key="plan.id" class="plan" @click="openPlan(plan)">
+              <strong>{{ plan.title }}</strong>
+              <span>{{ plan.subject_code }} · {{ plan.topic }}</span>
+              <pre>{{ plan.plan_body }}</pre>
+            </article>
+            <p v-if="!sentPlans.length" class="muted">No study plans yet.</p>
+          </div>
+
+          <StudentStudyStudio v-if="isStudent" :key="`studio-${auth.currentUser?.id}`" />
+
+          <ProfessorRecordPanel
+            v-if="selected && isProfessor"
+            :key="`records-${auth.currentUser?.id}-${selected.student_id}`"
+            :student-id="selected.student_id"
+            :subjects="selected.subjects || []"
+            viewer-role="professor"
+            @sent="loadPlans(selected.student_id)"
+          />
+
+        </section>
+
+        <p v-else-if="!isRegistrar" class="muted card">No academic record available.</p>
+
+        <div v-if="isRegistrar" class="card">
+          <RegistrarGradePanel :key="`registrar-${auth.currentUser?.id}`" />
+        </div>
       </div>
-      <p class="notice-meta">From {{ notice.sender_name }} · {{ formatNoticeDate(notice.created_at) }}</p>
-      <p class="notice-body">{{ notice.message }}</p>
-      <button type="button" class="generate-btn" @click="onOpenNotice(notice)">
-        Open Grading to fix grades
-      </button>
-    </article>
+    </template>
 
-    <p v-if="!studentNotices.notifications?.length" class="empty">
-      No risk notices yet. When staff flags your grades, they will appear here.
-    </p>
-  </section>
-
-  <AiHelpChatbot
-    :student-id="selected?.student_id || null"
-    :student-name="selected?.student_name || 'Student'"
-    :risk-label="selected?.risk_label || ''"
-    :live-configured="aiBadgeLive"
-    :provider="aiStatus.provider || 'gemini'"
-    @plan-from-chat="onPlanFromChat"
-  />
+    <AiHelpChatbot
+      :key="`chat-${auth.currentUser?.id || 0}-${selected?.student_id || 0}`"
+      :student-id="selected?.student_id || null"
+      :student-name="selected?.student_name || (isStudent ? 'You' : 'Student')"
+      :risk-label="selected?.risk_label || ''"
+      :average-grade="selected?.average_grade ?? null"
+      :trend-label="selected?.trend_label || ''"
+      :subjects="selected?.subjects || []"
+      :live-configured="Boolean(aiStatus.live_ai_configured)"
+      :provider="aiStatus.provider || 'gemini'"
+    />
+  </main>
 </template>
 
 <style scoped>
-.monitor-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 18px;
-  padding: 6px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-soft);
+.page {
+  --ink: var(--student-heading, #1b2a22);
+  --muted: var(--student-muted, #66706a);
+  --line: var(--student-border, #d7dfd9);
+  --surface: var(--student-surface, #fff);
+  --soft: var(--student-surface-soft, #f5f7f6);
+  --green: var(--student-accent, #106a2e);
+  color: var(--ink);
+  display: grid;
+  gap: 16px;
 }
 
-.tab-btn {
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--color-muted);
+.head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.kicker {
+  color: var(--green);
+  font-size: 0.72rem;
   font-weight: 700;
-  min-height: 40px;
-  padding: 0 16px;
+  letter-spacing: 0.08em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+h1 {
+  font-size: clamp(1.4rem, 2.4vw, 1.85rem);
+  margin: 0;
+}
+
+.lead,
+.muted,
+.meta,
+.row span,
+.subjects span,
+.plan span {
+  color: var(--muted);
+}
+
+.lead {
+  margin: 6px 0 0;
+  max-width: 52ch;
+}
+
+.btn,
+.row {
   cursor: pointer;
 }
 
-.tab-btn.active {
-  background: var(--color-dartmouth-green);
-  color: #fff;
-}
-
-.banner-error,
-.banner-muted {
-  margin: 0 0 18px;
-  padding: 12px 14px;
-  border-radius: 10px;
-}
-
-.banner-error {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  background: #fef3f2;
-  color: #b42318;
-}
-
-.retry-btn {
-  border: 0;
+.btn {
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #b42318;
-  color: #fff;
+  color: var(--green);
   font-weight: 700;
-  min-height: 34px;
+  min-height: 38px;
   padding: 0 12px;
-  cursor: pointer;
 }
 
-.banner-muted {
-  background: var(--color-green-tint);
-  color: var(--color-dark-spring-green);
+.alert {
+  background: #fff1f0;
+  border: 1px solid #ffd1cc;
+  border-radius: 8px;
+  color: #9f2d25;
+  margin: 0;
+  padding: 10px 12px;
 }
 
-.summary-row {
+.stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 22px;
-}
-
-.summary-row article {
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-surface);
-  padding: 16px;
-  box-shadow: var(--shadow-soft);
-}
-
-.summary-row span {
-  display: block;
-  color: var(--color-muted);
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.summary-row strong {
-  display: block;
-  margin-top: 6px;
-  font-family: var(--font-display);
-  font-size: 1.8rem;
-}
-
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(240px, 320px) 1fr;
-  gap: 18px;
-  align-items: start;
-}
-
-.student-list,
-.detail-panel {
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  background: var(--color-surface);
-  padding: 18px;
-  box-shadow: var(--shadow-soft);
-}
-
-.student-list h2,
-.detail-panel h2,
-.detail-panel h3,
-.support-head h3 {
-  margin: 0 0 12px;
-  font-family: var(--font-display);
-}
-
-.student-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  width: 100%;
-  margin-bottom: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: #fff;
-  padding: 12px;
-  text-align: left;
-  cursor: pointer;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.student-card.active {
-  border-color: rgba(16, 106, 46, 0.45);
-  background: var(--color-green-tint);
+.stats article,
+.card,
+.list {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 
-.student-card strong,
-.subject-table-wrap strong {
+.stats article {
+  padding: 12px 14px;
+}
+
+.stats span {
+  color: var(--muted);
   display: block;
+  font-size: 0.8rem;
 }
 
-.student-card small,
-.subject-table-wrap small {
+.stats strong {
   display: block;
-  color: var(--color-muted);
+  font-size: 1.4rem;
   margin-top: 2px;
 }
 
-.risk-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.75rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.risk-badge.large {
-  font-size: 0.82rem;
-  padding: 6px 12px;
-}
-
-.risk-high { background: #fee4e2; color: #b42318; }
-.risk-moderate { background: #fef0c7; color: #b54708; }
-.risk-low { background: #dcf5e5; color: #176434; }
-
-.detail-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.detail-head h2 {
-  margin: 0 0 6px;
-}
-
-.detail-head p:last-child {
-  margin: 0;
-  color: var(--color-muted);
-  line-height: 1.5;
-}
-
-.metrics {
+.layout {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 22px;
+  gap: 14px;
+  grid-template-columns: 280px minmax(0, 1fr);
 }
 
-.metrics div {
-  border-radius: 12px;
-  background: var(--color-anti-flash-white);
+.layout.solo {
+  grid-template-columns: 1fr;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+  max-height: 72vh;
+  overflow: auto;
   padding: 12px;
 }
 
-.metrics span {
-  color: var(--color-muted);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.metrics strong {
-  display: block;
-  margin-top: 4px;
-  font-size: 1.2rem;
-}
-
-.warning-list {
-  margin: 0 0 22px;
-  padding-left: 18px;
-  color: var(--color-muted);
-  line-height: 1.55;
-}
-
-.subject-table-wrap {
-  overflow-x: auto;
-  margin-bottom: 22px;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-th,
-td {
-  padding: 10px 8px;
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
-  vertical-align: top;
-}
-
-th {
-  color: var(--color-muted);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.support-block {
-  border-top: 1px solid var(--color-border);
-  padding-top: 16px;
-}
-
-.support-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.generate-btn {
-  border: 0;
+.list input,
+.list select {
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--color-dartmouth-green);
-  color: #fff;
+  padding: 9px 10px;
+}
+
+.row {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  text-align: left;
+}
+
+.row.active {
+  border-color: var(--green);
+}
+
+.row em,
+.pill,
+.subjects em {
+  font-style: normal;
+  font-size: 0.72rem;
   font-weight: 700;
-  min-height: 40px;
-  padding: 0 14px;
-  cursor: pointer;
+  justify-self: start;
+  margin-top: 4px;
+  text-transform: uppercase;
 }
 
-.generate-btn:disabled {
-  opacity: 0.7;
-  cursor: wait;
-}
-
-.support-summary,
-.support-note,
-.empty {
-  color: var(--color-muted);
-  line-height: 1.55;
-}
-
-.support-block ol {
-  margin: 10px 0;
-  padding-left: 18px;
-  line-height: 1.55;
-}
-
-.notify-block textarea,
-.ai-label + textarea {
-  width: 100%;
-  resize: vertical;
-  margin: 8px 0 0;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font: inherit;
-}
-
-.ai-label {
-  display: block;
-  margin-top: 10px;
-  font-weight: 700;
-  font-size: 0.86rem;
-}
-
-.notice-success {
-  margin: 10px 0 0;
-  color: #176434;
-  font-weight: 700;
-}
-
-.notices-panel {
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-soft);
-  padding: 18px;
-}
-
-.notices-head {
-  display: flex;
-  justify-content: space-between;
+.detail {
+  display: grid;
   gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 14px;
+  min-width: 0;
 }
 
-.notices-head h2 {
-  margin: 0 0 6px;
-  font-family: var(--font-display);
-}
-
-.notices-head p {
-  margin: 0;
-  color: var(--color-muted);
-}
-
-.notice-card {
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
+.card {
   padding: 14px;
-  margin-bottom: 10px;
-  background: #fff;
 }
 
-.notice-card.unread {
-  border-color: rgba(16, 106, 46, 0.35);
-  background: rgba(16, 106, 46, 0.05);
-}
-
-.notice-top {
+.hero {
   display: flex;
+  gap: 16px;
   justify-content: space-between;
-  gap: 10px;
-  align-items: center;
+}
+
+.hero h2,
+.card h3 {
+  margin: 0 0 6px;
+}
+
+.meta {
+  display: flex;
   flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 0 0;
 }
 
-.notice-meta,
-.notice-body {
-  color: var(--color-muted);
-  line-height: 1.5;
+.right {
+  text-align: right;
 }
 
-.notice-meta {
+.right p {
   margin: 6px 0 0;
-  font-size: 0.86rem;
 }
 
-.notice-body {
-  margin: 10px 0 12px;
+.pill,
+.row em,
+.subjects em {
+  border-radius: 999px;
+  padding: 4px 8px;
 }
 
-@media (max-width: 960px) {
-  .summary-row,
-  .workspace,
-  .metrics {
+.high,
+em.high,
+.pill.high {
+  background: #fff1e8;
+  color: #9a3412;
+}
+
+.moderate,
+em.moderate,
+.pill.moderate {
+  background: #fff8db;
+  color: #854d0e;
+}
+
+.low,
+em.low,
+.pill.low {
+  background: #e8f7ee;
+  color: #166534;
+}
+
+.subjects {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.subjects article,
+.plan {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.subjects strong,
+.plan strong {
+  display: block;
+}
+
+.warnings {
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+
+.plan {
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.plan pre {
+  font-family: inherit;
+  line-height: 1.45;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  .layout,
+  .stats,
+  .hero {
     grid-template-columns: 1fr;
+    display: grid;
   }
 
-  .detail-head,
-  .support-head {
-    flex-direction: column;
-    align-items: flex-start;
+  .list {
+    max-height: none;
+  }
+
+  .right {
+    text-align: left;
   }
 }
 </style>

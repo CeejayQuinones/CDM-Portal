@@ -1,12 +1,12 @@
 <?php
 
 use App\Http\Middleware\EnsureAdminRole;
+use App\Http\Middleware\EnsureMonitoringAccess;
 use App\Http\Middleware\EnsureProfessorRole;
 use App\Http\Middleware\EnsureRegistrarOrAdminRole;
 use App\Http\Middleware\EnsureRegistrarStaffRole;
 use App\Http\Middleware\EnsureStudentRole;
 use App\Http\Middleware\RequireStepUpAuthentication;
-use App\Http\Middleware\EnsureMonitoringAccess;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withCommands([
+        __DIR__.'/../app/Console/Commands',
+    ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'role.admin' => EnsureAdminRole::class,
@@ -28,8 +31,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role.professor' => EnsureProfessorRole::class,
             'role.student' => EnsureStudentRole::class,
             'role.registrar-or-admin' => EnsureRegistrarOrAdminRole::class,
-            'step-up' => RequireStepUpAuthentication::class,
             'role.monitoring' => EnsureMonitoringAccess::class,
+            'step-up' => RequireStepUpAuthentication::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

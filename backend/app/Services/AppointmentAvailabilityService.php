@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\AppointmentAvailabilitySetting;
 use App\Models\AppointmentBlockedDate;
 use Carbon\CarbonImmutable;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
 
 class AppointmentAvailabilityService
 {
@@ -34,12 +34,15 @@ class AppointmentAvailabilityService
     /** @return array{settings: array{block_saturday: bool, block_sunday: bool}, blocked_dates: array<int, array{id: int, date: string, type: string, reason: string}>} */
     public function availabilityForMonth(string $month): array
     {
-        $firstDay = CarbonImmutable::createFromFormat('!Y-m-d', $month.'-01');
+        $firstDay = CarbonImmutable::createFromFormat('Y-m-d', $month.'-01')->startOfMonth();
+        $nextMonth = $firstDay->addMonth();
         $blockedDates = AppointmentBlockedDate::query()
             ->select(['id', 'blocked_date', 'type', 'reason'])
             ->where('is_active', true)
-            ->whereBetween('blocked_date', [$firstDay->toDateString(), $firstDay->endOfMonth()->toDateString()])
+            ->where('blocked_date', '>=', $firstDay->toDateString())
+            ->where('blocked_date', '<', $nextMonth->toDateString())
             ->orderBy('blocked_date')
+            ->orderBy('id')
             ->get()
             ->map(fn (AppointmentBlockedDate $blockedDate): array => [
                 'id' => $blockedDate->id,
@@ -55,28 +58,36 @@ class AppointmentAvailabilityService
         ];
     }
 
-    public function ensureDateIsAvailable(string $date): void
+    public function unavailableMessage(string $date): ?string
     {
-        $requestedDate = CarbonImmutable::createFromFormat('!Y-m-d', $date);
+        $appointmentDate = CarbonImmutable::createFromFormat('Y-m-d', $date)->startOfDay();
         $settings = $this->settings();
 
-        if ($requestedDate->isSaturday() && $settings['block_saturday']) {
-            $this->reject('Appointments are unavailable on Saturdays.');
+        if (
+            ($appointmentDate->isSaturday() && $settings['block_saturday'])
+            || ($appointmentDate->isSunday() && $settings['block_sunday'])
+        ) {
+            return 'This date is unavailable because appointments are closed on weekends.';
         }
 
-        if ($requestedDate->isSunday() && $settings['block_sunday']) {
-            $this->reject('Appointments are unavailable on Sundays.');
+        $holiday = DB::table('holidays')->whereDate('holiday_date', $date)->where('is_active', true)->value('name');
+        if ($holiday) {
+            return "This date is unavailable due to {$holiday}.";
         }
 
-        $blockedReason = AppointmentBlockedDate::query()
-            ->where('blocked_date', '>=', $requestedDate->toDateString())
-            ->where('blocked_date', '<', $requestedDate->addDay()->toDateString())
-            ->where('is_active', true)
-            ->value('reason');
+        $blockedDates = AppointmentBlockedDate::query()
+            ->whereDate('blocked_date', $date)
+            ->where('is_active', true);
 
-        if ($blockedReason !== null) {
-            $this->reject($blockedReason.' is unavailable for appointments.');
+        if (! $blockedDates->exists()) {
+            return null;
         }
+
+        $reason = $blockedDates->orderBy('id')->value('reason');
+
+        return $reason
+            ? "This date is unavailable due to {$reason}."
+            : 'This date is unavailable for appointments.';
     }
 
     private function settingsModel(): AppointmentAvailabilitySetting
@@ -85,12 +96,5 @@ class AppointmentAvailabilityService
             ['id' => 1],
             ['block_saturday' => true, 'block_sunday' => true],
         );
-    }
-
-    private function reject(string $message): never
-    {
-        throw ValidationException::withMessages([
-            'appointment_date' => [$message],
-        ]);
     }
 }

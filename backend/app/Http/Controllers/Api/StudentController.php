@@ -118,7 +118,10 @@ class StudentController extends Controller
     public function documents(Student $student): JsonResponse
     {
         $student = $this->studentService->find($student->id);
-        $documents = $student->documents()->with('documentType')->orderByDesc('submitted_date')->get();
+        $documents = $student->documents()
+            ->with(['documentType', 'aiAnalysis'])
+            ->orderByDesc('submitted_date')
+            ->get();
 
         return response()->json([
             'success' => true,

@@ -5,6 +5,8 @@ release/
 .vite/
 .tmp/
 tmp/
-.env
-.env.local
-.env.*.local
+dist/
+node_modules/
+release/
+*.log
+.vercel

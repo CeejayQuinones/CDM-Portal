@@ -15,6 +15,11 @@ class Enrollment extends Model
         return $this->belongsTo(Student::class);
     }
 
+    public function enrollmentSubjects(): HasMany
+    {
+        return $this->hasMany(EnrollmentSubject::class);
+    }
+
     public function academicYear(): BelongsTo
     {
         return $this->belongsTo(AcademicYear::class);
@@ -25,8 +30,8 @@ class Enrollment extends Model
         return $this->belongsTo(Semester::class);
     }
 
-    public function enrollmentSubjects(): HasMany
+    public function section(): BelongsTo
     {
-        return $this->hasMany(EnrollmentSubject::class);
+        return $this->belongsTo(Section::class);
     }
 }

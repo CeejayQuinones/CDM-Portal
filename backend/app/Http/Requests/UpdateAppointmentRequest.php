@@ -17,7 +17,7 @@ class UpdateAppointmentRequest extends ApiFormRequest
             'appointment_date' => ['bail', 'sometimes', 'date', 'after_or_equal:today', new AppointmentDateAvailable],
             'appointment_time' => ['sometimes', 'date_format:H:i'],
             'status' => ['sometimes', 'in:pending,confirmed,completed,cancelled,no_show'],
-            'remarks' => ['nullable', 'string', 'max:2000'],
+            'remarks' => ['required_if:status,cancelled', 'nullable', 'string', 'max:2000'],
         ];
     }
 }

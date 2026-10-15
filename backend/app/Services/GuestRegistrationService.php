@@ -20,7 +20,7 @@ class GuestRegistrationService
      */
     public function register(array $data): User
     {
-        $guestRole = Role::query()->where('role_name', Role::GUEST)->first();
+        $guestRole = Role::query()->where('role_name', 'Guest')->first();
 
         if ($guestRole === null) {
             throw ValidationException::withMessages([

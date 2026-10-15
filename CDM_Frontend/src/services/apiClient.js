@@ -1,19 +1,26 @@
 import axios from 'axios'
-import { resolveApiBaseUrl } from '../config/apiBaseUrl'
+import { isOfflineDemo } from '../config/demoMode'
+import { createOfflineApiClient } from './offline/offlineApi'
+import { performanceMonitor } from './performance/performanceMonitor'
+import { resolveApiAssetUrl } from '../utils/apiAssetUrl'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
-const apiBaseUrl = resolveApiBaseUrl()
 
-export const apiClient = axios.create({
-  baseURL: apiBaseUrl,
+const onlineApiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
   },
-  timeout: 20000,
 })
 
-apiClient.interceptors.request.use((config) => {
+onlineApiClient.interceptors.request.use((config) => {
+  config.cdmPerformanceRequest = performanceMonitor.beginApiRequest(
+    config.method,
+    config.url,
+    config.baseURL,
+    config.params,
+  )
   const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY)
 
   if (savedAuth) {
@@ -28,9 +35,17 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
-apiClient.interceptors.response.use(
-  (response) => response,
+onlineApiClient.interceptors.response.use(
+  (response) => {
+    performanceMonitor.endApiRequest(response.config.cdmPerformanceRequest, response.status, response.data)
+    return response
+  },
   (error) => {
+    performanceMonitor.endApiRequest(
+      error.config?.cdmPerformanceRequest,
+      error.response?.status,
+      error.response?.data,
+    )
     if (error.response?.status === 401 && !error.config?.url?.includes('/login')) {
       localStorage.removeItem(AUTH_STORAGE_KEY)
       if (window.location.hash !== '#/login') window.location.hash = '#/login'
@@ -40,6 +55,6 @@ apiClient.interceptors.response.use(
   },
 )
 
-if (import.meta.env.DEV) {
-  console.info('[CDM Portal] API base URL:', apiBaseUrl)
-}
+export const apiClient = isOfflineDemo ? createOfflineApiClient() : onlineApiClient
+
+export const apiAssetUrl = (path) => resolveApiAssetUrl(path, apiClient.defaults?.baseURL, window.location.href)

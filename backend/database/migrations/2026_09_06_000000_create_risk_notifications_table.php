@@ -17,7 +17,6 @@ return new class extends Migration
             $table->text('message');
             $table->timestamp('read_at')->nullable();
             $table->timestamps();
-
             $table->index(['student_id', 'read_at']);
         });
     }

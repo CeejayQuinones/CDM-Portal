@@ -1,25 +1,23 @@
 <?php
 
+use App\Http\Controllers\Api\AdminUserDirectoryController;
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDashboardController;
 use App\Http\Controllers\Api\RegistrarDocumentRequestController;
 use App\Http\Controllers\Api\RegistrarDocumentTypeController;
+use App\Http\Controllers\Api\RegistrarStudentDocumentController;
 use App\Http\Controllers\Api\StepUpAuthenticationController;
-use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentDocumentRequestController;
+use App\Http\Controllers\Api\StudentSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
-Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
-Route::post('/registration/email-verification/send', [AuthController::class, 'sendEmailVerification'])
-    ->middleware('throttle:3,1');
-Route::post('/registration/email-verification/verify', [AuthController::class, 'verifyEmail'])
-    ->middleware('throttle:5,1');
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -36,10 +34,30 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/monitoring/students/{student}/study-plan', [MonitoringController::class, 'studyPlan']);
         Route::get('/monitoring/adviser-alerts', [MonitoringController::class, 'adviserAlerts']);
         Route::get('/monitoring/ai-status', [MonitoringController::class, 'aiStatus']);
-        Route::post('/monitoring/students/{student}/ai-help', [MonitoringController::class, 'aiHelp']);
+        Route::post('/monitoring/students/{student}/ai-help', [MonitoringController::class, 'aiHelp'])->middleware('throttle:10,1');
+        Route::get('/monitoring/students/{student}/performance-records', [MonitoringController::class, 'listPerformanceRecords']);
+        Route::post('/monitoring/students/{student}/performance-records', [MonitoringController::class, 'storePerformanceRecord'])->middleware('throttle:20,1');
+        Route::get('/monitoring/performance-records/{record}/attachment', [MonitoringController::class, 'downloadPerformanceAttachment']);
+        Route::post('/monitoring/students/{student}/performance-records/{record}/generate-plan', [MonitoringController::class, 'generateRecordStudyPlan'])->middleware('throttle:8,1');
+        Route::post('/monitoring/students/{student}/performance-records/{record}/send-plan', [MonitoringController::class, 'sendRecordStudyPlan'])->middleware('throttle:10,1');
+        Route::get('/monitoring/grade-submissions', [MonitoringController::class, 'submittedGrades']);
+        Route::post('/monitoring/grades/{grade}/approve', [MonitoringController::class, 'approveGrade'])->middleware('throttle:30,1');
+        Route::post('/monitoring/students/{student}/grade-plan', [MonitoringController::class, 'generateGradeStudyPlan'])->middleware('throttle:8,1');
+        Route::post('/monitoring/students/{student}/grade-plan/send', [MonitoringController::class, 'sendGradeStudyPlan'])->middleware('throttle:10,1');
+        Route::get('/monitoring/students/{student}/sent-plans', [MonitoringController::class, 'listSentPlans']);
+        Route::get('/monitoring/my-sent-plans', [MonitoringController::class, 'mySentPlans']);
+        Route::patch('/monitoring/sent-plans/{plan}/read', [MonitoringController::class, 'markSentPlanRead']);
+        Route::get('/monitoring/study-studio', [MonitoringController::class, 'studentStudyStudio']);
+        Route::post('/monitoring/study-studio/flashcards', [MonitoringController::class, 'generateStudentFlashcards'])->middleware('throttle:8,1');
+        Route::post('/monitoring/study-studio/quiz', [MonitoringController::class, 'generateStudentQuiz'])->middleware('throttle:8,1');
+        Route::post('/monitoring/study-studio/plan', [MonitoringController::class, 'generateStudentStudioPlan'])->middleware('throttle:8,1');
         Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification']);
         Route::get('/monitoring/my-risk-notifications', [MonitoringController::class, 'myRiskNotifications']);
         Route::patch('/monitoring/risk-notifications/{notification}/read', [MonitoringController::class, 'markRiskNotificationRead']);
+    });
+
+    Route::middleware('role.admin')->group(function (): void {
+        Route::get('/admin/users', AdminUserDirectoryController::class);
     });
 
     Route::middleware('role.registrar-or-admin')->group(function (): void {
@@ -52,19 +70,25 @@ Route::middleware('auth:sanctum')->group(function (): void {
     });
 
     Route::middleware('role.student')->group(function (): void {
+        Route::get('/student/settings', [StudentSettingsController::class, 'show']);
+        Route::patch('/student/settings/profile', [StudentSettingsController::class, 'updateProfile']);
+        Route::patch('/student/settings/contact', [StudentSettingsController::class, 'updateContact']);
+        Route::patch('/student/settings/preferences', [StudentSettingsController::class, 'updatePreferences']);
+        Route::post('/student/settings/avatar', [StudentSettingsController::class, 'updateAvatar']);
+        Route::delete('/student/settings/avatar', [StudentSettingsController::class, 'removeAvatar']);
         Route::get('/holidays', HolidayController::class);
         Route::get('/document-types', [StudentDocumentRequestController::class, 'documentTypes']);
         Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);
         Route::post('/document-requests', [StudentDocumentRequestController::class, 'store']);
         Route::get('/document-requests/{documentRequest}', [StudentDocumentRequestController::class, 'show']);
-        Route::post('/document-requests/{documentRequest}/appointments', [StudentDocumentRequestController::class, 'book']);
-        Route::get('/appointment-slots', [StudentDocumentRequestController::class, 'slots']);
-        Route::get('/appointment-overview', [StudentDocumentRequestController::class, 'appointmentOverview']);
-        Route::get('/appointments', [StudentDocumentRequestController::class, 'appointments']);
-        Route::get('/appointment-availability', [AppointmentAvailabilityController::class, 'show']);
+        Route::patch('/document-requests/{documentRequest}/cancel', [StudentDocumentRequestController::class, 'cancelDocumentRequest']);
     });
 
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
+        Route::get('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'settings']);
+        Route::patch('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'updateSettings']);
+        Route::get('/appointment-availability/calendar', [AppointmentAvailabilityController::class, 'calendar']);
+        Route::put('/appointment-availability/capacity/{date}', [AppointmentAvailabilityController::class, 'updateCapacity']);
         Route::apiResource('appointment-blocked-dates', RegistrarAppointmentBlockedDateController::class)
             ->only(['index', 'store', 'update', 'destroy']);
         Route::get('/dashboard', RegistrarDashboardController::class);
@@ -79,14 +103,21 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/document-types', [RegistrarDocumentTypeController::class, 'index']);
         Route::post('/document-types', [RegistrarDocumentTypeController::class, 'store']);
         Route::patch('/document-types/{documentType}', [RegistrarDocumentTypeController::class, 'update']);
+        Route::post('/students/{student}/documents/analyze-all', [RegistrarStudentDocumentController::class, 'analyzeAll']);
+        Route::post('/student-documents/{studentDocument}/upload', [RegistrarStudentDocumentController::class, 'upload']);
+        Route::get('/student-documents/{studentDocument}/view', [RegistrarStudentDocumentController::class, 'view']);
+        Route::get('/student-documents/{studentDocument}/download', [RegistrarStudentDocumentController::class, 'download']);
+        Route::delete('/student-documents/{studentDocument}/file', [RegistrarStudentDocumentController::class, 'destroy'])
+            ->middleware('step-up');
         Route::get('/document-requests', [RegistrarDocumentRequestController::class, 'index']);
         Route::get('/document-requests/history', [RegistrarDocumentRequestController::class, 'history']);
         Route::get('/document-request-activity', [RegistrarDocumentRequestController::class, 'activity']);
         Route::get('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'show']);
         Route::patch('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'update']);
+        Route::post('/document-requests/{documentRequest}/appointment', [RegistrarDocumentRequestController::class, 'assignAppointment']);
+        Route::post('/document-requests/verify-code', [RegistrarDocumentRequestController::class, 'verifyCode'])->middleware('throttle:10,1');
+        Route::post('/document-requests/{documentRequest}/resend-claim-code', [RegistrarDocumentRequestController::class, 'resendClaimCode'])->middleware('throttle:3,10');
         Route::get('/appointments', [RegistrarDocumentRequestController::class, 'appointments']);
         Route::patch('/appointments/{appointment}', [RegistrarDocumentRequestController::class, 'updateAppointment']);
-        Route::get('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'settings']);
-        Route::patch('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'updateSettings']);
     });
 });

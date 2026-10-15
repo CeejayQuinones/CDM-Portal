@@ -67,9 +67,9 @@ class RegistrarDashboardTest extends TestCase
             'document_type_id' => $documentType->id,
             'quantity' => 1,
             'total_fee' => 150,
-            'status' => 'released',
+            'status' => 'completed',
             'request_date' => '2026-08-25',
-            'released_at' => now(),
+            'completed_at' => now(),
         ]);
 
         Appointment::query()->create([

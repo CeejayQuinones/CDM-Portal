@@ -1,10 +1,9 @@
 <script setup>
-import { nextTick, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import RegistrationWizard from '../components/RegistrationWizard.vue'
 import { useAuthStore } from '../stores/authStore'
-import { ROUTE_ROLES, canAccess } from '../config/accessControl'
 import { dashboardForRole } from '../utils/roleDashboard'
+import { APP_SHELLS, SHELL_BLOCK_STORAGE_KEY, detectAppShell, shellBlockMessage } from '../config/appShell'
 import logoUrl from '../assets/styles/images/cdm_logo.png'
 
 const router = useRouter()
@@ -15,57 +14,35 @@ const errors = ref({})
 const formError = ref('')
 const isLoading = ref(false)
 const showPassword = ref(false)
-const showRegistration = ref(route.query.signup === '1')
-const registrationSuccess = ref(Boolean(route.query.registered))
 const mobileMenuOpen = ref(false)
 
 // Placeholder homepage content: replace these arrays when a CMS or announcements backend is introduced.
 const announcements = [
-  {
-    tag: 'AI Monitoring',
-    date: 'August 29, 2026',
-    title: 'AI Monitoring Early Warning',
-    description:
-      'Track grade risk early, open professional study plans, and review adviser alerts — now available inside the CDM Portal.',
-    routeName: 'monitoring',
-    featured: true,
-  },
-  {
-    tag: 'Enrollment',
-    date: 'August 25, 2026',
-    title: 'Enrollment Advisory',
-    description:
-      'Please review the posted enrollment reminders and prepare the required documents before visiting the Registrar’s Office.',
-  },
-  {
-    tag: 'Registrar',
-    date: 'August 22, 2026',
-    title: 'Registrar Office Schedule',
-    description:
-      'Updated service hours are available for students requesting records, certifications, and other registrar assistance.',
-  },
-  {
-    tag: 'Campus',
-    date: 'August 18, 2026',
-    title: 'Campus Activity',
-    description:
-      'Students are invited to participate in upcoming campus programs designed to strengthen community and engagement.',
-  },
-  {
-    tag: 'Documents',
-    date: 'August 15, 2026',
-    title: 'Document Request Notice',
-    description:
-      'Verify your request details and appointment schedule in the portal before proceeding to the campus office.',
-  },
+  { tag: 'Enrollment', month: 'AUG', day: '25', poster: 'Enrollment week', date: 'August 25, 2026', title: 'Enrollment Advisory', description: 'Review the enrollment reminders and prepare the required documents before visiting the Registrar’s Office.' },
+  { tag: 'Registrar', month: 'AUG', day: '22', poster: 'Service hours', date: 'August 22, 2026', title: 'Registrar Office Schedule', description: 'Updated service hours are available for records, certifications, and other registrar assistance.' },
+  { tag: 'Campus', month: 'AUG', day: '18', poster: 'Get involved', date: 'August 18, 2026', title: 'Campus Activity', description: 'Students are invited to join upcoming campus programs focused on community and engagement.' },
+  { tag: 'Documents', month: 'AUG', day: '15', poster: 'Before you visit', date: 'August 15, 2026', title: 'Document Request Notice', description: 'Verify your request details and appointment schedule before proceeding to the campus office.' },
 ]
 
 // Placeholder event content: replace when an events data source becomes available.
 const events = [
-  { month: 'SEP', day: '02', title: 'Student Orientation', description: 'A welcome session introducing campus services, student resources, and portal access.' },
-  { month: 'SEP', day: '12', title: 'Campus Foundation Day', description: 'A campus-wide program celebrating the Colegio de Montalban community.' },
-  { month: 'SEP', day: '21', title: 'Academic Consultation Week', description: 'Dedicated consultation days for academic guidance and student support.' },
+  { month: 'SEP', day: '02', type: 'Student services', title: 'Student Orientation', description: 'A welcome session introducing campus services, student resources, and portal access.' },
+  { month: 'SEP', day: '12', type: 'Campus community', title: 'Campus Foundation Day', description: 'A campus-wide program celebrating the Colegio de Montalban community.' },
+  { month: 'SEP', day: '21', type: 'Academic support', title: 'Academic Consultation Week', description: 'Dedicated consultation days for academic guidance and student support.' },
 ]
+
+const shell = detectAppShell()
+const shellLabel =
+  shell === APP_SHELLS.MOBILE ? 'Student mobile app' : shell === APP_SHELLS.DESKTOP ? 'Staff desktop app' : 'Web app'
+
+const takeShellBlock = () => {
+  const message = sessionStorage.getItem(SHELL_BLOCK_STORAGE_KEY)
+  if (!message) return
+  sessionStorage.removeItem(SHELL_BLOCK_STORAGE_KEY)
+  formError.value = message
+}
+
+onMounted(takeShellBlock)
 
 const scrollTo = async (id) => {
   mobileMenuOpen.value = false
@@ -84,6 +61,16 @@ const submit = async () => {
   isLoading.value = true
   try {
     await authStore.login({ username: form.username.trim(), password: form.password })
+    const blocked = shellBlockMessage(shell, authStore.currentRole)
+    if (blocked) {
+      try {
+        await authStore.logout()
+      } catch {
+        // The session is already cleared. Keep the shell message on screen.
+      }
+      formError.value = blocked
+      return
+    }
     const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
     await router.replace(destination)
   } catch (error) {
@@ -94,23 +81,6 @@ const submit = async () => {
     isLoading.value = false
   }
 }
-
-const registrationComplete = () => {
-  showRegistration.value = false
-  registrationSuccess.value = true
-  scrollTo('login')
-}
-
-const announcementLink = (item) => {
-  if (!item.routeName) return null
-
-  const roles = ROUTE_ROLES[item.routeName] || []
-  if (authStore.isAuthenticated && canAccess(authStore.currentRole, roles)) {
-    return { name: item.routeName }
-  }
-  if (authStore.isAuthenticated) return dashboardForRole(authStore.currentRole)
-  return { name: 'login', query: { redirect: `/${item.routeName}` } }
-}
 </script>
 
 <template>
@@ -119,14 +89,14 @@ const announcementLink = (item) => {
       <div class="nav-shell">
         <button class="brand-link" type="button" aria-label="Colegio de Montalban home" @click="scrollTo('home')">
           <img :src="logoUrl" alt="Colegio de Montalban seal" />
-          <span><strong>Colegio de Montalban</strong><small>CDM Portal</small></span>
+          <span><strong>CDM Portal</strong><small>Colegio de Montalban</small></span>
         </button>
         <button class="menu-button" type="button" :aria-expanded="mobileMenuOpen" aria-label="Toggle navigation" @click="mobileMenuOpen = !mobileMenuOpen"><span></span><span></span><span></span></button>
         <nav :class="{ open: mobileMenuOpen }" aria-label="Main navigation">
           <button type="button" @click="scrollTo('home')">Home</button>
-          <button type="button" @click="scrollTo('about')">About</button>
           <button type="button" @click="scrollTo('announcements')">Announcements</button>
           <button type="button" @click="scrollTo('events')">Events</button>
+          <button type="button" @click="scrollTo('about')">About</button>
           <button class="nav-login" type="button" @click="scrollTo('login')">Login</button>
         </nav>
       </div>
@@ -137,22 +107,21 @@ const announcementLink = (item) => {
         <div class="hero-pattern"></div>
         <div class="hero-shell">
           <div class="hero-copy">
-            <p class="hero-kicker"><span></span> Your campus, connected</p>
-            <h1>Welcome to the<br /><em>CDM Portal.</em></h1>
-            <p class="hero-description">A central online gateway for Colegio de Montalban students and staff to access academic and registrar services with ease.</p>
+            <p class="hero-kicker"><span></span> Colegio de Montalban</p>
+            <h1>Your campus services,<br /><em>one portal away.</em></h1>
+            <p class="hero-description">Access student records, enrollment, document requests, announcements, and campus services in one practical place.</p>
             <div class="hero-actions">
               <button type="button" class="yellow-button" @click="scrollTo('login')">Access the portal <span>→</span></button>
               <button type="button" class="text-button" @click="scrollTo('about')">Discover CDM <span>↓</span></button>
             </div>
-            <div class="trust-line"><span>Official school portal</span><span>Secure account access</span></div>
+            <div class="trust-line"><span>Official school portal</span><span>Secure account access</span><span>Built for the CDM community</span></div>
           </div>
 
           <aside id="login" class="login-card" aria-labelledby="login-title">
             <div class="card-brand"><img :src="logoUrl" alt="" /><span>CDM <strong>PORTAL</strong></span></div>
             <p class="card-kicker">Account access</p>
             <h2 id="login-title">Welcome back</h2>
-            <p class="login-intro">Sign in with your campus credentials.</p>
-            <p v-if="registrationSuccess" class="registration-success" role="status">Account created successfully. You can now sign in.</p>
+            <p class="login-intro">Sign in with your campus credentials. {{ shellLabel }}.</p>
             <form novalidate @submit.prevent="submit">
               <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
               <label for="username">Username</label>
@@ -162,8 +131,6 @@ const announcementLink = (item) => {
               <div class="input-with-icon password-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="password" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Enter your password" :aria-invalid="Boolean(errors.password)" /><button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Hide' : 'Show' }}</button></div>
               <p v-if="errors.password" class="field-error">{{ errors.password }}</p>
               <button class="sign-in-button" type="submit" :disabled="isLoading">{{ isLoading ? 'Signing in…' : 'Sign in to portal' }} <span>→</span></button>
-              <div class="divider"><span>New to CDM Portal?</span></div>
-              <button class="sign-up-button" type="button" @click="showRegistration = true">Create a Guest account</button>
             </form>
             <p class="legal-links"><RouterLink to="/terms">Terms & Conditions</RouterLink><span>·</span><RouterLink to="/privacy">Privacy Policy</RouterLink></p>
           </aside>
@@ -171,39 +138,18 @@ const announcementLink = (item) => {
         <div class="hero-wave"></div>
       </section>
 
-      <section id="about" class="about-section">
-        <div class="section-shell about-grid">
-          <div class="about-mark"><div class="seal-ring"><img :src="logoUrl" alt="Colegio de Montalban seal" /></div><span>Established for learning.<br />Connected for service.</span></div>
-          <div class="about-copy">
-            <p class="section-kicker">About the portal</p>
-            <h2>Serving the Colegio de Montalban community.</h2>
-            <!-- Placeholder school description: replace with approved institutional copy. -->
-            <p>CDM Portal provides students and staff with centralized access to academic and registrar services. It is designed to make essential campus transactions clearer, faster, and easier to reach.</p>
-            <div class="about-features">
-              <article><span>01</span><div><h3>Centralized access</h3><p>Find essential campus services in one secure place.</p></div></article>
-              <article><span>02</span><div><h3>Designed for CDM</h3><p>A portal built around the needs of our school community.</p></div></article>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section id="announcements" class="announcements-section">
         <div class="section-shell">
-          <div class="section-heading"><div><p class="section-kicker">Stay informed</p><h2>Latest announcements</h2></div><p>Important notices and updates from offices across the Colegio de Montalban campus.</p></div>
+          <div class="section-heading"><div><p class="section-kicker">Campus bulletin</p><h2>Announcements & updates</h2></div><p>Important notices and updates from offices across the Colegio de Montalban campus.</p></div>
           <div class="announcement-grid">
-            <component
-              :is="item.routeName ? RouterLink : 'article'"
-              v-for="item in announcements"
-              :key="item.title"
-              v-bind="item.routeName ? { to: announcementLink(item) } : {}"
-              class="announcement-card"
-              :class="{ featured: item.featured, linked: Boolean(item.routeName) }"
-            >
-              <div class="announcement-meta"><span>{{ item.tag }}</span><time>{{ item.date }}</time></div>
-              <h3>{{ item.title }}</h3>
-              <p>{{ item.description }}</p>
-              <span class="card-arrow" aria-hidden="true">↗</span>
-            </component>
+            <article v-for="(item, index) in announcements" :key="item.title" class="announcement-card" :class="{ featured: index === 0 }">
+              <div class="announcement-poster">
+                <time><strong>{{ item.day }}</strong><span>{{ item.month }}</span></time>
+                <div><span>{{ item.tag }}</span><strong>{{ item.poster }}</strong></div>
+                <span class="poster-number">0{{ index + 1 }}</span>
+              </div>
+              <div class="announcement-body"><time>{{ item.date }}</time><h3>{{ item.title }}</h3><p>{{ item.description }}</p><span class="card-arrow" aria-hidden="true">→</span></div>
+            </article>
           </div>
           <p class="demo-note">Homepage announcements shown are presentation placeholders and will be replaced with official content.</p>
         </div>
@@ -211,32 +157,35 @@ const announcementLink = (item) => {
 
       <section id="events" class="events-section">
         <div class="section-shell events-grid">
-          <div class="events-intro"><p class="section-kicker light">Campus calendar</p><h2>Upcoming events</h2><p>Take part in activities that bring learning, service, and the CDM community together.</p><div class="gold-rule"></div></div>
-          <div class="event-list"><article v-for="event in events" :key="event.title"><time><strong>{{ event.day }}</strong><span>{{ event.month }}</span></time><div><h3>{{ event.title }}</h3><p>{{ event.description }}</p></div><span class="event-arrow">→</span></article></div>
+          <div class="events-intro"><p class="section-kicker light">What’s next at CDM</p><h2>Upcoming events</h2><p>Take part in activities that bring learning, service, and the CDM community together.</p><div class="gold-rule"></div></div>
+          <div class="event-list"><article v-for="event in events" :key="event.title"><time><strong>{{ event.day }}</strong><span>{{ event.month }}</span></time><div><span class="event-type">{{ event.type }}</span><h3>{{ event.title }}</h3><p>{{ event.description }}</p></div><span class="event-arrow">→</span></article></div>
         </div>
       </section>
 
-      <section class="cta-section"><div class="cta-seal"><img :src="logoUrl" alt="" /></div><div><p class="section-kicker">Ready when you are</p><h2>Your CDM services are one sign-in away.</h2><p>Access your account or register as a Guest to begin using available public portal services.</p></div><button class="yellow-button" type="button" @click="scrollTo('login')">Go to login <span>↑</span></button></section>
+      <section id="about" class="about-section">
+        <div class="section-shell about-grid">
+          <div class="about-mark">
+            <div class="about-code"><span>CDM</span><strong>One school.<br />One connected portal.</strong></div>
+            <div class="seal-lockup"><img :src="logoUrl" alt="Colegio de Montalban seal" /><span>For students, staff,<br />and campus services.</span></div>
+          </div>
+          <div class="about-copy">
+            <p class="section-kicker">About the portal</p>
+            <h2>Everyday campus access, designed for the CDM community.</h2>
+            <!-- Placeholder school description: replace with approved institutional copy. -->
+            <p>CDM Portal gives students and staff one clear place to access academic and registrar services. It keeps essential campus transactions easier to find, follow, and complete.</p>
+            <div class="about-features">
+              <article><span>01</span><div><h3>Student services</h3><p>Enrollment, records, requests, and appointments in one place.</p></div></article>
+              <article><span>02</span><div><h3>Campus updates</h3><p>Announcements and schedules that are easier to keep up with.</p></div></article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta-section"><div class="cta-seal"><img :src="logoUrl" alt="" /></div><div><p class="section-kicker">Ready when you are</p><h2>Your CDM services are one sign-in away.</h2><p>Sign in with the account issued by the school.</p></div><button class="yellow-button" type="button" @click="scrollTo('login')">Go to login <span>↑</span></button></section>
     </main>
 
     <footer class="site-footer"><div class="footer-shell"><div class="footer-brand"><img :src="logoUrl" alt="Colegio de Montalban seal" /><div><strong>Colegio de Montalban</strong><span>CDM Portal</span></div></div><p>Centralized access to academic and registrar services.</p><nav aria-label="Legal links"><RouterLink to="/terms">Terms & Conditions</RouterLink><RouterLink to="/privacy">Privacy Policy</RouterLink></nav></div><div class="footer-bottom"><span>© 2026 Colegio de Montalban. Project portal.</span><span>Designed for the CDM community.</span></div></footer>
-
-    <RegistrationWizard v-if="showRegistration" @close="showRegistration = false" @registered="registrationComplete" />
   </div>
 </template>
 
 <style scoped src="../assets/styles/public-home.css"></style>
-
-<style scoped>
-.announcement-card.linked {
-  text-decoration: none;
-  color: inherit;
-  cursor: pointer;
-  transition: transform 160ms ease, box-shadow 160ms ease;
-}
-
-.announcement-card.linked:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 34px rgba(23, 74, 47, 0.12);
-}
-</style>

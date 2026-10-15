@@ -7,19 +7,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Professor extends Model
 {
-    protected $fillable = [
-        'user_id',
-        'user_profile_id',
-        'department_id',
-        'employee_number',
-        'position',
-        'specialization',
-        'employment_status',
-        'status',
-    ];
+    protected $fillable = ['user_id', 'user_profile_id', 'department_id', 'employee_number', 'position', 'specialization', 'employment_status', 'status'];
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
     }
 }

@@ -68,12 +68,6 @@ const quickActions = [
     to: { name: 'registrar-document-appointments' },
     icon: 'M5 5h14v16H5zM8 3v4M16 3v4M8 11h8M8 15h5',
   },
-  {
-    label: 'AI Monitoring',
-    description: 'Review early warnings and adviser alerts',
-    to: { name: 'monitoring' },
-    icon: 'M4 19V5M8 15v4M12 9v10M16 12v7M20 5v14',
-  },
 ]
 
 const alerts = computed(() => [
@@ -308,15 +302,6 @@ onMounted(loadDashboard)
   padding: 0 13px;
 }
 
-.retry-button:hover {
-  background: #115b38;
-  border-color: #0a492c;
-}
-
-.retry-button:active {
-  background: #0d4f30;
-}
-
 .dashboard-error {
   background: #fff1f0;
   border: 1px solid #ffd1cc;
@@ -514,16 +499,8 @@ onMounted(loadDashboard)
 }
 
 .quick-action:hover {
-  background: #edf7ef;
-  border-color: #8fb99b;
-  box-shadow: 0 5px 12px rgba(20, 84, 47, 0.11);
-  transform: translateY(-1px);
-}
-
-.quick-action:active {
-  background: #e4f1e7;
-  box-shadow: inset 0 2px 4px rgba(20, 65, 40, 0.12);
-  transform: translateY(0);
+  background: #f1f7f2;
+  border-color: #a9c5b1;
 }
 
 .action-icon {
@@ -583,16 +560,8 @@ onMounted(loadDashboard)
 }
 
 .record-alert:hover {
-  background: #edf7ef;
-  border-color: #8fb99b;
-  box-shadow: 0 5px 12px rgba(20, 84, 47, 0.1);
-  transform: translateY(-1px);
-}
-
-.record-alert:active {
-  background: #e4f1e7;
-  box-shadow: inset 0 2px 4px rgba(20, 65, 40, 0.12);
-  transform: translateY(0);
+  background: #f1f7f2;
+  border-color: #a9c5b1;
 }
 
 .alert-count {
@@ -677,16 +646,6 @@ onMounted(loadDashboard)
 .activity-item:hover,
 .appointment-item:hover {
   background: #f4f9f5;
-  box-shadow: inset 3px 0 #78a927;
-}
-
-.quick-action:focus-visible,
-.record-alert:focus-visible,
-.activity-item:focus-visible,
-.appointment-item:focus-visible,
-.view-link:focus-visible {
-  outline: 2px solid #176c42;
-  outline-offset: 2px;
 }
 
 .activity-dot {
@@ -746,8 +705,6 @@ onMounted(loadDashboard)
 
 .view-link:hover {
   color: #0d4f2d;
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 .appointment-item {

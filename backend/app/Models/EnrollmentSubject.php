@@ -8,20 +8,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class EnrollmentSubject extends Model
 {
-    protected $fillable = [
-        'enrollment_id',
-        'subject_id',
-        'professor_id',
-        'subject_status',
-        'final_grade',
-        'remarks',
-    ];
+    protected $fillable = ['enrollment_id', 'subject_id', 'professor_id', 'subject_status', 'final_grade', 'remarks'];
 
     protected function casts(): array
     {
-        return [
-            'final_grade' => 'float',
-        ];
+        return ['final_grade' => 'float'];
     }
 
     public function enrollment(): BelongsTo

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
@@ -23,6 +23,8 @@ const bulkDocumentAvailability = ref('')
 const bulkOptions = reactive({ actions: [], courses: [], cabinets: [], document_types: [] })
 const pagination = reactive({ current_page: 1, last_page: 1, total: 0, from: 0, to: 0 })
 const filters = reactive({ search: '', course: '', year_level: '', student_status: '' })
+let bulkOptionsLoaded = false
+let bulkOptionsRequest = null
 
 const statuses = ['regular', 'irregular', 'graduated', 'transferred', 'dropped', 'leave_of_absence']
 const displayStatus = (value) => (value || '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
@@ -98,15 +100,21 @@ async function fetchStudents(page = 1) {
   }
 }
 
-async function fetchBulkOptions() {
+async function fetchBulkOptions(force = false) {
+  if (bulkOptionsLoaded && !force) return
+  if (bulkOptionsRequest) return bulkOptionsRequest
   optionsLoading.value = true
   bulkError.value = ''
+  bulkOptionsRequest = apiClient.get('/students/bulk-options')
+
   try {
-    const { data } = await apiClient.get('/students/bulk-options')
+    const { data } = await bulkOptionsRequest
     Object.assign(bulkOptions, data.data)
+    bulkOptionsLoaded = true
   } catch (requestError) {
     bulkError.value = requestError.response?.data?.message || 'Unable to load bulk action options.'
   } finally {
+    bulkOptionsRequest = null
     optionsLoading.value = false
   }
 }
@@ -186,7 +194,7 @@ async function applyBulkUpdate() {
     clearSelection()
     bulkAction.value = ''
     resetBulkValue()
-    await Promise.all([fetchStudents(pagination.current_page), fetchBulkOptions()])
+    await Promise.all([fetchStudents(pagination.current_page), fetchBulkOptions(true)])
   } catch (requestError) {
     if (isStepUpCancelled(requestError)) return
     bulkError.value =
@@ -198,7 +206,11 @@ async function applyBulkUpdate() {
   }
 }
 
-onMounted(() => Promise.all([fetchStudents(), fetchBulkOptions()]))
+watch(selectedCount, (count) => {
+  if (count > 0) fetchBulkOptions()
+})
+
+onMounted(fetchStudents)
 </script>
 
 <template>

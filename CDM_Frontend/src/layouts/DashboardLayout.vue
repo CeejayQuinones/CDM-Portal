@@ -1,14 +1,19 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Navbar from '../components/Navbar.vue'
 import Sidebar from '../components/Sidebar.vue'
 import StepUpAuthModal from '../components/StepUpAuthModal.vue'
+import { useAuthStore } from '../stores/authStore'
+import { useStudentTheme } from '../composables/useStudentTheme'
 
 const isSidebarOpen = ref(false)
+const authStore = useAuthStore()
+const isStudentTheme = computed(() => authStore.currentRole === 'Student')
+useStudentTheme(authStore)
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'student-portal-shell': isStudentTheme }">
     <StepUpAuthModal />
     <Sidebar :is-open="isSidebarOpen" @close="isSidebarOpen = false" />
 
@@ -64,3 +69,6 @@ const isSidebarOpen = ref(false)
   }
 }
 </style>
+
+<style src="../assets/styles/student-portal.css"></style>
+<style src="../assets/styles/student-theme.css"></style>

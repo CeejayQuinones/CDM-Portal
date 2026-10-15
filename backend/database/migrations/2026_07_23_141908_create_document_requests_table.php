@@ -46,6 +46,8 @@ return new class extends Migration
             // Request Status
             $table->enum('status', [
                 'pending',
+                'approved',
+                'completed',
                 'processing',
                 'ready_for_release',
                 'released',

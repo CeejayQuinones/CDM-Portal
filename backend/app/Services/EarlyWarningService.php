@@ -9,516 +9,376 @@ use Illuminate\Support\Collection;
 
 class EarlyWarningService
 {
-    /**
-     * Build early-warning overview for students with approved grade records.
-     *
-     * @return array{summary: array<string, int>, students: list<array<string, mixed>>}
-     */
-    public function overview(?int $professorUserId = null): array
+    /** @return array{summary: array<string,int>, students: list<array<string,mixed>>, filters?: array<string,mixed>} */
+    public function overview(?int $professorUserId = null, array $filters = []): array
     {
-        $query = $this->baseStudentQuery();
-
+        $query = $professorUserId === null ? $this->studentDetails() : $this->studentsWithGrades();
         if ($professorUserId !== null) {
             $professorId = Professor::query()->where('user_id', $professorUserId)->value('id');
-
             if (! $professorId) {
-                return [
-                    'summary' => ['high' => 0, 'moderate' => 0, 'low' => 0, 'total' => 0],
-                    'students' => [],
-                ];
+                return ['summary' => $this->summary(collect()), 'students' => [], 'filters' => $this->filterOptions(collect())];
             }
-
-            $query->whereHas('enrollments.enrollmentSubjects', function (Builder $builder) use ($professorId): void {
-                $builder->where('professor_id', $professorId);
-            });
+            $query->whereHas('enrollments.enrollmentSubjects', fn (Builder $q) => $q->where('professor_id', $professorId));
         }
 
-        $students = $query
-            ->orderBy('student_number')
-            ->get()
-            ->map(function (Student $student) {
-                $assessment = $this->assessStudent($student);
-                $assessment['support_plan'] = $this->generateSupportPlan($assessment);
+        if ($department = trim((string) ($filters['department'] ?? ''))) {
+            $query->whereHas('course.department', fn (Builder $q) => $q->where('department_code', $department)->orWhere('department_name', 'like', "%{$department}%"));
+        }
+        if ($course = trim((string) ($filters['course'] ?? ''))) {
+            $query->whereHas('course', fn (Builder $q) => $q->where('course_code', $course)->orWhere('course_name', 'like', "%{$course}%"));
+        }
+        if ($section = trim((string) ($filters['section'] ?? ''))) {
+            $query->whereHas('enrollments.section', fn (Builder $q) => $q->where('section_name', $section)->orWhere('section_name', 'like', "%{$section}%"));
+        }
 
-                return $assessment;
-            })
-            ->sortByDesc(fn (array $item) => ['high' => 3, 'moderate' => 2, 'low' => 1][$item['risk_level']] ?? 0)
-            ->values();
+        $students = $query->orderBy('student_number')->get()->map(fn (Student $student) => $this->assessment($student))
+            ->sortByDesc(fn (array $a) => ['high' => 3, 'moderate' => 2, 'low' => 1][$a['risk_level']])->values();
 
         return [
-            'summary' => $this->summarize($students),
+            'summary' => $this->summary($students),
             'students' => $students->all(),
+            'filters' => $this->filterOptions($students),
         ];
     }
 
-    /**
-     * Assess a single student and include a generated support plan.
-     *
-     * @return array{summary: array<string, int>, students: list<array<string, mixed>>}
-     */
+    /** @return array{summary: array<string,int>, students: list<array<string,mixed>>} */
     public function assessForUserId(int $userId): array
     {
-        $student = $this->baseStudentQuery()
-            ->where('user_id', $userId)
-            ->first();
-
+        $student = $this->studentsWithGrades()->where('user_id', $userId)->first() ?: $this->studentDetails()->where('user_id', $userId)->first();
         if (! $student) {
-            $student = Student::query()
-                ->with(['userProfile', 'course', 'enrollments.enrollmentSubjects.subject', 'enrollments.enrollmentSubjects.grades.gradingPeriod'])
-                ->where('user_id', $userId)
-                ->first();
+            return ['summary' => $this->summary(collect()), 'students' => []];
         }
+        $assessment = $this->assessment($student);
 
-        if (! $student) {
-            return [
-                'summary' => ['high' => 0, 'moderate' => 0, 'low' => 0, 'total' => 0],
-                'students' => [],
-            ];
-        }
-
-        $assessment = $this->assessStudent($student);
-        $assessment['support_plan'] = $this->generateSupportPlan($assessment);
-
-        return [
-            'summary' => $this->summarize(collect([$assessment])),
-            'students' => [$assessment],
-        ];
+        return ['summary' => $this->summary(collect([$assessment])), 'students' => [$assessment]];
     }
 
-    /**
-     * @return array<string, mixed>|null
-     */
+    /** @return array<string,mixed>|null */
     public function assessByStudentId(int $studentId): ?array
     {
-        $student = $this->baseStudentQuery()->find($studentId)
-            ?? Student::query()
-                ->with(['userProfile', 'course', 'enrollments.enrollmentSubjects.subject', 'enrollments.enrollmentSubjects.grades.gradingPeriod'])
-                ->find($studentId);
+        $student = $this->studentsWithGrades()->find($studentId) ?: $this->studentDetails()->find($studentId);
 
-        return $student ? $this->assessStudent($student) : null;
+        return $student ? $this->assessment($student) : null;
     }
 
-    /**
-     * @param  array<string, mixed>  $assessment
-     * @return array{summary: string, actions: list<string>, prevention_note: string}
-     */
+    public function professorCanAccessStudent(int $professorUserId, int $studentId): bool
+    {
+        $professorId = Professor::query()->where('user_id', $professorUserId)->value('id');
+
+        return $professorId && Student::query()->whereKey($studentId)->whereHas('enrollments.enrollmentSubjects', fn (Builder $q) => $q->where('professor_id', $professorId))->exists();
+    }
+
+    /** @param array<string,mixed> $assessment @return array{summary:string,actions:list<string>,prevention_note:string} */
     public function generateSupportPlan(array $assessment): array
     {
-        $actions = [];
-        $riskLevel = $assessment['risk_level'];
-        $atRiskSubjects = collect($assessment['subjects'])
-            ->filter(fn (array $subject) => in_array($subject['risk_level'], ['high', 'moderate'], true))
-            ->values();
-
-        if ($atRiskSubjects->isEmpty()) {
-            return [
-                'summary' => 'Grades look stable. Keep current study habits and check AI Monitoring after each grading period.',
-                'actions' => [
-                    'Review released grades weekly inside the portal.',
-                    'Join at least one peer study session for your heaviest subject.',
-                    'Message your professor early if a quiz or project score drops.',
-                ],
-                'prevention_note' => 'Staying consistent now prevents sudden risk of failing later in the term.',
-            ];
+        $focus = collect($assessment['subjects'])->whereIn('risk_level', ['high', 'moderate'])->pluck('subject_code')->filter()->implode(', ');
+        if ($focus === '') {
+            return ['summary' => 'Grades look stable. Keep current study habits.', 'actions' => ['Review released grades weekly.', 'Ask for help early when a score drops.'], 'prevention_note' => 'Consistent study habits protect current progress.'];
         }
 
-        foreach ($atRiskSubjects as $subject) {
-            $code = $subject['subject_code'];
-            if ($subject['risk_level'] === 'high') {
-                $actions[] = "Book a consultation for {$code} this week and prioritize unfinished requirements.";
-                $actions[] = "Create a 5-day recovery checklist for {$code} covering quizzes, labs, and missed topics.";
-            } else {
-                $actions[] = "Raise {$code} by focusing on the next graded activity and attending open consultation hours.";
-            }
-        }
-
-        if (($assessment['trend'] ?? '') === 'declining') {
-            $actions[] = 'Stop the declining trend: compare prelim vs midterm mistakes and rewrite notes for weak topics.';
-        }
-
-        if ($riskLevel === 'high') {
-            $actions[] = 'Inform your adviser/registrar early so intervention can happen before finals.';
-            $summary = 'High risk of failing detected. Immediate academic recovery actions are recommended.';
-            $note = 'Acting on this plan now is the best way to prevent a failed or incomplete mark.';
-        } else {
-            $actions[] = 'Set a mid-week progress check so moderate risk does not become high risk.';
-            $summary = 'Moderate academic risk detected. Targeted support can still prevent failing outcomes.';
-            $note = 'Small weekly improvements in at-risk subjects reduce the chance of failing.';
-        }
-
-        return [
-            'summary' => $summary,
-            'actions' => array_values(array_unique($actions)),
-            'prevention_note' => $note,
-        ];
+        return ['summary' => ucfirst((string) $assessment['risk_level']).' academic risk needs focused support.', 'actions' => ["Prioritize unfinished work in {$focus}.", 'Prepare specific questions for your next consultation.', 'Review progress after the next graded activity.'], 'prevention_note' => 'Early, focused action can prevent a failing or incomplete result.'];
     }
 
-    /**
-     * Build a weekly guided study plan from declining / at-risk subjects.
-     *
-     * @param  array<string, mixed>  $assessment
-     * @return array<string, mixed>
-     */
+    /** @param array<string,mixed> $assessment @return array<string,mixed> */
     public function generateStudyPlan(array $assessment): array
     {
-        $focusSubjects = collect($assessment['subjects'] ?? [])
-            ->filter(function (array $subject) {
-                if (in_array($subject['risk_level'], ['high', 'moderate'], true)) {
-                    return true;
-                }
-
-                $prelim = $subject['periods']['Prelim'] ?? null;
-                $midterm = $subject['periods']['Midterm'] ?? null;
-
-                return $prelim !== null && $midterm !== null && ((float) $midterm < (float) $prelim - 2);
-            })
-            ->values();
-
-        if ($focusSubjects->isEmpty()) {
-            $focusSubjects = collect($assessment['subjects'] ?? [])->take(2)->values();
+        $subjects = collect($assessment['subjects'])->whereIn('risk_level', ['high', 'moderate'])->values();
+        if ($subjects->isEmpty()) {
+            $subjects = collect($assessment['subjects'])->take(2)->values();
         }
+        $week = collect(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])->map(function (string $day, int $i) use ($subjects): array {
+            $subject = $subjects[$i % max(1, $subjects->count())] ?? [];
 
-        $sessions = [
-            ['day' => 'Monday', 'time' => '19:00–20:30', 'type' => 'Concept Review', 'focus' => 'Revisit lecture notes and mark unclear topics for targeted review.'],
-            ['day' => 'Tuesday', 'time' => '19:00–20:00', 'type' => 'Practice Drill', 'focus' => 'Solve practice problems and past quiz items under timed conditions.'],
-            ['day' => 'Wednesday', 'time' => '18:30–20:00', 'type' => 'Deep Work', 'focus' => 'Rebuild weak subtopics with examples, diagrams, or worked solutions.'],
-            ['day' => 'Thursday', 'time' => '19:00–20:00', 'type' => 'Lab / Output', 'focus' => 'Complete unfinished lab, coding, or assignment requirements.'],
-            ['day' => 'Friday', 'time' => '19:00–20:00', 'type' => 'Self-Assessment', 'focus' => 'Self-quiz and log mistakes with corrected solutions in a notebook.'],
-            ['day' => 'Saturday', 'time' => '09:00–10:30', 'type' => 'Consultation Prep', 'focus' => 'Prepare 3 clarifying questions and review with a peer or adviser.'],
-            ['day' => 'Sunday', 'time' => '16:00–17:00', 'type' => 'Weekly Review', 'focus' => 'Reflect on progress, adjust next week priorities, and rest strategically.'],
-        ];
+            return ['day' => $day, 'subject_code' => $subject['subject_code'] ?? 'General', 'subject_name' => $subject['subject_name'] ?? 'Academic review', 'duration_minutes' => ($subject['risk_level'] ?? '') === 'high' ? 90 : 60, 'focus' => 'Review weak topics and complete the next required activity.'];
+        })->all();
 
-        $week = [];
-        $totalMinutes = 0;
-        foreach ($sessions as $i => $session) {
-            $subject = $focusSubjects[$i % max(1, $focusSubjects->count())] ?? null;
-            $priority = $subject['risk_level'] ?? 'low';
-            $minutes = $priority === 'high' ? 90 : ($priority === 'moderate' ? 75 : 60);
-            $totalMinutes += $minutes;
-
-            $week[] = [
-                'day' => $session['day'],
-                'time_slot' => $session['time'],
-                'session_type' => $session['type'],
-                'subject_code' => $subject['subject_code'] ?? 'General',
-                'subject_name' => $subject['subject_name'] ?? 'Academic recovery block',
-                'focus' => $session['focus'],
-                'objective' => $priority === 'high'
-                    ? 'Stabilize failing-risk performance before the next graded activity.'
-                    : 'Improve consistency and close topic gaps.',
-                'duration_minutes' => $minutes,
-                'priority' => $priority,
-            ];
-        }
-
-        $focusCodes = $focusSubjects->pluck('subject_code')->filter()->implode(', ');
-
-        return [
-            'student_id' => $assessment['student_id'],
-            'student_name' => $assessment['student_name'],
-            'student_number' => $assessment['student_number'],
-            'course_code' => $assessment['course_code'] ?? null,
-            'risk_level' => $assessment['risk_level'],
-            'risk_label' => $assessment['risk_label'] ?? $assessment['risk_level'],
-            'week_label' => 'Academic Recovery Week · '.now()->format('M d').'–'.now()->addDays(6)->format('M d, Y'),
-            'headline' => $focusSubjects->isEmpty()
-                ? 'Maintenance study plan designed to keep academic performance stable.'
-                : "Professional recovery plan focused on {$focusCodes}.",
-            'objective' => 'Reduce risk of failing by prioritizing weak subjects, protecting study consistency, and preparing for the next graded assessments.',
-            'total_hours' => round($totalMinutes / 60, 1),
-            'session_count' => count($week),
-            'focus_subjects' => $focusSubjects->map(fn (array $subject) => [
-                'subject_code' => $subject['subject_code'],
-                'subject_name' => $subject['subject_name'],
-                'risk_level' => $subject['risk_level'],
-                'risk_label' => $subject['risk_label'] ?? $subject['risk_level'],
-                'average_grade' => $subject['average_grade'],
-            ])->all(),
-            'week' => $week,
-            'generated_at' => now()->toIso8601String(),
-        ];
+        return ['student_id' => $assessment['student_id'], 'risk_level' => $assessment['risk_level'], 'focus_subjects' => $subjects->map(fn ($s) => ['subject_code' => $s['subject_code'], 'subject_name' => $s['subject_name'], 'risk_level' => $s['risk_level'], 'average_grade' => $s['average_grade']])->all(), 'week' => $week, 'generated_at' => now()->toIso8601String()];
     }
 
-    /**
-     * @return array{summary: array<string, int>, plans: list<array<string, mixed>>}
-     */
-    public function studyPlansOverview(?int $professorUserId = null): array
-    {
-        $overview = $this->overview($professorUserId);
-        $plans = collect($overview['students'])
-            ->map(fn (array $student) => $this->generateStudyPlan($student))
-            ->values()
-            ->all();
-
-        return [
-            'summary' => [
-                'total' => count($plans),
-                'with_focus_subjects' => collect($plans)->filter(fn (array $plan) => count($plan['focus_subjects']) > 0)->count(),
-            ],
-            'plans' => $plans,
-        ];
-    }
-
-    /**
-     * Build adviser alert inbox items from early-warning assessments.
-     *
-     * @return array{summary: array<string, int>, alerts: list<array<string, mixed>>}
-     */
+    /** @return array{summary:array<string,int>,alerts:list<array<string,mixed>>} */
     public function adviserAlerts(?int $professorUserId = null): array
     {
-        $overview = $this->overview($professorUserId);
+        $students = $this->overview($professorUserId)['students'];
+        $alerts = collect($students)->filter(fn ($s) => $s['risk_level'] !== 'low' || $s['trend'] === 'declining')->map(fn ($s) => ['id' => 'alert-'.$s['student_id'], 'student_id' => $s['student_id'], 'severity' => $s['risk_level'] === 'high' ? 'urgent' : 'attention', 'risk_level' => $s['risk_level'], 'headline' => $s['headline'], 'warnings' => $s['warnings']])->values();
 
-        $alerts = collect($overview['students'])
-            ->filter(fn (array $student) => in_array($student['risk_level'], ['high', 'moderate'], true)
-                || ($student['trend'] ?? '') === 'declining')
-            ->map(function (array $student) {
-                $severity = $student['risk_level'] === 'high' ? 'urgent' : 'attention';
-                $title = $student['risk_level'] === 'high'
-                    ? "High risk: {$student['student_name']}"
-                    : "Watch list: {$student['student_name']}";
-
-                return [
-                    'id' => 'alert-'.$student['student_id'],
-                    'student_id' => $student['student_id'],
-                    'student_name' => $student['student_name'],
-                    'student_number' => $student['student_number'],
-                    'course_code' => $student['course_code'],
-                    'severity' => $severity,
-                    'risk_level' => $student['risk_level'],
-                    'risk_label' => $student['risk_label'],
-                    'title' => $title,
-                    'message' => $student['headline'],
-                    'warnings' => $student['warnings'],
-                    'trend_label' => $student['trend_label'],
-                    'average_grade' => $student['average_grade'],
-                    'at_risk_subjects' => $student['at_risk_subjects'],
-                    'created_at' => now()->toIso8601String(),
-                ];
-            })
-            ->sortBy(fn (array $alert) => $alert['severity'] === 'urgent' ? 0 : 1)
-            ->values();
-
-        return [
-            'summary' => [
-                'urgent' => $alerts->where('severity', 'urgent')->count(),
-                'attention' => $alerts->where('severity', 'attention')->count(),
-                'total' => $alerts->count(),
-            ],
-            'alerts' => $alerts->all(),
-        ];
+        return ['summary' => ['urgent' => $alerts->where('severity', 'urgent')->count(), 'attention' => $alerts->where('severity', 'attention')->count(), 'total' => $alerts->count()], 'alerts' => $alerts->all()];
     }
 
-    private function baseStudentQuery(): Builder
+    private function studentsWithGrades(): Builder
     {
-        return Student::query()
-            ->with([
-                'userProfile',
-                'course',
-                'enrollments.enrollmentSubjects.subject',
-                'enrollments.enrollmentSubjects.grades' => fn ($query) => $query->where('status', 'approved'),
-                'enrollments.enrollmentSubjects.grades.gradingPeriod',
-            ])
-            ->whereHas('enrollments.enrollmentSubjects.grades', fn (Builder $query) => $query->where('status', 'approved'));
+        return $this->studentDetails()->whereHas('enrollments.enrollmentSubjects.grades', fn (Builder $q) => $q->where('status', 'approved'));
+    }
+
+    private function studentDetails(): Builder
+    {
+        return Student::query()->with([
+            'userProfile',
+            'course.department',
+            'enrollments.section',
+            'enrollments.enrollmentSubjects.subject',
+            'enrollments.enrollmentSubjects.grades' => fn ($q) => $q->where('status', 'approved'),
+            'enrollments.enrollmentSubjects.grades.gradingPeriod',
+            'performanceRecords.professor.role',
+        ]);
     }
 
     /**
-     * @return array<string, mixed>
+     * Combine signal components into a 0–100 risk score.
+     *
+     * @param  array{grade_risk: float|int, trend_drop: float|int, weak_quizzes: float|int, incomplete: float|int, force_high?: bool, force_moderate?: bool}  $parts
+     * @return array{risk_score: int, risk_level: string, risk_label: string}
      */
-    private function assessStudent(Student $student): array
+    public function composeRisk(array $parts): array
+    {
+        $weights = config('monitoring.weights');
+        $raw = ((float) $parts['grade_risk'] * (float) $weights['grade'])
+            + ((float) $parts['trend_drop'] * (float) $weights['trend'])
+            + ((float) $parts['weak_quizzes'] * (float) $weights['quizzes'])
+            + ((float) $parts['incomplete'] * (float) $weights['incomplete']);
+
+        $score = (int) round(max(0, min(100, $raw)));
+        $high = (int) config('monitoring.bands.high', 70);
+        $moderate = (int) config('monitoring.bands.moderate', 40);
+
+        if (! empty($parts['force_high'])) {
+            $score = max($score, $high);
+        } elseif (! empty($parts['force_moderate'])) {
+            $score = max($score, $moderate);
+        }
+
+        $level = $score >= $high ? 'high' : ($score >= $moderate ? 'moderate' : 'low');
+
+        return [
+            'risk_score' => $score,
+            'risk_level' => $level,
+            'risk_label' => ucfirst($level).' risk',
+        ];
+    }
+
+    /**
+     * Every numeric class score for this student. A study-file upload has no score, so it is left out.
+     *
+     * @return Collection<int, array{key: int, subject_code: string, subject_name: string, percent: float}>
+     */
+    private function gradedScores(Student $student): Collection
+    {
+        return $student->performanceRecords
+            ->filter(fn ($record) => (int) $record->student_id === (int) $student->id)
+            ->filter(fn ($record) => (int) ($student->user_id ?? 0) === 0 || (int) $record->professor_user_id !== (int) $student->user_id)
+            ->filter(fn ($record) => strtoupper((string) $record->subject_code) !== 'NOTES')
+            ->filter(fn ($record) => $record->score !== null && (float) $record->max_score > 0)
+            ->values()
+            ->map(fn ($record, int $index) => [
+                'key' => $index,
+                'subject_code' => (string) $record->subject_code,
+                'subject_name' => (string) ($record->subject_name ?: 'Subject'),
+                'percent' => round(((float) $record->score / (float) $record->max_score) * 100, 2),
+            ]);
+    }
+
+    /** @return array<string,mixed> */
+    private function assessment(Student $student): array
     {
         $subjects = [];
-        $allScores = [];
-
+        $scores = [];
+        $usedScoreKeys = [];
+        $graded = $this->gradedScores($student);
+        $latestEnrollment = $student->enrollments->sortByDesc('enrollment_date')->first();
         foreach ($student->enrollments as $enrollment) {
-            foreach ($enrollment->enrollmentSubjects as $enrollmentSubject) {
-                $periods = [
-                    'Prelim' => null,
-                    'Midterm' => null,
-                    'Final' => null,
-                ];
-
-                foreach ($enrollmentSubject->grades as $grade) {
-                    if ($grade->status !== null && $grade->status !== 'approved') {
+            foreach ($enrollment->enrollmentSubjects as $record) {
+                $periods = ['Prelim' => null, 'Midterm' => null, 'Final' => null];
+                foreach ($record->grades as $grade) {
+                    $periodName = $grade->gradingPeriod?->period_name;
+                    if (! is_string($periodName) || ! array_key_exists($periodName, $periods) || $grade->grade === null) {
                         continue;
                     }
-
-                    $periodName = $grade->gradingPeriod?->period_name;
-                    if ($periodName && array_key_exists($periodName, $periods)) {
-                        $periods[$periodName] = $grade->grade;
-                        if ($grade->grade !== null) {
-                            $allScores[] = (float) $grade->grade;
-                        }
-                    }
+                    $periods[$periodName] = (float) $grade->grade;
+                    $scores[] = (float) $grade->grade;
                 }
-
-                $subjectScores = array_values(array_filter($periods, fn ($score) => $score !== null));
-                if ($subjectScores === []) {
+                $subjectCode = $record->subject?->subject_code ?? 'N/A';
+                $values = array_values(array_filter($periods, fn ($v) => $v !== null));
+                foreach ($graded as $item) {
+                    if (isset($usedScoreKeys[$item['key']]) || strcasecmp($item['subject_code'], $subjectCode) !== 0) {
+                        continue;
+                    }
+                    $usedScoreKeys[$item['key']] = true;
+                    $values[] = $item['percent'];
+                    $scores[] = $item['percent'];
+                }
+                if (! $values) {
                     continue;
                 }
-
-                $subjectAverage = round(array_sum($subjectScores) / count($subjectScores), 2);
-                $subjectRisk = $this->scoreRisk($subjectAverage, $subjectScores, $enrollmentSubject->remarks);
-
+                $average = round(array_sum($values) / count($values), 2);
+                $level = $record->remarks === 'Failed' || $average < (float) config('monitoring.failing_average', 75)
+                    ? 'high'
+                    : ($record->remarks === 'Incomplete' || $average < (float) config('monitoring.watch_average', 82) ? 'moderate' : 'low');
+                $prelimGrade = $periods['Prelim'];
+                $midtermGrade = $periods['Midterm'];
+                $subjectTrend = ($prelimGrade !== null && $midtermGrade !== null && $midtermGrade <= $prelimGrade - (float) config('monitoring.decline_points', 3))
+                    ? 'declining'
+                    : 'steady';
+                if ($subjectTrend === 'declining' && $level === 'low') {
+                    $level = 'moderate';
+                }
                 $subjects[] = [
-                    'subject_code' => $enrollmentSubject->subject?->subject_code ?? 'N/A',
-                    'subject_name' => $enrollmentSubject->subject?->subject_name ?? 'Subject',
+                    'subject_code' => $subjectCode,
+                    'subject_name' => $record->subject?->subject_name ?? 'Subject',
                     'periods' => $periods,
-                    'average_grade' => $subjectAverage,
-                    'risk_level' => $subjectRisk['level'],
-                    'risk_label' => $subjectRisk['label'],
-                    'remarks' => $enrollmentSubject->remarks,
+                    'average_grade' => $average,
+                    'risk_level' => $level,
+                    'risk_label' => ucfirst($level).' risk',
+                    'status' => $record->remarks,
+                    'trend' => $subjectTrend,
+                    'missing_midterm' => $prelimGrade !== null && $midtermGrade === null,
                 ];
             }
         }
+        $unused = $graded->reject(fn (array $item) => isset($usedScoreKeys[$item['key']]));
+        foreach ($unused->groupBy(fn (array $item) => strtoupper($item['subject_code'])) as $code => $items) {
+            if ($code === '' || $code === 'NOTES') {
+                continue;
+            }
+            $values = $items->pluck('percent')->map(fn ($percent) => (float) $percent)->all();
+            foreach ($values as $value) {
+                $scores[] = $value;
+            }
+            $average = round(array_sum($values) / count($values), 2);
+            $level = $average < (float) config('monitoring.failing_average', 75)
+                ? 'high'
+                : ($average < (float) config('monitoring.watch_average', 82) ? 'moderate' : 'low');
+            $subjects[] = [
+                'subject_code' => $items->first()['subject_code'],
+                'subject_name' => $items->first()['subject_name'],
+                'periods' => ['Prelim' => null, 'Midterm' => null, 'Final' => null],
+                'average_grade' => $average,
+                'risk_level' => $level,
+                'risk_label' => ucfirst($level).' risk',
+                'status' => null,
+                'trend' => 'steady',
+                'missing_midterm' => false,
+            ];
+        }
+        $average = $scores ? round(array_sum($scores) / count($scores), 2) : null;
+        $prelim = collect($subjects)->pluck('periods.Prelim')->filter();
+        $midterm = collect($subjects)->pluck('periods.Midterm')->filter();
+        $trend = $prelim->isNotEmpty() && $midterm->isNotEmpty() && $midterm->avg() <= $prelim->avg() - (float) config('monitoring.decline_points', 3) ? 'declining' : 'steady';
 
-        $average = count($allScores) ? round(array_sum($allScores) / count($allScores), 2) : null;
-        $trend = $this->detectTrend($subjects);
-        $overall = $this->scoreRisk($average, $allScores, null, $trend, $subjects);
-        $warnings = $this->buildWarnings($subjects, $average, $trend);
+        $quizPercents = $graded->pluck('percent')->map(fn ($percent) => (float) $percent)->values();
+        $weakLine = (float) config('monitoring.quiz_weak_percent', 75);
+        $criticalLine = (float) config('monitoring.quiz_critical_percent', 60);
+        $weakQuizCount = $quizPercents->filter(fn (float $percent) => $percent < $weakLine)->count();
+        $weakQuizzes = $quizPercents->isNotEmpty() ? ($weakQuizCount / $quizPercents->count()) * 100 : 0;
+        if ($quizPercents->contains(fn (float $percent) => $percent < $criticalLine)) {
+            $weakQuizzes = max($weakQuizzes, 80);
+        }
 
-        $profile = $student->userProfile;
-        $name = trim(implode(' ', array_filter([
-            $profile?->first_name,
-            $profile?->middle_name,
-            $profile?->last_name,
-        ]))) ?: 'Student';
+        $missingMidterms = collect($subjects)->where('missing_midterm', true)->count();
+        $subjectDeclines = collect($subjects)->where('trend', 'declining')->count();
+        $failedOrIncomplete = collect($subjects)->filter(fn (array $subject) => in_array($subject['status'], ['Failed', 'Incomplete'], true))->count();
+        $subjectCount = max(1, count($subjects));
+
+        $failing = (float) config('monitoring.failing_average', 75);
+        $watch = (float) config('monitoring.watch_average', 82);
+        if ($average === null) {
+            $gradeRisk = $quizPercents->isNotEmpty() ? min(60, $weakQuizzes * 0.6) : 0;
+        } elseif ($average < $failing) {
+            $gradeRisk = min(100, 85 + ($failing - $average));
+        } elseif ($average < $watch) {
+            $gradeRisk = 45 + (($watch - $average) / max(1, $watch - $failing)) * 35;
+        } else {
+            $gradeRisk = max(0, (90 - $average) * 2);
+        }
+        if (collect($subjects)->contains(fn (array $subject) => $subject['status'] === 'Failed' || $subject['average_grade'] < $failing)) {
+            $gradeRisk = max($gradeRisk, 90);
+        }
+
+        $trendDrop = $trend === 'declining' ? 70 : 0;
+        $trendDrop = min(100, $trendDrop + ($subjectDeclines * 15) + min(40, $missingMidterms * 20));
+
+        $incomplete = ($failedOrIncomplete / $subjectCount) * 100;
+        if ($missingMidterms > 0) {
+            $incomplete = min(100, $incomplete + min(30, $missingMidterms * 15));
+        }
+
+        $forceHigh = collect($subjects)->contains('risk_level', 'high') || ($average !== null && $average < $failing);
+        $forceModerate = ! $forceHigh && (
+            collect($subjects)->contains('risk_level', 'moderate')
+            || $trend === 'declining'
+            || ($average !== null && $average < $watch)
+            || $weakQuizCount > 0
+            || $missingMidterms > 0
+        );
+
+        $composed = $this->composeRisk([
+            'grade_risk' => $gradeRisk,
+            'trend_drop' => $trendDrop,
+            'weak_quizzes' => $weakQuizzes,
+            'incomplete' => $incomplete,
+            'force_high' => $forceHigh,
+            'force_moderate' => $forceModerate,
+        ]);
+
+        $name = trim(implode(' ', array_filter([$student->userProfile?->first_name, $student->userProfile?->last_name]))) ?: 'Student';
+        $warnings = collect($subjects)->whereIn('risk_level', ['high', 'moderate'])->map(fn ($s) => "{$s['subject_code']} needs attention (average {$s['average_grade']}".($s['trend'] === 'declining' ? ', declining' : '').').')->values();
+        if ($weakQuizCount > 0) {
+            $warnings->push("{$weakQuizCount} graded score".($weakQuizCount === 1 ? '' : 's')." below {$weakLine}%.");
+        }
+        if ($missingMidterms > 0) {
+            $warnings->push("{$missingMidterms} subject".($missingMidterms === 1 ? '' : 's').' still missing a midterm after prelim.');
+        }
+        if ($subjectDeclines > 0) {
+            $warnings->push("{$subjectDeclines} subject".($subjectDeclines === 1 ? '' : 's').' dropped from prelim to midterm.');
+        }
 
         return [
             'student_id' => $student->id,
             'student_number' => $student->student_number,
             'student_name' => $name,
             'course_code' => $student->course?->course_code,
+            'course_name' => $student->course?->course_name,
+            'department_code' => $student->course?->department?->department_code,
+            'department_name' => $student->course?->department?->department_name,
+            'section_name' => $latestEnrollment?->section?->section_name,
+            'year_level' => $student->year_level ?? $latestEnrollment?->section?->year_level,
             'average_grade' => $average,
-            'at_risk_subjects' => collect($subjects)->whereIn('risk_level', ['high', 'moderate'])->count(),
-            'risk_level' => $overall['level'],
-            'risk_label' => $overall['label'],
+            'risk_score' => $composed['risk_score'],
+            'risk_level' => $composed['risk_level'],
+            'risk_label' => $composed['risk_label'],
+            'signals' => [
+                'grade_risk' => (int) round($gradeRisk),
+                'trend_drop' => (int) round($trendDrop),
+                'weak_quizzes' => (int) round($weakQuizzes),
+                'incomplete' => (int) round($incomplete),
+                'weak_quiz_count' => $weakQuizCount,
+                'missing_midterms' => $missingMidterms,
+                'declining_subjects' => $subjectDeclines,
+            ],
             'trend' => $trend,
             'trend_label' => match ($trend) {
-                'declining' => 'Declining',
-                'improving' => 'Improving',
-                default => 'Steady',
+                'declining' => 'declining',
+                default => 'steady',
             },
-            'headline' => $overall['headline'],
-            'warnings' => $warnings,
+            'headline' => $composed['risk_level'] === 'low'
+                ? 'Grades are currently stable.'
+                : "Early warning: risk score {$composed['risk_score']}/100 — intervention is recommended.",
+            'warnings' => $warnings->isNotEmpty() ? $warnings->all() : ['No critical early-warning signals right now.'],
             'subjects' => $subjects,
-            'support_plan' => null,
         ];
     }
 
-    /**
-     * @param  list<float|int>  $scores
-     * @param  list<array<string, mixed>>|null  $subjects
-     * @return array{level: string, label: string, headline: string}
-     */
-    private function scoreRisk(?float $average, array $scores, ?string $remarks = null, string $trend = 'steady', ?array $subjects = null): array
-    {
-        $highSubjects = collect($subjects ?? [])->where('risk_level', 'high')->count();
-        $moderateSubjects = collect($subjects ?? [])->where('risk_level', 'moderate')->count();
-
-        if ($remarks === 'Failed' || ($average !== null && $average < 75) || $highSubjects >= 1) {
-            return [
-                'level' => 'high',
-                'label' => 'High risk',
-                'headline' => 'Early warning: elevated risk of failing one or more subjects.',
-            ];
-        }
-
-        if (
-            ($average !== null && $average < 82)
-            || $moderateSubjects >= 1
-            || $trend === 'declining'
-            || $remarks === 'Incomplete'
-        ) {
-            return [
-                'level' => 'moderate',
-                'label' => 'Moderate risk',
-                'headline' => 'Watch closely: grades show early signs that may lead to academic trouble.',
-            ];
-        }
-
-        return [
-            'level' => 'low',
-            'label' => 'Stable',
-            'headline' => 'Grades are currently stable with no strong failing signals.',
-        ];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $subjects
-     */
-    private function detectTrend(array $subjects): string
-    {
-        $prelim = [];
-        $midterm = [];
-
-        foreach ($subjects as $subject) {
-            if ($subject['periods']['Prelim'] !== null) {
-                $prelim[] = (float) $subject['periods']['Prelim'];
-            }
-            if ($subject['periods']['Midterm'] !== null) {
-                $midterm[] = (float) $subject['periods']['Midterm'];
-            }
-        }
-
-        if (! $prelim || ! $midterm) {
-            return 'steady';
-        }
-
-        $delta = (array_sum($midterm) / count($midterm)) - (array_sum($prelim) / count($prelim));
-
-        if ($delta <= -3) {
-            return 'declining';
-        }
-
-        if ($delta >= 3) {
-            return 'improving';
-        }
-
-        return 'steady';
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $subjects
-     * @return list<string>
-     */
-    private function buildWarnings(array $subjects, ?float $average, string $trend): array
-    {
-        $warnings = [];
-
-        foreach ($subjects as $subject) {
-            if ($subject['risk_level'] === 'high') {
-                $warnings[] = "{$subject['subject_code']} is in the failing zone (avg {$subject['average_grade']}).";
-            } elseif ($subject['risk_level'] === 'moderate') {
-                $warnings[] = "{$subject['subject_code']} is approaching risk (avg {$subject['average_grade']}).";
-            }
-        }
-
-        if ($trend === 'declining') {
-            $warnings[] = 'Overall grade trend is declining from prelim to midterm.';
-        }
-
-        if ($average !== null && $average < 75) {
-            $warnings[] = "Term average {$average} is below the passing threshold.";
-        }
-
-        if (! $warnings) {
-            $warnings[] = 'No critical early-warning signals right now. Keep monitoring after each grade release.';
-        }
-
-        return $warnings;
-    }
-
-    /**
-     * @param  Collection<int, array<string, mixed>>  $students
-     * @return array{high: int, moderate: int, low: int, total: int}
-     */
-    private function summarize(Collection $students): array
+    /** @param Collection<int,array<string,mixed>> $students @return array<string,list<string>> */
+    private function filterOptions(Collection $students): array
     {
         return [
-            'high' => $students->where('risk_level', 'high')->count(),
-            'moderate' => $students->where('risk_level', 'moderate')->count(),
-            'low' => $students->where('risk_level', 'low')->count(),
-            'total' => $students->count(),
+            'departments' => $students->pluck('department_name')->filter()->unique()->sort()->values()->all(),
+            'courses' => $students->map(fn ($s) => $s['course_code'] ?: null)->filter()->unique()->sort()->values()->all(),
+            'sections' => $students->pluck('section_name')->filter()->unique()->sort()->values()->all(),
         ];
+    }
+
+    /** @param Collection<int,array<string,mixed>> $students @return array<string,int> */
+    private function summary(Collection $students): array
+    {
+        return ['high' => $students->where('risk_level', 'high')->count(), 'moderate' => $students->where('risk_level', 'moderate')->count(), 'low' => $students->where('risk_level', 'low')->count(), 'total' => $students->count()];
     }
 }

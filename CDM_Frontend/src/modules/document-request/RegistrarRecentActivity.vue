@@ -1,7 +1,23 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { formatExactDateTime, formatRelativeTime, requestReference, studentName } from './documentRequestPresentation'
+import { RouterLink } from 'vue-router'
+import {
+  documentTypeAccentClass,
+  formatExactDateTime,
+  formatRelativeTime,
+  requestReference,
+  requestStatusAccentClass,
+  requestStatusFromActivity,
+  studentName,
+} from './documentRequestPresentation'
 import { documentRequestService as api } from './documentRequestService'
+
+defineProps({
+  readOnly: {
+    type: Boolean,
+    default: false,
+  },
+})
 
 const activities = ref([])
 const loading = ref(false)
@@ -76,6 +92,8 @@ async function loadActivity() {
   }
 }
 
+defineExpose({ refresh: loadActivity })
+
 onMounted(() => {
   loadActivity()
   clock = window.setInterval(() => {
@@ -97,31 +115,39 @@ onBeforeUnmount(() => window.clearInterval(clock))
     </div>
 
     <p v-if="error" class="notice error">{{ error }}</p>
-    <p v-if="loading && !activities.length" class="empty">Loading recent activity&hellip;</p>
+    <div v-if="loading && !activities.length" class="recent-activity-skeleton" aria-label="Loading recent activity" aria-busy="true">
+      <span v-for="index in 5" :key="index" class="skeleton-shimmer"></span>
+    </div>
     <p v-else-if="!activities.length && !error" class="empty">No recent document request activity.</p>
 
     <div v-if="activities.length" class="recent-activity-list">
-      <RouterLink
+      <component
+        :is="readOnly ? 'article' : RouterLink"
         v-for="activity in activities"
         :key="`${activity.type}-${activity.id}`"
         class="recent-activity-item"
-        :to="activityRoute(activity)"
+        :class="requestStatusAccentClass(requestStatusFromActivity(activity))"
+        :to="readOnly ? undefined : activityRoute(activity)"
       >
         <span class="activity-marker" aria-hidden="true"></span>
         <span class="activity-summary">
           <strong>{{ activityHeadline(activity) }}</strong>
-          <small>
-            {{ activityReference(activity) }}
-            <template v-if="activity.document_type?.document_name">
-              &middot; {{ activity.document_type.document_name }}
-            </template>
-          </small>
+          <span class="activity-meta">
+            <small>{{ activityReference(activity) }}</small>
+            <span
+              v-if="activity.document_type?.document_name"
+              class="document-type-chip"
+              :class="documentTypeAccentClass(activity.document_type.document_name)"
+            >
+              {{ activity.document_type.document_name }}
+            </span>
+          </span>
         </span>
         <time :datetime="activity.occurred_at" :title="formatExactDateTime(activity.occurred_at)">
           {{ formatRelativeTime(activity.occurred_at, currentTime) }}
           <small>{{ formatExactDateTime(activity.occurred_at) }}</small>
         </time>
-      </RouterLink>
+      </component>
     </div>
   </section>
 </template>

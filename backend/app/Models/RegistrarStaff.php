@@ -26,4 +26,9 @@ class RegistrarStaff extends Model
     {
         return $this->hasMany(Appointment::class);
     }
+
+    public function documentRequestStatusChanges(): HasMany
+    {
+        return $this->hasMany(DocumentRequestStatusChange::class);
+    }
 }
