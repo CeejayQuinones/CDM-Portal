@@ -586,31 +586,6 @@ onMounted(loadProfile)
         </div>
       </div>
     </section>
-
-    <section class="record-card">
-      <h2>Recent Document Requests</h2>
-      <p v-if="!student.recent_document_requests?.length" class="empty-state">
-        No document requests recorded for this student.
-      </p>
-      <div v-else class="data-table request-records" role="table">
-        <div class="data-row data-head" role="row">
-          <strong>Request</strong>
-          <strong>Document</strong>
-          <strong>Status</strong>
-          <strong>Request Date</strong>
-          <strong>Remarks</strong>
-        </div>
-        <div v-for="request in student.recent_document_requests" :key="request.id" class="data-row" role="row">
-          <span>#{{ request.id }}</span>
-          <span>{{ request.document }}</span>
-          <span>
-            <span class="badge" :class="request.status">{{ text(request.status) }}</span>
-          </span>
-          <span>{{ date(request.request_date) }}</span>
-          <span>{{ request.remarks || '—' }}</span>
-        </div>
-      </div>
-    </section>
   </template>
 </template>
 

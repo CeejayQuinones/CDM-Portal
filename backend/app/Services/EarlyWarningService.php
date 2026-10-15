@@ -12,7 +12,7 @@ class EarlyWarningService
     /** @return array{summary: array<string,int>, students: list<array<string,mixed>>, filters?: array<string,mixed>} */
     public function overview(?int $professorUserId = null, array $filters = []): array
     {
-        $query = $professorUserId === null ? $this->studentDetails() : $this->studentsWithGrades();
+        $query = $this->studentDetails();
         if ($professorUserId !== null) {
             $professorId = Professor::query()->where('user_id', $professorUserId)->value('id');
             if (! $professorId) {
@@ -186,7 +186,7 @@ class EarlyWarningService
         $latestEnrollment = $student->enrollments->sortByDesc('enrollment_date')->first();
         foreach ($student->enrollments as $enrollment) {
             foreach ($enrollment->enrollmentSubjects as $record) {
-                $periods = ['Prelim' => null, 'Midterm' => null, 'Final' => null];
+                $periods = ['Midterm' => null, 'Final' => null];
                 foreach ($record->grades as $grade) {
                     $periodName = $grade->gradingPeriod?->period_name;
                     if (! is_string($periodName) || ! array_key_exists($periodName, $periods) || $grade->grade === null) {
@@ -212,9 +212,9 @@ class EarlyWarningService
                 $level = $record->remarks === 'Failed' || $average < (float) config('monitoring.failing_average', 75)
                     ? 'high'
                     : ($record->remarks === 'Incomplete' || $average < (float) config('monitoring.watch_average', 82) ? 'moderate' : 'low');
-                $prelimGrade = $periods['Prelim'];
                 $midtermGrade = $periods['Midterm'];
-                $subjectTrend = ($prelimGrade !== null && $midtermGrade !== null && $midtermGrade <= $prelimGrade - (float) config('monitoring.decline_points', 3))
+                $finalGrade = $periods['Final'];
+                $subjectTrend = ($midtermGrade !== null && $finalGrade !== null && $finalGrade <= $midtermGrade - (float) config('monitoring.decline_points', 3))
                     ? 'declining'
                     : 'steady';
                 if ($subjectTrend === 'declining' && $level === 'low') {
@@ -229,7 +229,7 @@ class EarlyWarningService
                     'risk_label' => ucfirst($level).' risk',
                     'status' => $record->remarks,
                     'trend' => $subjectTrend,
-                    'missing_midterm' => $prelimGrade !== null && $midtermGrade === null,
+                    'missing_midterm' => $midtermGrade === null && $finalGrade !== null,
                 ];
             }
         }
@@ -249,7 +249,7 @@ class EarlyWarningService
             $subjects[] = [
                 'subject_code' => $items->first()['subject_code'],
                 'subject_name' => $items->first()['subject_name'],
-                'periods' => ['Prelim' => null, 'Midterm' => null, 'Final' => null],
+                'periods' => ['Midterm' => null, 'Final' => null],
                 'average_grade' => $average,
                 'risk_level' => $level,
                 'risk_label' => ucfirst($level).' risk',
@@ -259,9 +259,9 @@ class EarlyWarningService
             ];
         }
         $average = $scores ? round(array_sum($scores) / count($scores), 2) : null;
-        $prelim = collect($subjects)->pluck('periods.Prelim')->filter();
         $midterm = collect($subjects)->pluck('periods.Midterm')->filter();
-        $trend = $prelim->isNotEmpty() && $midterm->isNotEmpty() && $midterm->avg() <= $prelim->avg() - (float) config('monitoring.decline_points', 3) ? 'declining' : 'steady';
+        $final = collect($subjects)->pluck('periods.Final')->filter();
+        $trend = $midterm->isNotEmpty() && $final->isNotEmpty() && $final->avg() <= $midterm->avg() - (float) config('monitoring.decline_points', 3) ? 'declining' : 'steady';
 
         $quizPercents = $graded->pluck('percent')->map(fn ($percent) => (float) $percent)->values();
         $weakLine = (float) config('monitoring.quiz_weak_percent', 75);
@@ -324,10 +324,10 @@ class EarlyWarningService
             $warnings->push("{$weakQuizCount} graded score".($weakQuizCount === 1 ? '' : 's')." below {$weakLine}%.");
         }
         if ($missingMidterms > 0) {
-            $warnings->push("{$missingMidterms} subject".($missingMidterms === 1 ? '' : 's').' still missing a midterm after prelim.');
+            $warnings->push("{$missingMidterms} subject".($missingMidterms === 1 ? '' : 's').' still missing a midterm.');
         }
         if ($subjectDeclines > 0) {
-            $warnings->push("{$subjectDeclines} subject".($subjectDeclines === 1 ? '' : 's').' dropped from prelim to midterm.');
+            $warnings->push("{$subjectDeclines} subject".($subjectDeclines === 1 ? '' : 's').' dropped from midterm to final.');
         }
 
         return [

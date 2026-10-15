@@ -20,20 +20,12 @@ export const ROUTE_ROLES = Object.freeze({
   'professor-dashboard': [ROLES.PROFESSOR],
   'registrar-dashboard': [ROLES.REGISTRAR_STAFF],
   'admin-dashboard': [ROLES.ADMIN],
-  'student-document-requests': [ROLES.STUDENT],
-  'student-document-appointments': [ROLES.STUDENT],
-  'registrar-document-types': [ROLES.REGISTRAR_STAFF],
-  'registrar-document-requests': [ROLES.REGISTRAR_STAFF],
-  'registrar-document-appointments': [ROLES.REGISTRAR_STAFF],
-  'registrar-document-request-history': [ROLES.REGISTRAR_STAFF],
   settings: [ROLES.STUDENT],
   admission: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   enrollment: [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
-  grading: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.ADMIN],
   monitoring: [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'student-management': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'physical-records': [ROLES.REGISTRAR_STAFF],
-  'event-attendance': [ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
 })
 
 export const NAVIGATION_ITEMS = Object.freeze([
@@ -43,44 +35,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
     path: '/registrar-dashboard',
     icon: 'DB',
     roles: ROUTE_ROLES['registrar-dashboard'],
-  },
-  {
-    name: 'document-requests-menu',
-    label: 'Document Requests',
-    icon: 'DR',
-    roles: [ROLES.STUDENT, ROLES.REGISTRAR_STAFF],
-    children: [
-      {
-        name: 'student-document-requests',
-        label: 'Document Requests',
-        path: '/document-requests',
-        roles: ROUTE_ROLES['student-document-requests'],
-      },
-      {
-        name: 'registrar-document-types',
-        label: 'Document Types',
-        path: '/registrar/document-types',
-        roles: ROUTE_ROLES['registrar-document-types'],
-      },
-      {
-        name: 'registrar-document-requests',
-        label: 'Document Requests',
-        path: '/registrar/document-requests',
-        roles: ROUTE_ROLES['registrar-document-requests'],
-      },
-      {
-        name: 'registrar-document-appointments',
-        label: "Today's Appointments",
-        path: '/registrar/appointments',
-        roles: ROUTE_ROLES['registrar-document-appointments'],
-      },
-      {
-        name: 'registrar-document-request-history',
-        label: 'History',
-        path: '/registrar/document-requests/history',
-        roles: ROUTE_ROLES['registrar-document-request-history'],
-      },
-    ],
   },
   {
     name: 'student-dashboard',
@@ -118,13 +72,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
     roles: ROUTE_ROLES.enrollment,
   },
   {
-    name: 'grading',
-    label: 'Grading',
-    path: '/grading',
-    icon: 'GR',
-    roles: ROUTE_ROLES.grading,
-  },
-  {
     name: 'monitoring',
     label: 'Monitoring',
     path: '/monitoring',
@@ -151,13 +98,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
         roles: ROUTE_ROLES['physical-records'],
       },
     ],
-  },
-  {
-    name: 'event-attendance',
-    label: 'Event Attendance',
-    path: '/event-attendance',
-    icon: 'EV',
-    roles: ROUTE_ROLES['event-attendance'],
   },
   {
     name: 'settings',

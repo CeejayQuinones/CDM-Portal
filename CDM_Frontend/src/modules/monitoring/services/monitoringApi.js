@@ -34,10 +34,21 @@ export const createPerformanceRecord = (studentId, formData) =>
     }),
   )
 
+export const updatePerformanceRecord = (recordId, payload) =>
+  unwrap(apiClient.patch(`/monitoring/performance-records/${recordId}`, payload))
+
 export const fetchSubmittedGrades = () => unwrap(apiClient.get('/monitoring/grade-submissions'))
 
 export const approveSubmittedGrade = (gradeId) =>
   unwrap(apiClient.post(`/monitoring/grades/${gradeId}/approve`))
+
+export const approveAllSubmittedGrades = () =>
+  unwrap(apiClient.post('/monitoring/grade-submissions/approve-all'))
+
+export const fetchGradebook = () => unwrap(apiClient.get('/monitoring/gradebook'))
+
+export const submitPeriodGrade = (studentId, payload) =>
+  unwrap(apiClient.post(`/monitoring/students/${studentId}/period-grades`, payload))
 
 export const generateGradeStudyPlan = (studentId, subjectCode) =>
   unwrap(apiClient.post(`/monitoring/students/${studentId}/grade-plan`, { subject_code: subjectCode }))

@@ -10,6 +10,7 @@ import {
   markSentPlanRead,
 } from './services/monitoringApi'
 import AiHelpChatbot from './components/AiHelpChatbot.vue'
+import ProfessorGradebook from './components/ProfessorGradebook.vue'
 import ProfessorRecordPanel from './components/ProfessorRecordPanel.vue'
 import RegistrarGradePanel from './components/RegistrarGradePanel.vue'
 import StudentStudyStudio from './components/StudentStudyStudio.vue'
@@ -68,8 +69,8 @@ watch(
   },
 )
 
-async function load() {
-  loading.value = true
+async function load({ quiet = false } = {}) {
+  if (!quiet) loading.value = true
   error.value = ''
   try {
     aiStatus.value = await fetchAiStatus().catch(() => ({ live_ai_configured: false, provider: 'gemini' }))
@@ -87,7 +88,8 @@ async function load() {
       filterOptions.courses = data.value?.filters?.courses || []
       filterOptions.sections = data.value?.filters?.sections || []
     }
-    selectedId.value = students.value[0]?.student_id || null
+    const stillVisible = students.value.some((student) => student.student_id === selectedId.value)
+    if (!quiet || !stillVisible) selectedId.value = students.value[0]?.student_id || null
   } catch (err) {
     const timedOut = err.code === 'ECONNABORTED'
     error.value = timedOut
@@ -122,7 +124,7 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="page">
+  <main class="page" :class="{ student: isStudent }">
     <header class="head">
       <div>
         <p class="kicker">AI Monitoring</p>
@@ -130,12 +132,12 @@ onMounted(load)
         <p class="lead">
           {{
             isStudent
-              ? 'Upload a file and the AI writes a study guide automatically. You can still make flashcards or a quiz from the same file.'
+              ? 'Your standing uses approved period grades and every other graded score. Study files are separate and do not change the risk score.'
               : isProfessor
-                ? 'Review students in your subjects, record every graded score, and send the study plan.'
+                ? 'Record every class score here, then submit midterm and final for the registrar. Those two grades count in the risk score only after approval.'
                 : isRegistrar
-                  ? 'Approve the grades a professor submitted. You do not record class scores or send study plans.'
-                  : 'View the official school record. Approving grades is the registrar’s work, and study plans are the professor’s.'
+                  ? 'Check each submitted midterm or final by student, subject, and period, then approve it. You do not record class scores or send study plans.'
+                  : 'View the official school record and the grades waiting for the registrar. Approving them is the registrar’s work.'
           }}
         </p>
       </div>
@@ -152,6 +154,8 @@ onMounted(load)
         <article><span>Stable</span><strong>{{ data?.summary?.low || 0 }}</strong></article>
         <article><span>Total</span><strong>{{ data?.summary?.total || students.length }}</strong></article>
       </section>
+
+      <ProfessorGradebook v-if="isProfessor" class="card" @changed="() => load({ quiet: true })" />
 
       <div class="layout" :class="{ solo: isStudent }">
         <aside v-if="!isStudent" class="list">
@@ -180,7 +184,7 @@ onMounted(load)
             @click="selectedId = student.student_id"
           >
             <strong>{{ student.student_name }}</strong>
-            <span>{{ student.student_number }} · {{ student.course_code || '—' }} · {{ student.section_name || '—' }}</span>
+            <span>{{ student.student_number }} · Year {{ student.year_level || '—' }} · {{ student.course_code || '—' }} · {{ student.section_name || '—' }}</span>
             <em :class="student.risk_level">{{ student.risk_label }}</em>
           </button>
           <p v-if="!filteredStudents.length" class="muted">No students found.</p>
@@ -242,7 +246,6 @@ onMounted(load)
                 <span>
                   {{ subject.subject_name }}
                   <template v-if="subject.periods">
-                    · Prelim {{ subject.periods.Prelim ?? '—' }}
                     · Midterm {{ subject.periods.Midterm ?? '—' }}
                     · Final {{ subject.periods.Final ?? '—' }}
                   </template>
@@ -278,7 +281,7 @@ onMounted(load)
 
         <p v-else-if="!isRegistrar" class="muted card">No academic record available.</p>
 
-        <div v-if="isRegistrar" class="card">
+        <div v-if="isRegistrar || isAdmin" class="card">
           <RegistrarGradePanel :key="`registrar-${auth.currentUser?.id}`" />
         </div>
       </div>
@@ -553,6 +556,81 @@ em.low,
   white-space: pre-wrap;
 }
 
+.page.student .head {
+  align-items: flex-end;
+}
+
+.page.student .lead {
+  max-width: 62ch;
+  line-height: 1.55;
+}
+
+.page.student .btn {
+  background: #0d6940;
+  border-color: #0a5734;
+  border-radius: 10px;
+  color: #fff;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+.page.student .detail {
+  gap: 14px;
+}
+
+.page.student .card {
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.page.student .hero {
+  align-items: stretch;
+  background: #fff;
+}
+
+.page.student .hero h2 {
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.page.student .right {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 4px;
+  min-width: 168px;
+  padding: 14px 16px;
+  text-align: left;
+}
+
+.page.student .right p {
+  margin: 0;
+}
+
+.page.student .subjects {
+  grid-template-columns: 1fr;
+}
+
+.page.student .subjects article {
+  align-items: center;
+  background: #fff;
+  display: grid;
+  gap: 6px 16px;
+  grid-template-columns: minmax(88px, 140px) minmax(0, 1fr) auto;
+  padding: 12px 14px;
+}
+
+.page.student .subjects em {
+  margin-top: 0;
+}
+
+.page.student .card h3 {
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  margin-bottom: 12px;
+}
+
 @media (max-width: 900px) {
   .layout,
   .stats,
@@ -565,8 +643,13 @@ em.low,
     max-height: none;
   }
 
-  .right {
+  .right,
+  .page.student .right {
     text-align: left;
+  }
+
+  .page.student .subjects article {
+    grid-template-columns: 1fr;
   }
 }
 </style>

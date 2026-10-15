@@ -1,9 +1,10 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { approveSubmittedGrade, fetchSubmittedGrades } from '../services/monitoringApi'
+import { approveAllSubmittedGrades, approveSubmittedGrade, fetchSubmittedGrades } from '../services/monitoringApi'
 
 const loading = ref(true)
 const approvingId = ref(null)
+const approvingAll = ref(false)
 const error = ref('')
 const notice = ref('')
 const grades = ref([])
@@ -20,6 +21,24 @@ async function load() {
     error.value = err.response?.data?.message || 'Unable to load grades waiting for approval.'
   } finally {
     loading.value = false
+  }
+}
+
+async function approveAll() {
+  approvingAll.value = true
+  error.value = ''
+  notice.value = ''
+  try {
+    const payload = await approveAllSubmittedGrades()
+    const count = payload.approved || 0
+    grades.value = []
+    notice.value = count
+      ? `${count} grade${count === 1 ? '' : 's'} now on the official record. Monitoring can use them.`
+      : 'No submitted grades were waiting.'
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Unable to approve the waiting grades.'
+  } finally {
+    approvingAll.value = false
   }
 }
 
@@ -48,9 +67,18 @@ onMounted(load)
       <h3>Grades waiting for approval</h3>
     </header>
     <p class="lead">
-      A professor submits the prelim, midterm, or final. You check the student, subject, and period, then approve it.
-      Until you approve it, monitoring does not use that grade. Class scores and study plans stay with the professor.
+      A professor submits the midterm or final. Check the student, subject, and period, then approve that grade
+      or approve every grade waiting in this list. Until then, monitoring does not use it.
     </p>
+    <button
+      v-if="canApprove && grades.length"
+      type="button"
+      class="all"
+      :disabled="approvingAll"
+      @click="approveAll"
+    >
+      {{ approvingAll ? 'Approving…' : 'Approve all' }}
+    </button>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice">{{ notice }}</p>
     <p v-if="loading" class="muted">Loading the queue…</p>
@@ -79,5 +107,6 @@ h3 { margin: 2px 0 0; }
 .row { align-items: center; border: 1px solid var(--student-border, #d7dfd9); border-radius: 8px; display: grid; gap: 8px; grid-template-columns: 1fr auto auto; padding: 10px 12px; }
 .row strong, .row span { display: block; }
 button { background: #106a2e; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font-weight: 700; min-height: 36px; padding: 0 12px; }
+button.all { justify-self: start; }
 button:disabled { opacity: 0.6; }
 </style>

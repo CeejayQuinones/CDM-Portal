@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\EnrollmentSubject;
 use App\Models\Grade;
+use App\Models\GradingPeriod;
 use App\Models\MonitoringPerformanceRecord;
 use App\Models\MonitoringSentPlan;
+use App\Models\Professor;
 use App\Models\RiskNotification;
 use App\Models\Role;
 use App\Models\Student;
@@ -193,6 +196,30 @@ class MonitoringController extends Controller
         return response()->json(['success' => true, 'data' => $this->performanceRecord($record)], 201);
     }
 
+    public function updatePerformanceRecord(Request $request, int $record): JsonResponse
+    {
+        if ($request->user()->role?->role_name !== Role::PROFESSOR) {
+            return $this->forbidden('Only a professor can change a class score.');
+        }
+
+        $performance = MonitoringPerformanceRecord::query()->find($record);
+        if (! $performance || (int) $performance->professor_user_id !== (int) $request->user()->id) {
+            return $this->notFound('Class score not found.');
+        }
+
+        $data = $request->validate([
+            'score' => ['required', 'numeric', 'min:0', 'max:9999'],
+            'max_score' => ['required', 'numeric', 'min:0.01', 'max:9999'],
+        ]);
+
+        $performance->update([
+            'score' => $data['score'],
+            'max_score' => $data['max_score'],
+        ]);
+
+        return $this->ok($this->performanceRecord($performance->fresh()));
+    }
+
     public function downloadPerformanceAttachment(Request $request, int $record): StreamedResponse|JsonResponse
     {
         $performance = MonitoringPerformanceRecord::query()->find($record);
@@ -304,6 +331,175 @@ class MonitoringController extends Controller
             'enrollmentSubject.subject:id,subject_code,subject_name',
             'enrollmentSubject.enrollment.student.userProfile',
         ])));
+    }
+
+    public function approveAllGrades(Request $request): JsonResponse
+    {
+        if ($request->user()->role?->role_name !== Role::REGISTRAR_STAFF) {
+            return $this->forbidden('Only registrar staff can approve a grade onto the official record.');
+        }
+
+        $approved = Grade::query()->where('status', 'submitted')->update([
+            'status' => 'approved',
+            'updated_at' => now(),
+        ]);
+
+        return $this->ok(['approved' => $approved]);
+    }
+
+    public function periodGrades(Request $request, int $student): JsonResponse
+    {
+        if ($response = $this->requireProfessorSubject($request, $student)) {
+            return $response;
+        }
+
+        $professorId = Professor::query()->where('user_id', $request->user()->id)->value('id');
+        $rows = EnrollmentSubject::query()
+            ->with(['subject:id,subject_code,subject_name', 'grades.gradingPeriod:id,period_name'])
+            ->where('professor_id', $professorId)
+            ->whereHas('enrollment', fn ($query) => $query->where('student_id', $student))
+            ->get();
+
+        $subjects = $rows->map(function (EnrollmentSubject $row): array {
+            $byPeriod = [];
+            foreach ($row->grades as $grade) {
+                $name = $grade->gradingPeriod?->period_name;
+                if (is_string($name)) {
+                    $byPeriod[$name] = $grade;
+                }
+            }
+
+            $periods = [];
+            foreach (['Midterm', 'Final'] as $name) {
+                $grade = $byPeriod[$name] ?? null;
+                $periods[] = [
+                    'period' => $name,
+                    'grade' => $grade?->grade,
+                    'status' => $grade?->status ?? 'open',
+                ];
+            }
+
+            return [
+                'subject_code' => $row->subject?->subject_code,
+                'subject_name' => $row->subject?->subject_name,
+                'periods' => $periods,
+            ];
+        })->values();
+
+        return $this->ok(['subjects' => $subjects]);
+    }
+
+    public function submitPeriodGrade(Request $request, int $student): JsonResponse
+    {
+        if ($response = $this->requireProfessorSubject($request, $student)) {
+            return $response;
+        }
+
+        $data = $request->validate([
+            'subject_code' => ['required', 'string', 'max:40'],
+            'period' => ['required', 'string', 'in:Midterm,Final'],
+            'grade' => ['required', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $professorId = (int) Professor::query()->where('user_id', $request->user()->id)->value('id');
+        $enrollmentSubject = EnrollmentSubject::query()
+            ->where('professor_id', $professorId)
+            ->whereHas('enrollment', fn ($query) => $query->where('student_id', $student))
+            ->whereHas('subject', fn ($query) => $query->where('subject_code', $data['subject_code']))
+            ->first();
+        if (! $enrollmentSubject) {
+            return $this->notFound('That subject is not assigned to you for this student.');
+        }
+
+        $period = GradingPeriod::query()->where('period_name', $data['period'])->first();
+        if (! $period) {
+            return $this->notFound('That grading period is not set up.');
+        }
+
+        $existing = Grade::query()
+            ->where('enrollment_subject_id', $enrollmentSubject->id)
+            ->where('grading_period_id', $period->id)
+            ->first();
+        if ($existing && $existing->status === 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'That grade is already on the official record.',
+            ], 422);
+        }
+
+        $score = round((float) $data['grade'], 2);
+        $payload = [
+            'professor_id' => $professorId,
+            'grade' => $score,
+            'remarks' => $score >= 75 ? 'Passed' : 'Failed',
+            'status' => 'submitted',
+            'submitted_at' => now(),
+        ];
+
+        if ($existing) {
+            $existing->update($payload);
+        } else {
+            Grade::query()->create([
+                'enrollment_subject_id' => $enrollmentSubject->id,
+                'grading_period_id' => $period->id,
+                ...$payload,
+            ]);
+        }
+
+        return $this->ok([
+            'subject_code' => $data['subject_code'],
+            'period' => $data['period'],
+            'grade' => $score,
+            'status' => 'submitted',
+        ]);
+    }
+
+    public function gradebook(Request $request): JsonResponse
+    {
+        if ($request->user()->role?->role_name !== Role::PROFESSOR) {
+            return $this->forbidden('Only a professor can open the class grade book.');
+        }
+
+        return $this->ok(['rows' => $this->gradebookRows($request)]);
+    }
+
+    public function exportGradebook(Request $request): StreamedResponse|JsonResponse
+    {
+        if ($request->user()->role?->role_name !== Role::PROFESSOR) {
+            return $this->forbidden('Only a professor can export class grades.');
+        }
+
+        $rows = array_map(fn (array $row) => [
+            $row['student_number'] ?? '',
+            $row['student_name'],
+            $row['year_level'] ?? '',
+            $row['section_name'] ?? '',
+            $row['course_code'] ?? '',
+            $row['course_name'] ?? '',
+            $row['subject_code'],
+            $row['subject_name'] ?? '',
+            $row['class_scores_text'],
+            $row['midterm'] ?? '',
+            $row['midterm_status'],
+            $row['final'] ?? '',
+            $row['final_status'],
+        ], $this->gradebookRows($request));
+
+        return \App\Support\SimpleXlsx::download('class-grades.xlsx', [
+            'Student number',
+            'Student name',
+            'Year level',
+            'Section',
+            'Course',
+            'Course name',
+            'Subject',
+            'Subject name',
+            'Class scores',
+            'Midterm',
+            'Midterm status',
+            'Final',
+            'Final status',
+        ], $rows);
     }
 
     public function generateGradeStudyPlan(Request $request, int $student): JsonResponse
@@ -629,6 +825,95 @@ class MonitoringController extends Controller
         return null;
     }
 
+    private function requireProfessorSubject(Request $request, int $student): ?JsonResponse
+    {
+        if ($request->user()->role?->role_name !== Role::PROFESSOR) {
+            return $this->forbidden('Only a professor can submit a period grade.');
+        }
+        if (! $this->warnings->professorCanAccessStudent($request->user()->id, $student)) {
+            return $this->forbidden('You can only submit grades for students in your assigned subjects.');
+        }
+
+        return null;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function gradebookRows(Request $request): array
+    {
+        $professorId = Professor::query()->where('user_id', $request->user()->id)->value('id');
+        if (! $professorId) {
+            return [];
+        }
+
+        $enrolled = EnrollmentSubject::query()
+            ->with([
+                'subject:id,subject_code,subject_name',
+                'grades.gradingPeriod:id,period_name',
+                'enrollment.section:id,section_name,year_level',
+                'enrollment.student.userProfile:id,first_name,last_name',
+                'enrollment.student.course:id,course_code,course_name',
+            ])
+            ->where('professor_id', $professorId)
+            ->get();
+
+        $studentIds = $enrolled->map(fn (EnrollmentSubject $row) => $row->enrollment?->student_id)->filter()->unique()->values();
+        $records = MonitoringPerformanceRecord::query()
+            ->whereIn('student_id', $studentIds)
+            ->where('professor_user_id', $request->user()->id)
+            ->whereNotNull('score')
+            ->where('max_score', '>', 0)
+            ->orderBy('assessment_name')
+            ->get()
+            ->groupBy(fn (MonitoringPerformanceRecord $record) => $record->student_id.'|'.strtoupper((string) $record->subject_code));
+
+        return $enrolled->map(function (EnrollmentSubject $row) use ($records): array {
+            $student = $row->enrollment?->student;
+            $profile = $student?->userProfile;
+            $name = trim(implode(' ', array_filter([$profile?->first_name, $profile?->last_name])));
+            $code = (string) ($row->subject?->subject_code ?? '');
+            $scores = collect($records[$student?->id.'|'.strtoupper($code)] ?? [])
+                ->map(fn (MonitoringPerformanceRecord $record) => [
+                    'id' => $record->id,
+                    'assessment_name' => $record->assessment_name,
+                    'score' => $record->score,
+                    'max_score' => $record->max_score,
+                ])->values()->all();
+            $periods = ['Midterm' => null, 'Final' => null];
+            $status = ['Midterm' => 'open', 'Final' => 'open'];
+            foreach ($row->grades as $grade) {
+                $period = $grade->gradingPeriod?->period_name;
+                if (! is_string($period) || ! array_key_exists($period, $periods)) {
+                    continue;
+                }
+                $periods[$period] = $grade->grade;
+                $status[$period] = $grade->status;
+            }
+
+            return [
+                'student_id' => $student?->id,
+                'student_number' => $student?->student_number,
+                'student_name' => $name !== '' ? $name : 'Student',
+                'year_level' => $student?->year_level ?? $row->enrollment?->section?->year_level,
+                'section_name' => $row->enrollment?->section?->section_name,
+                'course_code' => $student?->course?->course_code,
+                'course_name' => $student?->course?->course_name,
+                'subject_code' => $code,
+                'subject_name' => $row->subject?->subject_name,
+                'class_scores' => $scores,
+                'class_scores_text' => collect($scores)->map(fn (array $score) => $score['assessment_name'].': '.$score['score'].'/'.$score['max_score'])->implode('; '),
+                'midterm' => $periods['Midterm'],
+                'midterm_status' => $status['Midterm'],
+                'final' => $periods['Final'],
+                'final_status' => $status['Final'],
+            ];
+        })->sortBy([
+            ['course_code', 'asc'],
+            ['section_name', 'asc'],
+            ['student_name', 'asc'],
+            ['subject_code', 'asc'],
+        ])->values()->all();
+    }
+
     private function authorizeStudent(Request $request, int $student): ?JsonResponse
     {
         $role = $request->user()->role?->role_name;
@@ -666,8 +951,7 @@ class MonitoringController extends Controller
             'subject_code' => $subject['subject_code'] ?? '',
             'score' => $subject['average_grade'] ?? null,
             'max_score' => 100,
-            'notes' => 'Prelim '.$format($periods['Prelim'] ?? null)
-                .', Midterm '.$format($periods['Midterm'] ?? null)
+            'notes' => 'Midterm '.$format($periods['Midterm'] ?? null)
                 .', Final '.$format($periods['Final'] ?? null)
                 .'. Trend '.($subject['trend'] ?? 'steady').'.',
         ];

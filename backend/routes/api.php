@@ -37,11 +37,17 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/monitoring/students/{student}/ai-help', [MonitoringController::class, 'aiHelp'])->middleware('throttle:10,1');
         Route::get('/monitoring/students/{student}/performance-records', [MonitoringController::class, 'listPerformanceRecords']);
         Route::post('/monitoring/students/{student}/performance-records', [MonitoringController::class, 'storePerformanceRecord'])->middleware('throttle:20,1');
+        Route::patch('/monitoring/performance-records/{record}', [MonitoringController::class, 'updatePerformanceRecord'])->middleware('throttle:30,1');
         Route::get('/monitoring/performance-records/{record}/attachment', [MonitoringController::class, 'downloadPerformanceAttachment']);
         Route::post('/monitoring/students/{student}/performance-records/{record}/generate-plan', [MonitoringController::class, 'generateRecordStudyPlan'])->middleware('throttle:8,1');
         Route::post('/monitoring/students/{student}/performance-records/{record}/send-plan', [MonitoringController::class, 'sendRecordStudyPlan'])->middleware('throttle:10,1');
         Route::get('/monitoring/grade-submissions', [MonitoringController::class, 'submittedGrades']);
         Route::post('/monitoring/grades/{grade}/approve', [MonitoringController::class, 'approveGrade'])->middleware('throttle:30,1');
+        Route::post('/monitoring/grade-submissions/approve-all', [MonitoringController::class, 'approveAllGrades'])->middleware('throttle:10,1');
+        Route::get('/monitoring/gradebook', [MonitoringController::class, 'gradebook']);
+        Route::get('/monitoring/gradebook/export', [MonitoringController::class, 'exportGradebook']);
+        Route::get('/monitoring/students/{student}/period-grades', [MonitoringController::class, 'periodGrades']);
+        Route::post('/monitoring/students/{student}/period-grades', [MonitoringController::class, 'submitPeriodGrade'])->middleware('throttle:30,1');
         Route::post('/monitoring/students/{student}/grade-plan', [MonitoringController::class, 'generateGradeStudyPlan'])->middleware('throttle:8,1');
         Route::post('/monitoring/students/{student}/grade-plan/send', [MonitoringController::class, 'sendGradeStudyPlan'])->middleware('throttle:10,1');
         Route::get('/monitoring/students/{student}/sent-plans', [MonitoringController::class, 'listSentPlans']);

@@ -28,7 +28,7 @@ watch(
 function periodText(subject) {
   const periods = subject.periods || {}
   const show = (value) => (value == null || value === '' ? '—' : value)
-  return `Prelim ${show(periods.Prelim)} · Midterm ${show(periods.Midterm)} · Final ${show(periods.Final)}`
+  return `Midterm ${show(periods.Midterm)} · Final ${show(periods.Final)}`
 }
 
 async function generatePlan(subject) {
@@ -80,7 +80,7 @@ async function sendPlan(subject) {
       </div>
     </header>
     <p class="lead">
-      The average is made from the approved prelim, midterm, and final grades plus every other graded score for that subject, such as a quiz, exam, activity, or project. A study-file upload is not a grade.
+      The average uses the approved midterm and final, plus every other graded score for that subject, such as a quiz, exam, activity, or project. A study-file upload is not a grade.
     </p>
 
     <p v-if="error" class="error" role="alert">{{ error }}</p>

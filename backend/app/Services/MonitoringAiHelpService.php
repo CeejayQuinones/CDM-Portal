@@ -100,10 +100,9 @@ class MonitoringAiHelpService
     {
         $subjects = collect($assessment['subjects'] ?? [])->map(function (array $subject) {
             return sprintf(
-                '%s (%s): Prelim=%s, Midterm=%s, Final=%s, avg=%s, risk=%s',
+                '%s (%s): Midterm=%s, Final=%s, avg=%s, risk=%s',
                 $subject['subject_code'],
                 $subject['subject_name'],
-                $subject['periods']['Prelim'] ?? 'n/a',
                 $subject['periods']['Midterm'] ?? 'n/a',
                 $subject['periods']['Final'] ?? 'n/a',
                 $subject['average_grade'] ?? 'n/a',

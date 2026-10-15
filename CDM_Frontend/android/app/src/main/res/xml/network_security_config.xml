@@ -4,7 +4,7 @@
     <base-config cleartextTrafficPermitted="true" />
 
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">192.168.100.34</domain>
+        <domain includeSubdomains="true">192.168.254.103</domain>
     </domain-config>
 
 </network-security-config>

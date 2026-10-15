@@ -85,3 +85,45 @@ html[data-student-theme] .student-booking-modal .appointment-time-option:not(:di
 html[data-student-theme] .step-up-backdrop :is(.step-up-kicker, .cancel-button) {
   color: var(--student-accent, var(--color-dartmouth-green));
 }
+
+/* Student pages stay on white so body copy stays dark and readable. */
+html[data-student-theme] .student-portal-shell .shell-content {
+  --student-page: #fff;
+  --student-page-background: #fff;
+  --student-surface: #fff;
+  --student-surface-soft: #f4f7f5;
+  --student-field: #fff;
+  --student-panel-header: #f7faf7;
+  --student-text: #1c2b22;
+  --student-heading: #143024;
+  --student-muted: #3e5248;
+  --student-border: #d5e0d8;
+  --student-accent: #0d6940;
+  --student-selected: #e7f3eb;
+  --student-focus: #0d6940;
+  --student-toggle: #c5d5cb;
+  --student-save: #0d6940;
+  --student-success: #e8f7ee;
+  --student-danger: #9f2d25;
+  --student-danger-bg: #fff1f0;
+  --student-danger-border: #f3c1bc;
+  --student-note: #fff8db;
+  --student-shadow: 0 8px 24px rgb(20 53 33 / 6%);
+  --student-card-shadow: 0 10px 24px rgb(20 53 33 / 6%);
+  --student-card-shadow-hover: 0 14px 28px rgb(20 53 33 / 10%);
+  --student-color-scheme: light;
+  --student-cdm-ink: #1c2b22;
+  color: #1c2b22;
+  color-scheme: light;
+  background: #fff;
+}
+
+html[data-student-theme] .student-portal-shell .shell-content :is(input, select, textarea) {
+  background: #fff;
+  color: #1c2b22;
+  border-color: #c5d4cb;
+}
+
+html[data-student-theme] .student-portal-shell .shell-content :is(input, select, textarea)::placeholder {
+  color: #5c6e64;
+}

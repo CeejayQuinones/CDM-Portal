@@ -240,117 +240,279 @@
 
   <section>
     <h2>2. Entity-relationship diagram</h2>
-    <p>AI monitoring module only. The four roles are Student, Professor, Registrar staff, and Admin. Admission, enrollment, document requests, and account management are outside this diagram. 1 means one. M means many.</p>
-    <svg viewBox="0 0 1100 820" role="img" aria-label="AI monitoring ERD">
+    <p>Chen’s notation, AI monitoring module only. A rectangle is an entity. An oval is an attribute. A solid underline is the primary key. A dashed underline is a foreign key. A diamond is a relationship. 1 means one. M means many. Admission, enrollment, document requests, and account management are outside this diagram.</p>
+    <svg viewBox="0 0 1140 870" role="img" aria-label="AI monitoring ERD in Chen notation">
       <style>
-        .e { fill:#fff; stroke:#1c2430; stroke-width:1.7; }
-        .h { fill:#1c2430; }
-        .ht { font: 600 13px "Segoe UI", Arial, sans-serif; fill:#fff; }
-        .a { font: 12px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
-        .r { font: 12px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
-        .ln { stroke:#1c2430; stroke-width:1.4; fill:none; }
+        .e { fill:#fff; stroke:#1c2430; stroke-width:1.6; }
+        .nm { font: 600 13px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .a { font: 11px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .c { font: 700 12px "Segoe UI", Arial, sans-serif; fill:#1c2430; }
+        .k { stroke:#1c2430; stroke-width:1.4; fill:none; }
+        .pk { stroke:#1c2430; stroke-width:1.3; }
+        .fk { stroke:#1c2430; stroke-width:1.3; stroke-dasharray:3 2; }
       </style>
-      <text class="r" x="16" y="22">Roles in AI monitoring</text>
 
-      <rect class="e" x="16" y="36" width="190" height="108"/>
-      <rect class="h" x="16" y="36" width="190" height="24"/>
-      <text class="ht" x="111" y="53" text-anchor="middle">Student</text>
-      <text class="a" x="28" y="78">student number</text>
-      <text class="a" x="28" y="96">year level</text>
-      <text class="a" x="28" y="114">one login</text>
-      <text class="a" x="28" y="132">receives plan and notice</text>
+      <!-- Role attributes. Solid underline = PK. Dashed underline = FK. -->
+      <ellipse class="e" cx="42" cy="24" rx="36" ry="16"/>
+      <text class="a" x="42" y="28" text-anchor="middle">id (PK)</text>
+      <line class="pk" x1="18" y1="32" x2="66" y2="32"/>
+      <ellipse class="e" cx="132" cy="24" rx="50" ry="16"/>
+      <text class="a" x="132" y="28" text-anchor="middle">user id (FK)</text>
+      <line class="fk" x1="96" y1="32" x2="168" y2="32"/>
+      <ellipse class="e" cx="248" cy="24" rx="58" ry="16"/>
+      <text class="a" x="248" y="28" text-anchor="middle">student number</text>
 
-      <rect class="e" x="230" y="36" width="210" height="108"/>
-      <rect class="h" x="230" y="36" width="210" height="24"/>
-      <text class="ht" x="335" y="53" text-anchor="middle">Professor</text>
-      <text class="a" x="242" y="78">one login</text>
-      <text class="a" x="242" y="96">assigned subjects</text>
-      <text class="a" x="242" y="114">records every score</text>
-      <text class="a" x="242" y="132">sends plan and notice</text>
+      <ellipse class="e" cx="360" cy="24" rx="36" ry="16"/>
+      <text class="a" x="360" y="28" text-anchor="middle">id (PK)</text>
+      <line class="pk" x1="336" y1="32" x2="384" y2="32"/>
+      <ellipse class="e" cx="460" cy="24" rx="50" ry="16"/>
+      <text class="a" x="460" y="28" text-anchor="middle">user id (FK)</text>
+      <line class="fk" x1="424" y1="32" x2="496" y2="32"/>
 
-      <rect class="e" x="470" y="36" width="240" height="108"/>
-      <rect class="h" x="470" y="36" width="240" height="24"/>
-      <text class="ht" x="590" y="53" text-anchor="middle">Registrar staff</text>
-      <text class="a" x="482" y="78">one login</text>
-      <text class="a" x="482" y="96">checks the submitted grade</text>
-      <text class="a" x="482" y="114">approves the official record</text>
-      <text class="a" x="482" y="132">does not record scores</text>
+      <ellipse class="e" cx="640" cy="24" rx="52" ry="16"/>
+      <text class="a" x="640" y="28" text-anchor="middle">user id (PK)</text>
+      <line class="pk" x1="600" y1="32" x2="680" y2="32"/>
+      <ellipse class="e" cx="770" cy="24" rx="48" ry="16"/>
+      <text class="a" x="770" y="28" text-anchor="middle">role id (FK)</text>
+      <line class="fk" x1="736" y1="32" x2="804" y2="32"/>
 
-      <rect class="e" x="760" y="36" width="220" height="108"/>
-      <rect class="h" x="760" y="36" width="220" height="24"/>
-      <text class="ht" x="870" y="53" text-anchor="middle">Admin</text>
-      <text class="a" x="772" y="78">one login</text>
-      <text class="a" x="772" y="96">views the official list</text>
-      <text class="a" x="772" y="114">stores no record</text>
-      <text class="a" x="772" y="132">does not approve or send</text>
+      <ellipse class="e" cx="930" cy="24" rx="52" ry="16"/>
+      <text class="a" x="930" y="28" text-anchor="middle">user id (PK)</text>
+      <line class="pk" x1="890" y1="32" x2="970" y2="32"/>
+      <ellipse class="e" cx="1048" cy="24" rx="48" ry="16"/>
+      <text class="a" x="1048" y="28" text-anchor="middle">role id (FK)</text>
+      <line class="fk" x1="1014" y1="32" x2="1082" y2="32"/>
 
-      <rect class="e" x="300" y="196" width="400" height="112"/>
-      <rect class="h" x="300" y="196" width="400" height="24"/>
-      <text class="ht" x="500" y="213" text-anchor="middle">Approved grade</text>
-      <text class="a" x="312" y="238">Prelim, Midterm, or Final</text>
-      <text class="a" x="312" y="256">one score</text>
-      <text class="a" x="312" y="274">draft, submitted, or approved</text>
-      <text class="a" x="312" y="292">monitoring reads approved only</text>
+      <!-- Role entities -->
+      <line class="k" x1="42" y1="40" x2="80" y2="64"/>
+      <line class="k" x1="132" y1="40" x2="120" y2="64"/>
+      <line class="k" x1="248" y1="40" x2="175" y2="64"/>
+      <rect class="e" x="40" y="64" width="150" height="36"/>
+      <text class="nm" x="115" y="87" text-anchor="middle">Student</text>
 
-      <path class="ln" d="M111 144 V162 H320 V196"/>
-      <text class="r" x="118" y="184">M grades</text>
-      <path class="ln" d="M360 144 V176 H480 V196"/>
-      <text class="r" x="390" y="168">submits M</text>
-      <path class="ln" d="M680 144 V168 H660 V196"/>
-      <text class="r" x="600" y="160">approves M</text>
+      <line class="k" x1="360" y1="40" x2="350" y2="64"/>
+      <line class="k" x1="460" y1="40" x2="420" y2="64"/>
+      <rect class="e" x="300" y="64" width="160" height="36"/>
+      <text class="nm" x="380" y="87" text-anchor="middle">Professor</text>
 
-      <text class="r" x="16" y="348">Records this module stores</text>
+      <line class="k" x1="640" y1="40" x2="640" y2="64"/>
+      <line class="k" x1="770" y1="40" x2="730" y2="64"/>
+      <rect class="e" x="560" y="64" width="190" height="36"/>
+      <text class="nm" x="655" y="87" text-anchor="middle">Registrar staff</text>
 
-      <rect class="e" x="16" y="360" width="230" height="124"/>
-      <rect class="h" x="16" y="360" width="230" height="24"/>
-      <text class="ht" x="131" y="377" text-anchor="middle">Graded score</text>
-      <text class="a" x="28" y="402">quiz, exam, activity, project</text>
-      <text class="a" x="28" y="420">score and maximum</text>
-      <text class="a" x="28" y="438">one student</text>
-      <text class="a" x="28" y="456">recorded by the professor</text>
-      <text class="a" x="28" y="474">used in the average</text>
+      <line class="k" x1="930" y1="40" x2="940" y2="64"/>
+      <line class="k" x1="1048" y1="40" x2="1010" y2="64"/>
+      <rect class="e" x="880" y="64" width="160" height="36"/>
+      <text class="nm" x="960" y="87" text-anchor="middle">Admin</text>
+      <text class="a" x="960" y="118" text-anchor="middle">views only</text>
 
-      <rect class="e" x="290" y="360" width="240" height="110"/>
-      <rect class="h" x="290" y="360" width="240" height="24"/>
-      <text class="ht" x="410" y="377" text-anchor="middle">Study file</text>
-      <text class="a" x="302" y="402">notes and topic</text>
-      <text class="a" x="302" y="420">attachment</text>
-      <text class="a" x="302" y="438">one student</text>
-      <text class="a" x="302" y="456">not a graded score</text>
+      <!-- Approved grade relationships -->
+      <line class="k" x1="115" y1="100" x2="115" y2="128"/>
+      <text class="c" x="124" y="120">1</text>
+      <polygon class="e" points="115,128 159,156 115,184 71,156"/>
+      <text class="a" x="115" y="148" text-anchor="middle">has</text>
+      <text class="a" x="115" y="166" text-anchor="middle">grade</text>
+      <path class="k" d="M115 184 V218 H300"/>
+      <text class="c" x="150" y="212">M</text>
 
-      <rect class="e" x="600" y="360" width="250" height="110"/>
-      <rect class="h" x="600" y="360" width="250" height="24"/>
-      <text class="ht" x="725" y="377" text-anchor="middle">Sent plan</text>
-      <text class="a" x="612" y="402">study plan text</text>
-      <text class="a" x="612" y="420">read or unread</text>
-      <text class="a" x="612" y="438">file link can be empty</text>
-      <text class="a" x="612" y="456">professor is the sender</text>
+      <line class="k" x1="380" y1="100" x2="380" y2="128"/>
+      <text class="c" x="388" y="120">1</text>
+      <polygon class="e" points="380,128 424,156 380,184 336,156"/>
+      <text class="a" x="380" y="160" text-anchor="middle">submits</text>
+      <line class="k" x1="380" y1="184" x2="380" y2="210"/>
+      <text class="c" x="388" y="202">M</text>
 
-      <rect class="e" x="600" y="560" width="250" height="96"/>
-      <rect class="h" x="600" y="560" width="250" height="24"/>
-      <text class="ht" x="725" y="577" text-anchor="middle">Risk notice</text>
-      <text class="a" x="612" y="602">warning message</text>
-      <text class="a" x="612" y="620">read or unread</text>
-      <text class="a" x="612" y="638">professor is the sender</text>
+      <line class="k" x1="655" y1="100" x2="655" y2="128"/>
+      <text class="c" x="708" y="146">1</text>
+      <polygon class="e" points="655,128 699,156 655,184 611,156"/>
+      <text class="a" x="655" y="160" text-anchor="middle">approves</text>
+      <path class="k" d="M655 184 V218 H460"/>
+      <text class="c" x="600" y="212">M</text>
 
-      <path class="ln" d="M16 130 H8 V422 H16"/>
-      <text class="r" x="20" y="300">1 student, M scores</text>
-      <path class="ln" d="M230 144 H218 V332 H180 V360"/>
-      <text class="r" x="240" y="324">professor records M</text>
-      <path class="ln" d="M206 90 H208 V352 H410 V360"/>
-      <text class="r" x="300" y="356">1 student, M files</text>
-      <path class="ln" d="M230 144 H218 V316 H725 V360"/>
-      <text class="r" x="520" y="348">sends M plans</text>
-      <path class="ln" d="M850 410 H1080 V608 H850"/>
-      <text class="r" x="860" y="530">sends M notices</text>
-      <path class="ln" d="M16 144 H8 V740 H725 V656"/>
-      <text class="r" x="280" y="732">1 student, M notices</text>
-      <path class="ln" d="M131 484 V520 H725 V470"/>
-      <text class="r" x="280" y="512">1 student, M plans</text>
-      <line class="ln" x1="530" y1="410" x2="600" y2="410"/>
-      <text class="r" x="536" y="402">0 or M</text>
+      <rect class="e" x="300" y="210" width="160" height="36"/>
+      <text class="nm" x="380" y="233" text-anchor="middle">Approved grade</text>
+      <line class="k" x1="310" y1="246" x2="230" y2="276"/>
+      <line class="k" x1="380" y1="246" x2="380" y2="276"/>
+      <line class="k" x1="450" y1="246" x2="530" y2="276"/>
+      <ellipse class="e" cx="230" cy="292" rx="38" ry="16"/>
+      <text class="a" x="230" y="296" text-anchor="middle">id (PK)</text>
+      <line class="pk" x1="204" y1="300" x2="256" y2="300"/>
+      <ellipse class="e" cx="380" cy="292" rx="58" ry="16"/>
+      <text class="a" x="380" y="296" text-anchor="middle">professor id (FK)</text>
+      <line class="fk" x1="332" y1="300" x2="428" y2="300"/>
+      <ellipse class="e" cx="530" cy="292" rx="58" ry="16"/>
+      <text class="a" x="530" y="296" text-anchor="middle">subject id (FK)</text>
+      <line class="fk" x1="482" y1="300" x2="578" y2="300"/>
+      <line class="k" x1="455" y1="246" x2="455" y2="320"/>
+      <line class="k" x1="280" y1="320" x2="500" y2="320"/>
+      <line class="k" x1="280" y1="320" x2="280" y2="332"/>
+      <line class="k" x1="400" y1="320" x2="400" y2="332"/>
+      <line class="k" x1="500" y1="320" x2="500" y2="332"/>
+      <ellipse class="e" cx="280" cy="348" rx="56" ry="16"/>
+      <text class="a" x="280" y="352" text-anchor="middle">period id (FK)</text>
+      <line class="fk" x1="236" y1="356" x2="324" y2="356"/>
+      <ellipse class="e" cx="400" cy="348" rx="34" ry="16"/>
+      <text class="a" x="400" y="352" text-anchor="middle">score</text>
+      <ellipse class="e" cx="500" cy="348" rx="40" ry="16"/>
+      <text class="a" x="500" y="352" text-anchor="middle">status</text>
+
+      <!-- Buses from Student and Professor down to the stored records -->
+      <path class="k" d="M40 82 H16 V392"/>
+      <text class="c" x="22" y="130">1</text>
+      <path class="k" d="M460 100 V112 H800 V392"/>
+      <text class="c" x="808" y="160">1</text>
+
+      <!-- Stored-record relationships -->
+      <path class="k" d="M16 392 H70 V406"/>
+      <polygon class="e" points="70,406 112,434 70,462 28,434"/>
+      <text class="a" x="70" y="426" text-anchor="middle">has</text>
+      <text class="a" x="70" y="446" text-anchor="middle">score</text>
+      <line class="k" x1="70" y1="462" x2="70" y2="520"/>
+      <text class="c" x="78" y="490">M</text>
+
+      <path class="k" d="M170 392 V406"/>
+      <polygon class="e" points="170,406 212,434 170,462 128,434"/>
+      <text class="a" x="170" y="438" text-anchor="middle">records</text>
+      <line class="k" x1="170" y1="462" x2="150" y2="520"/>
+      <text class="c" x="178" y="496">M</text>
+
+      <path class="k" d="M16 392 H320 V406"/>
+      <polygon class="e" points="320,406 362,434 320,462 278,434"/>
+      <text class="a" x="320" y="438" text-anchor="middle">uploads</text>
+      <line class="k" x1="320" y1="462" x2="320" y2="520"/>
+      <text class="c" x="328" y="490">M</text>
+
+      <path class="k" d="M560 392 V406"/>
+      <polygon class="e" points="560,406 602,434 560,462 518,434"/>
+      <text class="a" x="560" y="426" text-anchor="middle">sends</text>
+      <text class="a" x="560" y="446" text-anchor="middle">plan</text>
+      <line class="k" x1="560" y1="462" x2="600" y2="520"/>
+      <text class="c" x="572" y="496">M</text>
+
+      <path class="k" d="M16 392 H700 V406"/>
+      <polygon class="e" points="700,406 742,434 700,462 658,434"/>
+      <text class="a" x="700" y="426" text-anchor="middle">receives</text>
+      <text class="a" x="700" y="446" text-anchor="middle">plan</text>
+      <line class="k" x1="700" y1="462" x2="680" y2="520"/>
+      <text class="c" x="708" y="496">M</text>
+
+      <path class="k" d="M900 392 V406"/>
+      <polygon class="e" points="900,406 942,434 900,462 858,434"/>
+      <text class="a" x="900" y="426" text-anchor="middle">sends</text>
+      <text class="a" x="900" y="446" text-anchor="middle">notice</text>
+      <line class="k" x1="900" y1="462" x2="930" y2="520"/>
+      <text class="c" x="908" y="496">M</text>
+
+      <path class="k" d="M16 392 H1040 V406"/>
+      <polygon class="e" points="1040,406 1082,434 1040,462 998,434"/>
+      <text class="a" x="1040" y="426" text-anchor="middle">receives</text>
+      <text class="a" x="1040" y="446" text-anchor="middle">notice</text>
+      <line class="k" x1="1040" y1="462" x2="1010" y2="520"/>
+      <text class="c" x="1048" y="496">M</text>
+
+      <!-- Stored entities. One stem per entity, then a short branch to each attribute. -->
+      <rect class="e" x="30" y="520" width="180" height="36"/>
+      <text class="nm" x="120" y="543" text-anchor="middle">Graded score</text>
+      <line class="k" x1="52" y1="556" x2="52" y2="792"/>
+      <line class="k" x1="52" y1="592" x2="70" y2="592"/>
+      <ellipse class="e" cx="106" cy="592" rx="36" ry="16"/>
+      <text class="a" x="106" y="596" text-anchor="middle">id (PK)</text>
+      <line class="pk" x1="82" y1="600" x2="130" y2="600"/>
+      <line class="k" x1="52" y1="632" x2="70" y2="632"/>
+      <ellipse class="e" cx="124" cy="632" rx="54" ry="16"/>
+      <text class="a" x="124" y="636" text-anchor="middle">student id (FK)</text>
+      <line class="fk" x1="82" y1="640" x2="166" y2="640"/>
+      <line class="k" x1="52" y1="672" x2="70" y2="672"/>
+      <ellipse class="e" cx="114" cy="672" rx="44" ry="16"/>
+      <text class="a" x="114" y="676" text-anchor="middle">user id (FK)</text>
+      <line class="fk" x1="80" y1="680" x2="148" y2="680"/>
+      <line class="k" x1="52" y1="712" x2="70" y2="712"/>
+      <ellipse class="e" cx="116" cy="712" rx="46" ry="16"/>
+      <text class="a" x="116" y="716" text-anchor="middle">score type</text>
+      <line class="k" x1="52" y1="752" x2="70" y2="752"/>
+      <ellipse class="e" cx="104" cy="752" rx="34" ry="16"/>
+      <text class="a" x="104" y="756" text-anchor="middle">score</text>
+      <line class="k" x1="52" y1="792" x2="70" y2="792"/>
+      <ellipse class="e" cx="114" cy="792" rx="44" ry="16"/>
+      <text class="a" x="114" y="796" text-anchor="middle">maximum</text>
+
+      <rect class="e" x="250" y="520" width="140" height="36"/>
+      <text class="nm" x="320" y="543" text-anchor="middle">Study file</text>
+      <line class="k" x1="268" y1="556" x2="268" y2="752"/>
+      <line class="k" x1="268" y1="592" x2="286" y2="592"/>
+      <ellipse class="e" cx="322" cy="592" rx="36" ry="16"/>
+      <text class="a" x="322" y="596" text-anchor="middle">id (PK)</text>
+      <line class="pk" x1="298" y1="600" x2="346" y2="600"/>
+      <line class="k" x1="268" y1="632" x2="286" y2="632"/>
+      <ellipse class="e" cx="340" cy="632" rx="54" ry="16"/>
+      <text class="a" x="340" y="636" text-anchor="middle">student id (FK)</text>
+      <line class="fk" x1="298" y1="640" x2="382" y2="640"/>
+      <line class="k" x1="268" y1="672" x2="286" y2="672"/>
+      <ellipse class="e" cx="330" cy="672" rx="44" ry="16"/>
+      <text class="a" x="330" y="676" text-anchor="middle">user id (FK)</text>
+      <line class="fk" x1="296" y1="680" x2="364" y2="680"/>
+      <line class="k" x1="268" y1="712" x2="286" y2="712"/>
+      <ellipse class="e" cx="322" cy="712" rx="36" ry="16"/>
+      <text class="a" x="322" y="716" text-anchor="middle">topic</text>
+      <line class="k" x1="268" y1="752" x2="286" y2="752"/>
+      <ellipse class="e" cx="334" cy="752" rx="48" ry="16"/>
+      <text class="a" x="334" y="756" text-anchor="middle">attachment</text>
+
+      <line class="k" x1="390" y1="538" x2="418" y2="538"/>
+      <polygon class="e" points="455,512 493,538 455,564 417,538"/>
+      <text class="a" x="455" y="542" text-anchor="middle">links</text>
+      <text class="c" x="455" y="500" text-anchor="middle">0 or M</text>
+      <line class="k" x1="493" y1="538" x2="530" y2="538"/>
+
+      <rect class="e" x="530" y="520" width="200" height="36"/>
+      <text class="nm" x="630" y="543" text-anchor="middle">Sent plan</text>
+      <line class="k" x1="548" y1="556" x2="548" y2="792"/>
+      <line class="k" x1="548" y1="592" x2="566" y2="592"/>
+      <ellipse class="e" cx="602" cy="592" rx="36" ry="16"/>
+      <text class="a" x="602" y="596" text-anchor="middle">id (PK)</text>
+      <line class="pk" x1="578" y1="600" x2="626" y2="600"/>
+      <line class="k" x1="548" y1="632" x2="566" y2="632"/>
+      <ellipse class="e" cx="620" cy="632" rx="54" ry="16"/>
+      <text class="a" x="620" y="636" text-anchor="middle">student id (FK)</text>
+      <line class="fk" x1="578" y1="640" x2="662" y2="640"/>
+      <line class="k" x1="548" y1="672" x2="566" y2="672"/>
+      <ellipse class="e" cx="612" cy="672" rx="46" ry="16"/>
+      <text class="a" x="612" y="676" text-anchor="middle">sender (FK)</text>
+      <line class="fk" x1="576" y1="680" x2="648" y2="680"/>
+      <line class="k" x1="548" y1="712" x2="566" y2="712"/>
+      <ellipse class="e" cx="620" cy="712" rx="54" ry="16"/>
+      <text class="a" x="620" y="716" text-anchor="middle">record id (FK)</text>
+      <line class="fk" x1="578" y1="720" x2="662" y2="720"/>
+      <line class="k" x1="548" y1="752" x2="566" y2="752"/>
+      <ellipse class="e" cx="608" cy="752" rx="42" ry="16"/>
+      <text class="a" x="608" y="756" text-anchor="middle">plan text</text>
+      <line class="k" x1="548" y1="792" x2="566" y2="792"/>
+      <ellipse class="e" cx="614" cy="792" rx="48" ry="16"/>
+      <text class="a" x="614" y="796" text-anchor="middle">read status</text>
+
+      <rect class="e" x="840" y="520" width="200" height="36"/>
+      <text class="nm" x="940" y="543" text-anchor="middle">Risk notice</text>
+      <line class="k" x1="858" y1="556" x2="858" y2="752"/>
+      <line class="k" x1="858" y1="592" x2="876" y2="592"/>
+      <ellipse class="e" cx="912" cy="592" rx="36" ry="16"/>
+      <text class="a" x="912" y="596" text-anchor="middle">id (PK)</text>
+      <line class="pk" x1="888" y1="600" x2="936" y2="600"/>
+      <line class="k" x1="858" y1="632" x2="876" y2="632"/>
+      <ellipse class="e" cx="930" cy="632" rx="54" ry="16"/>
+      <text class="a" x="930" y="636" text-anchor="middle">student id (FK)</text>
+      <line class="fk" x1="888" y1="640" x2="972" y2="640"/>
+      <line class="k" x1="858" y1="672" x2="876" y2="672"/>
+      <ellipse class="e" cx="922" cy="672" rx="46" ry="16"/>
+      <text class="a" x="922" y="676" text-anchor="middle">sender (FK)</text>
+      <line class="fk" x1="886" y1="680" x2="958" y2="680"/>
+      <line class="k" x1="858" y1="712" x2="876" y2="712"/>
+      <ellipse class="e" cx="922" cy="712" rx="46" ry="16"/>
+      <text class="a" x="922" y="716" text-anchor="middle">message</text>
+      <line class="k" x1="858" y1="752" x2="876" y2="752"/>
+      <ellipse class="e" cx="924" cy="752" rx="48" ry="16"/>
+      <text class="a" x="924" y="756" text-anchor="middle">read status</text>
     </svg>
-    <p class="note">Student, Professor, Registrar staff, and Admin each have one login. The professor submits the grade and records every graded score. The registrar staff approves the grade. Admin views the list and stores nothing. Monitoring reads a grade only when its status is approved. Graded score, Study file, Sent plan, and Risk notice are stored by AI monitoring. A study file is not a graded score. A grade plan can leave the file link empty.</p>
+    <p class="note">A solid underline is the primary key. A dashed underline is a foreign key. Student and Professor use id as the primary key and user id as the foreign key to the login. Registrar staff and Admin are user accounts, so user id is their primary key and role id is the foreign key. Approved grade uses id as the primary key. Its foreign keys are professor id, subject id on the enrolled subject, and period id. The student is reached through that enrolled subject. Graded score and Study file use id as the primary key, with student id and user id as foreign keys. Sent plan and Risk notice use id as the primary key, with student id and sender id as foreign keys. Sent plan also has record id, a foreign key that can be empty. Period is Prelim, Midterm, or Final. Status is draft, submitted, or approved. Score type is quiz, exam, activity, or project. Monitoring reads a grade only when its status is approved. A study file is not a graded score. Admin stores nothing, so Admin has no relationship diamond.</p>
   </section>
 
   <section>

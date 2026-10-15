@@ -23,6 +23,7 @@ export default defineConfig(({ mode }) => ({
     vue(),
     useFileProtocolAssets(),
     VitePWA({
+      disable: mode === 'capacitor',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png'],
       manifest: {

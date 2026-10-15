@@ -21,20 +21,6 @@ const summaryCards = computed(() => [
     icon: 'M5 20v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2M12 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   },
   {
-    key: 'pending_document_requests',
-    label: 'Pending Document Requests',
-    value: dashboard.value.summary.pending_document_requests ?? 0,
-    tone: 'yellow',
-    icon: 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
-  },
-  {
-    key: 'todays_appointments',
-    label: "Today's Appointments",
-    value: dashboard.value.summary.todays_appointments ?? 0,
-    tone: 'teal',
-    icon: 'M5 5h14v16H5zM8 3v4M16 3v4M8 11h8M8 15h5',
-  },
-  {
     key: 'students_without_record_location',
     label: 'No Record Location',
     value: dashboard.value.summary.students_without_record_location ?? 0,
@@ -57,16 +43,10 @@ const quickActions = [
     icon: 'M4 5h16v15H4zM4 10h16M9 7.5h6M9 14h6',
   },
   {
-    label: 'Document Requests',
-    description: 'Review the active request queue',
-    to: { name: 'registrar-document-requests' },
-    icon: 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
-  },
-  {
-    label: 'Appointments',
-    description: 'Manage scheduled appointments',
-    to: { name: 'registrar-document-appointments' },
-    icon: 'M5 5h14v16H5zM8 3v4M16 3v4M8 11h8M8 15h5',
+    label: 'Monitoring',
+    description: 'Review academic early warnings',
+    to: { name: 'monitoring' },
+    icon: 'M3 12h4l3-8 4 16 3-8h4',
   },
 ]
 
@@ -85,26 +65,9 @@ const alerts = computed(() => [
   },
 ])
 
-function activityDestination(activity) {
-  if (activity.type === 'appointment') return { name: 'registrar-document-appointments' }
-  if (activity.type === 'record_location') return { name: 'physical-records' }
-
-  return {
-    name: 'registrar-document-requests',
-    query: activity.request_id ? { request_id: activity.request_id } : undefined,
-  }
-}
-
-function formatAppointmentTime(value) {
-  if (!value) return 'Time not set'
-
-  const date = new Date(`2000-01-01T${String(value).slice(0, 5)}:00`)
-  return new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit' }).format(date)
-}
-
-function readableStatus(status) {
-  return String(status || 'pending').replaceAll('_', ' ')
-}
+const recordActivity = computed(() =>
+  (dashboard.value.recent_activity || []).filter((activity) => activity.type === 'record_location'),
+)
 
 async function loadDashboard() {
   loading.value = true
@@ -128,7 +91,7 @@ onMounted(loadDashboard)
       <div>
         <p class="page-kicker">Registrar Staff</p>
         <h1 class="page-title">Registrar Dashboard</h1>
-        <p class="page-description">A live overview of student records, document requests, and appointments.</p>
+        <p class="page-description">A live overview of student records and academic monitoring.</p>
       </div>
       <button v-if="error" type="button" class="retry-button" :disabled="loading" @click="loadDashboard">
         Try again
@@ -195,78 +158,38 @@ onMounted(loadDashboard)
       </section>
     </div>
 
-    <div class="bottom-grid">
-      <section class="dashboard-panel activity-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="section-kicker">Latest updates</p>
-            <h2>Recent Activity</h2>
-          </div>
+    <section class="dashboard-panel activity-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="section-kicker">Latest updates</p>
+          <h2>Recent Activity</h2>
         </div>
-        <p v-if="loading" class="panel-state">Loading recent activity…</p>
-        <p v-else-if="!dashboard.recent_activity.length" class="panel-state">No recent activity yet.</p>
-        <div v-else class="activity-list">
-          <div class="table-heading activity-table-heading" aria-hidden="true">
-            <span>Activity</span>
-            <span>Updated</span>
-          </div>
-          <RouterLink
-            v-for="activity in dashboard.recent_activity"
-            :key="activity.id"
-            :to="activityDestination(activity)"
-            class="activity-item"
-          >
-            <span class="activity-dot" :class="activity.type" aria-hidden="true"></span>
-            <span class="activity-copy">
-              <strong>{{ activity.student_name }}</strong>
-              <span>{{ activity.action }}</span>
-              <small v-if="activity.detail">{{ activity.detail }}</small>
-            </span>
-            <time :datetime="activity.occurred_at" :title="formatExactDateTime(activity.occurred_at)">
-              {{ formatRelativeTime(activity.occurred_at) }}
-            </time>
-          </RouterLink>
+      </div>
+      <p v-if="loading" class="panel-state">Loading recent activity…</p>
+      <p v-else-if="!recordActivity.length" class="panel-state">No recent activity yet.</p>
+      <div v-else class="activity-list">
+        <div class="table-heading activity-table-heading" aria-hidden="true">
+          <span>Activity</span>
+          <span>Updated</span>
         </div>
-      </section>
-
-      <section class="dashboard-panel appointments-panel">
-        <div class="panel-heading appointment-heading">
-          <div>
-            <p class="section-kicker">Schedule</p>
-            <h2>Today's Appointments</h2>
-          </div>
-          <RouterLink :to="{ name: 'registrar-document-appointments', query: { group: 'today' } }" class="view-link">
-            View Appointments
-          </RouterLink>
-        </div>
-        <p v-if="loading" class="panel-state">Loading today's schedule…</p>
-        <div v-else-if="!dashboard.todays_appointments.length" class="empty-appointments">
-          <span aria-hidden="true">✓</span>
-          <strong>No appointments today</strong>
-          <p>The schedule is clear for the day.</p>
-        </div>
-        <div v-else class="appointment-list">
-          <div class="table-heading appointment-table-heading" aria-hidden="true">
-            <span>Time</span>
-            <span>Student / Document</span>
-            <span>Status</span>
-          </div>
-          <RouterLink
-            v-for="appointment in dashboard.todays_appointments"
-            :key="appointment.id"
-            :to="{ name: 'registrar-document-appointments', query: { appointment_id: appointment.id } }"
-            class="appointment-item"
-          >
-            <time>{{ formatAppointmentTime(appointment.appointment_time) }}</time>
-            <span class="appointment-copy">
-              <strong>{{ appointment.student_name }}</strong>
-              <small>{{ appointment.student_number }} · {{ appointment.document }}</small>
-            </span>
-            <span class="status-badge" :class="appointment.status">{{ readableStatus(appointment.status) }}</span>
-          </RouterLink>
-        </div>
-      </section>
-    </div>
+        <RouterLink
+          v-for="activity in recordActivity"
+          :key="activity.id"
+          :to="{ name: 'physical-records' }"
+          class="activity-item"
+        >
+          <span class="activity-dot" :class="activity.type" aria-hidden="true"></span>
+          <span class="activity-copy">
+            <strong>{{ activity.student_name }}</strong>
+            <span>{{ activity.action }}</span>
+            <small v-if="activity.detail">{{ activity.detail }}</small>
+          </span>
+          <time :datetime="activity.occurred_at" :title="formatExactDateTime(activity.occurred_at)">
+            {{ formatRelativeTime(activity.occurred_at) }}
+          </time>
+        </RouterLink>
+      </div>
+    </section>
   </section>
 </template>
 

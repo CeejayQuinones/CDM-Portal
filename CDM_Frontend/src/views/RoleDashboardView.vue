@@ -17,26 +17,15 @@ const ROLE_COPY = {
   Student: {
     kicker: 'Student workspace',
     title: 'Student Dashboard',
-    description: 'Track academics, documents, and campus activity from one place.',
+    description: 'Track academic monitoring and study help from one place.',
     highlights: [
       {
         label: 'Academics',
-        detail: 'Grades & monitoring',
+        detail: 'Monitoring and study help',
         icon: 'M4 19h16M7 16V8m5 8V5m5 11v-6',
-      },
-      {
-        label: 'Documents',
-        detail: 'Requests & appointments',
-        icon: 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
-      },
-      {
-        label: 'Events',
-        detail: 'Attendance & QR check-in',
-        icon: 'M5 5h14v16H5zM8 3v4M16 3v4M8 11h8M8 15h5',
       },
     ],
     tips: [
-      'Use Document Requests to schedule registrar appointments.',
       'Check Monitoring for academic risk alerts and study plans.',
       'Update your profile and theme anytime in Settings.',
     ],
@@ -44,28 +33,23 @@ const ROLE_COPY = {
   Professor: {
     kicker: 'Faculty workspace',
     title: 'Professor Dashboard',
-    description: 'Manage grading, academic monitoring, and event attendance.',
+    description: 'Record class scores, submit midterm and final, and follow academic monitoring.',
     highlights: [
       {
-        label: 'Grading',
-        detail: 'Submit and review grades',
-        icon: 'M4 19h16M7 16V8m5 8V5m5 11v-6',
+        label: 'Grade book',
+        detail: 'Scores, midterm, and final',
+        icon: 'M4 5h16v14H4zM4 9h16M8 5v14',
       },
       {
         label: 'Monitoring',
         detail: 'Advise at-risk students',
         icon: 'M3 12h4l3-8 4 16 3-8h4',
       },
-      {
-        label: 'Events',
-        detail: 'Attendance tracking',
-        icon: 'M5 5h14v16H5zM8 3v4M16 3v4M8 11h8M8 15h5',
-      },
     ],
     tips: [
-      'Open Grading to encode class results by period.',
+      'Open Monitoring and type scores in the grade sheet.',
+      'Submit midterm and final from that sheet for the registrar.',
       'Use Monitoring to review adviser alerts.',
-      'Scan or manage attendance under Event Attendance.',
     ],
   },
   Admin: {
@@ -98,21 +82,9 @@ const ROLE_COPY = {
 }
 
 const MODULE_META = {
-  grading: {
-    description: 'View and manage academic grades',
-    icon: 'M4 19h16M7 16V8m5 8V5m5 11v-6',
-  },
   monitoring: {
     description: 'Academic risk alerts and study plans',
     icon: 'M3 12h4l3-8 4 16 3-8h4',
-  },
-  'event-attendance': {
-    description: 'Campus events and QR attendance',
-    icon: 'M5 5h14v16H5zM8 3v4M16 3v4M8 11h8M8 15h5',
-  },
-  'student-document-requests': {
-    description: 'Request certificates and credentials',
-    icon: 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
   },
   settings: {
     description: 'Profile, display name, and preferences',

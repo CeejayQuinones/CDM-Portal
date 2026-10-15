@@ -21,7 +21,7 @@ const announcements = [
   { tag: 'Enrollment', month: 'AUG', day: '25', poster: 'Enrollment week', date: 'August 25, 2026', title: 'Enrollment Advisory', description: 'Review the enrollment reminders and prepare the required documents before visiting the Registrar’s Office.' },
   { tag: 'Registrar', month: 'AUG', day: '22', poster: 'Service hours', date: 'August 22, 2026', title: 'Registrar Office Schedule', description: 'Updated service hours are available for records, certifications, and other registrar assistance.' },
   { tag: 'Campus', month: 'AUG', day: '18', poster: 'Get involved', date: 'August 18, 2026', title: 'Campus Activity', description: 'Students are invited to join upcoming campus programs focused on community and engagement.' },
-  { tag: 'Documents', month: 'AUG', day: '15', poster: 'Before you visit', date: 'August 15, 2026', title: 'Document Request Notice', description: 'Verify your request details and appointment schedule before proceeding to the campus office.' },
+  { tag: 'Academics', month: 'AUG', day: '15', poster: 'Study support', date: 'August 15, 2026', title: 'Academic Monitoring', description: 'Review your standing, graded scores, and study plans from the student portal.' },
 ]
 
 // Placeholder event content: replace when an events data source becomes available.
@@ -109,7 +109,7 @@ const submit = async () => {
           <div class="hero-copy">
             <p class="hero-kicker"><span></span> Colegio de Montalban</p>
             <h1>Your campus services,<br /><em>one portal away.</em></h1>
-            <p class="hero-description">Access student records, enrollment, document requests, announcements, and campus services in one practical place.</p>
+            <p class="hero-description">Access student records, enrollment, academic monitoring, announcements, and campus services in one practical place.</p>
             <div class="hero-actions">
               <button type="button" class="yellow-button" @click="scrollTo('login')">Access the portal <span>→</span></button>
               <button type="button" class="text-button" @click="scrollTo('about')">Discover CDM <span>↓</span></button>
@@ -174,7 +174,7 @@ const submit = async () => {
             <!-- Placeholder school description: replace with approved institutional copy. -->
             <p>CDM Portal gives students and staff one clear place to access academic and registrar services. It keeps essential campus transactions easier to find, follow, and complete.</p>
             <div class="about-features">
-              <article><span>01</span><div><h3>Student services</h3><p>Enrollment, records, requests, and appointments in one place.</p></div></article>
+              <article><span>01</span><div><h3>Student services</h3><p>Enrollment, records, and academic monitoring in one place.</p></div></article>
               <article><span>02</span><div><h3>Campus updates</h3><p>Announcements and schedules that are easier to keep up with.</p></div></article>
             </div>
           </div>

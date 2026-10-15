@@ -64,27 +64,6 @@ const services = [
     featured: true,
   },
   {
-    name: 'grading',
-    label: 'Grading',
-    description: 'View released grades by subject and period',
-    path: '/grading',
-    icon: 'M4 19h16M7 16V8m5 8V5m5 11v-6',
-  },
-  {
-    name: 'document-requests',
-    label: 'Document Requests',
-    description: 'Request certificates and book registrar appointments',
-    path: '/document-requests',
-    icon: 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
-  },
-  {
-    name: 'event-attendance',
-    label: 'Event Attendance',
-    description: 'Campus events and QR check-in',
-    path: '/event-attendance',
-    icon: 'M5 5h14v16H5zM8 3v4M16 3v4M8 11h8M8 15h5',
-  },
-  {
     name: 'settings',
     label: 'Settings',
     description: 'Profile, display name, and theme preferences',
@@ -116,74 +95,62 @@ onMounted(loadAcademicSummary)
 
 <template>
   <section class="student-dashboard">
-    <header class="dash-hero">
-      <div class="dash-hero-copy">
-        <p class="dash-kicker">Student workspace</p>
-        <h1>Welcome back, {{ displayName }}</h1>
-        <p class="dash-lead">
-          Track your academic standing, documents, and campus activity from one place.
-        </p>
-        <div class="dash-meta">
-          <span class="meta-pill">{{ todayLabel }}</span>
-          <span v-if="unreadNotifications" class="meta-alert">
-            {{ unreadNotifications }} unread risk notice{{ unreadNotifications === 1 ? '' : 's' }}
-          </span>
-        </div>
+    <header class="page-head">
+      <div>
+        <p class="kicker">Student portal</p>
+        <h1>{{ displayName }}</h1>
+        <p class="sub">{{ todayLabel }}</p>
       </div>
+      <RouterLink v-if="unreadNotifications" class="notice" to="/monitoring">
+        {{ unreadNotifications }} unread notice{{ unreadNotifications === 1 ? '' : 's' }}
+      </RouterLink>
     </header>
 
-    <section class="monitor-card" :class="`risk-${riskLevel}`" aria-label="Academic monitoring summary">
-      <div class="monitor-main">
-        <div class="monitor-head">
-          <p class="dash-kicker">Academic Monitoring</p>
+    <section class="standing" :class="`risk-${riskLevel}`" aria-label="Academic monitoring summary">
+      <div class="standing-main">
+        <div class="standing-head">
+          <p class="kicker">Academic standing</p>
           <span class="risk-badge" :class="`tone-${riskLevel}`">{{ riskLabel }}</span>
         </div>
         <h2>{{ riskHeadline }}</h2>
-        <div class="monitor-stats">
-          <article>
-            <span>Average grade</span>
-            <strong>{{ riskLoading ? '—' : averageGrade }}</strong>
-          </article>
-          <article>
-            <span>Subjects tracked</span>
-            <strong>{{ riskLoading ? '—' : subjectCount }}</strong>
-          </article>
-          <article>
-            <span>Needs attention</span>
-            <strong>{{ riskLoading ? '—' : attentionSubjects }}</strong>
-          </article>
-        </div>
-        <div class="monitor-actions">
-          <RouterLink class="btn-primary" to="/monitoring">Open AI Monitoring</RouterLink>
-          <RouterLink class="btn-secondary" to="/monitoring">View study plan</RouterLink>
+        <dl class="metrics">
+          <div>
+            <dt>Average grade</dt>
+            <dd>{{ riskLoading ? '—' : averageGrade }}</dd>
+          </div>
+          <div>
+            <dt>Subjects</dt>
+            <dd>{{ riskLoading ? '—' : subjectCount }}</dd>
+          </div>
+          <div>
+            <dt>Needs attention</dt>
+            <dd>{{ riskLoading ? '—' : attentionSubjects }}</dd>
+          </div>
+        </dl>
+        <div class="actions">
+          <RouterLink class="btn-primary" to="/monitoring">Open monitoring</RouterLink>
         </div>
       </div>
-      <aside class="monitor-aside">
-        <p class="aside-title">What you can do</p>
+      <aside class="standing-aside">
+        <p class="aside-title">On this account</p>
         <ul>
-          <li>Review early-warning signals by subject</li>
-          <li>Ask AI Help for study guidance</li>
-          <li>Follow a weekly focus plan</li>
+          <li>Early warning from approved grades and graded scores</li>
+          <li>Study files, guides, and practice quizzes</li>
         </ul>
       </aside>
     </section>
 
     <section class="services" aria-label="Student services">
       <div class="section-head">
-        <div>
-          <p class="dash-kicker">Services</p>
-          <h2>Quick access</h2>
-        </div>
-        <p>Jump into the modules available on your student account.</p>
+        <h2>Services</h2>
+        <p>Monitoring and account settings for your account.</p>
       </div>
-
       <div class="service-grid">
         <RouterLink
           v-for="service in services"
           :key="service.name"
           :to="service.path"
           class="service-card"
-          :class="{ featured: service.featured }"
         >
           <span class="service-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -194,7 +161,6 @@ onMounted(loadAcademicSummary)
             <strong>{{ service.label }}</strong>
             <small>{{ service.description }}</small>
           </span>
-          <span class="service-arrow" aria-hidden="true">→</span>
         </RouterLink>
       </div>
     </section>
@@ -204,191 +170,137 @@ onMounted(loadAcademicSummary)
 <style scoped>
 .student-dashboard {
   --ink: var(--student-heading, #173d29);
-  --muted: var(--student-muted, var(--color-muted));
+  --muted: var(--student-muted, #5c6b62);
   --surface: var(--student-surface, #fff);
   --surface-soft: var(--student-surface-soft, #f4f8f5);
-  --border: var(--student-border, #c9d8ce);
-  --accent: var(--student-accent, #0d7856);
-  --shadow: var(--student-card-shadow, 0 12px 28px rgba(15, 75, 41, 0.07));
+  --border: var(--student-border, #d5e1d8);
+  --accent: var(--student-accent, #0d6940);
+  --shadow: var(--student-card-shadow, 0 10px 24px rgba(15, 75, 41, 0.06));
 
-  animation: page-enter 260ms ease both;
   display: grid;
-  gap: 20px;
+  gap: 18px;
   min-width: 0;
 }
 
-.dash-hero {
-  background:
-    radial-gradient(circle at 90% 15%, rgba(244, 211, 94, 0.2), transparent 30%),
-    linear-gradient(135deg, #063c26 0%, #0a6938 58%, #147a45 100%);
-  border: 1px solid #075631;
-  border-radius: 18px;
-  box-shadow: 0 18px 40px rgba(6, 60, 38, 0.16);
-  color: #fff;
-  overflow: hidden;
-  padding: 28px 30px;
-  position: relative;
-}
-
-.dash-hero::after {
-  background: linear-gradient(90deg, rgba(244, 211, 94, 0.9), transparent 60%);
-  bottom: 0;
-  content: '';
-  height: 3px;
-  left: 0;
-  position: absolute;
-  width: 42%;
-}
-
-.dash-kicker {
-  color: var(--accent);
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  margin: 0 0 8px;
-  text-transform: uppercase;
-}
-
-.dash-hero .dash-kicker {
-  color: rgba(244, 211, 94, 0.95);
-}
-
-.dash-hero h1 {
-  font-size: clamp(1.7rem, 3vw, 2.35rem);
-  line-height: 1.12;
-  margin: 0;
-}
-
-.dash-lead {
-  color: rgba(255, 255, 255, 0.9);
-  line-height: 1.6;
-  margin: 10px 0 0;
-  max-width: 48ch;
-}
-
-.dash-meta {
-  align-items: center;
+.page-head {
+  align-items: flex-end;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.meta-pill,
-.meta-alert {
-  border-radius: 999px;
-  font-size: 0.86rem;
-  padding: 7px 12px;
-}
-
-.meta-pill {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.meta-alert {
-  background: rgba(244, 211, 94, 0.2);
-  border: 1px solid rgba(244, 211, 94, 0.45);
-  color: #fff8d9;
-  font-weight: 700;
-}
-
-.monitor-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-  display: grid;
-  gap: 0;
-  grid-template-columns: minmax(0, 1.7fr) minmax(220px, 0.85fr);
-  overflow: hidden;
-}
-
-.monitor-card.risk-high {
-  border-color: color-mix(in srgb, #c2410c 35%, var(--border));
-}
-
-.monitor-card.risk-moderate {
-  border-color: color-mix(in srgb, #ca8a04 35%, var(--border));
-}
-
-.monitor-main {
-  display: grid;
   gap: 16px;
-  padding: 22px 24px;
-}
-
-.monitor-head {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
   justify-content: space-between;
 }
 
-.monitor-main h2 {
+.kicker {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.page-head h1 {
   color: var(--ink);
-  font-size: clamp(1.15rem, 2vw, 1.4rem);
-  line-height: 1.35;
+  font-size: clamp(1.6rem, 2.6vw, 2rem);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
   margin: 0;
+}
+
+.sub {
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
+.notice {
+  background: #fff8db;
+  border: 1px solid #ead48a;
+  border-radius: 999px;
+  color: #854d0e;
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.standing {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(220px, 0.8fr);
+  overflow: hidden;
+}
+
+.standing.risk-high { border-color: color-mix(in srgb, #c2410c 32%, var(--border)); }
+.standing.risk-moderate { border-color: color-mix(in srgb, #ca8a04 32%, var(--border)); }
+
+.standing-main {
+  display: grid;
+  gap: 14px;
+  padding: 22px 24px;
+}
+
+.standing-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.standing-main h2 {
+  color: var(--ink);
+  font-size: clamp(1.15rem, 2vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.4;
+  margin: 0;
+  max-width: 42ch;
 }
 
 .risk-badge {
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 800;
-  letter-spacing: 0.03em;
-  padding: 6px 11px;
+  letter-spacing: 0.04em;
+  padding: 6px 10px;
   text-transform: uppercase;
 }
 
-.risk-badge.tone-high {
-  background: #fff1e8;
-  color: #9a3412;
-}
+.risk-badge.tone-high { background: #fff1e8; color: #9a3412; }
+.risk-badge.tone-moderate { background: #fff8db; color: #854d0e; }
+.risk-badge.tone-low { background: #e8f7ee; color: #166534; }
+.risk-badge.tone-unknown { background: var(--surface-soft); color: var(--muted); }
 
-.risk-badge.tone-moderate {
-  background: #fff8db;
-  color: #854d0e;
-}
-
-.risk-badge.tone-low {
-  background: #e8f7ee;
-  color: #166534;
-}
-
-.risk-badge.tone-unknown {
-  background: var(--surface-soft);
-  color: var(--muted);
-}
-
-.monitor-stats {
+.metrics {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
 }
 
-.monitor-stats article {
-  background: var(--surface-soft);
+.metrics div {
+  background: #fff;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px 14px;
 }
 
-.monitor-stats span {
+.metrics dt {
   color: var(--muted);
-  display: block;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
-.monitor-stats strong {
+.metrics dd {
   color: var(--ink);
-  display: block;
   font-size: 1.45rem;
-  margin-top: 4px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  margin: 4px 0 0;
 }
 
-.monitor-actions {
+.actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -400,7 +312,7 @@ onMounted(loadAcademicSummary)
   border-radius: 10px;
   display: inline-flex;
   font-size: 0.92rem;
-  font-weight: 750;
+  font-weight: 700;
   min-height: 40px;
   padding: 0 14px;
 }
@@ -417,23 +329,22 @@ onMounted(loadAcademicSummary)
   color: var(--accent);
 }
 
-.monitor-aside {
-  background:
-    linear-gradient(160deg, rgba(13, 105, 64, 0.08), transparent 50%),
-    var(--surface-soft);
+.standing-aside {
+  background: #fff;
   border-left: 1px solid var(--border);
   display: grid;
+  align-content: start;
   gap: 12px;
   padding: 22px 20px;
 }
 
 .aside-title {
   color: var(--ink);
-  font-weight: 800;
+  font-weight: 750;
   margin: 0;
 }
 
-.monitor-aside ul {
+.standing-aside ul {
   color: var(--muted);
   display: grid;
   gap: 10px;
@@ -442,12 +353,12 @@ onMounted(loadAcademicSummary)
   padding: 0;
 }
 
-.monitor-aside li {
-  padding-left: 16px;
+.standing-aside li {
+  padding-left: 14px;
   position: relative;
 }
 
-.monitor-aside li::before {
+.standing-aside li::before {
   background: var(--accent);
   border-radius: 50%;
   content: '';
@@ -459,33 +370,25 @@ onMounted(loadAcademicSummary)
 }
 
 .services {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-  padding: 22px;
-}
-
-.section-head {
   display: grid;
-  gap: 4px;
-  margin-bottom: 16px;
+  gap: 12px;
 }
 
 .section-head h2 {
   color: var(--ink);
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   margin: 0;
 }
 
-.section-head > p {
+.section-head p {
   color: var(--muted);
-  margin: 0;
+  margin: 4px 0 0;
 }
 
 .service-grid {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .service-card {
@@ -493,43 +396,33 @@ onMounted(loadAcademicSummary)
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
+  box-shadow: var(--shadow);
   display: grid;
   gap: 14px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  padding: 14px 16px;
-  transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease,
-    background-color 160ms ease;
-}
-
-.service-card.featured {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 16px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .service-card:hover {
-  border-color: var(--accent);
-  box-shadow: var(--student-card-shadow-hover, 0 14px 28px rgba(13, 120, 86, 0.12));
-  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: var(--student-card-shadow-hover, 0 14px 28px rgba(13, 105, 64, 0.1));
 }
 
 .service-icon {
   align-items: center;
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
-  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-radius: 10px;
   color: var(--accent);
   display: flex;
-  height: 44px;
+  height: 42px;
   justify-content: center;
-  width: 44px;
+  width: 42px;
 }
 
 .service-icon svg {
-  height: 22px;
-  width: 22px;
+  height: 20px;
+  width: 20px;
 }
 
 .service-copy strong {
@@ -543,42 +436,33 @@ onMounted(loadAcademicSummary)
   display: block;
   font-size: 0.86rem;
   line-height: 1.45;
-  margin-top: 2px;
-}
-
-.service-arrow {
-  color: var(--accent);
-  font-weight: 700;
+  margin-top: 3px;
 }
 
 @media (max-width: 900px) {
-  .monitor-card {
+  .standing,
+  .service-grid {
     grid-template-columns: 1fr;
   }
 
-  .monitor-aside {
+  .standing-aside {
     border-left: 0;
     border-top: 1px solid var(--border);
   }
 }
 
 @media (max-width: 640px) {
-  .dash-hero,
-  .monitor-main,
-  .services {
-    padding: 20px;
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .monitor-stats {
+  .standing-main {
+    padding: 18px;
+  }
+
+  .metrics {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .student-dashboard,
-  .service-card {
-    animation: none;
-    transition: none;
   }
 }
 </style>

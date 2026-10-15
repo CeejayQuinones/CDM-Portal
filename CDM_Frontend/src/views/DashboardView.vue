@@ -8,9 +8,7 @@ const navigationStore = useNavigationStore()
 const authStore = useAuthStore()
 
 const MODULE_META = {
-  grading: { description: 'View and manage academic grades', icon: 'M4 19h16M7 16V8m5 8V5m5 11v-6' },
   monitoring: { description: 'Academic risk alerts and study plans', icon: 'M3 12h4l3-8 4 16 3-8h4' },
-  'event-attendance': { description: 'Campus events and QR attendance', icon: 'M5 5h14v16H5zM8 3v4M16 3v4M8 11h8M8 15h5' },
   admission: { description: 'Applicant cycles and intake review', icon: 'M12 3l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V7l8-4z' },
   enrollment: { description: 'Enrollment periods and sectioning', icon: 'M4 6h16M4 12h16M4 18h10' },
   'student-management': { description: 'Student profiles and digital records', icon: 'M5 20v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2M12 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8z' },

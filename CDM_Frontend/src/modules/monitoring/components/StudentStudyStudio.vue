@@ -131,7 +131,7 @@ function usableQuestions(list) {
 
 async function revealSession() {
   await nextTick()
-  document.querySelector('.quizlet-studio .session')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  document.querySelector('.study-studio .session')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 function withTimeout(promise, ms = 8000) {
@@ -284,12 +284,12 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="quizlet-studio">
+  <section class="study-studio">
     <header class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">Study Studio</p>
-        <h2>Make a review from your file</h2>
-        <p class="lead">Upload a file and the AI writes a study guide from it automatically. Flashcards and a quiz are still there if you want them. The chat is separate.</p>
+        <p class="eyebrow">Study materials</p>
+        <h2>Review from your uploaded file</h2>
+        <p class="lead">Upload notes and a study guide is prepared from that file. Flashcards and a practice quiz stay optional and do not change your risk score.</p>
       </div>
       <div class="hero-meta">
         <span class="chip">{{ studio.topics?.length || 0 }} study sets</span>
@@ -497,36 +497,24 @@ onMounted(load)
 </template>
 
 <style scoped>
-.quizlet-studio {
-  --ink: #282e3e;
-  --muted: #586380;
-  --line: #e4e6eb;
-  --soft: #f6f7fb;
-  --accent: #4255ff;
-  --accent-deep: #282e3e;
-  --ok: #178a4a;
-  --danger: #d92d20;
-  --shadow: 0 8px 24px rgba(40, 46, 62, 0.06);
-  animation: enter 320ms ease both;
-  background: #fff;
+.study-studio {
+  --ink: var(--student-heading, #173d29);
+  --muted: var(--student-muted, #5c6b62);
+  --line: var(--student-border, #d5e1d8);
+  --soft: var(--student-surface-soft, #f4f8f5);
+  --surface: var(--student-surface, #fff);
+  --accent: var(--student-accent, #0d6940);
+  --accent-deep: #0a5734;
+  --ok: #166534;
+  --danger: #9f2d25;
+  --shadow: var(--student-card-shadow, 0 10px 24px rgba(15, 75, 41, 0.06));
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 16px;
-  color: #282e3e;
-  color-scheme: light;
+  color: var(--ink);
   display: grid;
-  gap: 1rem;
-  padding: 1.25rem;
-}
-
-@keyframes enter {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  gap: 1.15rem;
+  padding: 1.35rem 1.4rem 1.5rem;
 }
 
 .hero {
@@ -538,7 +526,7 @@ onMounted(load)
 }
 
 .eyebrow {
-  color: #4255ff;
+  color: var(--accent);
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -548,9 +536,10 @@ onMounted(load)
 
 .hero h2 {
   color: var(--ink);
-  font-size: clamp(1.55rem, 3vw, 2.1rem);
-  letter-spacing: -0.03em;
-  line-height: 1.15;
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
   margin: 0;
 }
 
@@ -584,9 +573,9 @@ onMounted(load)
 }
 
 .chip {
-  background: #eceeff;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   border-radius: 999px;
-  color: #4255ff;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
   padding: 0.4rem 0.75rem;
@@ -614,7 +603,7 @@ onMounted(load)
 }
 
 .topic-plan label {
-  color: #282e3e;
+  color: var(--ink);
   display: grid;
   flex: 1;
   font-size: 0.82rem;
@@ -637,14 +626,14 @@ onMounted(load)
   background: #fff;
   border: 1px solid #e4e6eb;
   border-radius: 16px;
-  color: #282e3e;
+  color: var(--ink);
   display: grid;
   gap: 0.55rem;
   padding: 1rem;
 }
 
 .topic-result h3 {
-  color: #282e3e;
+  color: var(--ink);
   margin: 0;
 }
 
@@ -658,10 +647,10 @@ onMounted(load)
 
 .upload {
   align-items: center;
-  background: #f6f7fb;
-  border: 1.5px dashed #98a2ff;
+  background: #fff;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, var(--line));
   border-radius: 16px;
-  color: #282e3e;
+  color: var(--ink);
   cursor: pointer;
   display: grid;
   gap: 0.15rem;
@@ -674,12 +663,12 @@ onMounted(load)
 }
 
 .upload span {
-  color: #4255ff;
+  color: var(--accent);
   font-weight: 800;
 }
 
 .upload small {
-  color: #586380;
+  color: var(--muted);
 }
 
 .search {
@@ -723,23 +712,22 @@ onMounted(load)
 .set {
   align-items: start;
   background: #fff;
-  border: 1.5px solid var(--line);
-  border-radius: 16px;
-  box-shadow: 0 8px 18px rgba(15, 23, 32, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
   cursor: pointer;
   display: flex;
   gap: 0.75rem;
   justify-content: space-between;
   padding: 0.9rem 1rem;
   text-align: left;
-  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  transition: border-color 160ms ease, background-color 160ms ease;
 }
 
 .set:hover,
 .set.active {
-  border-color: #4255ff;
-  box-shadow: 0 10px 24px rgba(66, 85, 255, 0.12);
-  transform: translateY(-2px);
+  background: color-mix(in srgb, var(--accent) 12%, var(--soft));
+  border-color: var(--accent);
 }
 
 .set strong {
@@ -757,30 +745,28 @@ onMounted(load)
 .modes {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .mode {
   align-items: center;
-  background: #fff;
-  border: 1px solid #e4e6eb;
-  border-radius: 16px;
-  color: #282e3e;
-  color-scheme: light;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
   cursor: pointer;
   display: grid;
-  gap: 0.45rem;
-  justify-items: center;
-  min-height: 132px;
-  padding: 1rem 0.75rem;
-  text-align: center;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  gap: 0.15rem 0.75rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-items: start;
+  padding: 0.9rem 1rem;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .mode:hover:not(:disabled) {
   border-color: var(--accent);
   box-shadow: var(--shadow);
-  transform: translateY(-3px);
 }
 
 .mode:disabled {
@@ -790,33 +776,14 @@ onMounted(load)
 
 .mode-icon {
   align-items: center;
-  background: #eceeff;
-  border-radius: 14px;
-  color: #4255ff;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-radius: 10px;
+  color: var(--accent);
   display: grid;
-  height: 44px;
+  grid-row: span 2;
+  height: 40px;
   place-items: center;
-  width: 44px;
-}
-
-.mode.learn .mode-icon {
-  background: #e7f8f6;
-  color: #139e9e;
-}
-
-.mode.test .mode-icon {
-  background: #f4e9fb;
-  color: #8b3fc7;
-}
-
-.mode.match .mode-icon {
-  background: #fff6dc;
-  color: #c98900;
-}
-
-.mode.guide .mode-icon {
-  background: #e8f7ef;
-  color: #0d7856;
+  width: 40px;
 }
 
 .mode-icon svg {
@@ -825,20 +792,19 @@ onMounted(load)
 }
 
 .mode strong {
-  color: #282e3e;
+  color: var(--ink);
   font-size: 0.98rem;
 }
 
 .mode small {
-  color: #586380;
+  color: var(--muted);
   line-height: 1.35;
 }
 
 .session {
   background: #fff;
-  border: 1.5px solid var(--line);
-  border-radius: 22px;
-  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  border-radius: 14px;
   display: grid;
   gap: 1rem;
   padding: 1rem;
@@ -906,7 +872,7 @@ onMounted(load)
 
 .ghost {
   background: transparent;
-  color: #4255ff;
+  color: var(--accent);
   padding: 0.35rem 0.2rem;
 }
 
@@ -918,7 +884,7 @@ onMounted(load)
 }
 
 .pill.ok {
-  background: #4255ff;
+  background: var(--accent);
   color: #fff;
 }
 
@@ -953,7 +919,7 @@ onMounted(load)
   border: 1px solid #e4e6eb;
   border-radius: 16px;
   box-shadow: 0 10px 28px rgba(40, 46, 62, 0.08);
-  color: #282e3e;
+  color: var(--ink);
   display: grid;
   gap: 0.85rem;
   justify-items: center;
@@ -964,7 +930,7 @@ onMounted(load)
 }
 
 .study-card h3 {
-  color: #282e3e;
+  color: var(--ink);
   font-size: clamp(1.45rem, 2.8vw, 2rem);
   font-weight: 700;
   line-height: 1.3;
@@ -972,7 +938,7 @@ onMounted(load)
 }
 
 .card-kicker {
-  color: #586380;
+  color: var(--muted);
   letter-spacing: 0.08em;
   margin: 0;
   text-transform: uppercase;
@@ -1061,8 +1027,8 @@ onMounted(load)
 }
 
 .face.back {
-  background: #4255ff;
-  border-color: #4255ff;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
   transform: rotateY(180deg);
 }
@@ -1104,7 +1070,7 @@ onMounted(load)
 }
 
 .quiz-progress i {
-  background: #4257ff;
+  background: var(--accent);
   display: block;
   height: 100%;
 }
@@ -1169,13 +1135,13 @@ onMounted(load)
 
 .choice.selected {
   background: #f4f6ff;
-  border-color: #4257ff;
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(66, 87, 255, 0.16);
 }
 
 .choice.selected .letter {
-  background: #4257ff;
-  border-color: #4257ff;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
 
@@ -1220,7 +1186,7 @@ onMounted(load)
 }
 
 .scoreboard strong {
-  color: #282e3e;
+  color: var(--ink);
   font-size: 3.4rem;
   font-weight: 800;
   letter-spacing: -0.04em;
@@ -1310,7 +1276,7 @@ onMounted(load)
 }
 
 @media (max-width: 720px) {
-  .quizlet-studio {
+  .study-studio {
     padding: 1rem;
   }
 
