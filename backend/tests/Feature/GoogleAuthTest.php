@@ -128,13 +128,30 @@ class GoogleAuthTest extends TestCase
             && $context['reason'] === 'state_session_mismatch')->once();
     }
 
-    public function test_professor_and_student_password_login_is_denied_but_staff_and_guest_remain_password_based(): void
+    public function test_professor_supports_password_login_and_rejects_an_incorrect_password(): void
     {
-        foreach ([Role::PROFESSOR, Role::STUDENT] as $role) {
-            $user = $this->user($role, strtolower(str_replace(' ', '-', $role)).'@example.com');
-            $this->postJson('/api/login', ['username' => $user->username, 'password' => 'Password123!'])
-                ->assertUnauthorized()->assertJsonPath('message', 'This '.$role.' account must sign in with Google.');
-        }
+        $professor = $this->user(Role::PROFESSOR, 'professor-password@example.com');
+        $this->postJson('/api/login', ['username' => $professor->username, 'password' => 'Password123!'])
+            ->assertOk()
+            ->assertJsonPath('data.user.id', $professor->id);
+        $this->postJson('/api/login', ['username' => $professor->username, 'password' => 'WrongPassword123!'])
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Invalid username or password.');
+    }
+
+    public function test_student_supports_password_login_and_rejects_an_incorrect_password(): void
+    {
+        $student = $this->user(Role::STUDENT, 'student-password@example.com');
+        $this->postJson('/api/login', ['username' => $student->username, 'password' => 'Password123!'])
+            ->assertOk()
+            ->assertJsonPath('data.user.id', $student->id);
+        $this->postJson('/api/login', ['username' => $student->username, 'password' => 'WrongPassword123!'])
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Invalid username or password.');
+    }
+
+    public function test_staff_and_guest_password_policies_remain_unchanged(): void
+    {
         foreach ([Role::ADMIN, Role::REGISTRAR_STAFF, Role::GUEST] as $role) {
             $user = $this->user($role, strtolower(str_replace(' ', '-', $role)).'@example.com');
             $client = $role === Role::REGISTRAR_STAFF ? ClientPlatform::DESKTOP : ClientPlatform::WEB;

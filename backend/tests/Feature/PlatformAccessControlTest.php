@@ -36,6 +36,10 @@ class PlatformAccessControlTest extends TestCase
             'desktop admin' => [Role::ADMIN, ClientPlatform::DESKTOP],
             'web admin' => [Role::ADMIN, ClientPlatform::WEB],
             'web guest' => [Role::GUEST, ClientPlatform::WEB],
+            'web professor' => [Role::PROFESSOR, ClientPlatform::WEB],
+            'mobile professor' => [Role::PROFESSOR, ClientPlatform::MOBILE],
+            'web student' => [Role::STUDENT, ClientPlatform::WEB],
+            'mobile student' => [Role::STUDENT, ClientPlatform::MOBILE],
         ];
     }
 
@@ -66,15 +70,6 @@ class PlatformAccessControlTest extends TestCase
             'mobile admin' => [Role::ADMIN, ClientPlatform::MOBILE, 'This account is not permitted to use the Student mobile application.'],
             'mobile guest' => [Role::GUEST, ClientPlatform::MOBILE, 'This account is not permitted to use the Student mobile application.'],
         ];
-    }
-
-    public function test_student_and_professor_password_login_is_denied_on_allowed_platforms(): void
-    {
-        foreach ([Role::STUDENT, Role::PROFESSOR] as $role) {
-            $this->login($this->user($role), ClientPlatform::WEB)
-                ->assertUnauthorized()
-                ->assertJsonPath('message', 'This '.$role.' account must sign in with Google.');
-        }
     }
 
     public function test_login_rejects_missing_and_invalid_client_identifiers(): void
@@ -118,10 +113,9 @@ class PlatformAccessControlTest extends TestCase
             'assigned_at' => now(),
         ]);
 
-        $this->login($professor, ClientPlatform::DESKTOP)->assertUnauthorized()
-            ->assertJsonPath('message', 'This Professor account must sign in with Google.');
-        $this->login($professor, ClientPlatform::MOBILE)->assertUnauthorized()
-            ->assertJsonPath('message', 'This Professor account must sign in with Google.');
+        $this->login($professor, ClientPlatform::DESKTOP)->assertOk();
+        $this->login($professor, ClientPlatform::MOBILE)->assertForbidden()
+            ->assertJsonPath('message', 'Semi-Coordinator accounts use Desktop for Event management and Web for promotional viewing.');
     }
 
     #[DataProvider('boundTokenMatrix')]

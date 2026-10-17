@@ -23,6 +23,8 @@ export const ROUTE_ROLES = Object.freeze({
   'professor-dashboard': [ROLES.PROFESSOR],
   'registrar-dashboard': [ROLES.REGISTRAR_STAFF],
   'admin-dashboard': [ROLES.ADMIN],
+  'registrar-management': [ROLES.ADMIN],
+  'professor-management': [ROLES.REGISTRAR_STAFF],
   'student-document-requests': [ROLES.STUDENT],
   'student-document-appointments': [ROLES.STUDENT],
   'registrar-document-types': [ROLES.REGISTRAR_STAFF],
@@ -139,6 +141,16 @@ export const NAVIGATION_ITEMS = Object.freeze([
     path: '/admin-dashboard',
     icon: 'DB',
     roles: ROUTE_ROLES['admin-dashboard'],
+  },
+  {
+    name: 'account-management',
+    label: 'Account Management',
+    icon: 'AC',
+    roles: [ROLES.ADMIN, ROLES.REGISTRAR_STAFF],
+    children: [
+      { name: 'registrar-management', label: 'Registrar Management', path: '/admin/registrars', roles: ROUTE_ROLES['registrar-management'] },
+      { name: 'professor-management', label: 'Professor Management', path: '/registrar/professors', roles: ROUTE_ROLES['professor-management'] },
+    ],
   },
   {
     name: 'admission-menu',

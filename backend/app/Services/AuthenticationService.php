@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Role;
 use App\Models\User;
 use App\Support\ClientPlatform;
 use Illuminate\Auth\AuthenticationException;
@@ -33,10 +32,6 @@ class AuthenticationService
             || $user->status !== 'active'
             || ! Hash::check($credentials['password'], $user->password)) {
             throw new AuthenticationException('Invalid username or password.');
-        }
-
-        if (in_array($user->role?->role_name, [Role::PROFESSOR, Role::STUDENT], true)) {
-            throw new AuthenticationException('This '.$user->role->role_name.' account must sign in with Google.');
         }
 
         $this->clientAccess->ensureUserMayUse($user, $client);

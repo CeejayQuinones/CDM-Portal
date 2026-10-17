@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AccountProvisioningController;
 use App\Http\Controllers\Api\Admission\AdmissionApplicationController;
 use App\Http\Controllers\Api\Admission\AdmissionIdentityController;
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
@@ -45,6 +46,18 @@ Route::post('/registration/email-verification/verify', [AuthController::class, '
     ->middleware('throttle:5,1');
 
 Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void {
+    Route::prefix('admin')->middleware('role.admin')->group(function (): void {
+        Route::get('/registrars', [AccountProvisioningController::class, 'registrars']);
+        Route::post('/registrars', [AccountProvisioningController::class, 'storeRegistrar']);
+        Route::put('/registrars/{registrarStaff}', [AccountProvisioningController::class, 'updateRegistrar']);
+        Route::patch('/registrars/{registrarStaff}/status', [AccountProvisioningController::class, 'registrarStatus']);
+    });
+    Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
+        Route::get('/professors', [AccountProvisioningController::class, 'professors']);
+        Route::post('/professors', [AccountProvisioningController::class, 'storeProfessor']);
+        Route::put('/professors/{professor}', [AccountProvisioningController::class, 'updateProfessor']);
+        Route::patch('/professors/{professor}/status', [AccountProvisioningController::class, 'professorStatus']);
+    });
     Route::get('/student/dashboard', [DashboardSummaryController::class, 'student'])->middleware('role.student');
     Route::get('/professor/dashboard', [DashboardSummaryController::class, 'professor'])->middleware(['role.professor', 'professor.web']);
     Route::middleware('event.platform:promotion')->group(function (): void {

@@ -14,6 +14,7 @@ test('login keeps password access and clearly offers Google for existing Profess
   }
   assert.match(login, /clientPlatform === 'web'/)
   assert.match(login, /Google does not create an account/)
+  assert.doesNotMatch(frontendSources, /This (Professor|Student) account must sign in with Google/)
 })
 
 test('Google callback uses a one-time exchange and the existing auth store', () => {

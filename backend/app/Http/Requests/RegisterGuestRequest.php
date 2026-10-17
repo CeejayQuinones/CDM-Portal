@@ -38,6 +38,8 @@ class RegisterGuestRequest extends ApiFormRequest
             'nationality' => ['nullable', 'string', 'max:50'],
             'terms_accepted' => ['required', 'accepted'],
             'email_verification_token' => ['required', 'string', 'size:64'],
+            'role' => ['prohibited'],
+            'role_id' => ['prohibited'],
         ];
     }
 }

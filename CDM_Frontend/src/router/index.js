@@ -39,6 +39,7 @@ const EventAttendanceView = () => import('../modules/event-attendance/EventAtten
 const EventPromotionView = () => import('../modules/event-attendance/EventPromotionView.vue')
 const EventReportsView = () => import('../modules/event-attendance/EventReportsView.vue')
 const RegistrarDashboardView = () => import('../modules/registrar-dashboard/RegistrarDashboardView.vue')
+const AccountProvisioningView = () => import('../modules/account-management/AccountProvisioningView.vue')
 
 const protectedRoute = (route) => ({
   ...route,
@@ -157,6 +158,8 @@ const routes = [
           roles: ROUTE_ROLES['admin-dashboard'],
         },
       }),
+      protectedRoute({ path: 'admin/registrars', name: 'registrar-management', component: AccountProvisioningView, meta: { title: 'Registrar Management', roles: ROUTE_ROLES['registrar-management'] } }),
+      protectedRoute({ path: 'registrar/professors', name: 'professor-management', component: AccountProvisioningView, meta: { title: 'Professor Management', roles: ROUTE_ROLES['professor-management'] } }),
       ...admissionRoutes.map(protectedRoute),
       protectedRoute({ path: 'enrollment/sections', name: 'enrollment-sections', component: EnrollmentAcademicView, meta: { title: 'Sections', roles: ROUTE_ROLES['enrollment-sections'] } }),
       protectedRoute({ path: 'enrollment/subject-management', name: 'enrollment-subject-management', component: EnrollmentSubjectManagement, meta: { title: 'Subjects', roles: ROUTE_ROLES['enrollment-subject-management'] } }),
