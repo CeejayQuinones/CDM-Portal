@@ -1,26 +1,26 @@
 /* One root attribute restores Student and Registrar/Admin appearance across navigation. */
 html[data-student-theme='dark'] {
-  --bg-page: #0b1711;
-  --bg-surface: #10251a;
-  --bg-surface-alt: #153020;
-  --bg-surface-raised: #1a3927;
+  --bg-page: #070a08;
+  --bg-surface: #0d120f;
+  --bg-surface-alt: #121915;
+  --bg-surface-raised: #17201a;
   --bg-sidebar: #052f20;
-  --bg-input: #1b3526;
-  --bg-hover: #21452f;
-  --bg-header: rgb(7 52 29 / 97%);
-  --text-primary: #f1f4ef;
-  --text-secondary: #c2cec4;
-  --text-muted: #9fb2a3;
+  --bg-input: #111814;
+  --bg-hover: #19231c;
+  --bg-header: rgb(13 18 15 / 98%);
+  --text-primary: #f1f4f2;
+  --text-secondary: #bcc7c0;
+  --text-muted: #87958c;
   --tab-inactive: var(--text-secondary);
   --tab-active: var(--accent);
   --tab-hover: var(--bg-hover);
-  --border-color: #315a40;
-  --border-strong: #4a7658;
+  --border-color: #28382e;
+  --border-strong: #3b5142;
   --brand-primary: #106a2e;
   --brand-active: #168443;
-  --accent: #69c585;
-  --accent-hover: #82d49a;
-  --text-on-accent: #07170f;
+  --accent: #65bd80;
+  --accent-hover: #7bca92;
+  --text-on-accent: #07130c;
   --danger: #ef9a91;
   --danger-bg: #492925;
   --warning: #d9b94e;
@@ -31,14 +31,14 @@ html[data-student-theme='dark'] {
   --info-bg: #173526;
   --color-dartmouth-green: var(--brand-primary);
   --color-dark-spring-green: var(--brand-active);
-  --color-naples-yellow: #d9b94e;
+  --color-naples-yellow: #f4d35e;
   --shadow-soft: 0 10px 28px rgb(0 0 0 / 28%);
   --shadow-raised: 0 16px 38px rgb(0 0 0 / 38%);
   --surface-1: var(--bg-surface);
   --surface-2: var(--bg-surface-alt);
   --surface-3: var(--bg-surface-raised);
-  --skeleton-base: #1a3927;
-  --skeleton-highlight: #285039;
+  --skeleton-base: #17201a;
+  --skeleton-highlight: #233128;
   /* Legacy Student component aliases must live at root for Teleported dialogs. */
   --student-page: var(--bg-page);
   --student-page-background: var(--bg-page);
@@ -99,24 +99,24 @@ html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .regis
 
 @media (prefers-color-scheme: dark) {
   html[data-student-theme='system'] {
-    --bg-page: #0b1711;
-    --bg-surface: #10251a;
-    --bg-surface-alt: #153020;
-    --bg-surface-raised: #1a3927;
+    --bg-page: #070a08;
+    --bg-surface: #0d120f;
+    --bg-surface-alt: #121915;
+    --bg-surface-raised: #17201a;
     --bg-sidebar: #052f20;
-    --bg-input: #1b3526;
-    --bg-hover: #21452f;
-    --bg-header: rgb(7 52 29 / 97%);
-    --text-primary: #f1f4ef;
-    --text-secondary: #c2cec4;
-    --text-muted: #9fb2a3;
-    --border-color: #315a40;
-    --border-strong: #4a7658;
+    --bg-input: #111814;
+    --bg-hover: #19231c;
+    --bg-header: rgb(13 18 15 / 98%);
+    --text-primary: #f1f4f2;
+    --text-secondary: #bcc7c0;
+    --text-muted: #87958c;
+    --border-color: #28382e;
+    --border-strong: #3b5142;
     --brand-primary: #106a2e;
     --brand-active: #168443;
-    --accent: #69c585;
-    --accent-hover: #82d49a;
-    --text-on-accent: #07170f;
+    --accent: #65bd80;
+    --accent-hover: #7bca92;
+    --text-on-accent: #07130c;
     --danger: #ef9a91;
     --danger-bg: #492925;
     --warning: #d9b94e;
@@ -127,14 +127,14 @@ html[data-student-theme='dark'] :is(.student-portal-shell .shell-content, .regis
     --info-bg: #173526;
     --color-dartmouth-green: var(--brand-primary);
     --color-dark-spring-green: var(--brand-active);
-    --color-naples-yellow: #d9b94e;
+    --color-naples-yellow: #f4d35e;
     --shadow-soft: 0 10px 28px rgb(0 0 0 / 28%);
     --shadow-raised: 0 16px 38px rgb(0 0 0 / 38%);
     --surface-1: var(--bg-surface);
     --surface-2: var(--bg-surface-alt);
     --surface-3: var(--bg-surface-raised);
-    --skeleton-base: #1a3927;
-    --skeleton-highlight: #285039;
+    --skeleton-base: #17201a;
+    --skeleton-highlight: #233128;
     --student-page: var(--bg-page);
     --student-page-background: var(--bg-page);
     --student-surface: var(--bg-surface);
@@ -270,6 +270,22 @@ html[data-student-theme='dark'] .app-shell .navbar {
   color: var(--text-primary);
 }
 
+html[data-student-theme='dark'] .app-shell :is(
+  .modal-backdrop,
+  .grading-modal-backdrop,
+  .event-modal-backdrop,
+  .admission-dialog-backdrop,
+  .dr-dialog-overlay,
+  .request-detail-backdrop,
+  .appointment-details-backdrop,
+  .history-modal-backdrop,
+  .availability-modal-backdrop,
+  .step-up-backdrop,
+  .student-workflow-backdrop
+) {
+  background-color: rgb(0 0 0 / 70%);
+}
+
 @media (prefers-color-scheme: dark) {
   html[data-student-theme='system'] .app-shell :is(.page-title, .monitoring-header h1, .grading-hero h1) {
     color: var(--text-primary);
@@ -310,6 +326,22 @@ html[data-student-theme='dark'] .app-shell .navbar {
   html[data-student-theme='system'] .app-shell .navbar {
     background: var(--bg-header);
     color: var(--text-primary);
+  }
+
+  html[data-student-theme='system'] .app-shell :is(
+    .modal-backdrop,
+    .grading-modal-backdrop,
+    .event-modal-backdrop,
+    .admission-dialog-backdrop,
+    .dr-dialog-overlay,
+    .request-detail-backdrop,
+    .appointment-details-backdrop,
+    .history-modal-backdrop,
+    .availability-modal-backdrop,
+    .step-up-backdrop,
+    .student-workflow-backdrop
+  ) {
+    background-color: rgb(0 0 0 / 70%);
   }
 }
 

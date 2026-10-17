@@ -40,6 +40,9 @@ class User extends Authenticatable
     protected $fillable = [
         'username',
         'password',
+        'google_subject_id',
+        'google_email',
+        'google_linked_at',
         'role_id',
         'status',
         'is_first_login',
@@ -64,6 +67,7 @@ class User extends Authenticatable
         return [
             'password' => 'hashed',
             'last_login' => 'datetime',
+            'google_linked_at' => 'datetime',
             'is_first_login' => 'boolean',
         ];
     }

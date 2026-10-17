@@ -27,12 +27,27 @@ class StudentDocumentResource extends JsonResource
             'status' => $this->availability_status,
             'availability_status' => $this->availability_status,
             'verification_status' => $this->verification_status,
+            'digital_status' => ! $this->file_path || $this->availability_status === 'missing'
+                ? 'missing'
+                : match ($this->verification_status) {
+                    'verified' => 'verified',
+                    'rejected' => 'needs_resubmission',
+                    default => 'under_review',
+                },
+            'version' => $this->verification_version,
             'received_at' => $this->submitted_date?->toDateString(),
             'submitted_date' => $this->submitted_date?->toDateString(),
-            // The current schema has no verifier audit fields; keep these explicit for the read-only UI.
-            'verified_date' => null,
-            'verified_by' => null,
+            'verified_date' => $this->verified_at?->toISOString(),
+            'verified_at' => $this->verified_at?->toISOString(),
+            'verified_by' => $this->whenLoaded('verifiedBy', fn () => $this->verifiedBy
+                ? (trim(($this->verifiedBy->profile?->first_name ?? '').' '.($this->verifiedBy->profile?->last_name ?? '')) ?: $this->verifiedBy->username)
+                : null),
             'remarks' => $this->remarks,
+            'physical_status' => $this->physical_copy_status,
+            'physical_copy_status' => $this->physical_copy_status,
+            'physical_copy_required_at' => $this->physical_copy_required_at?->toISOString(),
+            'physical_copy_received_at' => $this->physical_copy_received_at?->toISOString(),
+            'physical_copy_instruction' => $this->physical_copy_instruction,
             'ai_analysis' => $this->whenLoaded('aiAnalysis', fn () => $this->file_path && $this->aiAnalysis ? [
                 'status' => $this->aiAnalysis->status,
                 'detected_document_type' => $this->aiAnalysis->detected_document_type,

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Role;
 use App\Models\User;
 use App\Support\ClientPlatform;
 use Illuminate\Auth\AuthenticationException;
@@ -34,19 +35,26 @@ class AuthenticationService
             throw new AuthenticationException('Invalid username or password.');
         }
 
+        if (in_array($user->role?->role_name, [Role::PROFESSOR, Role::STUDENT], true)) {
+            throw new AuthenticationException('This '.$user->role->role_name.' account must sign in with Google.');
+        }
+
         $this->clientAccess->ensureUserMayUse($user, $client);
 
-        $user->forceFill([
-            'last_login' => now(),
-        ])->save();
+        return $this->issueToken($user, $client);
+    }
 
-        return [
-            'user' => $user->fresh(['role', 'profile']),
-            'token' => $user->createToken(
-                'CDM Portal API Token ('.$client.')',
-                [ClientPlatform::ability($client)],
-            )->plainTextToken,
-        ];
+    /** @return array{user: User, token: string} */
+    public function issueToken(User $user, string $client): array
+    {
+        abort_unless($user->status === 'active', 403, 'This account is not active.');
+        $this->clientAccess->ensureUserMayUse($user, $client);
+        $user->forceFill(['last_login' => now()])->save();
+
+        return ['user' => $user->fresh(['role', 'profile']), 'token' => $user->createToken(
+            'CDM Portal API Token ('.$client.')',
+            [ClientPlatform::ability($client)],
+        )->plainTextToken];
     }
 
     /**

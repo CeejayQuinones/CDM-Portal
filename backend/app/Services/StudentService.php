@@ -126,7 +126,9 @@ class StudentService
     private function applyAttention(Builder $query, string $attention): void
     {
         $profile = fn (Builder $q) => $q->whereNull('birth_date')->orWhereNull('email')->orWhereNull('contact_number')->orWhereNull('address');
-        $documents = fn (Builder $q) => $q->where('availability_status', 'missing')->orWhere('verification_status', 'pending');
+        $documents = fn (Builder $q) => $q->where('availability_status', 'missing')
+            ->orWhereIn('verification_status', ['pending', 'rejected'])
+            ->orWhere('physical_copy_status', 'required');
         $query->where(function (Builder $attentionQuery) use ($attention, $profile, $documents): void {
             if (in_array($attention, ['any', 'physical_record'], true)) {
                 $attentionQuery->orWhereDoesntHave('physicalRecordLocation');

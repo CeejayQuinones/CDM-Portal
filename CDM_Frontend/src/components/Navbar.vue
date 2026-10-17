@@ -12,6 +12,14 @@ defineProps({
     type: String,
     default: 'CDM Portal',
   },
+  showMenuButton: {
+    type: Boolean,
+    default: false,
+  },
+  sidebarOpen: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['toggle-sidebar'])
@@ -68,8 +76,10 @@ const resetDemo = async () => {
   <header class="navbar">
     <button
       class="menu-button"
+      :class="{ 'is-visible': showMenuButton }"
       type="button"
       aria-label="Toggle sidebar"
+      :aria-expanded="sidebarOpen"
       title="Toggle navigation"
       @click="emit('toggle-sidebar')"
     >
@@ -146,6 +156,10 @@ const resetDemo = async () => {
   border-radius: 8px;
   background: var(--color-surface);
   cursor: pointer;
+}
+
+.menu-button.is-visible {
+  display: flex;
 }
 
 .menu-button:hover {

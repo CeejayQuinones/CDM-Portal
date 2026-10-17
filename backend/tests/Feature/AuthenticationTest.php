@@ -38,7 +38,7 @@ class AuthenticationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.username', $user->username)
-            ->assertJsonPath('data.role.role_name', Role::STUDENT);
+            ->assertJsonPath('data.role.role_name', Role::GUEST);
 
         $this->withToken($token)
             ->postJson('/api/logout')
@@ -201,9 +201,10 @@ class AuthenticationTest extends TestCase
 
     private function createActiveUser(): User
     {
-        $role = Role::query()->create([
-            'role_name' => Role::STUDENT,
-            'description' => 'Student role for authentication tests.',
+        $role = Role::query()->firstOrCreate([
+            'role_name' => Role::GUEST,
+        ], [
+            'description' => 'Guest role for authentication tests.',
         ]);
 
         return User::factory()->create([

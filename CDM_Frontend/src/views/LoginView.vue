@@ -5,6 +5,8 @@ import RegistrationWizard from '../components/RegistrationWizard.vue'
 import { useAuthStore } from '../stores/authStore'
 import { dashboardForRole } from '../utils/roleDashboard'
 import { runLoginRequest } from '../utils/loginFlow'
+import { apiClient } from '../services/apiClient'
+import { clientPlatform } from '../config/clientPlatform'
 import logoUrl from '../assets/styles/images/cdm_logo.png'
 
 const router = useRouter()
@@ -64,6 +66,37 @@ const submit = async () => {
   })
 }
 
+const googleSignIn = () => {
+  formError.value = ''
+  const base = new URL(apiClient.defaults.baseURL || '/api', window.location.origin)
+  const backendOrigin = base.pathname.replace(/\/api\/?$/, '')
+  const popup = window.open(`${base.origin}${backendOrigin}/auth/google/redirect?client=${encodeURIComponent(clientPlatform)}`, 'cdm-google-auth', 'popup,width=520,height=700')
+  if (!popup) {
+    formError.value = 'Allow pop-ups to continue with Google.'
+    return
+  }
+  const receive = async (event) => {
+    if (event.origin !== base.origin || event.data?.type !== 'cdm-google-auth') return
+    window.removeEventListener('message', receive)
+    popup.close()
+    if (event.data.error) {
+      formError.value = event.data.error
+      return
+    }
+    isLoading.value = true
+    try {
+      await authStore.exchangeGoogleCode(event.data.code)
+      const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
+      await router.replace(destination)
+    } catch (error) {
+      formError.value = error.response?.data?.message || 'Google sign-in could not be completed. Please try again.'
+    } finally {
+      isLoading.value = false
+    }
+  }
+  window.addEventListener('message', receive)
+}
+
 const registrationComplete = () => {
   showRegistration.value = false
   registrationSuccess.value = true
@@ -120,7 +153,22 @@ const registrationComplete = () => {
               <div class="input-with-icon password-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="password" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Enter your password" :aria-invalid="Boolean(errors.password)" /><button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Hide' : 'Show' }}</button></div>
               <p v-if="errors.password" class="field-error">{{ errors.password }}</p>
               <button class="sign-in-button" type="submit" :disabled="isLoading">{{ isLoading ? 'Signing in…' : 'Sign in to portal' }} <span>→</span></button>
-              <div class="divider"><span>New to CDM Portal?</span></div>
+              <template v-if="clientPlatform === 'web'">
+                <div class="google-auth-option">
+                  <div class="divider google-divider"><span>Professor or Student?</span></div>
+                  <button class="google-sign-in-button" type="button" :disabled="isLoading" @click="googleSignIn">
+                    <svg class="google-sign-in-icon" viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.24-.2-1.79H12v3.4h5.52a4.71 4.71 0 0 1-2.05 3.09l-.02.11 2.98 2.31.21.02c1.94-1.79 2.96-4.43 2.96-7.14Z" />
+                      <path fill="#34A853" d="M12 22c2.7 0 4.97-.89 6.63-2.43l-3.17-2.45c-.85.58-2 1-3.46 1a6.01 6.01 0 0 1-5.68-4.15l-.11.01-3.1 2.4-.04.11A10 10 0 0 0 12 22Z" />
+                      <path fill="#FBBC05" d="M6.32 13.97A6.16 6.16 0 0 1 6 12c0-.69.12-1.36.31-1.97v-.12L3.18 7.47l-.1.05A10 10 0 0 0 2 12c0 1.61.38 3.14 1.07 4.49l3.25-2.52Z" />
+                      <path fill="#EA4335" d="M12 5.88c1.88 0 3.15.81 3.88 1.49l2.82-2.76A9.57 9.57 0 0 0 12 2a10 10 0 0 0-8.93 5.52l3.24 2.51A6.03 6.03 0 0 1 12 5.88Z" />
+                    </svg>
+                    <span>Continue with Google</span>
+                  </button>
+                  <p class="google-account-note">Professor and Student accounts must already exist in CDM Portal. Google does not create an account.</p>
+                </div>
+              </template>
+              <div class="divider guest-divider"><span>New to CDM Portal?</span></div>
               <button class="sign-up-button" type="button" @click="showRegistration = true">Create a Guest account</button>
             </form>
             <p class="legal-links"><RouterLink to="/terms">Terms & Conditions</RouterLink><span>·</span><RouterLink to="/privacy">Privacy Policy</RouterLink></p>

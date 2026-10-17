@@ -126,7 +126,7 @@ class StudentDocumentAiAnalysisTest extends TestCase
         Storage::disk('local')->assertDirectoryEmpty('/');
     }
 
-    public function test_replacement_updates_the_path_deletes_the_old_file_and_requeues_analysis(): void
+    public function test_replacement_updates_the_path_preserves_submission_history_and_requeues_analysis(): void
     {
         Queue::fake();
         $student = $this->createStudent();
@@ -148,8 +148,10 @@ class StudentDocumentAiAnalysisTest extends TestCase
 
         $newPath = $document->fresh()->file_path;
         $this->assertNotSame($oldPath, $newPath);
-        Storage::disk('local')->assertMissing($oldPath);
+        Storage::disk('local')->assertExists($oldPath);
         Storage::disk('local')->assertExists($newPath);
+        $this->assertDatabaseHas('student_document_submissions', ['student_document_id' => $document->id, 'version' => 1, 'file_path' => $oldPath]);
+        $this->assertDatabaseHas('student_document_submissions', ['student_document_id' => $document->id, 'version' => 2, 'file_path' => $newPath]);
         Queue::assertPushed(AnalyzeStudentDocument::class, 1);
     }
 

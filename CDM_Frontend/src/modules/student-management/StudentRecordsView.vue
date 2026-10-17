@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import PaginationControls from '../../components/PaginationControls.vue'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
@@ -35,7 +35,40 @@ const quickError = ref('')
 const quickOpen = ref(false)
 const productivityLoading = ref(true)
 const productivityError = ref('')
-const productivity = reactive({ recent_students: [], saved_filters: [], visible_columns: [], attention: { total: 0, students: [] }, today: {} })
+const attentionCategories = [
+  { value: 'all', label: 'All' }, { value: 'digital_missing', label: 'Digital Missing' },
+  { value: 'awaiting_review', label: 'Awaiting Review' }, { value: 'needs_resubmission', label: 'Needs Resubmission' },
+  { value: 'hard_copy_required', label: 'Hard Copy Required' }, { value: 'physical_records', label: 'Physical Records' },
+]
+const productivity = reactive({ recent_students: [], saved_filters: [], visible_columns: [], attention: { total: 0, students: [], items: [], categories: attentionCategories }, today: {} })
+const attentionCategory = ref('all')
+const documentRequirementsOpen = ref(false)
+const documentRequirementsDialog = ref(null)
+const documentRequirementsClose = ref(null)
+const filtersOpen = ref(false)
+const documentRequirementCount = computed(() => productivity.attention.requirements_total || 0)
+const attentionItems = computed(() => attentionCategory.value === 'all'
+  ? (productivity.attention.items || [])
+  : (productivity.attention.items || []).filter(item => item.attention_reasons?.includes(attentionCategory.value)))
+const physicalAttentionStudents = computed(() => (productivity.attention.students || []).filter(student =>
+  student.completeness?.issues?.some(issue => issue.area === 'physical_record')))
+const nonDocumentAttentionStudents = computed(() => (productivity.attention.students || []).map(student => ({
+  ...student,
+  completeness: {
+    ...student.completeness,
+    issues: (student.completeness?.issues || []).filter(issue => issue.area !== 'documents'),
+  },
+})).filter(student => student.completeness.issues.length))
+const activeAdvancedFilterCount = computed(() => [
+  filters.course,
+  filters.year_level,
+  filters.section,
+  filters.student_status,
+  filters.attention,
+  filters.physical_record_status,
+  filters.sort !== 'student_number' ? filters.sort : '',
+  filters.direction !== 'asc' ? filters.direction : '',
+].filter(Boolean).length)
 const savedFilterId = ref('')
 const savedFilterName = ref('')
 const columnOptions = [
@@ -46,6 +79,8 @@ const visibleColumns = ref(columnOptions.map(([key]) => key))
 const sessionKey = computed(() => `student-records-session:${auth.currentUser?.id || 'unknown'}`)
 let bulkOptionsLoaded = false
 let bulkOptionsRequest = null
+let documentRequirementsTrigger = null
+let previousBodyOverflow = ''
 
 const statuses = ['regular', 'irregular', 'graduated', 'transferred', 'dropped', 'leave_of_absence']
 const showColumn = (column) => ['student_number', 'name'].includes(column) || visibleColumns.value.includes(column)
@@ -178,8 +213,8 @@ function applyFilters() {
   fetchStudents(1)
 }
 
-function resetFilters() {
-  Object.assign(filters, { search: '', course: '', year_level: '', section: '', student_status: '', attention: '', physical_record_status: '', sort: 'student_number', direction: 'asc' })
+function clearAdvancedFilters() {
+  Object.assign(filters, { course: '', year_level: '', section: '', student_status: '', attention: '', physical_record_status: '', sort: 'student_number', direction: 'asc' })
   savedFilterId.value = ''
   clearSelection()
   fetchStudents(1)
@@ -188,6 +223,44 @@ function resetFilters() {
 function viewStudent(id) {
   persistSession()
   router.push({ name: 'student-details', params: { id } })
+}
+function reviewRequirement(item) {
+  closeDocumentRequirements(false)
+  persistSession()
+  router.push({ name: 'student-documents', params: { id: item.student_id }, query: { document: item.document_type_id } })
+}
+
+async function openDocumentRequirements(event) {
+  documentRequirementsTrigger = event?.currentTarget || null
+  previousBodyOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+  documentRequirementsOpen.value = true
+  await nextTick()
+  documentRequirementsClose.value?.focus()
+}
+
+function closeDocumentRequirements(restoreFocus = true) {
+  if (!documentRequirementsOpen.value) return
+  documentRequirementsOpen.value = false
+  document.body.style.overflow = previousBodyOverflow
+  if (restoreFocus) nextTick(() => documentRequirementsTrigger?.focus())
+}
+
+function trapDocumentRequirementsFocus(event) {
+  if (event.key !== 'Tab') return
+  const focusable = [...(documentRequirementsDialog.value?.querySelectorAll(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  ) || [])]
+  if (!focusable.length) return
+  const first = focusable[0]
+  const last = focusable.at(-1)
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
 }
 
 function editableFilters() {
@@ -268,6 +341,7 @@ function handleKeyboard(event) {
   }
   if (event.key === 'Escape') {
     quickOpen.value = false
+    closeDocumentRequirements()
     closeConfirmation()
   }
 }
@@ -354,7 +428,10 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
   Promise.all([fetchStudents(page), fetchProductivity()])
 })
-onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyboard))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyboard)
+  if (documentRequirementsOpen.value) document.body.style.overflow = previousBodyOverflow
+})
 </script>
 
 <template>
@@ -381,25 +458,35 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyboard))
   </section>
 
   <p v-if="productivityError" class="notice notice-error" role="alert">{{ productivityError }} <button type="button" @click="fetchProductivity">Retry</button></p>
-  <section v-else class="productivity-grid" aria-label="Registrar Student Records productivity">
-    <article class="productivity-card today-card"><div><p class="page-kicker">Today</p><h2>Activity</h2></div><div class="activity-stats"><span><strong>{{ productivity.today.students_viewed || 0 }}</strong> viewed</span><span><strong>{{ productivity.today.records_updated || 0 }}</strong> updated</span><span><strong>{{ productivity.today.physical_records_moved || 0 }}</strong> moved</span><span><strong>{{ productivity.today.documents_updated || 0 }}</strong> documents</span></div></article>
-    <article class="productivity-card"><div class="card-heading"><div><p class="page-kicker">Your workspace</p><h2>Recently Viewed</h2></div><span>{{ productivityLoading ? 'Loading…' : `${productivity.recent_students.length} records` }}</span></div><p v-if="!productivityLoading && !productivity.recent_students.length" class="empty-state">No recently viewed Students.</p><div class="compact-records"><button v-for="student in productivity.recent_students" :key="student.id" type="button" @click="viewStudent(student.id)"><strong>{{ student.student_number }} · {{ student.name }}</strong><span>{{ student.program || 'No program' }} · {{ student.section || 'No Section' }} · {{ new Date(student.viewed_at).toLocaleString() }}</span></button></div></article>
-    <article class="productivity-card"><div class="card-heading"><div><p class="page-kicker">Operational queue</p><h2>Needs Attention</h2></div><strong>{{ productivity.attention.total || 0 }}</strong></div><p v-if="!productivityLoading && !productivity.attention.students.length" class="empty-state">No Student records currently need attention.</p><div class="compact-records"><button v-for="student in productivity.attention.students" :key="student.id" type="button" @click="viewStudent(student.id)"><strong>{{ student.student_number }} · {{ student.name }}</strong><span>{{ student.completeness.label }} · {{ student.completeness.issues.map(issue => issue.label).join(' ') }}</span></button></div></article>
+  <section v-else class="productivity-grid" :class="{ 'has-attention': nonDocumentAttentionStudents.length }" aria-label="Registrar Student Records productivity">
+    <article class="productivity-card recent-card"><div class="card-heading"><div><p class="page-kicker">Your workspace</p><h2>Recently Viewed</h2></div><span>{{ productivityLoading ? 'Loading…' : `${productivity.recent_students.length} records` }}</span></div><p v-if="!productivityLoading && !productivity.recent_students.length" class="empty-state">No recently viewed Students.</p><div class="compact-records"><button v-for="student in productivity.recent_students" :key="student.id" type="button" @click="viewStudent(student.id)"><strong>{{ student.student_number }} · {{ student.name }}</strong><span>{{ student.program || 'No program' }} · {{ student.section || 'No Section' }} · {{ new Date(student.viewed_at).toLocaleString() }}</span></button></div></article>
+    <article class="productivity-card document-requirements-card">
+      <button class="document-requirements-button" type="button" aria-haspopup="dialog" aria-controls="document-requirements-dialog" :disabled="productivityLoading || !documentRequirementCount" @click="openDocumentRequirements">
+        <span class="attention-alert-icon" aria-hidden="true">!</span>
+        <span class="attention-alert-copy"><span class="page-kicker">Records checklist</span><strong>Document Requirements</strong><small>{{ productivityLoading ? 'Loading…' : documentRequirementCount ? `${documentRequirementCount} unresolved` : 'No unresolved requirements' }}</small></span>
+        <span class="attention-toggle-label">Open</span>
+      </button>
+    </article>
+    <article class="productivity-card today-card"><div class="card-heading"><div><p class="page-kicker">Today</p><h2>Activity</h2></div></div><div class="activity-stats"><span><strong>{{ productivity.today.students_viewed || 0 }}</strong> viewed</span><span><strong>{{ productivity.today.records_updated || 0 }}</strong> updated</span><span><strong>{{ productivity.today.physical_records_moved || 0 }}</strong> moved</span><span><strong>{{ productivity.today.documents_updated || 0 }}</strong> documents</span></div></article>
+    <article v-if="nonDocumentAttentionStudents.length" class="productivity-card attention-card">
+      <div class="card-heading"><div><p class="page-kicker">Operational queue</p><h2>Needs Attention</h2></div><span>{{ nonDocumentAttentionStudents.length }} records</span></div>
+      <div class="compact-records"><button v-for="student in nonDocumentAttentionStudents" :key="student.id" type="button" @click="viewStudent(student.id)"><strong>{{ student.student_number }} · {{ student.name }}</strong><span>{{ student.completeness.issues.map(issue => issue.label).join(' · ') }}</span></button></div>
+    </article>
   </section>
 
   <section class="student-records-panel" aria-label="Student record filters">
-    <div class="preset-toolbar">
-      <label><span>Saved filter</span><select v-model="savedFilterId" @change="applySavedFilter"><option value="">Choose a preset</option><option v-for="preset in productivity.saved_filters" :key="preset.id" :value="preset.id">{{ preset.name }}</option></select></label>
-      <label><span>Preset name</span><input v-model.trim="savedFilterName" maxlength="80" placeholder="Example: Missing Physical Record" /></label>
-      <button type="button" :disabled="!savedFilterName" @click="saveFilter">{{ savedFilterId ? 'Rename / Update' : 'Save Current Filters' }}</button>
-      <button type="button" :disabled="!savedFilterId" @click="deleteSavedFilter">Delete</button>
-      <details class="column-chooser"><summary>Visible Columns</summary><label v-for="option in columnOptions" :key="option[0]"><input type="checkbox" :checked="showColumn(option[0])" :disabled="['student_number', 'name'].includes(option[0])" @change="updateColumns(option[0], $event.target.checked)" />{{ option[1] }}</label></details>
-    </div>
-    <form class="filters" @submit.prevent="applyFilters">
+    <form class="listing-search" role="search" @submit.prevent="applyFilters">
       <label class="search-field">
         <span>Search</span>
-        <input v-model.trim="filters.search" type="search" placeholder="Student number, first name, or last name" />
+        <input v-model.trim="filters.search" type="search" placeholder="Search student number or name" />
       </label>
+      <button class="button button-primary" type="submit" :disabled="loading">Search</button>
+      <button class="button button-secondary filters-toggle" type="button" aria-controls="advanced-student-filters" :aria-expanded="filtersOpen" @click="filtersOpen = !filtersOpen">Filters<span v-if="activeAdvancedFilterCount" class="filter-count">{{ activeAdvancedFilterCount }}</span></button>
+      <button v-if="activeAdvancedFilterCount" class="clear-filters" type="button" :disabled="loading" @click="clearAdvancedFilters">Clear filters</button>
+    </form>
+    <Transition name="advanced-filters">
+      <div v-if="filtersOpen" id="advanced-student-filters" class="advanced-filters">
+        <form class="filters" @submit.prevent="applyFilters">
       <label>
         <span>Course</span>
         <input v-model.trim="filters.course" type="text" placeholder="Course ID or code" />
@@ -424,10 +511,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyboard))
       <label><span>Sort</span><select v-model="filters.sort"><option value="student_number">Student number</option><option value="name">Name</option><option value="program">Program</option><option value="year_level">Year level</option><option value="student_status">Record status</option></select></label>
       <label><span>Direction</span><select v-model="filters.direction"><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
       <div class="filter-actions">
-        <button class="button button-primary" type="submit" :disabled="loading">Search</button>
-        <button class="button button-secondary" type="button" :disabled="loading" @click="resetFilters">Reset</button>
+        <button class="button button-primary" type="submit" :disabled="loading">Apply Filters</button>
+        <button class="button button-secondary" type="button" :disabled="loading || !activeAdvancedFilterCount" @click="clearAdvancedFilters">Clear</button>
       </div>
-    </form>
+        </form>
+        <div class="preset-toolbar">
+          <label><span>Saved filter</span><select v-model="savedFilterId" @change="applySavedFilter"><option value="">Choose a preset</option><option v-for="preset in productivity.saved_filters" :key="preset.id" :value="preset.id">{{ preset.name }}</option></select></label>
+          <label><span>Preset name</span><input v-model.trim="savedFilterName" maxlength="80" placeholder="Example: Missing Physical Record" /></label>
+          <button type="button" :disabled="!savedFilterName" @click="saveFilter">{{ savedFilterId ? 'Rename / Update' : 'Save Current Filters' }}</button>
+          <button type="button" :disabled="!savedFilterId" @click="deleteSavedFilter">Delete</button>
+          <details class="column-chooser"><summary>Visible Columns</summary><label v-for="option in columnOptions" :key="option[0]"><input type="checkbox" :checked="showColumn(option[0])" :disabled="['student_number', 'name'].includes(option[0])" @change="updateColumns(option[0], $event.target.checked)" />{{ option[1] }}</label></details>
+        </div>
+      </div>
+    </Transition>
   </section>
 
   <p v-if="success" class="notice notice-success" role="status">{{ success }}</p>
@@ -584,6 +680,38 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyboard))
     />
   </section>
 
+  <Teleport to="body">
+    <Transition name="modal-fade">
+      <div v-if="documentRequirementsOpen" class="modal-backdrop" role="presentation" @mousedown.self="closeDocumentRequirements">
+        <section
+          id="document-requirements-dialog"
+          ref="documentRequirementsDialog"
+          class="document-requirements-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="document-requirements-title"
+          @keydown="trapDocumentRequirementsFocus"
+        >
+          <header class="document-requirements-header">
+            <div><p class="modal-kicker">Records checklist</p><h2 id="document-requirements-title">Document Requirements</h2><p>{{ documentRequirementCount }} unresolved requirement{{ documentRequirementCount === 1 ? '' : 's' }}</p></div>
+            <button ref="documentRequirementsClose" class="modal-close" type="button" aria-label="Close Document Requirements" @click="closeDocumentRequirements">×</button>
+          </header>
+          <div class="document-requirements-body">
+            <div class="attention-filters" aria-label="Document requirement categories"><button v-for="category in productivity.attention.categories" :key="category.value" type="button" :class="{ active: attentionCategory === category.value }" @click="attentionCategory = category.value">{{ category.label }}</button></div>
+            <p v-if="!attentionItems.length && attentionCategory !== 'physical_records'" class="empty-state">No document requirements match this filter.</p>
+            <div v-if="attentionItems.length" class="attention-table-wrap">
+              <table class="attention-table">
+                <thead><tr><th>Student</th><th>Document</th><th>Digital Status</th><th>Physical Status</th><th>Attention Reason</th><th>Action</th></tr></thead>
+                <tbody><tr v-for="item in attentionItems" :key="item.key"><td data-label="Student"><strong>{{ item.student_number }}</strong><span>{{ item.student_name }}</span></td><td data-label="Document">{{ item.document_type }}</td><td data-label="Digital Status"><span class="attention-status" :data-status="item.digital_status">{{ displayStatus(item.digital_status) }}</span></td><td data-label="Physical Status"><span class="attention-status" :data-status="item.physical_status">{{ item.physical_status === 'submitted' ? 'Received' : displayStatus(item.physical_status) }}</span></td><td data-label="Attention Reason">{{ item.attention_reason }}</td><td data-label="Action"><button type="button" @click="reviewRequirement(item)">Review</button></td></tr></tbody>
+              </table>
+            </div>
+            <div v-if="attentionCategory === 'physical_records'" class="compact-records"><button v-for="student in physicalAttentionStudents" :key="student.id" type="button" @click="viewStudent(student.id)"><strong>{{ student.student_number }} · {{ student.name }}</strong><span>Physical Record Issue · {{ student.completeness.issues.filter(issue => issue.area === 'physical_record').map(issue => issue.label).join(' ') }}</span></button><p v-if="!physicalAttentionStudents.length" class="empty-state">No physical Student Records need attention.</p></div>
+          </div>
+        </section>
+      </div>
+    </Transition>
+  </Teleport>
+
   <div v-if="confirmationOpen" class="modal-backdrop" role="presentation" @mousedown.self="closeConfirmation">
     <section
       class="confirmation-modal"
@@ -629,6 +757,30 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyboard))
 }
 .quick-search-panel h2,
 .productivity-card h2 { color: var(--color-eerie-black); margin: 0; }
+.document-requirements-card { align-self: start; grid-area: documents; max-width: 100%; overflow: hidden; padding: 0; transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+.document-requirements-card:has(.document-requirements-button:not(:disabled)):hover { border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border)); box-shadow: var(--shadow-medium); transform: translateY(-1px); }
+.document-requirements-button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; width: 100%; min-height: 86px; padding: 13px 14px; border: 0; background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface)); color: var(--color-text); text-align: left; }
+.document-requirements-button:not(:disabled) { cursor: pointer; }
+.document-requirements-button:focus-visible { outline: 3px solid var(--focus-ring, color-mix(in srgb, var(--color-primary) 35%, transparent)); outline-offset: -3px; }
+.attention-alert-icon { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--color-warning, #c58a15) 18%, transparent); color: var(--color-warning, #9a6500); font-weight: 900; }
+.attention-alert-copy { display: grid; gap: 1px; min-width: 0; }
+.attention-alert-copy small { color: var(--color-text-muted); }
+.attention-alert-count { color: var(--color-warning, #9a6500); font-size: .82rem; font-weight: 800; white-space: nowrap; }
+.attention-toggle-label { color: var(--color-primary); font-weight: 800; }
+.attention-filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
+.attention-filters button { border: 1px solid var(--color-border); border-radius: 999px; padding: 6px 10px; background: var(--color-surface); color: var(--color-text); }
+.attention-filters button.active { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-white); }
+.attention-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 9px; }
+.attention-table { width: 100%; min-width: 820px; border-collapse: collapse; color: var(--color-text); }
+.attention-table th, .attention-table td { padding: 9px 10px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: middle; }
+.attention-table th { background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface)); color: var(--color-text-muted); font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; }
+.attention-table tbody tr:last-child td { border-bottom: 0; }
+.attention-table td:first-child { display: grid; gap: 2px; }
+.attention-table td:first-child span { color: var(--color-text-muted); font-size: .82rem; }
+.attention-table td:last-child button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--color-primary); border-radius: 6px; background: transparent; color: var(--color-primary); font-weight: 800; }
+.attention-status { display: inline-flex; align-items: center; padding: 3px 7px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); font-size: .76rem; font-weight: 800; white-space: nowrap; }
+.attention-status[data-status="missing"], .attention-status[data-status="needs_resubmission"], .attention-status[data-status="required"] { border-color: color-mix(in srgb, var(--color-warning, #c58a15) 45%, var(--color-border)); color: var(--color-warning, #9a6500); }
+.attention-status[data-status="verified"], .attention-status[data-status="submitted"] { border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border)); color: var(--color-primary); }
 .quick-search-panel p { color: var(--color-muted); margin: 5px 0 0; }
 .quick-search div { display: flex; gap: 8px; }
 .quick-search button,
@@ -675,15 +827,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyboard))
 .compact-records button:focus-visible { background: var(--color-green-tint); outline: 2px solid transparent; }
 .quick-results span,
 .compact-records span { color: var(--color-muted); font-size: 0.78rem; }
-.productivity-grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px; }
+.productivity-grid { display: grid; gap: 16px; grid-template-areas: "recent documents" "recent activity"; grid-template-columns: minmax(0, 2fr) minmax(250px, .8fr); margin-bottom: 18px; }
+.productivity-grid.has-attention { grid-template-areas: "recent documents" "recent activity" "attention attention"; }
 .productivity-card { min-width: 0; padding: 18px; }
-.today-card { grid-column: 1 / -1; }
+.recent-card { grid-area: recent; }
+.today-card { grid-area: activity; padding: 14px; }
+.attention-card { grid-area: attention; }
 .card-heading { align-items: start; display: flex; gap: 12px; justify-content: space-between; }
-.activity-stats { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 14px; }
-.activity-stats span { background: var(--color-green-tint); border-radius: 8px; color: var(--color-muted); display: grid; padding: 12px; }
-.activity-stats strong { color: var(--color-dartmouth-green); font-size: 1.35rem; }
+.activity-stats { display: grid; gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 10px; }
+.activity-stats span { background: var(--color-green-tint); border-radius: 7px; color: var(--color-muted); display: grid; font-size: .76rem; padding: 8px 9px; }
+.activity-stats strong { color: var(--color-dartmouth-green); font-size: 1.05rem; }
 .compact-records { display: grid; margin-top: 10px; max-height: 245px; overflow-y: auto; }
-.preset-toolbar { align-items: end; display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.preset-toolbar { align-items: end; display: flex; flex-wrap: wrap; gap: 10px; padding-top: 16px; border-top: 1px solid var(--color-border); }
 .preset-toolbar label { flex: 1 1 190px; }
 .column-chooser { align-self: center; position: relative; }
 .column-chooser summary { color: var(--color-dartmouth-green); cursor: pointer; font-weight: 800; padding: 8px; }
@@ -697,11 +852,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyboard))
   margin-bottom: 20px;
   padding: 20px;
 }
+.listing-search { align-items: end; display: grid; gap: 10px; grid-template-columns: minmax(240px, 1fr) auto auto auto; }
+.listing-search .search-field { min-width: 0; }
+.filters-toggle { align-items: center; display: inline-flex; gap: 7px; justify-content: center; }
+.filter-count { align-items: center; background: var(--color-dartmouth-green); border-radius: 999px; color: var(--text-on-accent); display: inline-flex; font-size: .72rem; height: 21px; justify-content: center; min-width: 21px; padding: 0 6px; }
+.clear-filters { align-self: center; background: transparent; border: 0; color: var(--color-dartmouth-green); cursor: pointer; font-weight: 800; padding: 8px 4px; }
+.advanced-filters { border-top: 1px solid var(--color-border); margin-top: 16px; padding-top: 16px; }
+.advanced-filters-enter-active, .advanced-filters-leave-active { transition: opacity 200ms ease, transform 200ms ease; }
+.advanced-filters-enter-from, .advanced-filters-leave-to { opacity: 0; transform: translateY(-5px); }
 .filters {
   align-items: end;
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  margin-bottom: 16px;
 }
 label {
   color: var(--color-muted);
@@ -886,6 +1050,14 @@ td {
   position: fixed;
   z-index: 1200;
 }
+.modal-fade-enter-active,
+.modal-fade-leave-active { transition: opacity 180ms ease; }
+.modal-fade-enter-active .document-requirements-modal,
+.modal-fade-leave-active .document-requirements-modal { transition: transform 180ms ease; }
+.modal-fade-enter-from,
+.modal-fade-leave-to { opacity: 0; }
+.modal-fade-enter-from .document-requirements-modal,
+.modal-fade-leave-to .document-requirements-modal { transform: translateY(5px) scale(.985); }
 .confirmation-modal {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
@@ -896,6 +1068,25 @@ td {
   padding: 26px;
   width: 100%;
 }
+.document-requirements-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 24%);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 40px);
+  max-width: 1080px;
+  overflow: hidden;
+  width: 100%;
+}
+.document-requirements-header { align-items: start; border-bottom: 1px solid var(--border-color); display: flex; gap: 20px; justify-content: space-between; padding: 22px 24px 18px; }
+.document-requirements-header h2 { color: var(--color-eerie-black); margin: 0; }
+.document-requirements-header p:last-child { color: var(--color-muted); margin: 5px 0 0; }
+.document-requirements-body { overflow: auto; padding: 10px 24px 24px; }
+.modal-close { align-items: center; background: var(--color-green-tint); border: 0; border-radius: 50%; color: var(--color-dartmouth-green); cursor: pointer; display: inline-flex; flex: 0 0 38px; font-size: 1.35rem; height: 38px; justify-content: center; }
+.modal-close:focus-visible { outline: 3px solid var(--focus-ring, color-mix(in srgb, var(--color-primary) 35%, transparent)); outline-offset: 2px; }
 .modal-kicker {
   color: var(--color-dartmouth-green);
   font-size: 0.76rem;
@@ -947,10 +1138,20 @@ td {
   .quick-search-panel { align-items: stretch; padding: 14px; }
   .quick-search div { display: grid; }
   .quick-results { left: 14px; right: 14px; }
-  .productivity-grid { grid-template-columns: 1fr; }
-  .today-card { grid-column: auto; }
+  .productivity-grid { grid-template-areas: "recent" "documents" "activity"; grid-template-columns: 1fr; }
+  .productivity-grid.has-attention { grid-template-areas: "recent" "documents" "attention" "activity"; }
   .activity-stats { grid-template-columns: 1fr 1fr; }
+  .document-requirements-button { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .attention-alert-count { grid-column: 2; }
+  .attention-toggle-label { grid-column: 3; grid-row: 1 / span 2; }
+  .attention-table-wrap { overflow: visible; border: 0; }
+  .attention-table { min-width: 0; }
+  .attention-table tr { padding: 10px; border: 1px solid var(--color-border); border-radius: 8px; margin-bottom: 8px; }
+  .attention-table td { grid-template-columns: minmax(100px, 38%) minmax(0, 62%); }
   .preset-toolbar { align-items: stretch; display: grid; }
+  .listing-search { grid-template-columns: minmax(0, 1fr) auto; }
+  .listing-search .search-field { grid-column: 1 / -1; }
+  .clear-filters { grid-column: 1 / -1; justify-self: start; }
   .student-records-panel {
     padding: 14px;
   }
@@ -1006,5 +1207,18 @@ td {
   .confirmation-modal {
     padding: 20px;
   }
+  .modal-backdrop { padding: 10px; }
+  .document-requirements-modal { max-height: calc(100vh - 20px); }
+  .document-requirements-header { padding: 18px 16px 14px; }
+  .document-requirements-body { padding: 8px 16px 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .advanced-filters-enter-active, .advanced-filters-leave-active { transition: none; }
+  .document-requirements-card,
+  .modal-fade-enter-active,
+  .modal-fade-leave-active,
+  .modal-fade-enter-active .document-requirements-modal,
+  .modal-fade-leave-active .document-requirements-modal { transition: none; }
 }
 </style>

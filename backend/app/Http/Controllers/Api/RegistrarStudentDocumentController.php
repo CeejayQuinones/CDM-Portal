@@ -9,6 +9,7 @@ use App\Jobs\AnalyzeStudentDocument;
 use App\Models\Student;
 use App\Models\StudentDocument;
 use App\Models\StudentDocumentAiAnalysis;
+use App\Models\StudentDocumentSubmission;
 use App\Services\StudentRecords\StudentRecordAuditWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -97,12 +98,38 @@ class RegistrarStudentDocumentController extends Controller
 
         try {
             DB::transaction(function () use ($request, $studentDocument, $newPath, $oldPath): void {
+                $studentDocument = StudentDocument::query()->lockForUpdate()->findOrFail($studentDocument->id);
                 $this->unlinkEnrollmentSources($studentDocument, $oldPath);
+                $version = $oldPath ? $studentDocument->verification_version + 1 : max(1, $studentDocument->verification_version);
+                if ($oldPath) {
+                    StudentDocumentSubmission::query()->firstOrCreate(
+                        ['student_document_id' => $studentDocument->id, 'version' => $studentDocument->verification_version],
+                        [
+                            'file_path' => $oldPath,
+                            'submitted_by_user_id' => null,
+                            'submitted_at' => $studentDocument->submitted_date ?? $studentDocument->created_at ?? now(),
+                            'verification_status' => $studentDocument->verification_status,
+                            'reviewed_at' => $studentDocument->verification_status === 'pending' ? null : $studentDocument->updated_at,
+                            'review_remark' => $studentDocument->remarks,
+                        ],
+                    );
+                }
                 $studentDocument->update([
                     'file_path' => $newPath,
                     'availability_status' => 'available',
                     'verification_status' => 'pending',
+                    'verification_version' => $version,
                     'submitted_date' => today(),
+                    'verified_at' => null,
+                    'verified_by_user_id' => null,
+                ]);
+                StudentDocumentSubmission::query()->create([
+                    'student_document_id' => $studentDocument->id,
+                    'version' => $version,
+                    'file_path' => $newPath,
+                    'submitted_by_user_id' => $request->user()->id,
+                    'submitted_at' => now(),
+                    'verification_status' => 'pending',
                 ]);
                 $this->audit->record(
                     $request->user(),
@@ -117,11 +144,7 @@ class RegistrarStudentDocumentController extends Controller
             throw $exception;
         }
 
-        if ($oldPath && $oldPath !== $newPath && $this->isOwnedStudentDocumentPath($studentDocument, $oldPath)) {
-            Storage::disk(self::DISK)->delete($oldPath);
-        }
-
-        $studentDocument->load(['documentType', 'aiAnalysis']);
+        $studentDocument->refresh()->load(['documentType', 'aiAnalysis', 'verifiedBy.profile']);
 
         return response()->json([
             'success' => true,
@@ -172,7 +195,7 @@ class RegistrarStudentDocumentController extends Controller
         if ($this->isOwnedStudentDocumentPath($studentDocument, $oldPath)) {
             Storage::disk(self::DISK)->delete($oldPath);
         }
-        $studentDocument->load(['documentType', 'aiAnalysis']);
+        $studentDocument->load(['documentType', 'aiAnalysis', 'verifiedBy.profile']);
 
         return response()->json([
             'success' => true,

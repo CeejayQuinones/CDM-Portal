@@ -180,40 +180,52 @@ onBeforeUnmount(() => {
   100% { opacity: var(--portal-decoration-opacity); transform: translate3d(0, 0, 0) scale(1); }
 }
 
-:global(html[data-student-theme='dark']) .portal-animated-backdrop {
-  --portal-decoration-opacity: 0.07;
-  --portal-gold-opacity: 0.09;
-  background:
-    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--color-dartmouth-green) 5%, transparent), transparent 24rem),
-    radial-gradient(circle at 94% 54%, color-mix(in srgb, var(--accent) 4%, transparent), transparent 22rem),
-    radial-gradient(circle at 12% 86%, color-mix(in srgb, var(--color-dark-spring-green) 4%, transparent), transparent 28rem),
-    linear-gradient(145deg, #0b1711, #10251a 55%, #153020);
+:global(html[data-student-theme='dark'] .portal-animated-backdrop) {
+  background: #070a08;
 }
 
-:global(html[data-student-theme='dark']) .portal-decoration-cluster.parallax-far { --portal-decoration-opacity: 0.06; }
-:global(html[data-student-theme='dark']) .portal-animated-backdrop.is-professor { --portal-decoration-opacity: 0.065; --portal-gold-opacity: 0.085; }
-:global(html[data-student-theme='dark']) .portal-animated-backdrop.is-staff { --portal-decoration-opacity: 0.055; --portal-gold-opacity: 0.075; }
-:global(html[data-student-theme='dark']) .portal-animated-backdrop.is-staff .portal-decoration-cluster.parallax-far { --portal-decoration-opacity: 0.045; }
-:global(html[data-student-theme='dark']) .portal-animated-backdrop::before { background: color-mix(in srgb, var(--accent) 4%, transparent); }
-:global(html[data-student-theme='dark']) .portal-animated-backdrop::after { background: color-mix(in srgb, var(--color-dark-spring-green) 4%, transparent); }
+:global(html[data-student-theme='dark'] .portal-animated-backdrop::before) {
+  inset: 0;
+  width: auto;
+  aspect-ratio: auto;
+  border-radius: 0;
+  background-color: transparent;
+  background-image:
+    linear-gradient(rgb(20 130 80 / 9%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(20 130 80 / 9%) 1px, transparent 1px);
+  background-position: center top;
+  background-size: 64px 64px;
+  transform: none;
+}
+
+:global(html[data-student-theme='dark'] .portal-animated-backdrop::after),
+:global(html[data-student-theme='dark'] .portal-decoration-cluster) {
+  display: none;
+}
 
 @media (prefers-color-scheme: dark) {
-  :global(html[data-student-theme='system']) .portal-animated-backdrop {
-    --portal-decoration-opacity: 0.07;
-    --portal-gold-opacity: 0.09;
-    background:
-      radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--color-dartmouth-green) 5%, transparent), transparent 24rem),
-      radial-gradient(circle at 94% 54%, color-mix(in srgb, var(--accent) 4%, transparent), transparent 22rem),
-      radial-gradient(circle at 12% 86%, color-mix(in srgb, var(--color-dark-spring-green) 4%, transparent), transparent 28rem),
-      linear-gradient(145deg, #0b1711, #10251a 55%, #153020);
+  :global(html[data-student-theme='system'] .portal-animated-backdrop) {
+    background: #070a08;
   }
 
-  :global(html[data-student-theme='system']) .portal-decoration-cluster.parallax-far { --portal-decoration-opacity: 0.06; }
-  :global(html[data-student-theme='system']) .portal-animated-backdrop.is-professor { --portal-decoration-opacity: 0.065; --portal-gold-opacity: 0.085; }
-  :global(html[data-student-theme='system']) .portal-animated-backdrop.is-staff { --portal-decoration-opacity: 0.055; --portal-gold-opacity: 0.075; }
-  :global(html[data-student-theme='system']) .portal-animated-backdrop.is-staff .portal-decoration-cluster.parallax-far { --portal-decoration-opacity: 0.045; }
-  :global(html[data-student-theme='system']) .portal-animated-backdrop::before { background: color-mix(in srgb, var(--accent) 4%, transparent); }
-  :global(html[data-student-theme='system']) .portal-animated-backdrop::after { background: color-mix(in srgb, var(--color-dark-spring-green) 4%, transparent); }
+  :global(html[data-student-theme='system'] .portal-animated-backdrop::before) {
+    inset: 0;
+    width: auto;
+    aspect-ratio: auto;
+    border-radius: 0;
+    background-color: transparent;
+    background-image:
+      linear-gradient(rgb(20 130 80 / 9%) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(20 130 80 / 9%) 1px, transparent 1px);
+    background-position: center top;
+    background-size: 64px 64px;
+    transform: none;
+  }
+
+  :global(html[data-student-theme='system'] .portal-animated-backdrop::after),
+  :global(html[data-student-theme='system'] .portal-decoration-cluster) {
+    display: none;
+  }
 }
 
 @media (max-width: 700px) {

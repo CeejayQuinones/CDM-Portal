@@ -15,6 +15,7 @@ use App\Models\Student;
 use App\Models\User;
 use App\Services\StudentHistoryService;
 use App\Services\StudentRecords\StudentRecordProductivityService;
+use App\Services\StudentRecords\StudentRecordRequirementService;
 use App\Services\StudentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -125,11 +126,11 @@ class StudentController extends Controller
         ]);
     }
 
-    public function documents(Student $student): JsonResponse
+    public function documents(Student $student, StudentRecordRequirementService $requirements): JsonResponse
     {
         $student = $this->studentService->find($student->id);
         $documents = $student->documents()
-            ->with(['documentType', 'aiAnalysis'])
+            ->with(['documentType', 'aiAnalysis', 'verifiedBy.profile'])
             ->whereHas('documentType', fn ($query) => $query->where('document_name', '!=', 'Birth Certificate'))
             ->orderByDesc('submitted_date')
             ->get();
@@ -140,6 +141,7 @@ class StudentController extends Controller
             'data' => [
                 'student' => new StudentResource($student),
                 'documents' => StudentDocumentResource::collection($documents),
+                'requirements' => $requirements->requirements($student),
             ],
         ]);
     }

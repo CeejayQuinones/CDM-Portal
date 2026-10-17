@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\DocumentType;
 use App\Models\Student;
+use App\Services\StudentRecords\StudentRecordRequirementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class StudentSettingsController extends Controller
 {
+    public function __construct(private readonly StudentRecordRequirementService $requirements) {}
+
     public function show(Request $request): JsonResponse
     {
         return response()->json(['success' => true, 'data' => $this->payload($this->student($request))]);
@@ -94,6 +97,7 @@ class StudentSettingsController extends Controller
         $academicYear = $academicEnrollment?->academicYear?->school_year;
         $academicSection = $academicEnrollment?->section;
         $academicYearLevel = $academicSection?->year_level ?? $student->year_level;
+        $requirements = $this->requirements->requirements($student);
 
         return [
             'profile' => ['preferred_display_name' => $student->settings?->preferred_display_name, 'bio' => $student->settings?->bio, 'avatar_url' => $profile?->profile_photo_url],
@@ -102,6 +106,11 @@ class StudentSettingsController extends Controller
             'official' => ['legal_name' => trim(implode(' ', array_filter([$profile?->first_name, $profile?->middle_name, $profile?->last_name]))), 'student_number' => $student->student_number, 'program' => $student->course?->course_name, 'year_level' => $academicYearLevel, 'section' => $academicSection?->section_name],
             'contact' => ['personal_email' => $profile?->email, 'mobile' => $profile?->contact_number, 'address' => $profile?->address],
             'document_status' => ['complete' => $complete, 'total' => $total, 'items' => $documents->map(fn ($document) => ['name' => $document->documentType?->document_name, 'status' => $document->verification_status])->values(), 'active_requests' => $requests->whereIn('status', ['pending', 'processing', 'approved'])->count(), 'completed_requests' => $requests->where('status', 'completed')->count(), 'upcoming_appointment' => $requests->pluck('activeAppointment')->filter()->first()?->appointment_date?->toDateString()],
+            'record_requirements' => [
+                'unresolved_count' => $requirements->where('unresolved', true)->count(),
+                'complete' => $requirements->isNotEmpty() && $requirements->where('unresolved', true)->isEmpty(),
+                'items' => $requirements->values(),
+            ],
             'preferences' => ['notification_preferences' => $student->settings?->notification_preferences ?? [], 'academic_preferences' => $student->settings?->academic_preferences ?? []],
             'appearance' => $appearance,
         ];

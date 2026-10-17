@@ -65,6 +65,13 @@ export const useAuthStore = defineStore('auth', () => {
     return data.data.user
   }
 
+  const exchangeGoogleCode = async (code) => {
+    const { data } = await apiClient.post('/auth/google/exchange', { code })
+    token.value = data.data.token
+    setUser(data.data.user)
+    return data.data.user
+  }
+
   const register = async (payload) => {
     const { data } = await apiClient.post('/register', payload)
     return data.data.user
@@ -121,6 +128,7 @@ export const useAuthStore = defineStore('auth', () => {
     firstLogin,
     isAuthenticated,
     login,
+    exchangeGoogleCode,
     register,
     logout,
     fetchCurrentUser,

@@ -391,7 +391,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         assert.equal(calls.filter(c=>c.method === 'get' && c.url.endsWith('/results')).at(-1).params.tab,'retake')
         assert.equal(findButtonByText(root,'Exceptional Pass'),undefined)
         assert.equal(findButtonByText(root,'Correct result'),undefined)
-        findButtonByText(root,'Inspect').props.onClick(); await nextTick()
+        findButtonByText(root,'View').props.onClick(); await nextTick()
         assert.match(textOf(root),/Science: 8 \/ 20/)
         findButtonByText(root,'Close').props.onClick(); await nextTick()
         exactButton(root,'Approve').props.onClick(); await nextTick()
@@ -422,7 +422,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
           if (target.endsWith('/programs')) {
             assert.ok(findButtonByText(root,'Add program'))
             findButtonByText(root,'Edit program').props.onClick(); await nextTick()
-          } else { assert.match(textOf(root),/100 questions/); assert.match(textOf(root),/READY/) }
+          } else { assert.match(textOf(root),/100 questions/); assert.match(textOf(root),/READY/); assert.equal(findForm(root),undefined); findButtonByText(root,'Edit Exam Settings').props.onClick(); await nextTick() }
           findForm(root).props.onSubmit({preventDefault(){}}); await settle()
         } finally { app.unmount() }
       }
@@ -449,9 +449,9 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
         const app = renderer.createApp(route.components.default,route.props.default); app.use(router); app.mount(root)
         try {
           await settle()
-          if (target.endsWith('/history')) { assert.match(textOf(root),/Application created/); assert.match(textOf(root),/By Example Applicant/) }
+          if (target.endsWith('/history')) { assert.match(textOf(root),/Application created/); assert.match(textOf(root),/Example Applicant/); findButtonByText(root,'View').props.onClick(); await nextTick(); assert.match(textOf(allNodes(root,node => node.props?.role === 'dialog')[0]),/Application created recorded for APP-1/) }
           else {
-            const inspectButtons = allNodes(root,node => node.tag === 'button' && textOf(node).trim() === 'Inspect applicant')
+            const inspectButtons = allNodes(root,node => node.tag === 'button' && textOf(node).trim() === 'Inspect')
             inspectButtons[0].props.onClick(); await settle()
             let dialogs = allNodes(root,node => node.props?.role === 'dialog')
             assert.equal(dialogs.length,1); assert.equal(dialogs[0].props['aria-modal'],'true')
@@ -640,4 +640,32 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
     globalThis.requestAnimationFrame = previousAnimationFrame
     await rm(temporary, { recursive: true, force: true })
   }
+})
+
+test('Admission staff pages use compact searches, hidden filters, summaries, and dialog editors', async () => {
+  const [admin, registrar, exams, styles] = await Promise.all([
+    readFile(path.join(frontend, 'src/modules/admission/AdmissionAdminView.vue'), 'utf8'),
+    readFile(path.join(frontend, 'src/modules/admission/AdmissionRegistrarView.vue'), 'utf8'),
+    readFile(path.join(frontend, 'src/modules/admission/AdmissionExamsView.vue'), 'utf8'),
+    readFile(path.join(frontend, 'src/modules/admission/admission.css'), 'utf8'),
+  ])
+
+  for (const source of [admin, registrar]) {
+    assert.match(source, /filtersOpen = ref\(false\)/)
+    assert.match(source, /aria-controls="admission-[^"]+-filters"/)
+    assert.match(source, /:aria-expanded="filtersOpen"/)
+    assert.match(source, /class="admission-search-row"/)
+  }
+  assert.match(admin, /<AdmissionDialog v-if="form"/)
+  assert.match(admin, /PortalSelect v-model="form\.topic"/)
+  assert.match(registrar, /<AdmissionDialog v-if="inspecting"/)
+  assert.match(registrar, /<AdmissionDialog v-if="resultInspection"/)
+  assert.match(registrar, /<AdmissionDialog v-if="historyInspection"/)
+  assert.match(exams, /class="placeholder-panel panel exam-summary"/)
+  assert.match(exams, /Edit Exam Settings/)
+  assert.match(exams, /<AdmissionDialog v-if="form"/)
+  assert.match(styles, /admission-search-row/)
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/)
+  assert.match(styles, /var\(--color-surface\)/)
+  assert.match(styles, /@media \(max-width: 600px\)/)
 })

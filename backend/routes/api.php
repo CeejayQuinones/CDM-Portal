@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\EventPromotionController;
 use App\Http\Controllers\Api\EventReportController;
 use App\Http\Controllers\Api\GradingController;
 use App\Http\Controllers\Api\GradingExperienceController;
+use App\Http\Controllers\Api\GradingScaleController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
@@ -29,11 +30,14 @@ use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentDocumentRequestController;
 use App\Http\Controllers\Api\StudentRecordProductivityController;
 use App\Http\Controllers\Api\StudentRecordReportController;
+use App\Http\Controllers\Api\StudentRecordRequirementController;
 use App\Http\Controllers\Api\StudentSettingsController;
+use App\Http\Controllers\GoogleAuthController;
 use App\Http\Middleware\EnrollmentBoundary;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+Route::post('/auth/google/exchange', [GoogleAuthController::class, 'exchange'])->middleware('throttle:10,1');
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/registration/email-verification/send', [AuthController::class, 'sendEmailVerification'])
     ->middleware('throttle:3,1');
@@ -49,6 +53,10 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
     });
     Route::prefix('grading')->middleware('professor.web')->group(function (): void {
         Route::middleware('role.registrar-or-admin')->group(function (): void {
+            Route::get('/scales', [GradingScaleController::class, 'index']);
+            Route::post('/scales', [GradingScaleController::class, 'store']);
+            Route::put('/scales/{gradingScale}', [GradingScaleController::class, 'update']);
+            Route::patch('/scales/{gradingScale}/status', [GradingScaleController::class, 'status']);
             Route::get('/periods', [GradingController::class, 'periods']);
             Route::post('/periods', [GradingController::class, 'storePeriod']);
             Route::put('/periods/{gradePeriodSchedule}', [GradingController::class, 'updatePeriod']);
@@ -204,6 +212,10 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::get('/students/{student}/documents', [StudentController::class, 'documents']);
         Route::get('/registrar/student-documents/{studentDocument}/view', [RegistrarStudentDocumentController::class, 'view']);
         Route::get('/registrar/student-documents/{studentDocument}/download', [RegistrarStudentDocumentController::class, 'download']);
+        Route::patch('/student-documents/{studentDocument}/{action}', [StudentRecordRequirementController::class, 'review'])
+            ->whereIn('action', ['verify', 'needs-resubmission']);
+        Route::patch('/students/{student}/record-requirements/{documentType}/{action}', [StudentRecordRequirementController::class, 'physical'])
+            ->whereIn('action', ['require', 'receive', 'reopen']);
         Route::patch('/students/{student}', [StudentController::class, 'update'])->middleware('step-up');
     });
 
@@ -214,6 +226,10 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::patch('/student/settings/preferences', [StudentSettingsController::class, 'updatePreferences']);
         Route::post('/student/settings/avatar', [StudentSettingsController::class, 'updateAvatar']);
         Route::delete('/student/settings/avatar', [StudentSettingsController::class, 'removeAvatar']);
+        Route::post('/student/settings/record-requirements/{documentType}/upload', [StudentRecordRequirementController::class, 'studentUpload'])
+            ->middleware('throttle:10,1');
+        Route::get('/student/settings/student-documents/{studentDocument}/view', [StudentRecordRequirementController::class, 'studentView']);
+        Route::get('/student/settings/student-documents/{studentDocument}/download', [StudentRecordRequirementController::class, 'studentDownload']);
         Route::get('/holidays', HolidayController::class);
         Route::get('/document-types', [StudentDocumentRequestController::class, 'documentTypes']);
         Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);

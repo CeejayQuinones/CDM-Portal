@@ -12,12 +12,13 @@ const studentUserId = authStore.currentUser?.id
 
 const sections = computed(() => props.staffMode
   ? ['Profile', 'Account', 'Contact Information', 'Appearance', 'Security']
-  : ['Profile', 'Account', 'Student Status', 'Document Status', 'Contact Information', 'Notifications', 'Academic Preferences', 'Appearance', 'Security'])
+  : ['Profile', 'Account', 'Student Status', 'Record Requirements', 'Document Status', 'Contact Information', 'Notifications', 'Academic Preferences', 'Appearance', 'Security'])
 const active = ref('Profile'), open = ref(false), data = ref(null), error = ref(''), success = ref(''), loading = ref(true), saving = ref(false), saved = ref('')
 const form = ref({ first_name: '', middle_name: '', last_name: '', suffix: '', preferred_display_name: '', bio: '', email: '', contact_number: '', address: '', notification_preferences: {}, academic_preferences: {}, appearance: 'system', current_password: '', password: '', password_confirmation: '' })
 const dirty = computed(() => ['Profile', 'Contact Information', 'Appearance', ...(!props.staffMode ? ['Notifications', 'Academic Preferences'] : [])].includes(active.value) && saved.value !== JSON.stringify(form.value))
 const status = computed(() => data.value?.student_status || {})
 const avatarInput = ref(null), avatarFailed = ref(false)
+const requirementSaving = ref(null)
 const avatarUrl = computed(() => props.staffMode ? data.value?.profile?.avatar_url : studentProfile.avatarUrl)
 watch(() => data.value?.profile, profile => { if (!props.staffMode) studentProfile.setProfile(profile, studentUserId) }, { deep: true, flush: 'sync' })
 const initials = computed(() => {
@@ -117,6 +118,33 @@ const removeAvatar = async () => {
     saving.value = false
   }
 }
+const requirementLabel = (value) => ({
+  missing: 'Missing', submitted: 'Submitted', under_review: 'Under Review', verified: 'Verified',
+  needs_resubmission: 'Needs Resubmission', not_required: 'Not Required', required: 'Required',
+  submitted_physical: 'Received',
+}[value] || String(value || '').replaceAll('_', ' '))
+const uploadRequirement = async (requirement, event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  const payload = new FormData()
+  payload.append('file', file)
+  requirementSaving.value = requirement.document_type_id
+  error.value = success.value = ''
+  try {
+    const response = await apiClient.post(`/student/settings/record-requirements/${requirement.document_type_id}/upload`, payload, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const items = data.value.record_requirements.items
+    const index = items.findIndex(item => item.document_type_id === requirement.document_type_id)
+    items[index] = response.data.data
+    data.value.record_requirements.unresolved_count = items.filter(item => item.unresolved).length
+    data.value.record_requirements.complete = data.value.record_requirements.unresolved_count === 0
+    success.value = response.data.message
+  } catch (err) {
+    error.value = messageFor(err, 'Unable to submit this document.')
+  } finally {
+    event.target.value = ''
+    requirementSaving.value = null
+  }
+}
 onMounted(load)
 </script>
 
@@ -170,6 +198,25 @@ onMounted(load)
               </label>
             </div>
           </fieldset>
+        </template>
+        <template v-else-if="active === 'Record Requirements'">
+          <div class="requirements-heading"><p class="muted">Follow up the digital and physical copies required for your official Student Record.</p><strong>{{ data.record_requirements.unresolved_count }} unresolved</strong></div>
+          <p v-if="data.record_requirements.complete" class="requirements-complete" role="status">Your Student Record requirements are complete.</p>
+          <div v-else-if="!data.record_requirements.items.length" class="requirements-empty">No Student Record requirements are configured.</div>
+          <div v-else class="requirement-list">
+            <section v-for="item in data.record_requirements.items" :key="item.document_type_id" class="requirement-card">
+              <h3>{{ item.name }}</h3>
+              <div class="requirement-statuses">
+                <div><span>Digital Copy</span><strong class="status-badge" :data-status="item.digital_status">{{ requirementLabel(item.digital_status) }}</strong></div>
+                <div><span>Physical Copy</span><strong class="status-badge" :data-status="item.physical_status">{{ requirementLabel(item.physical_status === 'submitted' ? 'submitted_physical' : item.physical_status) }}</strong></div>
+              </div>
+              <div v-if="item.digital_status === 'needs_resubmission' && item.remark" class="requirement-note"><strong>Registrar remark</strong><p>{{ item.remark }}</p></div>
+              <div v-if="item.physical_status === 'required'" class="requirement-note physical-notice"><strong>Physical Copy Required</strong><p>{{ item.physical_copy_instruction || 'Please submit the physical/original copy to the Registrar Office.' }}</p><small>Do not upload another file for this hard-copy requirement.</small></div>
+              <p v-if="item.physical_status === 'submitted'" class="received-copy">Received {{ item.physical_copy_received_at ? new Date(item.physical_copy_received_at).toLocaleDateString('en-PH', { dateStyle: 'long' }) : '' }}</p>
+              <label v-if="item.can_upload" class="requirement-upload"><span>{{ item.digital_status === 'needs_resubmission' ? 'Upload Replacement' : 'Upload Document' }}</span><input type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" :disabled="requirementSaving === item.document_type_id" @change="uploadRequirement(item, $event)" /></label>
+              <p v-else-if="['submitted', 'under_review'].includes(item.digital_status)" class="muted">Your digital copy is waiting for Registrar review.</p>
+            </section>
+          </div>
         </template>
         <template v-else-if="active === 'Document Status'"><progress :value="data.document_status.complete" :max="data.document_status.total || 1" /><p>{{ data.document_status.complete }} of {{ data.document_status.total }} documents verified</p><ul><li v-for="item in data.document_status.items" :key="item.name">{{ item.name }}: {{ item.status }}</li></ul><RouterLink to="/student-management">View documents</RouterLink></template>
         <template v-else-if="active === 'Security'"><label>Current password<input v-model="form.current_password" type="password" /></label><label>New password<input v-model="form.password" type="password" /></label><label>Confirm password<input v-model="form.password_confirmation" type="password" /></label><button :disabled="saving" @click="changePassword">{{ saving ? 'Saving...' : 'Change password' }}</button></template>
@@ -254,6 +301,22 @@ button:disabled { opacity: .6; }
 .official-profile { padding-top: 16px; border-top: 1px solid var(--settings-border); }
 .official-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px 18px; margin: 12px 0 0; }
 .official-info dt { margin: 0; font-size: .8rem; }
+.requirements-heading { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.requirements-heading p { margin: 0; }
+.requirements-heading > strong { flex: 0 0 auto; color: var(--settings-accent); }
+.requirement-list { display: grid; gap: 14px; }
+.requirement-card { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--settings-border); border-radius: 12px; background: var(--settings-field); }
+.requirement-statuses { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.requirement-statuses > div { display: grid; gap: 6px; }
+.requirement-statuses span { color: var(--settings-muted); font-size: .8rem; font-weight: 700; }
+.status-badge { width: fit-content; padding: 4px 9px; border: 1px solid var(--settings-border); border-radius: 999px; font-size: .8rem; }
+.status-badge[data-status="verified"], .status-badge[data-status="submitted"] { color: var(--settings-accent); background: var(--settings-success); }
+.status-badge[data-status="required"], .status-badge[data-status="needs_resubmission"], .status-badge[data-status="missing"] { color: var(--settings-danger); background: var(--settings-danger-bg); border-color: var(--settings-danger-border); }
+.requirement-note { padding: 11px; border-left: 3px solid var(--settings-danger); border-radius: 6px; background: var(--settings-danger-bg); }
+.requirement-note p, .requirement-note small, .received-copy { margin: 4px 0 0; }
+.requirement-upload { position: relative; display: inline-flex; width: fit-content; cursor: pointer; padding: 9px 13px; border-radius: 8px; background: var(--settings-primary); color: var(--settings-on-primary); }
+.requirement-upload input { position: absolute; width: 1px !important; height: 1px; opacity: 0; }
+.requirements-complete { padding: 14px; border: 1px solid var(--settings-border); border-radius: 10px; background: var(--settings-success); }
 dt { text-transform: capitalize; margin-top: 10px; }
 dd { margin: 3px 0; font-weight: 700; overflow-wrap: anywhere; }
 .toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 10px; border: 1px solid var(--settings-border); border-radius: 9px; background: var(--settings-field); text-transform: capitalize; }
@@ -301,6 +364,7 @@ article > button { justify-self: start; padding: 7px 10px; font-size: .85rem; }
   .backdrop { position: fixed; inset: 0; background: #10261a66; z-index: 40; }
   .save-bar { align-items: stretch; bottom:calc(8px + env(safe-area-inset-bottom)); flex-direction: column; padding:10px; }
   .save-bar div { display: grid; grid-template-columns: 1fr 1fr; }
+  .requirement-statuses { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {

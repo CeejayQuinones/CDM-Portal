@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 class GradingWorkflowService
 {
-    public function __construct(private GradingService $grading) {}
+    public function __construct(private GradingService $grading, private GradingScaleService $scales) {}
 
     public function readiness(User $actor, GradeSheet $sheet): array
     {
@@ -95,10 +95,12 @@ class GradingWorkflowService
                 $periodGrades[$period] = $periodBasis;
             }
             $finalBasis = (int) round((($periodGrades['midterm'] ?? 0) * $finalWeights['midterm'] + ($periodGrades['finals'] ?? 0) * $finalWeights['finals']) / 10000, 0, PHP_ROUND_HALF_UP);
-            $results[] = ['enrollment_subject_id' => $student->enrollment_subject_id, 'student_id' => $student->student_id, 'student_number' => $student->student_number, 'student_name' => trim($student->last_name.', '.$student->first_name.' '.($student->middle_name ?? '')), 'midterm_grade' => ($periodGrades['midterm'] ?? 0) / 100, 'finals_grade' => ($periodGrades['finals'] ?? 0) / 100, 'final_grade' => $finalBasis / 100, 'grade_point' => null, 'remarks' => null, 'breakdown' => $breakdown];
+            $finalGrade = $finalBasis / 100;
+            $scale = $this->scales->resolve($finalGrade);
+            $results[] = ['enrollment_subject_id' => $student->enrollment_subject_id, 'student_id' => $student->student_id, 'student_number' => $student->student_number, 'student_name' => trim($student->last_name.', '.$student->first_name.' '.($student->middle_name ?? '')), 'midterm_grade' => ($periodGrades['midterm'] ?? 0) / 100, 'finals_grade' => ($periodGrades['finals'] ?? 0) / 100, 'final_grade' => $finalGrade, 'grade_point' => $scale['grade_point'] ?? null, 'remarks' => $scale['remarks'] ?? null, 'breakdown' => $breakdown];
         }
         $errors = array_values(array_unique($errors));
-        $configuration = ['rounding' => 'integer hundredths, half up', 'grade_scale_configured' => false, 'midterm_weight' => $finalWeights['midterm'] / 100, 'finals_weight' => $finalWeights['finals'] / 100, 'category_weights' => collect($weights)->map(fn ($period) => collect($period)->map(fn ($value) => $value / 100)->all())->all(), 'assessments' => $sheet->assessments->map(fn ($row) => ['id' => $row->id, 'period' => $row->period, 'label' => $row->label, 'category' => $row->category, 'max_score' => (float) $row->max_score, 'version' => $row->version])->values()->all(), 'context' => $this->contextSnapshot($sheet)];
+        $configuration = ['rounding' => 'integer hundredths, half up', 'grade_scale_configured' => $results !== [] && collect($results)->every(fn ($result) => $result['grade_point'] !== null && $result['remarks'] !== null), 'midterm_weight' => $finalWeights['midterm'] / 100, 'finals_weight' => $finalWeights['finals'] / 100, 'category_weights' => collect($weights)->map(fn ($period) => collect($period)->map(fn ($value) => $value / 100)->all())->all(), 'assessments' => $sheet->assessments->map(fn ($row) => ['id' => $row->id, 'period' => $row->period, 'label' => $row->label, 'category' => $row->category, 'max_score' => (float) $row->max_score, 'version' => $row->version])->values()->all(), 'context' => $this->contextSnapshot($sheet)];
         $checksum = $this->checksum($configuration, $results);
 
         return ['ready' => $errors === [], 'errors' => $errors, 'results' => $errors === [] ? $results : [], 'configuration' => $configuration, 'checksum' => $checksum];
@@ -115,7 +117,10 @@ class GradingWorkflowService
             abort_unless($locked->version === $version, 409, 'This grade sheet changed. Reload before submitting.');
             $section = $locked->sectionSubject()->with('section')->firstOrFail()->section;
             $schedule = GradePeriodSchedule::where(['academic_year_id' => $section->academic_year_id, 'semester_id' => $section->semester_id, 'status' => 'active'])->first();
-            abort_unless($schedule && now()->greaterThanOrEqualTo($schedule->midterm_deadline) && now()->greaterThanOrEqualTo($schedule->finals_deadline), 409, 'Both grading windows must be complete before submission.');
+            abort_unless($schedule, 409, 'Grade submission is not open yet.');
+            $submissionWindow = $this->grading->periodState($schedule, 'finals');
+            abort_if($submissionWindow['state'] === 'Upcoming', 409, 'Grade submission is not open yet.');
+            abort_if($submissionWindow['state'] === 'Closed', 409, 'Grade submission period has closed.');
             $computed = $this->compute($locked);
             abort_unless($computed['ready'], 422, implode(' ', $computed['errors']));
             $attemptNumber = (int) GradeSubmissionAttempt::where('grade_sheet_id', $locked->id)->lockForUpdate()->max('attempt_number') + 1;

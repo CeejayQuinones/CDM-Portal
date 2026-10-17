@@ -41,7 +41,9 @@ class StudentRecordCompletenessService
         }
         if ($student->documents->isEmpty()) {
             $issues[] = ['key' => 'document_metadata', 'label' => 'No document metadata is recorded.', 'area' => 'documents'];
-        } elseif ($student->documents->contains(fn ($document) => $document->availability_status === 'missing' || $document->verification_status === 'pending')) {
+        } elseif ($student->documents->contains(fn ($document) => $document->availability_status === 'missing'
+            || in_array($document->verification_status, ['pending', 'rejected'], true)
+            || $document->physical_copy_status === 'required')) {
             $issues[] = ['key' => 'document_attention', 'label' => 'One or more documents need staff attention.', 'area' => 'documents'];
         }
 

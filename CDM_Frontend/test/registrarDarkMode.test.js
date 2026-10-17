@@ -30,15 +30,15 @@ test('Registrar dark mode defines one root semantic palette and restores light t
 
 test('dark palette text and controls meet normal-text contrast targets', () => {
   for (const [foreground, background] of [
-    ['#f1f4ef', '#0b1711'],
-    ['#f1f4ef', '#12241a'],
-    ['#c2cec4', '#153020'],
-    ['#9fb2a3', '#10251a'],
-    ['#69c585', '#10251a'],
-    ['#f1f4ef', '#106a2e'],
+    ['#f1f4f2', '#070a08'],
+    ['#f1f4f2', '#0d120f'],
+    ['#bcc7c0', '#121915'],
+    ['#87958c', '#0d120f'],
+    ['#65bd80', '#0d120f'],
+    ['#f1f4f2', '#106a2e'],
     ['#ef9a91', '#492925'],
-    ['#d9b94e', '#153020'],
-    ['#07170f', '#69c585'],
+    ['#f4d35e', '#121915'],
+    ['#07130c', '#65bd80'],
   ]) {
     assert.ok(contrast(foreground, background) >= 4.5, `${foreground} on ${background} must meet WCAG AA`)
   }
@@ -48,19 +48,19 @@ test('dark palette uses distinct CDM green depth and restrained gold tokens', as
   const theme = await read('../src/assets/styles/student-theme.css')
 
   for (const declaration of [
-    '--bg-page: #0b1711',
-    '--bg-surface: #10251a',
-    '--bg-surface-alt: #153020',
-    '--bg-surface-raised: #1a3927',
-    '--bg-input: #1b3526',
-    '--bg-hover: #21452f',
-    '--border-color: #315a40',
-    '--text-primary: #f1f4ef',
-    '--text-secondary: #c2cec4',
-    '--text-muted: #9fb2a3',
+    '--bg-page: #070a08',
+    '--bg-surface: #0d120f',
+    '--bg-surface-alt: #121915',
+    '--bg-surface-raised: #17201a',
+    '--bg-input: #111814',
+    '--bg-hover: #19231c',
+    '--border-color: #28382e',
+    '--text-primary: #f1f4f2',
+    '--text-secondary: #bcc7c0',
+    '--text-muted: #87958c',
     '--brand-primary: #106a2e',
     '--brand-active: #168443',
-    '--color-naples-yellow: #d9b94e',
+    '--color-naples-yellow: #f4d35e',
   ]) assert.match(theme, new RegExp(declaration))
 
   assert.doesNotMatch(theme, /#1d2118|#101914|#19261e|#213128|#293b30/)

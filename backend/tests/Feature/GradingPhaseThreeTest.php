@@ -40,7 +40,7 @@ class GradingPhaseThreeTest extends TestCase
         Sanctum::actingAs($this->f['professorUser']);
         $this->postJson('/api/grading/classes/'.$assignment->id.'/workspace')->assertOk();
         $this->sheet = GradeSheet::where('section_subject_id', $assignment->id)->firstOrFail();
-        GradePeriodSchedule::create(['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'midterm_opens_at' => now()->subDays(10), 'midterm_deadline' => now()->subDays(6), 'finals_opens_at' => now()->subDays(5), 'finals_deadline' => now()->subDay(), 'created_by' => $this->f['registrar']->id, 'updated_by' => $this->f['registrar']->id]);
+        GradePeriodSchedule::create(['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'midterm_opens_at' => now()->subDays(10), 'midterm_deadline' => now()->subDays(6), 'finals_opens_at' => now()->subDay(), 'finals_deadline' => now()->addDays(5), 'created_by' => $this->f['registrar']->id, 'updated_by' => $this->f['registrar']->id]);
         $scores = ['midterm' => 80, 'finals' => 90];
         $order = 1;
         foreach ($scores as $period => $score) {

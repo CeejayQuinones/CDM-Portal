@@ -7,7 +7,7 @@
 .admission-workflow .panel > :first-child { margin-top: 0; }
 .admission-workflow .panel > :last-child { margin-bottom: 0; }
 .admission-workflow .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
-.admission-workflow button, .admission-workflow .link-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; max-width: 100%; padding: 10px 16px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); color: var(--accent); font: inherit; font-weight: 600; line-height: 1.35; text-align: center; cursor: pointer; }
+.admission-workflow button, .admission-workflow .link-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; max-width: 100%; padding: 7px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--accent); font: inherit; font-size: .9rem; font-weight: 700; line-height: 1.35; text-align: center; cursor: pointer; }
 .admission-workflow .link-button { transition: background-color 180ms ease, border-color 180ms ease; }
 .admission-workflow .primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
 .admission-workflow button:hover:not(:disabled), .admission-workflow .link-button:hover { border-color: var(--color-dark-spring-green); background: var(--color-green-tint); }
@@ -22,6 +22,14 @@
 .admission-workflow .filters { padding: 16px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); align-items: end; }
 .admission-workflow .filters > :is(input,select) { width: auto; flex: 1 1 180px; }
 .admission-workflow .filters label { margin: 0; }
+.admission-workflow .admission-search-row { display: grid; grid-template-columns: minmax(240px, 1fr) auto auto auto; align-items: end; gap: 10px; margin: 14px 0; }
+.admission-workflow .admission-search-row > input { min-height: 38px; }
+.admission-workflow .admission-search-row label { margin: 0; }
+.admission-workflow .exam-cycle-row { grid-template-columns: minmax(260px, 420px) auto; justify-content: start; }
+.admission-workflow .filter-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--text-on-accent); font-size: .72rem; }
+.admission-workflow .admission-advanced-filters { animation: admission-filter-reveal 200ms ease; }
+.admission-workflow .admission-editor { margin: 0; }
+.admission-workflow .admission-inline-empty { margin: 12px 0; color: var(--color-muted); font-size: .9rem; }
 .admission-workflow .table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; padding: 0; }
 .admission-workflow table { width: 100%; border-collapse: collapse; background: var(--bg-surface); color: var(--text-primary); font-size: .95rem; }
 .admission-workflow th, .admission-workflow td { padding: 16px; min-width: 120px; text-align: left; border-bottom: 1px solid var(--color-border); vertical-align: top; overflow-wrap: normal; }
@@ -54,6 +62,15 @@
 .admission-workflow .result-passed .badge { color: var(--color-dartmouth-green); background: var(--color-green-tint); }
 .admission-workflow .result-card .result-outcome { font-size: clamp(1.6rem, 3vw, 2rem); margin: 16px 0 24px; }
 .admission-workflow .readiness { padding: 16px; border: 1px solid var(--color-border); border-radius: 10px; }
+.admission-workflow .exam-summary { display: grid; gap: 18px; }
+.admission-workflow .exam-summary .card-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.admission-workflow .exam-summary h2, .admission-workflow .exam-summary h3 { margin: 0; }
+.admission-workflow .exam-policy-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.admission-workflow .exam-policy-facts > div { padding: 12px; border-radius: 9px; background: var(--color-green-tint); }
+.admission-workflow .exam-requirements-summary { padding-top: 16px; border-top: 1px solid var(--color-border); }
+.admission-workflow .requirement-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.admission-workflow .requirement-list p { display: grid; gap: 4px; margin: 0; padding: 10px; border: 1px solid var(--color-border); border-radius: 8px; }
+.admission-workflow .requirement-list span { color: var(--color-muted); font-size: .78rem; }
 .admission-workflow summary { cursor: pointer; padding: 12px 0; font-weight: 600; min-height: 44px; }
 .admission-workflow .history-change { display: grid; gap: 4px; margin: 12px 0; }
 /* Sticky exam status respects the measured existing navbar instead of covering it. */
@@ -92,14 +109,19 @@
 .admission-workflow .admission-dialog .toolbar { justify-content: flex-end; margin-bottom: 0; }
 .admission-workflow .reveal, .admission-workflow .question-content, .admission-workflow .save-message, .admission-applicant .status-block { animation: admission-reveal 180ms ease; }
 @keyframes admission-reveal { from { opacity: .25; } to { opacity: 1; } }
+@keyframes admission-filter-reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 1100px) {
   .admission-workflow .exam-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .admission-workflow .progress-steps li { flex-direction: column; align-items: start; }
+  .admission-workflow .requirement-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
   .admission-workflow .page-header { margin-bottom: 14px; }
   .admission-workflow .panel { margin: 12px 0; padding: 15px; }
   .admission-workflow .toolbar { gap: 8px; margin: 12px 0; }
+  .admission-workflow .admission-search-row, .admission-workflow .exam-cycle-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .admission-workflow .admission-search-row > input, .admission-workflow .exam-cycle-row label { grid-column: 1 / -1; }
+  .admission-workflow .exam-policy-facts, .admission-workflow .requirement-list { grid-template-columns: minmax(0, 1fr); }
   .admission-workflow label { gap: 5px; margin: 9px 0; }
   .admission-workflow .table-wrap { padding: 0; }
   .admission-workflow .grid, .admission-workflow .summary-grid, .admission-workflow .admission-details { grid-template-columns: minmax(0, 1fr); }
@@ -137,7 +159,7 @@
 .admission-workflow .admission-context-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 16px;
+  gap: 4px 14px;
   margin: 0 0 20px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--color-border);
@@ -147,8 +169,8 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
-  min-height: 44px;
-  padding: 6px 0;
+  min-height: 36px;
+  padding: 4px 0;
   font-size: .85rem;
   line-height: 1.4;
 }

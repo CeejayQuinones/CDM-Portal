@@ -1,17 +1,20 @@
 <script setup>
 import AdmissionStaffWorkspace from './components/AdmissionStaffWorkspace.vue'
 import AdmissionDialog from './components/AdmissionDialog.vue'
+import PortalSelect from '../../components/PortalSelect.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { admissionApi, admissionError, topics } from './services/workflowService'
 const props = defineProps({ title: String, mode: String, embedded: Boolean })
 const emit = defineEmits(['saved'])
 const data = ref(null), error = ref(''), busy = ref(false), form = ref(null), search = ref(''), page = ref(1)
 const topicFilter = ref(''), statusFilter = ref(''), difficultyFilter = ref(''), cycleFilter = ref(''), academic = ref(false), fieldErrors = ref({})
+const filtersOpen = ref(false)
 const dateLabel = value => value ? new Date(value).toLocaleString() : 'Not set'
 const programStatus = row => data.value?.settings?.find(s => s.course_id === row.id)?.status || 'Not configured'
 const confirmation = ref(null)
 const programSubjects = ref(''), programCareers = ref('')
 const rows = computed(() => props.mode === 'cycles' ? data.value?.cycles || [] : props.mode === 'questions' ? data.value?.questions?.data || [] : data.value?.courses || [])
+const activeFilterCount = computed(() => [topicFilter.value, statusFilter.value, difficultyFilter.value, cycleFilter.value].filter(Boolean).length)
 async function load() {
   busy.value = true; error.value = ''
   try { data.value = await admissionApi('get', 'admin/' + props.mode, { search: search.value, topic: topicFilter.value, status: statusFilter.value, difficulty: difficultyFilter.value, cycle_id: cycleFilter.value, page: page.value }) }
@@ -75,23 +78,26 @@ async function confirmChange() {
   else await remove(pending.row, true)
 }
 async function changeStatus(row, status) { edit(row); form.value.status = status; await save() }
-watch(() => props.mode, () => { confirmation.value = null; academic.value = false; statusFilter.value = ''; difficultyFilter.value = ''; cycleFilter.value = ''; topicFilter.value = ''; search.value = ''; fieldErrors.value = {}; data.value = null; form.value = null; page.value = 1; load() })
+watch(() => props.mode, () => { confirmation.value = null; academic.value = false; filtersOpen.value = false; statusFilter.value = ''; difficultyFilter.value = ''; cycleFilter.value = ''; topicFilter.value = ''; search.value = ''; fieldErrors.value = {}; data.value = null; form.value = null; page.value = 1; load() })
 onMounted(load)
 </script>
 <template>
   <AdmissionStaffWorkspace :title="title" :embedded="embedded">
-    <div class="toolbar filters">
+    <div class="admission-search-row">
+      <input v-if="mode !== 'cycles'" v-model="search" :aria-label="mode === 'questions' ? 'Search questions' : 'Search programs'" :placeholder="mode === 'questions' ? 'Search questions...' : 'Search programs...'">
+      <button v-if="mode !== 'cycles'" class="primary" :disabled="busy" @click="page = 1; load()">Search</button>
+      <button v-if="mode === 'questions'" type="button" aria-controls="admission-question-filters" :aria-expanded="filtersOpen" @click="filtersOpen = !filtersOpen">Filters<span v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</span></button>
       <button :disabled="busy" @click="load">Reload</button>
-      <button class="primary" v-if="mode !== 'programs'" :disabled="busy || !data" @click="edit(null)">New {{ mode === 'cycles' ? 'cycle' : 'question' }}</button>
+      <button class="primary" v-if="mode !== 'programs'" :disabled="busy || !data" @click="edit(null)">{{ mode === 'cycles' ? 'New cycle' : 'Add Question' }}</button>
       <button v-if="mode === 'programs'" class="primary" :disabled="busy || !data" @click="editCourse(null)">Add program</button>
-      <template v-if="mode === 'programs'"><input v-model="search" aria-label="Search programs" placeholder="Program name or code"><button :disabled="busy" @click="load">Search</button></template>
-      <template v-if="mode === 'questions'"><select v-model="cycleFilter" aria-label="Exam cycle context"><option value="">Default exam requirements</option><option v-for="cycle in data?.cycles || []" :key="cycle.id" :value="cycle.id">{{ cycle.name }}</option></select><select v-model="statusFilter" aria-label="Question status"><option value="">All statuses</option><option>draft</option><option>active</option><option>retired</option></select><select v-model="difficultyFilter" aria-label="Question difficulty"><option value="">All difficulties</option><option>easy</option><option>medium</option><option>hard</option></select><input v-model="search" aria-label="Search questions" placeholder="Search questions"><select v-model="topicFilter" aria-label="Filter by topic"><option value="">All topics</option><option v-for="topic in topics" :key="topic">{{ topic }}</option></select><button :disabled="busy" @click="page = 1; load()">Search</button></template>
     </div>
+    <div v-if="mode === 'questions' && filtersOpen" id="admission-question-filters" class="toolbar filters admission-advanced-filters"><select v-model="cycleFilter" aria-label="Exam cycle context"><option value="">Default exam requirements</option><option v-for="cycle in data?.cycles || []" :key="cycle.id" :value="cycle.id">{{ cycle.name }}</option></select><select v-model="statusFilter" aria-label="Question status"><option value="">All statuses</option><option>draft</option><option>active</option><option>retired</option></select><select v-model="difficultyFilter" aria-label="Question difficulty"><option value="">All difficulties</option><option>easy</option><option>medium</option><option>hard</option></select><select v-model="topicFilter" aria-label="Filter by topic"><option value="">All topics</option><option v-for="topic in topics" :key="topic">{{ topic }}</option></select><button class="primary" :disabled="busy" @click="page = 1; load()">Apply filters</button></div>
     <p v-if="busy" class="placeholder-panel panel status-block" role="status">Loading or saving...</p><p v-if="error" class="placeholder-panel panel status-block" role="alert">{{ error }}</p>
     <div v-if="mode === 'questions' && data" class="placeholder-panel panel"><h2>General exam readiness · {{ data.readiness?.ready ? 'READY' : 'NOT READY' }}</h2><p>Cycle selection changes the readiness requirements, not the shared question bank. Production excludes development questions.</p><div class="grid"><div v-for="topic in topics" :key="topic" class="readiness"><strong>{{ topic }}</strong><p>{{ data.counts[topic] || 0 }} / {{ data.readiness?.requirements[topic] || 20 }} active</p><span class="badge">{{ (data.counts[topic] || 0) >= (data.readiness?.requirements[topic] || 20) ? 'Ready' : 'Needs questions' }}</span></div></div></div>
-    <form v-if="form" class="placeholder-panel panel" @submit.prevent="save">
+    <AdmissionDialog v-if="form" labelledby="admission-editor-title" :busy="busy" wide @cancel="form = null"><form class="admission-editor" @submit.prevent="save">
       <ul v-if="Object.keys(fieldErrors).length" role="alert"><li v-for="(messages,field) in fieldErrors" :key="field">{{ field }}: {{ messages.join(" ") }}</li></ul>
-      <h2>{{ form.id ? 'Edit' : 'Configure' }} {{ mode }}</h2>
+      <header class="admission-dialog-header"><div><p class="page-kicker">Admission workspace</p><h2 id="admission-editor-title">{{ form.id ? 'Edit' : 'Configure' }} {{ mode }}</h2></div><button type="button" :disabled="busy" aria-label="Close editor" @click="form = null">Close</button></header>
+      <div class="admission-dialog-body">
       <template v-if="academic"><p>Edits update the existing academic Course. Recommendation descriptions and weights are configured separately.</p><div class="grid"><label>Program code<input v-model="form.course_code" required maxlength="20"></label><label>Program name<input v-model="form.course_name" required maxlength="150"></label><label>Duration (years)<input v-model.number="form.years" type="number" min="1" max="255" required></label><label>Department<select v-model="form.department_id" required><option v-for="d in data.departments" :key="d.id" :value="d.id">{{ d.department_name }}</option></select></label><label>Status<select v-model="form.status"><option>active</option><option>inactive</option></select></label></div></template>
       <template v-else-if="mode === 'cycles'">
         <div class="grid">
@@ -105,10 +111,10 @@ onMounted(load)
         </div>
       </template>
       <template v-else-if="mode === 'questions'">
-        <div class="grid"><label>Question code<input v-model="form.question_code" required maxlength="64"></label><label>Topic<select v-model="form.topic"><option v-for="t in topics" :key="t">{{ t }}</option></select></label></div>
+        <div class="grid"><label>Question code<input v-model="form.question_code" required maxlength="64"></label><label>Topic<PortalSelect v-model="form.topic" :options="topics" aria-label="Question topic" required /></label></div>
         <label>Question<textarea v-model="form.question_text" required rows="3"></textarea></label>
         <div class="grid"><label v-for="key in ['a','b','c','d']" :key="key">Option {{ key.toUpperCase() }}<input v-model="form['option_'+key]" required></label></div>
-        <div class="grid"><label>Correct answer<select v-model="form.correct_answer"><option v-for="a in ['A','B','C','D']" :key="a">{{ a }}</option></select></label><label>Difficulty<select v-model="form.difficulty"><option>easy</option><option>medium</option><option>hard</option></select></label><label>Status<select v-model="form.status"><option>draft</option><option>active</option><option>retired</option></select></label></div>
+        <div class="grid"><label>Correct answer<PortalSelect v-model="form.correct_answer" :options="['A','B','C','D']" aria-label="Correct answer" :error="fieldErrors.correct_answer?.join(' ')" required /></label><label>Difficulty<PortalSelect v-model="form.difficulty" :options="['easy','medium','hard']" aria-label="Question difficulty" :error="fieldErrors.difficulty?.join(' ')" required /></label><label>Status<PortalSelect v-model="form.status" :options="['draft','active','retired']" aria-label="Question status" :error="fieldErrors.status?.join(' ')" required /></label></div>
       </template>
       <template v-else>
         <p>Choose whether applicants can receive this program as a recommendation. Use school-approved topic weights.</p>
@@ -118,7 +124,7 @@ onMounted(load)
         <div class="grid"><label v-for="(_,topic) in form.recommendation_profile" :key="topic">{{ topic }} weight<input v-model.number="form.recommendation_profile[topic]" type="number" min="0" max="1" step="0.01"></label></div>
       </template>
       <div class="toolbar"><button class="primary" :disabled="busy">Save</button><button type="button" :disabled="busy" @click="form = null">Cancel</button></div>
-    </form>
+      </div></form></AdmissionDialog>
     <div class="placeholder-panel panel table-wrap" tabindex="0" role="region" :aria-label="title + ' table, scroll horizontally for more columns'"><table><thead><tr><th>Code</th><th>{{ mode === 'questions' ? 'Question / topic' : 'Name' }}</th><th>Status</th><th v-if="mode === 'cycles'">Application dates</th><th v-if="mode === 'questions'">Difficulty / key / updated</th><th v-if="mode === 'programs'">Duration / department / recommendations</th><th>Actions</th></tr></thead><tbody>
       <tr v-for="row in rows" :key="row.id"><td>{{ row.code || row.question_code || row.course_code }}</td><td>{{ row.name || row.question_text || row.course_name }}<p v-if="row.topic" class="muted">{{ row.topic }}</p></td><td><span class="badge" :class="{ positive: row.status === 'open' || row.status === 'active' }">{{ row.status }}</span></td><td v-if="mode === 'cycles'">Opens: {{ dateLabel(row.opens_at) }}<br>Closes: {{ dateLabel(row.closes_at) }}<br>Confirmation: {{ dateLabel(row.confirmation_closes_at) }}</td><td v-if="mode === 'questions'">{{ row.difficulty }} · Key {{ row.correct_answer }}<p>{{ dateLabel(row.updated_at) }}</p></td><td v-if="mode === 'programs'">{{ row.years }} years · {{ row.department?.department_name }}<p>Recommendations: {{ programStatus(row) }}</p></td><td><button v-if="mode === 'programs'" :disabled="busy" @click="editCourse(row)">Edit program</button><button :disabled="busy" @click="edit(row)">{{ mode === 'programs' ? 'Recommendation settings' : 'Edit' }}</button><button v-if="mode === 'questions'" :disabled="busy" @click="changeStatus(row, row.status === 'active' ? 'retired' : 'active')">{{ row.status === 'active' ? 'Deactivate' : 'Activate' }}</button> <button v-if="mode === 'cycles' && ['draft','closed'].includes(row.status)" :disabled="busy" @click="changeStatus(row, 'open')">Open</button><button v-if="mode === 'cycles' && row.status === 'open'" :disabled="busy" @click="changeStatus(row, 'closed')">Close</button> <button v-if="mode === 'questions'" :disabled="busy" @click="remove(row)">Delete</button></td></tr>
       <tr v-if="!busy && !error && !rows.length"><td colspan="4">No records yet.</td></tr>

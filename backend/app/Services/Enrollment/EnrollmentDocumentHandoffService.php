@@ -64,6 +64,7 @@ class EnrollmentDocumentHandoffService
                 'availability_status' => 'available',
                 'verification_status' => 'pending',
                 'submitted_date' => $source->created_at?->toDateString() ?? now()->toDateString(),
+                'verification_version' => max(1, (int) ($destination?->verification_version ?? 1)),
             ];
             if ($destination) {
                 $destination->fill($values)->save();

@@ -34,12 +34,8 @@ class PlatformAccessControlTest extends TestCase
         return [
             'desktop registrar' => [Role::REGISTRAR_STAFF, ClientPlatform::DESKTOP],
             'desktop admin' => [Role::ADMIN, ClientPlatform::DESKTOP],
-            'web student' => [Role::STUDENT, ClientPlatform::WEB],
-            'web professor' => [Role::PROFESSOR, ClientPlatform::WEB],
             'web admin' => [Role::ADMIN, ClientPlatform::WEB],
             'web guest' => [Role::GUEST, ClientPlatform::WEB],
-            'mobile student' => [Role::STUDENT, ClientPlatform::MOBILE],
-            'mobile professor' => [Role::PROFESSOR, ClientPlatform::MOBILE],
         ];
     }
 
@@ -64,14 +60,21 @@ class PlatformAccessControlTest extends TestCase
     public static function deniedLoginMatrix(): array
     {
         return [
-            'desktop student' => [Role::STUDENT, ClientPlatform::DESKTOP, 'Student accounts cannot access the Registrar Desktop application.'],
-            'desktop professor' => [Role::PROFESSOR, ClientPlatform::DESKTOP, 'This account is not permitted to use the Desktop client.'],
             'desktop guest' => [Role::GUEST, ClientPlatform::DESKTOP, 'This account is not permitted to use the Desktop client.'],
             'web registrar' => [Role::REGISTRAR_STAFF, ClientPlatform::WEB, 'Registrar Staff accounts are available only through the CDM Desktop application.'],
             'mobile registrar' => [Role::REGISTRAR_STAFF, ClientPlatform::MOBILE, 'Registrar Staff accounts are available only through the CDM Desktop application.'],
             'mobile admin' => [Role::ADMIN, ClientPlatform::MOBILE, 'This account is not permitted to use the Student mobile application.'],
             'mobile guest' => [Role::GUEST, ClientPlatform::MOBILE, 'This account is not permitted to use the Student mobile application.'],
         ];
+    }
+
+    public function test_student_and_professor_password_login_is_denied_on_allowed_platforms(): void
+    {
+        foreach ([Role::STUDENT, Role::PROFESSOR] as $role) {
+            $this->login($this->user($role), ClientPlatform::WEB)
+                ->assertUnauthorized()
+                ->assertJsonPath('message', 'This '.$role.' account must sign in with Google.');
+        }
     }
 
     public function test_login_rejects_missing_and_invalid_client_identifiers(): void
@@ -115,9 +118,10 @@ class PlatformAccessControlTest extends TestCase
             'assigned_at' => now(),
         ]);
 
-        $this->login($professor, ClientPlatform::DESKTOP)->assertOk();
-        $this->login($professor, ClientPlatform::MOBILE)->assertForbidden()
-            ->assertJsonPath('message', 'Semi-Coordinator accounts use Desktop for Event management and Web for promotional viewing.');
+        $this->login($professor, ClientPlatform::DESKTOP)->assertUnauthorized()
+            ->assertJsonPath('message', 'This Professor account must sign in with Google.');
+        $this->login($professor, ClientPlatform::MOBILE)->assertUnauthorized()
+            ->assertJsonPath('message', 'This Professor account must sign in with Google.');
     }
 
     #[DataProvider('boundTokenMatrix')]
@@ -144,7 +148,6 @@ class PlatformAccessControlTest extends TestCase
         return [
             'web token replayed on desktop' => [Role::ADMIN, ClientPlatform::WEB, ClientPlatform::DESKTOP],
             'desktop token replayed on web' => [Role::ADMIN, ClientPlatform::DESKTOP, ClientPlatform::WEB],
-            'mobile token replayed on web' => [Role::STUDENT, ClientPlatform::MOBILE, ClientPlatform::WEB],
         ];
     }
 
@@ -177,7 +180,7 @@ class PlatformAccessControlTest extends TestCase
     public function test_an_existing_token_is_blocked_after_the_account_is_suspended(): void
     {
         $user = $this->user(Role::STUDENT);
-        $token = $this->login($user, ClientPlatform::WEB)->assertOk()->json('data.token');
+        $token = $user->createToken('web', [ClientPlatform::ability(ClientPlatform::WEB)])->plainTextToken;
         $user->update(['status' => 'suspended']);
 
         $this->withToken($token)
@@ -188,7 +191,7 @@ class PlatformAccessControlTest extends TestCase
     public function test_a_valid_client_does_not_bypass_existing_role_authorization(): void
     {
         $student = $this->user(Role::STUDENT);
-        $token = $this->login($student, ClientPlatform::WEB)->assertOk()->json('data.token');
+        $token = $student->createToken('web', [ClientPlatform::ability(ClientPlatform::WEB)])->plainTextToken;
 
         $this->withToken($token)
             ->getJson('/api/students', [ClientPlatform::HEADER => ClientPlatform::WEB])

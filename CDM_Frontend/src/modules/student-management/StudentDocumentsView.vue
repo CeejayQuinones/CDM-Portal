@@ -31,7 +31,10 @@ const refreshingAnalyses = ref(false)
 const previewStates = ref({})
 const viewerDocument = ref(null)
 const viewerCloseButton = ref(null)
-const canManageDocuments = computed(() => authStore.currentRole === ROLES.REGISTRAR_STAFF)
+const canManageDocuments = computed(() => [ROLES.REGISTRAR_STAFF, ROLES.ADMIN].includes(authStore.currentRole))
+const requirementAction = ref(null)
+const requirementNote = ref('')
+const requirementActionButton = ref(null)
 const isReplacing = computed(() => Boolean(uploadDocument.value?.has_file))
 const activeAnalysisStatuses = ['pending', 'processing']
 let analysisPollTimer = null
@@ -103,8 +106,11 @@ async function loadDocuments({ silent = false } = {}) {
   try {
     const { data } = await apiClient.get(`/students/${route.params.id}/documents`)
     student.value = data.data.student
-    documents.value = data.data.documents
+    const stored = new Map(data.data.documents.map(document => [document.document_type_id, document]))
+    documents.value = data.data.requirements.map(requirement => ({ ...requirement, ...(stored.get(requirement.document_type_id) || {}) }))
     syncDocumentPreviews()
+    await nextTick()
+    if (route.query.document) window.document.getElementById(`requirement-${route.query.document}`)?.scrollIntoView({ block: 'center' })
   } catch (requestError) {
     if (!silent) {
       error.value =
@@ -273,6 +279,56 @@ function replaceDocument(updatedDocument) {
   const index = documents.value.findIndex((document) => document.id === updatedDocument.id)
   if (index !== -1) documents.value.splice(index, 1, updatedDocument)
 }
+
+function openRequirementAction(action, document, event) {
+  requirementAction.value = { action, document }
+  requirementNote.value = action === 'require' ? (document.physical_copy_instruction || '') : ''
+  requirementActionButton.value = event?.currentTarget || null
+}
+
+function closeRequirementAction() {
+  if (activeAction.value) return
+  requirementAction.value = null
+  requirementNote.value = ''
+  nextTick(() => requirementActionButton.value?.focus?.())
+}
+
+async function submitRequirementAction() {
+  const context = requirementAction.value
+  if (!context) return
+  const { action, document } = context
+  activeAction.value = `requirement-${action}-${document.document_type_id}`
+  actionError.value = ''
+  success.value = ''
+  try {
+    const digital = ['verify', 'needs-resubmission'].includes(action)
+    const url = digital
+      ? `/student-documents/${document.id}/${action}`
+      : `/students/${student.value.id}/record-requirements/${document.document_type_id}/${action}`
+    const payload = digital
+      ? { version: document.version, ...(action === 'needs-resubmission' ? { reason: requirementNote.value } : {}) }
+      : action === 'require'
+        ? { instruction: requirementNote.value || null }
+        : action === 'reopen'
+          ? { reason: requirementNote.value }
+          : {}
+    const { data } = await apiClient.patch(url, payload)
+    success.value = data.message
+    activeAction.value = null
+    closeRequirementAction()
+    await loadDocuments({ silent: true })
+  } catch (requestError) {
+    actionError.value = requestError.response?.data?.message || Object.values(requestError.response?.data?.errors || {}).flat()[0] || 'Unable to update this requirement.'
+    if (requestError.response?.status === 409) await loadDocuments({ silent: true })
+  } finally {
+    activeAction.value = null
+  }
+}
+
+const actionTitle = computed(() => ({
+  verify: 'Verify Digital Copy', 'needs-resubmission': 'Request Digital Resubmission',
+  require: 'Require Hard Copy', receive: 'Mark Hard Copy Received', reopen: 'Require Hard Copy Again',
+}[requirementAction.value?.action] || 'Update Requirement'))
 
 function openUpload(document) {
   uploadDocument.value = document
@@ -530,7 +586,7 @@ onBeforeUnmount(() => {
       <p>There are no student document records available yet.</p>
     </section>
     <section v-else class="documents">
-      <article v-for="document in documents" :key="document.id" class="document-card">
+      <article v-for="document in documents" :id="`requirement-${document.document_type_id}`" :key="document.id || `type-${document.document_type_id}`" class="document-card">
         <aside class="document-preview" :aria-label="`${document.name} preview`">
           <div v-if="!document.has_file" class="preview-placeholder missing-preview">
             <span class="preview-icon" aria-hidden="true">◇</span>
@@ -596,7 +652,11 @@ onBeforeUnmount(() => {
               <dt>Remarks</dt>
               <dd>{{ document.remarks || 'No remarks' }}</dd>
             </div>
+            <div><dt>Digital Copy</dt><dd>{{ title(document.digital_status) }}</dd></div>
+            <div><dt>Physical Copy</dt><dd>{{ document.physical_status === 'submitted' ? 'Received' : title(document.physical_status) }}</dd></div>
           </dl>
+
+          <p v-if="document.physical_status === 'required'" class="physical-instruction"><strong>Hard-copy instruction:</strong> {{ document.physical_copy_instruction || 'Please submit the physical/original copy to the Registrar Office.' }}</p>
 
           <div v-if="canManageDocuments" class="document-actions">
             <template v-if="document.has_file">
@@ -616,9 +676,14 @@ onBeforeUnmount(() => {
                 </button>
               </details>
             </template>
-            <button v-else class="primary" type="button" :disabled="activeAction" @click="openUpload(document)">
+            <button v-else-if="document.id" class="primary" type="button" :disabled="activeAction" @click="openUpload(document)">
               Upload
             </button>
+            <button v-if="document.id && document.has_file && document.verification_status === 'pending'" class="primary" type="button" :disabled="activeAction" @click="openRequirementAction('verify', document, $event)">Verify</button>
+            <button v-if="document.id && document.has_file && document.verification_status === 'pending'" type="button" :disabled="activeAction" @click="openRequirementAction('needs-resubmission', document, $event)">Needs Resubmission</button>
+            <button v-if="document.physical_status === 'not_required'" type="button" :disabled="activeAction" @click="openRequirementAction('require', document, $event)">Require Hard Copy</button>
+            <button v-if="document.physical_status === 'required'" class="primary" type="button" :disabled="activeAction" @click="openRequirementAction('receive', document, $event)">Mark Hard Copy Received</button>
+            <button v-if="document.physical_status === 'submitted'" type="button" :disabled="activeAction" @click="openRequirementAction('reopen', document, $event)">Require Again</button>
           </div>
 
           <section v-if="document.is_ai_analysis_eligible && document.has_file" class="ai-analysis">
@@ -721,6 +786,17 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </form>
+    </section>
+  </div>
+
+  <div v-if="requirementAction" class="modal-backdrop" role="presentation" @mousedown.self="closeRequirementAction">
+    <section class="upload-modal" role="dialog" aria-modal="true" aria-labelledby="requirement-action-title">
+      <div class="modal-heading"><div><p class="page-kicker">Student Record requirement</p><h2 id="requirement-action-title">{{ actionTitle }}</h2></div><button class="close-button" type="button" aria-label="Close requirement dialog" :disabled="activeAction" @click="closeRequirementAction">×</button></div>
+      <p><strong>{{ requirementAction.document.name }}</strong> for {{ student?.student_number }} · {{ student?.full_name }}</p>
+      <label v-if="['needs-resubmission', 'reopen'].includes(requirementAction.action)" class="file-picker"><span>Reason (required)</span><textarea v-model.trim="requirementNote" maxlength="1000" /></label>
+      <label v-else-if="requirementAction.action === 'require'" class="file-picker"><span>Instruction (optional)</span><textarea v-model.trim="requirementNote" maxlength="1000" placeholder="Please submit the physical/original copy to the Registrar Office." /></label>
+      <p v-else>Confirm this action. Digital verification and physical-copy receipt remain separate.</p>
+      <div class="modal-actions"><button type="button" :disabled="activeAction" @click="closeRequirementAction">Cancel</button><button class="primary" type="button" :disabled="activeAction || (['needs-resubmission', 'reopen'].includes(requirementAction.action) && !requirementNote)" @click="submitRequirementAction">{{ activeAction ? 'Saving…' : 'Confirm' }}</button></div>
     </section>
   </div>
 

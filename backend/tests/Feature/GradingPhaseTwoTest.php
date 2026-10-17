@@ -9,6 +9,7 @@ use App\Models\GradeAuditEvent;
 use App\Models\GradePeriodSchedule;
 use App\Models\GradeScore;
 use App\Models\GradeSheet;
+use App\Models\GradingScale;
 use App\Models\Professor;
 use App\Models\Role;
 use App\Models\SectionSubject;
@@ -38,7 +39,7 @@ class GradingPhaseTwoTest extends TestCase
         Sanctum::actingAs($this->f['professorUser']);
         $this->postJson('/api/grading/classes/'.$assignment->id.'/workspace')->assertOk();
         $this->sheet = GradeSheet::where('section_subject_id', $assignment->id)->firstOrFail();
-        GradePeriodSchedule::create(['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'midterm_opens_at' => now()->subDays(10), 'midterm_deadline' => now()->subDays(6), 'finals_opens_at' => now()->subDays(5), 'finals_deadline' => now()->subDay(), 'created_by' => $this->f['registrar']->id, 'updated_by' => $this->f['registrar']->id]);
+        GradePeriodSchedule::create(['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'midterm_opens_at' => now()->subDays(10), 'midterm_deadline' => now()->subDays(6), 'finals_opens_at' => now()->subDay(), 'finals_deadline' => now()->addDays(5), 'created_by' => $this->f['registrar']->id, 'updated_by' => $this->f['registrar']->id]);
         $this->completeSheet();
     }
 
@@ -95,6 +96,23 @@ class GradingPhaseTwoTest extends TestCase
         $this->assertCount(8, $computed['configuration']['assessments']);
     }
 
+    public function test_grading_scale_populates_draft_computation_and_submitted_snapshot_stays_immutable(): void
+    {
+        GradingScale::create(['min_percentage' => 85, 'max_percentage' => 89.99, 'grade_point' => 2, 'remark' => 'Configured result', 'is_active' => true]);
+        $computed = app(GradingWorkflowService::class)->compute($this->sheet);
+        $this->assertTrue($computed['configuration']['grade_scale_configured']);
+        $this->assertSame(2.0, $computed['results'][0]['grade_point']);
+        $this->assertSame('Configured result', $computed['results'][0]['remarks']);
+
+        $this->submit();
+        $snapshot = $this->sheet->submissions()->firstOrFail()->students()->firstOrFail();
+        $this->sheet->update(['status' => 'published', 'published_at' => now()]);
+        GradingScale::query()->update(['grade_point' => 3, 'remark' => 'Later configuration']);
+
+        $this->assertSame(2.0, $snapshot->fresh()->grade_point);
+        $this->assertSame('Configured result', $snapshot->fresh()->remarks);
+    }
+
     public function test_missing_scores_invalid_weights_and_missing_assessments_block_submission(): void
     {
         GradeScore::query()->first()->delete();
@@ -125,6 +143,34 @@ class GradingPhaseTwoTest extends TestCase
         $this->putJson('/api/grading/sheets/'.$this->sheet->id.'/final-weights', ['midterm_weight' => 50, 'finals_weight' => 50, 'version' => $submitted['version']])->assertConflict();
         $weights = $this->sheet->weights()->where('period', 'midterm')->get()->map(fn ($weight) => ['category' => $weight->category, 'weight_percentage' => $weight->weight_percentage, 'version' => $weight->version])->all();
         $this->putJson('/api/grading/sheets/'.$this->sheet->id.'/weights/midterm', ['weights' => $weights])->assertConflict();
+    }
+
+    public function test_submission_is_blocked_before_the_finals_submission_window_opens(): void
+    {
+        GradePeriodSchedule::query()->update([
+            'finals_opens_at' => now()->addDay(),
+            'finals_deadline' => now()->addDays(5),
+        ]);
+        Sanctum::actingAs($this->f['professorUser']);
+
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/submit', ['version' => $this->sheet->version])
+            ->assertConflict()
+            ->assertJsonPath('message', 'Grade submission is not open yet.');
+        $this->assertDatabaseCount('grade_submission_attempts', 0);
+    }
+
+    public function test_submission_is_blocked_after_the_finals_submission_window_closes(): void
+    {
+        GradePeriodSchedule::query()->update([
+            'finals_opens_at' => now()->subDays(5),
+            'finals_deadline' => now()->subSecond(),
+        ]);
+        Sanctum::actingAs($this->f['professorUser']);
+
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/submit', ['version' => $this->sheet->version])
+            ->assertConflict()
+            ->assertJsonPath('message', 'Grade submission period has closed.');
+        $this->assertDatabaseCount('grade_submission_attempts', 0);
     }
 
     public function test_return_requires_reason_unlocks_edits_and_resubmission_preserves_history(): void
