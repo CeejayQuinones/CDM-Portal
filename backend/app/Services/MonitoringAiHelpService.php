@@ -1052,26 +1052,38 @@ PROMPT;
     public function generateStudentStudioPlan(int $studentId, int $recordId): array
     {
         $source = $this->uploadedSource($studentId, $recordId);
+        $record = MonitoringPerformanceRecord::query()
+            ->whereKey($recordId)
+            ->where('student_id', $studentId)
+            ->first();
+        $fromSyllabus = strtoupper((string) ($record?->subject_code ?? '')) === 'SYLLABUS';
         $context = $this->studentStudyContext($studentId);
         $focus = $source['title'];
         $assessment = $context['assessment'] ?: [
             'student_id' => $studentId,
             'student_name' => 'Student',
             'risk_level' => 'moderate',
-            'risk_label' => 'Uploaded notes',
+            'risk_label' => $fromSyllabus ? 'Uploaded syllabus' : 'Uploaded notes',
             'subjects' => [],
         ];
 
         if (! $this->isLiveAiConfigured()) {
-            throw new \RuntimeException('AI is not configured, so a study guide cannot be generated from this file.');
+            throw new \RuntimeException($fromSyllabus
+                ? 'AI is not configured, so a study guide cannot be generated from this syllabus.'
+                : 'AI is not configured, so a study guide cannot be generated from this file.');
         }
 
+        $instruction = $fromSyllabus
+            ? "The student uploaded a course syllabus. Use only that syllabus. Title: {$focus}. "
+                .'Write a study guide that follows its topics, outcomes, and schedule. '
+                .'For each major topic, explain what to study and give a short way to practice it. '
+                .'Do not add subjects that are not in the syllabus. Plain text.'
+            : "Write a study guide from the uploaded notes only. Title: {$focus}. "
+                .'Explain the main ideas, list key terms, and give a short practice plan. Plain text.';
         $raw = $this->callProvider(
             $assessment,
             [],
-            "Write a study guide from the uploaded notes only. Title: {$focus}. "
-            .'Explain the main ideas, list key terms, and give a short practice plan. Plain text.'
-            ."\n\nNOTES:\n{$source['text']}",
+            $instruction."\n\n".($fromSyllabus ? 'SYLLABUS' : 'NOTES').":\n{$source['text']}",
         );
         $parsed = $this->parseAiResponse($raw, $assessment, true, $focus);
         $plan = trim((string) ($parsed['reply'] ?? ''));

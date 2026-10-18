@@ -11,7 +11,9 @@ use App\Models\User;
 use App\Models\UserProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -59,6 +61,49 @@ class MonitoringAccountIsolationTest extends TestCase
         $this->assertCount(1, $risk);
         $this->assertSame($other->id, $risk[0]['student_id']);
         $this->assertSame('26-00012', $risk[0]['student_number']);
+    }
+
+    public function test_a_student_study_guide_is_written_from_the_uploaded_syllabus(): void
+    {
+        $student = $this->createStudent('26-00021', 'Mia');
+        $syllabus = 'Week 1 variables and data types. Week 2 conditions and loops. Week 3 functions and arrays. Course outcome: write a small program.';
+
+        Sanctum::actingAs($student->user);
+        $upload = $this->post("/api/monitoring/students/{$student->id}/performance-records", [
+            'subject_code' => 'SYLLABUS',
+            'subject_name' => 'Course syllabus',
+            'assessment_name' => 'Syllabus',
+            'topic' => 'IT101 syllabus',
+            'attachment' => UploadedFile::fake()->createWithContent('it101-syllabus.txt', $syllabus),
+        ]);
+        $upload->assertCreated();
+        $recordId = (int) $upload->json('data.id');
+
+        $subjects = $this->getJson('/api/monitoring/my-risk')->assertOk()->json('data.students.0.subjects');
+        $this->assertSame([], $subjects);
+
+        Config::set('ai.provider', 'gemini');
+        Config::set('ai.api_key', 'test-key');
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [[
+                    'content' => ['parts' => [[
+                        'text' => json_encode(['reply' => 'Study variables in week 1, then conditions, loops, functions, and arrays.']),
+                    ]]],
+                ]],
+            ]),
+        ]);
+
+        $this->postJson('/api/monitoring/study-studio/plan', ['record_id' => $recordId])
+            ->assertOk()
+            ->assertJsonPath('data.title', 'Study guide · it101-syllabus.txt')
+            ->assertJsonPath('data.plan', 'Study variables in week 1, then conditions, loops, functions, and arrays.');
+
+        Http::assertSent(function ($request) use ($syllabus) {
+            $body = $request->body();
+
+            return str_contains($body, 'course syllabus') && str_contains($body, $syllabus);
+        });
     }
 
     private function createStudent(string $number, string $firstName): Student

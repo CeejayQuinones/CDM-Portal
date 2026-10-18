@@ -36,7 +36,14 @@ const matchSelected = ref(null)
 const matchSolved = ref([])
 const matchDone = ref(false)
 
-const files = computed(() => (studio.value.records || []).filter((record) => record.has_attachment))
+function isSyllabus(record) {
+  return String(record?.subject_code || '').toUpperCase() === 'SYLLABUS'
+}
+
+const files = computed(() => (studio.value.records || [])
+  .filter((record) => record.has_attachment)
+  .slice()
+  .sort((left, right) => Number(isSyllabus(right)) - Number(isSyllabus(left))))
 const selectedFile = computed(() => files.value.find((record) => record.id === selectedRecordId.value) || null)
 const focusTopic = computed(() => selectedFile.value?.attachment_name || selectedFile.value?.topic || '')
 const currentCard = computed(() => cards.value[cardIndex.value] || null)
@@ -63,7 +70,7 @@ const modes = [
   {
     id: 'guide',
     title: 'Study guide',
-    blurb: 'AI explains the file and lists what to review.',
+    blurb: 'AI writes this from the selected file. A syllabus becomes the study guide.',
     icon: 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
   },
 ]
@@ -87,7 +94,7 @@ async function load() {
   }
 }
 
-async function onUpload(event) {
+async function onUpload(event, kind = 'notes') {
   const file = event.target.files?.[0]
   event.target.value = ''
   if (!file) return
@@ -96,14 +103,15 @@ async function onUpload(event) {
     error.value = 'Your student profile is not ready for file upload yet.'
     return
   }
+  const syllabus = kind === 'syllabus'
   uploading.value = true
   error.value = ''
   try {
     const body = new FormData()
-    const title = file.name.replace(/\.[^.]+$/, '') || 'Uploaded notes'
-    body.append('subject_code', 'NOTES')
-    body.append('subject_name', 'Uploaded notes')
-    body.append('assessment_name', 'Uploaded file')
+    const title = file.name.replace(/\.[^.]+$/, '') || (syllabus ? 'Course syllabus' : 'Uploaded notes')
+    body.append('subject_code', syllabus ? 'SYLLABUS' : 'NOTES')
+    body.append('subject_name', syllabus ? 'Course syllabus' : 'Uploaded notes')
+    body.append('assessment_name', syllabus ? 'Syllabus' : 'Uploaded file')
     body.append('topic', title)
     body.append('attachment', file)
     const saved = await createPerformanceRecord(studentId, body)
@@ -289,7 +297,7 @@ onMounted(load)
       <div class="hero-copy">
         <p class="eyebrow">Study materials</p>
         <h2>Review from your uploaded file</h2>
-        <p class="lead">Upload notes and a study guide is prepared from that file. Flashcards and a practice quiz stay optional and do not change your risk score.</p>
+        <p class="lead">Upload a syllabus and the study guide is written from that outline. Notes, flashcards, and a practice quiz stay optional and do not change your risk score.</p>
       </div>
       <div class="hero-meta">
         <span class="chip">{{ studio.topics?.length || 0 }} study sets</span>
@@ -315,11 +323,18 @@ onMounted(load)
         <pre>{{ topicPlan.plan }}</pre>
       </article>
 
-      <label class="upload">
-        <input type="file" accept=".txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :disabled="uploading" @change="onUpload" />
-        <span>{{ uploading ? 'Uploading and writing the study guide…' : 'Upload a file' }}</span>
-        <small>TXT, DOCX, or a PDF with selectable text</small>
-      </label>
+      <div class="uploads">
+        <label class="upload">
+          <input type="file" accept=".txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :disabled="uploading" @change="onUpload($event, 'syllabus')" />
+          <span>{{ uploading ? 'Reading the file…' : 'Upload syllabus' }}</span>
+          <small>The study guide is written from this outline</small>
+        </label>
+        <label class="upload">
+          <input type="file" accept=".txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :disabled="uploading" @change="onUpload($event, 'notes')" />
+          <span>{{ uploading ? 'Reading the file…' : 'Upload notes' }}</span>
+          <small>TXT, DOCX, or a PDF with selectable text</small>
+        </label>
+      </div>
 
       <div class="sets">
         <button
@@ -332,11 +347,11 @@ onMounted(load)
         >
           <div>
             <strong>{{ item.attachment_name || item.topic }}</strong>
-            <span>Uploaded file</span>
+            <span>{{ isSyllabus(item) ? 'Syllabus' : 'Notes' }}</span>
           </div>
         </button>
         <p v-if="!files.length" class="muted empty">
-          No file yet. Upload one and a study guide is written automatically.
+          No syllabus yet. Upload one and the study guide is written from it.
         </p>
       </div>
 
@@ -643,6 +658,12 @@ onMounted(load)
   line-height: 1.55;
   margin: 0;
   white-space: pre-wrap;
+}
+
+.uploads {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .upload {
@@ -1276,6 +1297,10 @@ onMounted(load)
 }
 
 @media (max-width: 720px) {
+  .uploads {
+    grid-template-columns: 1fr;
+  }
+
   .study-studio {
     padding: 1rem;
   }

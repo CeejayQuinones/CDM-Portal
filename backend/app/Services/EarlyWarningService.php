@@ -165,7 +165,7 @@ class EarlyWarningService
         return $student->performanceRecords
             ->filter(fn ($record) => (int) $record->student_id === (int) $student->id)
             ->filter(fn ($record) => (int) ($student->user_id ?? 0) === 0 || (int) $record->professor_user_id !== (int) $student->user_id)
-            ->filter(fn ($record) => strtoupper((string) $record->subject_code) !== 'NOTES')
+            ->filter(fn ($record) => ! in_array(strtoupper((string) $record->subject_code), ['NOTES', 'SYLLABUS'], true))
             ->filter(fn ($record) => $record->score !== null && (float) $record->max_score > 0)
             ->values()
             ->map(fn ($record, int $index) => [
@@ -235,7 +235,7 @@ class EarlyWarningService
         }
         $unused = $graded->reject(fn (array $item) => isset($usedScoreKeys[$item['key']]));
         foreach ($unused->groupBy(fn (array $item) => strtoupper($item['subject_code'])) as $code => $items) {
-            if ($code === '' || $code === 'NOTES') {
+            if ($code === '' || $code === 'NOTES' || $code === 'SYLLABUS') {
                 continue;
             }
             $values = $items->pluck('percent')->map(fn ($percent) => (float) $percent)->all();
