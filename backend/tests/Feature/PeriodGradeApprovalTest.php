@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Grade;
+use App\Models\MonitoringPerformanceRecord;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -86,6 +88,55 @@ class PeriodGradeApprovalTest extends TestCase
                 'grade' => 90,
             ])
             ->assertStatus(422);
+    }
+
+    public function test_a_professor_can_import_a_class_spreadsheet(): void
+    {
+        [$professor, $registrar, $admin, $studentId] = $this->seedGradePath();
+        $csv = tempnam(sys_get_temp_dir(), 'grades').'.csv';
+        file_put_contents($csv, "Student number,Name,Quiz 1,Midterm,Final\n26-00001,John Doe,80/100,78,90\n99-00000,Missing,50,60,70\n");
+
+        $this->actingAs($professor)
+            ->post('/api/monitoring/gradebook/import', [
+                'file' => new UploadedFile($csv, 'class.csv', 'text/csv', null, true),
+                'subject_code' => 'IT101',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.saved', 1)
+            ->assertJsonPath('data.submitted', 2);
+
+        $record = MonitoringPerformanceRecord::query()->where('student_id', $studentId)->first();
+        $this->assertSame('Quiz 1', $record?->assessment_name);
+        $this->assertSame(80.0, (float) $record?->score);
+        $this->assertSame(100.0, (float) $record?->max_score);
+        $this->assertEqualsCanonicalizing([78.0, 90.0], Grade::query()->pluck('grade')->map(fn ($grade) => (float) $grade)->all());
+
+        $midterm = Grade::query()->where('grade', 78)->first();
+        $this->actingAs($registrar)
+            ->postJson('/api/monitoring/grades/'.$midterm->id.'/approve')
+            ->assertOk();
+
+        file_put_contents($csv, "Student number,Quiz 1,Midterm\n26-00001,90,55\n");
+        $this->actingAs($professor)
+            ->post('/api/monitoring/gradebook/import', [
+                'file' => new UploadedFile($csv, 'class.csv', 'text/csv', null, true),
+                'subject_code' => 'IT101',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.saved', 1)
+            ->assertJsonPath('data.submitted', 0);
+
+        $this->assertSame(90.0, (float) $record->fresh()->score);
+        $this->assertSame(78.0, (float) $midterm->fresh()->grade);
+        $this->assertSame('approved', $midterm->fresh()->status);
+
+        $this->actingAs($admin)
+            ->post('/api/monitoring/gradebook/import', [
+                'file' => new UploadedFile($csv, 'class.csv', 'text/csv', null, true),
+            ])
+            ->assertForbidden();
+
+        @unlink($csv);
     }
 
     /** @return array{0: User, 1: User, 2: User, 3: int} */

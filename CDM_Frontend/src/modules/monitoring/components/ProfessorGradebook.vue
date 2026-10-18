@@ -4,6 +4,7 @@ import { apiClient } from '../../../services/apiClient'
 import {
   createPerformanceRecord,
   fetchGradebook,
+  importGradebook,
   submitPeriodGrade,
   updatePerformanceRecord,
 } from '../services/monitoringApi'
@@ -12,6 +13,8 @@ const emit = defineEmits(['changed'])
 
 const loading = ref(true)
 const exporting = ref(false)
+const importing = ref(false)
+const fileInput = ref(null)
 const error = ref('')
 const notice = ref('')
 const rows = ref([])
@@ -177,6 +180,33 @@ async function commit(row, column, event) {
   }
 }
 
+async function importFile(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  importing.value = true
+  error.value = ''
+  notice.value = ''
+  try {
+    const body = new FormData()
+    body.append('file', file)
+    if (activeSheet.value?.code) body.append('subject_code', activeSheet.value.code)
+    const result = await importGradebook(body)
+    const saved = Number(result.saved || 0)
+    const submitted = Number(result.submitted || 0)
+    const skipped = Array.isArray(result.skipped) ? result.skipped : []
+    notice.value = `Imported ${saved} class score${saved === 1 ? '' : 's'} and sent ${submitted} period grade${submitted === 1 ? '' : 's'} to the registrar.`
+    if (skipped.length) notice.value += ` ${skipped.join(' ')}`
+    edits.value = {}
+    await load(true)
+    emit('changed')
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Unable to import that spreadsheet.'
+  } finally {
+    importing.value = false
+  }
+}
+
 async function exportFile() {
   exporting.value = true
   error.value = ''
@@ -207,11 +237,17 @@ load()
     <div class="ribbon">
       <div>
         <strong>class-grades.xlsx</strong>
-        <span>Type in a cell, then leave it to save. Midterm and Final go to the registrar.</span>
+        <span>Type in a cell, or import a .xlsx or .csv file. Match rows by student number. Midterm and Final go to the registrar.</span>
       </div>
-      <button type="button" :disabled="exporting || !rows.length" @click="exportFile">
-        {{ exporting ? 'Exporting…' : 'Export' }}
-      </button>
+      <div class="actions">
+        <button type="button" :disabled="importing" @click="fileInput?.click()">
+          {{ importing ? 'Importing…' : 'Import' }}
+        </button>
+        <input ref="fileInput" class="file" type="file" accept=".xlsx,.csv,text/csv" @change="importFile" />
+        <button type="button" :disabled="exporting || !rows.length" @click="exportFile">
+          {{ exporting ? 'Exporting…' : 'Export' }}
+        </button>
+      </div>
     </div>
     <div class="formula">
       <span class="name-box">{{ selected ? columnLetter(selected.column) + (selected.row + 2) : 'A1' }}</span>
@@ -304,6 +340,8 @@ load()
 }
 .ribbon strong, .ribbon span { display: block; }
 .ribbon span { font-size: 0.82rem; opacity: 0.9; }
+.ribbon .actions { display: flex; gap: 8px; }
+.ribbon .file { display: none; }
 .ribbon button, .tabs button {
   background: #fff;
   border: 1px solid #c8c8c8;

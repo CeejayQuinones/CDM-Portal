@@ -13,6 +13,7 @@ use App\Models\RiskNotification;
 use App\Models\Role;
 use App\Models\Student;
 use App\Services\EarlyWarningService;
+use App\Services\GradebookImporter;
 use App\Services\MonitoringAiHelpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -500,6 +501,38 @@ class MonitoringController extends Controller
             'Final',
             'Final status',
         ], $rows);
+    }
+
+    public function importGradebook(Request $request, GradebookImporter $importer): JsonResponse
+    {
+        if ($request->user()->role?->role_name !== Role::PROFESSOR) {
+            return $this->forbidden('Only a professor can import a class spreadsheet.');
+        }
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:5120'],
+            'subject_code' => ['nullable', 'string', 'max:40'],
+        ]);
+        $file = $request->file('file');
+        $extension = strtolower((string) $file?->getClientOriginalExtension());
+        if (! in_array($extension, ['xlsx', 'csv'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Import a .xlsx or .csv spreadsheet.',
+            ], 422);
+        }
+
+        try {
+            $result = $importer->import(
+                (int) $request->user()->id,
+                (string) $file->getRealPath(),
+                $request->string('subject_code')->toString() ?: null,
+            );
+        } catch (RuntimeException $exception) {
+            return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
+        }
+
+        return $this->ok($result);
     }
 
     public function generateGradeStudyPlan(Request $request, int $student): JsonResponse

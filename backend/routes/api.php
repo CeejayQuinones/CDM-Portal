@@ -46,6 +46,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/monitoring/grade-submissions/approve-all', [MonitoringController::class, 'approveAllGrades'])->middleware('throttle:10,1');
         Route::get('/monitoring/gradebook', [MonitoringController::class, 'gradebook']);
         Route::get('/monitoring/gradebook/export', [MonitoringController::class, 'exportGradebook']);
+        Route::post('/monitoring/gradebook/import', [MonitoringController::class, 'importGradebook'])->middleware('throttle:10,1');
         Route::get('/monitoring/students/{student}/period-grades', [MonitoringController::class, 'periodGrades']);
         Route::post('/monitoring/students/{student}/period-grades', [MonitoringController::class, 'submitPeriodGrade'])->middleware('throttle:30,1');
         Route::post('/monitoring/students/{student}/grade-plan', [MonitoringController::class, 'generateGradeStudyPlan'])->middleware('throttle:8,1');

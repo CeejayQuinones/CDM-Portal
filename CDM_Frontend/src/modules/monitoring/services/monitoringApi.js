@@ -47,6 +47,13 @@ export const approveAllSubmittedGrades = () =>
 
 export const fetchGradebook = () => unwrap(apiClient.get('/monitoring/gradebook'))
 
+export const importGradebook = (formData) =>
+  unwrap(
+    apiClient.post('/monitoring/gradebook/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  )
+
 export const submitPeriodGrade = (studentId, payload) =>
   unwrap(apiClient.post(`/monitoring/students/${studentId}/period-grades`, payload))
 

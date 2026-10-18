@@ -202,7 +202,7 @@
 
       <line class="ln" x1="550" y1="490" x2="550" y2="508"/>
       <rect class="box" x="415" y="510" width="270" height="44" rx="8"/>
-      <text class="t" x="550" y="537" text-anchor="middle">Show Prelim, Midterm, Final</text>
+      <text class="t" x="550" y="537" text-anchor="middle">Show Midterm and Final</text>
       <line class="ln" x1="550" y1="554" x2="550" y2="570"/>
       <rect class="ai" x="415" y="572" width="270" height="52" rx="8"/>
       <text class="t" x="550" y="592" text-anchor="middle">AI generates the study plan</text>
@@ -512,7 +512,7 @@
       <ellipse class="e" cx="924" cy="752" rx="48" ry="16"/>
       <text class="a" x="924" y="756" text-anchor="middle">read status</text>
     </svg>
-    <p class="note">A solid underline is the primary key. A dashed underline is a foreign key. Student and Professor use id as the primary key and user id as the foreign key to the login. Registrar staff and Admin are user accounts, so user id is their primary key and role id is the foreign key. Approved grade uses id as the primary key. Its foreign keys are professor id, subject id on the enrolled subject, and period id. The student is reached through that enrolled subject. Graded score and Study file use id as the primary key, with student id and user id as foreign keys. Sent plan and Risk notice use id as the primary key, with student id and sender id as foreign keys. Sent plan also has record id, a foreign key that can be empty. Period is Prelim, Midterm, or Final. Status is draft, submitted, or approved. Score type is quiz, exam, activity, or project. Monitoring reads a grade only when its status is approved. A study file is not a graded score. Admin stores nothing, so Admin has no relationship diamond.</p>
+    <p class="note">A solid underline is the primary key. A dashed underline is a foreign key. Student and Professor use id as the primary key and user id as the foreign key to the login. Registrar staff and Admin are user accounts, so user id is their primary key and role id is the foreign key. Approved grade uses id as the primary key. Its foreign keys are professor id, subject id on the enrolled subject, and period id. The student is reached through that enrolled subject. Graded score and Study file use id as the primary key, with student id and user id as foreign keys. Sent plan and Risk notice use id as the primary key, with student id and sender id as foreign keys. Sent plan also has record id, a foreign key that can be empty. The monitoring grade book records Midterm and Final. Prelim is not submitted in this module. Status is draft, submitted, or approved. Score type is quiz, exam, activity, or project. Monitoring reads a grade only when its status is approved. A study file is not a graded score. Admin stores nothing, so Admin has no relationship diamond.</p>
   </section>
 
   <section>

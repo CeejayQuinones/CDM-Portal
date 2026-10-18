@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use DOMDocument;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use ZipArchive;
 
@@ -47,6 +49,150 @@ class SimpleXlsx
         }
 
         return $xml.'</sheetData></worksheet>';
+    }
+
+    /**
+     * Read the first worksheet, or a CSV file, into rows of plain text.
+     *
+     * @return list<list<string>>
+     */
+    public static function read(string $path): array
+    {
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        if (in_array($extension, ['csv', 'txt'], true)) {
+            return self::readCsv($path);
+        }
+
+        $zip = new ZipArchive;
+        if ($zip->open($path) !== true) {
+            throw new RuntimeException('That file is not a readable Excel workbook. Save it as .xlsx or .csv.');
+        }
+
+        $shared = self::sharedStrings($zip->getFromName('xl/sharedStrings.xml') ?: '');
+        $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+        if ($sheet === false) {
+            for ($index = 0; $index < $zip->numFiles; $index++) {
+                $name = (string) $zip->getNameIndex($index);
+                if (preg_match('#^xl/worksheets/sheet\d+\.xml$#', $name) === 1) {
+                    $sheet = $zip->getFromName($name);
+                    break;
+                }
+            }
+        }
+        $zip->close();
+        if (! is_string($sheet) || $sheet === '') {
+            throw new RuntimeException('The workbook has no sheet to read.');
+        }
+
+        return self::sheetRows($sheet, $shared);
+    }
+
+    /** @return list<string> */
+    private static function sharedStrings(string $xml): array
+    {
+        if ($xml === '') {
+            return [];
+        }
+
+        $document = new DOMDocument;
+        $document->loadXML($xml);
+        $strings = [];
+        foreach ($document->getElementsByTagName('si') as $item) {
+            $text = '';
+            foreach ($item->getElementsByTagName('t') as $node) {
+                $text .= $node->textContent;
+            }
+            $strings[] = $text;
+        }
+
+        return $strings;
+    }
+
+    /**
+     * @param  list<string>  $shared
+     * @return list<list<string>>
+     */
+    private static function sheetRows(string $xml, array $shared): array
+    {
+        $document = new DOMDocument;
+        $document->loadXML($xml);
+        $rows = [];
+        foreach ($document->getElementsByTagName('row') as $row) {
+            $cells = [];
+            $last = -1;
+            foreach ($row->getElementsByTagName('c') as $cell) {
+                if (! $cell instanceof \DOMElement) {
+                    continue;
+                }
+                $column = self::columnIndex((string) preg_replace('/\d+/', '', $cell->getAttribute('r')));
+                $type = $cell->getAttribute('t');
+                if ($type === 'inlineStr') {
+                    $value = '';
+                    foreach ($cell->getElementsByTagName('t') as $node) {
+                        $value .= $node->textContent;
+                    }
+                } elseif ($type === 's') {
+                    $value = $shared[(int) self::directValue($cell)] ?? '';
+                } else {
+                    $value = self::directValue($cell);
+                }
+                $cells[$column] = trim($value);
+                $last = max($last, $column);
+            }
+            $line = [];
+            for ($index = 0; $index <= $last; $index++) {
+                $line[] = $cells[$index] ?? '';
+            }
+            $rows[] = $line;
+        }
+
+        return $rows;
+    }
+
+    private static function directValue(\DOMElement $cell): string
+    {
+        foreach ($cell->childNodes as $child) {
+            if ($child instanceof \DOMElement && $child->localName === 'v') {
+                return $child->textContent;
+            }
+        }
+
+        return '';
+    }
+
+    private static function columnIndex(string $letters): int
+    {
+        $index = 0;
+        foreach (str_split(strtoupper($letters)) as $letter) {
+            $index = ($index * 26) + (ord($letter) - 64);
+        }
+
+        return max(0, $index - 1);
+    }
+
+    /** @return list<list<string>> */
+    private static function readCsv(string $path): array
+    {
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            throw new RuntimeException('The spreadsheet could not be opened.');
+        }
+
+        $first = fgets($handle);
+        if ($first === false) {
+            fclose($handle);
+
+            return [];
+        }
+        $first = preg_replace('/^\xEF\xBB\xBF/', '', $first) ?? $first;
+        $delimiter = substr_count($first, ';') > substr_count($first, ',') ? ';' : ',';
+        $rows = [str_getcsv($first, $delimiter)];
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $rows[] = array_map(fn ($value) => trim((string) $value), $row);
+        }
+        fclose($handle);
+
+        return $rows;
     }
 
     private static function column(int $index): string
