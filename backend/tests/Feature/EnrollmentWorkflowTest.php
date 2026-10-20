@@ -255,7 +255,7 @@ class EnrollmentWorkflowTest extends TestCase
         Sanctum::actingAs($this->user);
         $this->create();
         $this->staff();
-        $type = DocumentType::create(['document_name' => 'Evidence', 'status' => 'active', 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false]);
+        $type = DocumentType::create(['document_name' => 'Evidence', 'workflow_category' => 'supporting_record', 'student_uploadable' => true, 'status' => 'active', 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false]);
         $payload = $this->period->only(['academic_year_id', 'semester_id', 'opens_at', 'closes_at', 'enabled', 'document_requirements', 'version']);
         $payload['document_requirements']['regular'] = [$type->id];
         $this->putJson('/api/enrollment/periods/'.$this->period->id, $payload)->assertConflict();
