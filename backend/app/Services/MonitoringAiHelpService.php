@@ -35,7 +35,7 @@ class MonitoringAiHelpService
         $assessment = $this->earlyWarningService->assessByStudentId($studentId);
 
         if (! $assessment) {
-            return [
+            return $this->withHelpMeta([
                 'source' => 'none',
                 'provider' => 'none',
                 'reply' => 'Wala pang grade record para masuri. Maghintay muna ng grade release, tapos buksan ulit ang AI Help.',
@@ -43,7 +43,7 @@ class MonitoringAiHelpService
                 'advice' => 'This student has no approved grades to analyze yet.',
                 'actions' => ['Wait for grade releases, then reopen AI Help.'],
                 'prevention_note' => 'AI Help needs grade data before it can coach a student.',
-            ];
+            ]);
         }
 
         $history = $this->normalizeHistory($history);
@@ -53,7 +53,7 @@ class MonitoringAiHelpService
             try {
                 $raw = $this->callProvider($assessment, $history, $latestQuestion);
 
-                return $this->parseAiResponse($raw, $assessment, true, $latestQuestion, $history);
+                return $this->withHelpMeta($this->parseAiResponse($raw, $assessment, true, $latestQuestion, $history));
             } catch (Throwable $exception) {
                 Log::warning('Monitoring AI provider failed; using CDM coach fallback.', [
                     'message' => $exception->getMessage(),
@@ -61,7 +61,24 @@ class MonitoringAiHelpService
             }
         }
 
-        return $this->coachFallback($assessment, $latestQuestion, $history);
+        return $this->withHelpMeta($this->coachFallback($assessment, $latestQuestion, $history));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function withHelpMeta(array $payload): array
+    {
+        $source = (string) ($payload['source'] ?? 'cdm-coach');
+
+        return [
+            ...$payload,
+            'label' => $source === 'cdm-coach' || $source === 'none' || $source === 'fallback'
+                ? 'CDM coach'
+                : 'AI-generated academic guidance',
+            'disclaimer' => 'Advisory only. AI Help cannot change grades, calculate GWA, or decide pass or fail.',
+        ];
     }
 
     /**
@@ -101,14 +118,21 @@ class MonitoringAiHelpService
         $subjects = collect($assessment['subjects'] ?? [])->map(function (array $subject) {
             return sprintf(
                 '%s (%s): Midterm=%s, Final=%s, avg=%s, risk=%s',
-                $subject['subject_code'],
-                $subject['subject_name'],
+                $subject['subject_code'] ?? 'Subject',
+                $subject['subject_name'] ?? 'Untitled',
                 $subject['periods']['Midterm'] ?? 'n/a',
                 $subject['periods']['Final'] ?? 'n/a',
                 $subject['average_grade'] ?? 'n/a',
-                $subject['risk_label'],
+                $subject['risk_label'] ?? 'n/a',
             );
         })->implode("\n");
+
+        $studentName = $assessment['student_name'] ?? 'Student';
+        $studentNumber = $assessment['student_number'] ?? 'n/a';
+        $courseCode = $assessment['course_code'] ?? 'n/a';
+        $riskLabel = $assessment['risk_label'] ?? 'n/a';
+        $trendLabel = $assessment['trend_label'] ?? 'n/a';
+        $averageGrade = $assessment['average_grade'] ?? 'n/a';
 
         return <<<PROMPT
 You are CDM Portal AI Help, a conversational academic tutor for Colegio de Montalban.
@@ -121,11 +145,11 @@ Never answer with a generic script that would fit any question. Suggested chips 
 If the topic is outside academics, answer it briefly, then offer study help only if it fits.
 
 Background (use only when relevant):
-Student: {$assessment['student_name']} ({$assessment['student_number']})
-Course: {$assessment['course_code']}
-Overall risk: {$assessment['risk_label']}
-Trend: {$assessment['trend_label']}
-Average grade: {$assessment['average_grade']}
+Student: {$studentName} ({$studentNumber})
+Course: {$courseCode}
+Overall risk: {$riskLabel}
+Trend: {$trendLabel}
+Average grade: {$averageGrade}
 Warnings:
 - {$this->joinLines($assessment['warnings'] ?? [])}
 
@@ -989,7 +1013,7 @@ PROMPT;
             ->all();
 
         if ($cards === []) {
-            throw new \RuntimeException('The AI could not make flashcards from this file.');
+            $cards = $this->fallbackFlashcards($focus, $source['text']);
         }
 
         return [
@@ -1036,7 +1060,7 @@ PROMPT;
             ->all();
 
         if ($questions === []) {
-            throw new \RuntimeException('The AI could not make a quiz from this file.');
+            $questions = $this->fallbackQuiz($focus, $source['text']);
         }
 
         return [
@@ -1068,9 +1092,7 @@ PROMPT;
         ];
 
         if (! $this->isLiveAiConfigured()) {
-            throw new \RuntimeException($fromSyllabus
-                ? 'AI is not configured, so a study guide cannot be generated from this syllabus.'
-                : 'AI is not configured, so a study guide cannot be generated from this file.');
+            return $this->fallbackStudyGuide($focus, $source['text'], $fromSyllabus);
         }
 
         $instruction = $fromSyllabus
@@ -1080,15 +1102,23 @@ PROMPT;
                 .'Do not add subjects that are not in the syllabus. Plain text.'
             : "Write a study guide from the uploaded notes only. Title: {$focus}. "
                 .'Explain the main ideas, list key terms, and give a short practice plan. Plain text.';
-        $raw = $this->callProvider(
-            $assessment,
-            [],
-            $instruction."\n\n".($fromSyllabus ? 'SYLLABUS' : 'NOTES').":\n{$source['text']}",
-        );
-        $parsed = $this->parseAiResponse($raw, $assessment, true, $focus);
-        $plan = trim((string) ($parsed['reply'] ?? ''));
+        try {
+            $raw = $this->callProvider(
+                $assessment,
+                [],
+                $instruction."\n\n".($fromSyllabus ? 'SYLLABUS' : 'NOTES').":\n{$source['text']}",
+            );
+            $parsed = $this->parseAiResponse($raw, $assessment, true, $focus);
+            $plan = trim((string) ($parsed['reply'] ?? ''));
+        } catch (Throwable $exception) {
+            Log::warning('Student study guide AI failed; using fallback.', [
+                'message' => $exception->getMessage(),
+            ]);
+            $plan = '';
+            $parsed = ['provider' => 'cdm-coach'];
+        }
         if ($plan === '') {
-            throw new \RuntimeException('The AI could not make a study guide from this file.');
+            return $this->fallbackStudyGuide($focus, $source['text'], $fromSyllabus);
         }
 
         return [
@@ -1120,7 +1150,7 @@ PROMPT;
         ];
 
         if (! $this->isLiveAiConfigured()) {
-            throw new \RuntimeException('AI is not configured, so a study plan cannot be generated.');
+            return $this->fallbackStudyGuide($focus, $focus, false);
         }
 
         $raw = $this->callProvider(
@@ -1132,7 +1162,7 @@ PROMPT;
         $parsed = $this->parseAiResponse($raw, $assessment, true, $focus);
         $plan = trim((string) ($parsed['reply'] ?? ''));
         if ($plan === '') {
-            throw new \RuntimeException('The AI could not make a study plan for that topic.');
+            return $this->fallbackStudyGuide($focus, $focus, false);
         }
 
         return [
@@ -1141,6 +1171,97 @@ PROMPT;
             'plan' => $plan,
             'week' => [],
             'source' => ($parsed['provider'] ?? '') === 'cdm-coach' ? 'cdm-coach' : 'gemini',
+        ];
+    }
+
+    /**
+     * @return list<array{front: string, back: string}>
+     */
+    private function fallbackFlashcards(string $title, string $text): array
+    {
+        $topic = $title !== '' ? $title : 'this file';
+        $snippet = $this->clip($text, 90);
+
+        return [
+            ['front' => "What is the main focus of {$topic}?", 'back' => "The material is about {$topic}. {$snippet}"],
+            ['front' => "Name one idea to review first in {$topic}.", 'back' => "Start with the headings or first section of {$topic}, then rewrite each point in your own words."],
+            ['front' => "How should you practice {$topic} today?", 'back' => 'Do a 20-minute recall: close the file, write 5 points from memory, then check what you missed.'],
+            ['front' => 'What should you ask your professor?', 'back' => "Ask which part of {$topic} matters most for the next graded activity."],
+            ['front' => "Give a 5-minute recap of {$topic}.", 'back' => "Explain {$topic} as if teaching a classmate, then list two examples."],
+            ['front' => 'What is a useful study checkpoint?', 'back' => 'If you cannot explain a heading without notes, mark it as still learning and review it tomorrow.'],
+            ['front' => "How do you connect {$topic} to class?", 'back' => "Match each file heading to a lecture, quiz, or lab so {$topic} is not studied in isolation."],
+            ['front' => 'When is this file “done” for today?', 'back' => 'Stop after one full pass plus 5 recall questions. Rest, then return to the items you missed.'],
+        ];
+    }
+
+    /**
+     * @return list<array{prompt: string, choices: list<string>, answer_index: int, explanation: string}>
+     */
+    private function fallbackQuiz(string $title, string $text): array
+    {
+        $topic = $title !== '' ? $title : 'the uploaded file';
+
+        return [
+            [
+                'prompt' => "What is the best first step when studying {$topic}?",
+                'choices' => ['Skim headings and rewrite them', 'Memorize the file word for word', 'Skip it until exam week', 'Only highlight random lines'],
+                'answer_index' => 0,
+                'explanation' => 'A heading pass shows the structure before you memorize details.',
+            ],
+            [
+                'prompt' => 'Which practice habit checks that you understood the file?',
+                'choices' => ['Closed-book recall', 'Re-reading once quickly', 'Saving the file without opening it', 'Copying the file name'],
+                'answer_index' => 0,
+                'explanation' => 'Recall without looking at the notes shows what you actually retained.',
+            ],
+            [
+                'prompt' => "If a section of {$topic} is confusing, what should you do next?",
+                'choices' => ['Write a specific question for your professor', 'Ignore it', 'Delete the file', 'Study a different subject only'],
+                'answer_index' => 0,
+                'explanation' => 'A specific question turns confusion into a consultation item.',
+            ],
+            [
+                'prompt' => 'How long is a focused review block for one uploaded file?',
+                'choices' => ['About 20–25 minutes, then a short break', '8 hours with no break', '30 seconds', 'Until you finish every subject'],
+                'answer_index' => 0,
+                'explanation' => 'Short focused blocks are easier to repeat and review.',
+            ],
+            [
+                'prompt' => "What should you produce after reviewing {$topic}?",
+                'choices' => ['A 5-point summary in your own words', 'A screenshot of the filename', 'Nothing', 'A new empty folder'],
+                'answer_index' => 0,
+                'explanation' => 'A short summary is evidence you processed the material.',
+            ],
+        ];
+    }
+
+    /**
+     * @return array{topic: string, title: string, plan: string, week: list<array{day: string, focus: string, minutes: int}>, source: string}
+     */
+    private function fallbackStudyGuide(string $title, string $text, bool $fromSyllabus): array
+    {
+        $topic = $title !== '' ? $title : 'your uploaded file';
+        $kind = $fromSyllabus ? 'syllabus' : 'file';
+        $plan = "Study guide: {$topic}\n\n"
+            ."Day 1: Skim the {$kind} and list every major heading.\n"
+            ."Day 2: Rewrite each heading in your own words and mark what is still unclear.\n"
+            ."Day 3: Make 8 recall questions from {$topic} and answer them closed-book.\n"
+            ."Day 4: Practice one example or problem for each heading.\n"
+            ."Day 5: Recite a 5-minute summary and write 2 questions for your professor.\n\n"
+            .'This guide is advisory. It does not change grades.';
+
+        return [
+            'topic' => $topic,
+            'title' => 'Study guide · '.$topic,
+            'plan' => $plan,
+            'week' => [
+                ['day' => 'Mon', 'focus' => "Map headings in {$topic}", 'minutes' => 25],
+                ['day' => 'Tue', 'focus' => 'Rewrite key points', 'minutes' => 25],
+                ['day' => 'Wed', 'focus' => 'Closed-book recall', 'minutes' => 25],
+                ['day' => 'Thu', 'focus' => 'Practice examples', 'minutes' => 25],
+                ['day' => 'Fri', 'focus' => 'Summary and professor questions', 'minutes' => 20],
+            ],
+            'source' => 'cdm-coach',
         ];
     }
 
@@ -1158,12 +1279,12 @@ PROMPT;
             throw new \RuntimeException('Upload a file before generating a review.');
         }
 
+        $title = trim((string) ($record->attachment_name ?: $record->topic ?: 'Uploaded notes'));
         $text = $this->extractAttachmentText($record);
         if (mb_strlen($text) < 40) {
-            throw new \RuntimeException('This file has no readable text. Upload a TXT, DOCX, or text-based PDF.');
+            $text = trim("Study file: {$title}. Topic: ".(string) $record->topic.'. Notes: '.(string) $record->notes
+                .". Review the uploaded material titled {$title} and rewrite the main points in your own words.");
         }
-
-        $title = trim((string) ($record->attachment_name ?: $record->topic ?: 'Uploaded notes'));
 
         return [
             'title' => mb_substr($title, 0, 180),
@@ -1291,61 +1412,5 @@ PROMPT;
         }
 
         return null;
-    }
-
-    /**
-     * @return list<array{front: string, back: string}>
-     */
-    private function fallbackFlashcards(string $topic): array
-    {
-        return [
-            ['front' => "What is the core idea of {$topic}?", 'back' => "State the main definition/rule in one sentence, then give one example."],
-            ['front' => "Common mistake in {$topic}", 'back' => 'Skipping prerequisites or mixing similar terms. Recheck definitions first.'],
-            ['front' => "How do I practice {$topic} today?", 'back' => 'Do 3 short problems, then explain your solution out loud.'],
-            ['front' => "When is {$topic} used?", 'back' => 'In class activities, quizzes, and follow-up graded work for this subject.'],
-            ['front' => "Quick check", 'back' => "If you cannot explain {$topic} without notes, review flashcards again."],
-            ['front' => 'Ask your professor', 'back' => "Which part of {$topic} matters most for the next assessment?"],
-            ['front' => 'Memory tip', 'back' => 'Link the idea to a real campus example so it sticks longer.'],
-            ['front' => 'Next step', 'back' => 'Take a 5-question practice quiz on this topic after one review pass.'],
-        ];
-    }
-
-    /**
-     * @return list<array{prompt: string, choices: list<string>, answer_index: int, explanation: string}>
-     */
-    private function fallbackQuiz(string $topic): array
-    {
-        return [
-            [
-                'prompt' => "Best first step when studying {$topic}?",
-                'choices' => ['Memorize random facts', 'Review key definitions', 'Skip to the hardest item', 'Ignore instructor notes'],
-                'answer_index' => 1,
-                'explanation' => 'Start with clear definitions before harder practice.',
-            ],
-            [
-                'prompt' => "Why did your instructor flag {$topic}?",
-                'choices' => ['It is already mastered', 'It is a weak area to recover', 'It is optional forever', 'It replaces all grades'],
-                'answer_index' => 1,
-                'explanation' => 'Professor topic logs highlight where support is needed.',
-            ],
-            [
-                'prompt' => 'Most effective practice loop?',
-                'choices' => ['Read once only', 'Flashcards → quiz → review misses', 'Only watch videos', 'Avoid practice questions'],
-                'answer_index' => 1,
-                'explanation' => 'Active recall plus checking mistakes builds mastery.',
-            ],
-            [
-                'prompt' => 'What should you bring to consultation?',
-                'choices' => ['No questions', 'Specific confusing steps', 'Only final answers', 'Unrelated topics'],
-                'answer_index' => 1,
-                'explanation' => 'Specific questions help instructors coach faster.',
-            ],
-            [
-                'prompt' => 'When is a topic ready?',
-                'choices' => ['You can explain and solve without notes', 'You recognized the title', 'A friend said it is easy', 'You opened the file once'],
-                'answer_index' => 0,
-                'explanation' => 'True readiness means you can teach and apply it.',
-            ],
-        ];
     }
 }

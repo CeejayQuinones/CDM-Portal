@@ -106,6 +106,53 @@ class MonitoringAccountIsolationTest extends TestCase
         });
     }
 
+    public function test_study_studio_rejects_the_wrong_kind_of_file_and_allows_delete(): void
+    {
+        $student = $this->createStudent('26-00031', 'Lara');
+        Sanctum::actingAs($student->user);
+        $notes = 'Lecture notes: loops, arrays, and functions. Example: rewrite a nested loop in your own words.';
+        $syllabus = 'Course syllabus. Course outline. Week 1 variables. Week 2 conditions. Week 3 functions. Course outcome: write a small program. Grading system: quizzes 20%.';
+
+        $this->post("/api/monitoring/students/{$student->id}/performance-records", [
+            'subject_code' => 'SYLLABUS',
+            'subject_name' => 'Course syllabus',
+            'assessment_name' => 'Syllabus',
+            'topic' => 'Wrong file',
+            'attachment' => UploadedFile::fake()->createWithContent('shopping-list.txt', 'Milk, eggs, bread, and butter for the weekend grocery list plus extra snacks for guests.'),
+        ])->assertStatus(422)->assertJsonFragment(['success' => false]);
+
+        $this->post("/api/monitoring/students/{$student->id}/performance-records", [
+            'subject_code' => 'NOTES',
+            'subject_name' => 'Uploaded notes',
+            'assessment_name' => 'Uploaded file',
+            'topic' => 'Looks like syllabus',
+            'attachment' => UploadedFile::fake()->createWithContent('actual-syllabus.txt', $syllabus),
+        ])->assertStatus(422);
+
+        $this->post("/api/monitoring/students/{$student->id}/performance-records", [
+            'subject_code' => 'SYLLABUS',
+            'subject_name' => 'Course syllabus',
+            'assessment_name' => 'Syllabus',
+            'topic' => 'IT101 syllabus',
+            'attachment' => UploadedFile::fake()->createWithContent('it101-syllabus.txt', $syllabus),
+        ])->assertCreated();
+
+        $notesUpload = $this->post("/api/monitoring/students/{$student->id}/performance-records", [
+            'subject_code' => 'NOTES',
+            'subject_name' => 'Uploaded notes',
+            'assessment_name' => 'Uploaded file',
+            'topic' => 'Loop notes',
+            'attachment' => UploadedFile::fake()->createWithContent('loop-notes.txt', $notes),
+        ]);
+        $notesUpload->assertCreated();
+        $recordId = (int) $notesUpload->json('data.id');
+
+        $this->deleteJson("/api/monitoring/performance-records/{$recordId}")
+            ->assertOk()
+            ->assertJsonPath('data.deleted', true);
+        $this->assertDatabaseMissing('monitoring_performance_records', ['id' => $recordId]);
+    }
+
     private function createStudent(string $number, string $firstName): Student
     {
         DB::table('departments')->insertOrIgnore([

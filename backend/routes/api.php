@@ -27,6 +27,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('throttle:5,1');
 
     Route::middleware('role.monitoring')->group(function (): void {
+        Route::get('/monitoring/overview', [MonitoringController::class, 'earlyWarnings']);
         Route::get('/monitoring/early-warnings', [MonitoringController::class, 'earlyWarnings']);
         Route::get('/monitoring/my-risk', [MonitoringController::class, 'myRisk']);
         Route::post('/monitoring/students/{student}/support-plan', [MonitoringController::class, 'supportPlan']);
@@ -38,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/monitoring/students/{student}/performance-records', [MonitoringController::class, 'listPerformanceRecords']);
         Route::post('/monitoring/students/{student}/performance-records', [MonitoringController::class, 'storePerformanceRecord'])->middleware('throttle:20,1');
         Route::patch('/monitoring/performance-records/{record}', [MonitoringController::class, 'updatePerformanceRecord'])->middleware('throttle:30,1');
+        Route::delete('/monitoring/performance-records/{record}', [MonitoringController::class, 'destroyPerformanceRecord'])->middleware('throttle:20,1');
         Route::get('/monitoring/performance-records/{record}/attachment', [MonitoringController::class, 'downloadPerformanceAttachment']);
         Route::post('/monitoring/students/{student}/performance-records/{record}/generate-plan', [MonitoringController::class, 'generateRecordStudyPlan'])->middleware('throttle:8,1');
         Route::post('/monitoring/students/{student}/performance-records/{record}/send-plan', [MonitoringController::class, 'sendRecordStudyPlan'])->middleware('throttle:10,1');
@@ -58,7 +60,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/monitoring/study-studio/flashcards', [MonitoringController::class, 'generateStudentFlashcards'])->middleware('throttle:8,1');
         Route::post('/monitoring/study-studio/quiz', [MonitoringController::class, 'generateStudentQuiz'])->middleware('throttle:8,1');
         Route::post('/monitoring/study-studio/plan', [MonitoringController::class, 'generateStudentStudioPlan'])->middleware('throttle:8,1');
-        Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification']);
+        Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification'])->middleware('throttle:10,1');
         Route::get('/monitoring/my-risk-notifications', [MonitoringController::class, 'myRiskNotifications']);
         Route::patch('/monitoring/risk-notifications/{notification}/read', [MonitoringController::class, 'markRiskNotificationRead']);
     });

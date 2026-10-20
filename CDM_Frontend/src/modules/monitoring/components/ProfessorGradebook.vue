@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { apiClient } from '../../../services/apiClient'
 import {
   createPerformanceRecord,
+  deletePerformanceRecord,
   fetchGradebook,
   importGradebook,
   submitPeriodGrade,
@@ -14,6 +15,7 @@ const emit = defineEmits(['changed'])
 const loading = ref(true)
 const exporting = ref(false)
 const importing = ref(false)
+const deleting = ref(false)
 const fileInput = ref(null)
 const error = ref('')
 const notice = ref('')
@@ -68,6 +70,16 @@ const selectionLabel = computed(() => {
   if (!column || !row) return ''
   return `${columnLetter(selected.value.column)}${selected.value.row + 2}  ${column.label || 'New score'} · ${row.student_name}`
 })
+
+const selectedScoreRecord = computed(() => {
+  if (!selected.value) return null
+  const column = columns.value[selected.value.column]
+  const row = activeSheet.value?.rows[selected.value.row]
+  if (!column?.score || !row) return null
+  return row.class_scores.find((score) => score.assessment_name === column.score) || null
+})
+
+const canDeleteSelectedScore = computed(() => Boolean(selectedScoreRecord.value?.id))
 
 function columnLetter(index) {
   let name = ''
@@ -180,6 +192,34 @@ async function commit(row, column, event) {
   }
 }
 
+async function deleteSelectedScore() {
+  const column = selected.value ? columns.value[selected.value.column] : null
+  const row = selected.value ? activeSheet.value?.rows[selected.value.row] : null
+  const record = selectedScoreRecord.value
+  if (!column?.score || !row || !record?.id) {
+    error.value = 'Select a saved class score cell first, then delete it.'
+    return
+  }
+  if (!window.confirm(`Delete ${column.score} for ${row.student_name}?`)) {
+    return
+  }
+  deleting.value = true
+  error.value = ''
+  notice.value = ''
+  try {
+    await deletePerformanceRecord(record.id)
+    notice.value = `${column.score} for ${row.student_name} was deleted.`
+    selected.value = null
+    edits.value = {}
+    await load(true)
+    emit('changed')
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Unable to delete that score.'
+  } finally {
+    deleting.value = false
+  }
+}
+
 async function importFile(event) {
   const file = event.target.files?.[0]
   event.target.value = ''
@@ -212,14 +252,22 @@ async function exportFile() {
   error.value = ''
   try {
     const response = await apiClient.get('/monitoring/gradebook/export', { responseType: 'blob' })
+    const type = String(response.headers['content-type'] || '')
+    if (type.includes('application/json')) {
+      const payload = JSON.parse(await response.data.text())
+      throw new Error(payload.message || 'Unable to export the Excel file.')
+    }
     const url = URL.createObjectURL(response.data)
     const link = document.createElement('a')
     link.href = url
     link.download = 'class-grades.xlsx'
+    document.body.appendChild(link)
     link.click()
+    link.remove()
     URL.revokeObjectURL(url)
-  } catch {
-    error.value = 'Unable to export the Excel file.'
+    notice.value = 'Excel file downloaded.'
+  } catch (err) {
+    error.value = err.response?.data?.message || err.message || 'Unable to export the Excel file.'
   } finally {
     exporting.value = false
   }
@@ -237,15 +285,18 @@ load()
     <div class="ribbon">
       <div>
         <strong>class-grades.xlsx</strong>
-        <span>Type in a cell, or import a .xlsx or .csv file. Match rows by student number. Midterm and Final go to the registrar.</span>
+        <span>The file is read first. Import a gradebook with Student number plus Quiz, Midterm, or Final columns. A syllabus or notes file is rejected. Midterm and Final go to the registrar.</span>
       </div>
       <div class="actions">
         <button type="button" :disabled="importing" @click="fileInput?.click()">
-          {{ importing ? 'Importing…' : 'Import' }}
+          {{ importing ? 'Reading file…' : 'Import' }}
         </button>
         <input ref="fileInput" class="file" type="file" accept=".xlsx,.csv,text/csv" @change="importFile" />
         <button type="button" :disabled="exporting || !rows.length" @click="exportFile">
           {{ exporting ? 'Exporting…' : 'Export' }}
+        </button>
+        <button type="button" :disabled="deleting || !canDeleteSelectedScore" @click="deleteSelectedScore">
+          {{ deleting ? 'Deleting…' : 'Delete score' }}
         </button>
       </div>
     </div>

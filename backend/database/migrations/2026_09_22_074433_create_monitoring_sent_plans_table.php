@@ -24,7 +24,7 @@ return new class extends Migration
             $table->timestamp('read_at')->nullable();
             $table->timestamps();
 
-            $table->index(['student_id', 'created_at']);
+            $table->index(['student_id', 'created_at'], 'msp_student_created_idx');
         });
     }
 

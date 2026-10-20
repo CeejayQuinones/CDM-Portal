@@ -2,6 +2,7 @@ import { apiClient } from '../../../services/apiClient'
 
 const unwrap = async (request) => (await request).data.data
 
+export const fetchMonitoringOverview = (params = {}) => unwrap(apiClient.get('/monitoring/overview', { params }))
 export const fetchEarlyWarnings = (params = {}) =>
   unwrap(apiClient.get('/monitoring/early-warnings', { params, timeout: 20000 }))
 export const fetchMyRisk = () => unwrap(apiClient.get('/monitoring/my-risk', { timeout: 20000 }))
@@ -9,6 +10,7 @@ export const fetchStudyPlans = () => unwrap(apiClient.get('/monitoring/study-pla
 export const fetchStudentStudyPlan = (studentId) => unwrap(apiClient.get(`/monitoring/students/${studentId}/study-plan`))
 export const fetchAdviserAlerts = () => unwrap(apiClient.get('/monitoring/adviser-alerts'))
 export const fetchAiStatus = () => unwrap(apiClient.get('/monitoring/ai-status'))
+export const fetchAiHelpStatus = () => fetchAiStatus()
 
 export const askAiHelp = async (studentId, question = '', messages = []) => {
   const { data } = await apiClient.post(`/monitoring/students/${studentId}/ai-help`, {
@@ -18,8 +20,8 @@ export const askAiHelp = async (studentId, question = '', messages = []) => {
   return data.data
 }
 
-export const sendRiskNotification = (studentId, message) =>
-  unwrap(apiClient.post(`/monitoring/students/${studentId}/risk-notifications`, { message }))
+export const sendRiskNotification = (studentId, message = '', title = '') =>
+  unwrap(apiClient.post(`/monitoring/students/${studentId}/risk-notifications`, { message: message || null, title: title || null }))
 export const fetchMyRiskNotifications = () => unwrap(apiClient.get('/monitoring/my-risk-notifications'))
 export const markRiskNotificationRead = (notificationId) =>
   unwrap(apiClient.patch(`/monitoring/risk-notifications/${notificationId}/read`))
@@ -36,6 +38,9 @@ export const createPerformanceRecord = (studentId, formData) =>
 
 export const updatePerformanceRecord = (recordId, payload) =>
   unwrap(apiClient.patch(`/monitoring/performance-records/${recordId}`, payload))
+
+export const deletePerformanceRecord = (recordId) =>
+  unwrap(apiClient.delete(`/monitoring/performance-records/${recordId}`))
 
 export const fetchSubmittedGrades = () => unwrap(apiClient.get('/monitoring/grade-submissions'))
 

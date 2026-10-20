@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\MonitoringPerformanceRecord;
 use App\Models\Professor;
 use App\Models\Student;
 use Illuminate\Database\Eloquent\Builder;
@@ -9,6 +10,8 @@ use Illuminate\Support\Collection;
 
 class EarlyWarningService
 {
+    private const LOW_GRADE = 75.0;
+
     /** @return array{summary: array<string,int>, students: list<array<string,mixed>>, filters?: array<string,mixed>} */
     public function overview(?int $professorUserId = null, array $filters = []): array
     {
@@ -54,11 +57,17 @@ class EarlyWarningService
     }
 
     /** @return array<string,mixed>|null */
-    public function assessByStudentId(int $studentId): ?array
+    public function assessByStudentId(int $studentId, ?int $professorUserId = null): ?array
     {
         $student = $this->studentsWithGrades()->find($studentId) ?: $this->studentDetails()->find($studentId);
+        if (! $student) {
+            return null;
+        }
+        if ($professorUserId && ! $this->professorCanAccessStudent($professorUserId, $studentId)) {
+            return null;
+        }
 
-        return $student ? $this->assessment($student) : null;
+        return $this->assessment($student);
     }
 
     public function professorCanAccessStudent(int $professorUserId, int $studentId): bool
@@ -99,9 +108,51 @@ class EarlyWarningService
     public function adviserAlerts(?int $professorUserId = null): array
     {
         $students = $this->overview($professorUserId)['students'];
-        $alerts = collect($students)->filter(fn ($s) => $s['risk_level'] !== 'low' || $s['trend'] === 'declining')->map(fn ($s) => ['id' => 'alert-'.$s['student_id'], 'student_id' => $s['student_id'], 'severity' => $s['risk_level'] === 'high' ? 'urgent' : 'attention', 'risk_level' => $s['risk_level'], 'headline' => $s['headline'], 'warnings' => $s['warnings']])->values();
+        $lowScoreIds = $professorUserId ? $this->professorLowScoreStudentIds($professorUserId) : [];
+        $alerts = collect($students)
+            ->filter(function (array $student) use ($lowScoreIds): bool {
+                return $student['risk_level'] !== 'low'
+                    || ($student['trend'] ?? '') === 'declining'
+                    || $this->hasLowPublishedGrade($student)
+                    || in_array((int) $student['student_id'], $lowScoreIds, true);
+            })
+            ->map(function (array $student) use ($lowScoreIds): array {
+                $lowGrade = $this->hasLowPublishedGrade($student) || in_array((int) $student['student_id'], $lowScoreIds, true);
+
+                return [
+                    'id' => 'alert-'.$student['student_id'],
+                    'student_id' => $student['student_id'],
+                    'severity' => $student['risk_level'] === 'high' ? 'urgent' : 'attention',
+                    'risk_level' => $student['risk_level'],
+                    'headline' => $lowGrade ? 'Low grade — send a student notice' : $student['headline'],
+                    'warnings' => $student['warnings'],
+                    'low_grade' => $lowGrade,
+                ];
+            })
+            ->values();
 
         return ['summary' => ['urgent' => $alerts->where('severity', 'urgent')->count(), 'attention' => $alerts->where('severity', 'attention')->count(), 'total' => $alerts->count()], 'alerts' => $alerts->all()];
+    }
+
+    public function hasLowPublishedGrade(array $student): bool
+    {
+        foreach ($student['subjects'] ?? [] as $subject) {
+            $grades = [
+                $subject['average_grade'] ?? null,
+                $subject['periods']['Midterm'] ?? null,
+                $subject['periods']['Final'] ?? null,
+                $subject['midterm_grade'] ?? null,
+                $subject['finals_grade'] ?? null,
+                $subject['final_grade'] ?? null,
+            ];
+            foreach ($grades as $grade) {
+                if (is_numeric($grade) && (float) $grade < self::LOW_GRADE) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function studentsWithGrades(): Builder
@@ -379,6 +430,32 @@ class EarlyWarningService
     /** @param Collection<int,array<string,mixed>> $students @return array<string,int> */
     private function summary(Collection $students): array
     {
-        return ['high' => $students->where('risk_level', 'high')->count(), 'moderate' => $students->where('risk_level', 'moderate')->count(), 'low' => $students->where('risk_level', 'low')->count(), 'total' => $students->count()];
+        $low = $students->where('risk_level', 'low')->count();
+
+        return [
+            'high' => $students->where('risk_level', 'high')->count(),
+            'moderate' => $students->where('risk_level', 'moderate')->count(),
+            'low' => $low,
+            'stable' => $low,
+            'insufficient' => $students->where('risk_level', 'insufficient')->count(),
+            'total' => $students->count(),
+        ];
+    }
+
+    /** @return list<int> */
+    private function professorLowScoreStudentIds(int $professorUserId): array
+    {
+        return MonitoringPerformanceRecord::query()
+            ->where('professor_user_id', $professorUserId)
+            ->whereNotNull('score')
+            ->where('max_score', '>', 0)
+            ->whereNotIn('subject_code', ['NOTES', 'SYLLABUS'])
+            ->get()
+            ->filter(fn (MonitoringPerformanceRecord $record): bool => ((float) $record->score / (float) $record->max_score) * 100 < self::LOW_GRADE)
+            ->pluck('student_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
     }
 }

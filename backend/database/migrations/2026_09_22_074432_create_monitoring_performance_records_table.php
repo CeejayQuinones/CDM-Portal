@@ -23,8 +23,8 @@ return new class extends Migration
             $table->string('attachment_name')->nullable();
             $table->timestamps();
 
-            $table->index(['student_id', 'created_at']);
-            $table->index(['professor_user_id', 'created_at']);
+            $table->index(['student_id', 'created_at'], 'mpr_student_created_idx');
+            $table->index(['professor_user_id', 'created_at'], 'mpr_professor_created_idx');
         });
     }
 

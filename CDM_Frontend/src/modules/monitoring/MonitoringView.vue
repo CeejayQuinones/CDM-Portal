@@ -1,655 +1,1290 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useAuthStore } from '../../stores/authStore'
 import { ROLES } from '../../config/accessControl'
-import {
-  fetchAiStatus,
-  fetchEarlyWarnings,
-  fetchMyRisk,
-  fetchStudentSentPlans,
-  markSentPlanRead,
-} from './services/monitoringApi'
-import AiHelpChatbot from './components/AiHelpChatbot.vue'
+import { fetchMonitoringOverview, sendRiskNotification } from './services/monitoringApi'
+import AdviserAlertsPanel from './components/AdviserAlertsPanel.vue'
+import AiHelpPanel from './components/AiHelpPanel.vue'
+import MyNoticesPanel from './components/MyNoticesPanel.vue'
 import ProfessorGradebook from './components/ProfessorGradebook.vue'
 import ProfessorRecordPanel from './components/ProfessorRecordPanel.vue'
 import RegistrarGradePanel from './components/RegistrarGradePanel.vue'
 import StudentStudyStudio from './components/StudentStudyStudio.vue'
+import StudyPlansPanel from './components/StudyPlansPanel.vue'
 
 const auth = useAuthStore()
-const data = ref(null)
+const overview = ref(null)
 const selectedId = ref(null)
 const loading = ref(true)
 const error = ref('')
 const search = ref('')
-const filters = reactive({ department: '', course: '', section: '' })
-const filterOptions = reactive({ departments: [], courses: [], sections: [] })
-const sentPlans = ref([])
-const aiStatus = ref({ live_ai_configured: false, provider: 'gemini' })
+const risk = ref('')
+const termKey = ref('')
+const activeTab = ref('warnings')
+const noticeOpen = ref(false)
+const noticeMessage = ref('')
+const noticeSending = ref(false)
+const noticeFeedback = ref('')
+const noticeError = ref('')
 
 const isStudent = computed(() => auth.currentRole === ROLES.STUDENT)
 const isProfessor = computed(() => auth.currentRole === ROLES.PROFESSOR)
 const isRegistrar = computed(() => auth.currentRole === ROLES.REGISTRAR_STAFF)
 const isAdmin = computed(() => auth.currentRole === ROLES.ADMIN)
-const seesSchoolList = computed(() => isRegistrar.value || isAdmin.value)
-
-const students = computed(() => data.value?.students || [])
-const filteredStudents = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  if (!q) return students.value
-  return students.value.filter((s) =>
-    [s.student_name, s.student_number, s.course_code, s.section_name, s.department_name]
-      .filter(Boolean)
-      .some((v) => String(v).toLowerCase().includes(q)),
-  )
-})
+const students = computed(() => overview.value?.students || [])
 const selected = computed(
-  () => filteredStudents.value.find((s) => s.student_id === selectedId.value) || filteredStudents.value[0] || null,
+  () => students.value.find((student) => student.student_id === selectedId.value) || students.value[0] || null,
 )
-
-const title = computed(() => {
-  if (isStudent.value) return 'My Academic Monitoring'
-  if (isProfessor.value) return 'Faculty Monitoring'
-  if (isRegistrar.value) return 'Registrar Records'
-  return 'Monitoring Overview'
+const summary = computed(() => overview.value?.summary || {})
+const recordSubjects = computed(() =>
+  (selected.value?.subjects || []).map((subject) => ({
+    ...subject,
+    periods: {
+      Midterm: subject.periods?.Midterm ?? subject.midterm_grade ?? null,
+      Final: subject.periods?.Final ?? subject.finals_grade ?? subject.final_grade ?? null,
+    },
+  })),
+)
+const roleDescription = computed(() => {
+  if (isStudent.value) return 'Your published official results for the selected academic term.'
+  if (isProfessor.value) return 'Published results for students in your current assigned classes only.'
+  if (isAdmin.value) return 'Institution-wide published grade signals. Review many students in one roster.'
+  return 'Institution-wide published grade signals for the selected academic term.'
+})
+const tabs = computed(() => {
+  if (isStudent.value) {
+    return [
+      { id: 'warnings', label: 'Early Warnings' },
+      { id: 'studio', label: 'AI Study Studio' },
+      { id: 'plans', label: 'Study Plan' },
+      { id: 'notices', label: 'My Notices' },
+      { id: 'ai-help', label: 'AI Help' },
+    ]
+  }
+  if (isProfessor.value) {
+    return [
+      { id: 'gradebook', label: 'Gradebook (Spreadsheet)' },
+      { id: 'warnings', label: 'Early Warnings' },
+      { id: 'records', label: 'Student Records & Plans' },
+      { id: 'plans', label: 'Study Plans' },
+      { id: 'alerts', label: 'Adviser Alerts' },
+      { id: 'ai-help', label: 'AI Help' },
+    ]
+  }
+  if (isRegistrar.value) {
+    return [
+      { id: 'warnings', label: 'Early Warnings' },
+      { id: 'review', label: 'Grade Review' },
+      { id: 'alerts', label: 'Adviser Alerts' },
+      { id: 'ai-help', label: 'AI Help' },
+    ]
+  }
+  return [
+    { id: 'warnings', label: 'Early Warnings' },
+    { id: 'review', label: 'Grade Review' },
+    { id: 'alerts', label: 'Adviser Alerts' },
+    { id: 'ai-help', label: 'AI Help' },
+  ]
 })
 
-watch(selected, (student) => {
-  if (student && isProfessor.value) loadPlans(student.student_id)
-  else sentPlans.value = []
-})
-
-watch(
-  () => auth.currentUser?.id,
-  (next, prev) => {
-    if (!next || next === prev) return
-    data.value = null
-    selectedId.value = null
-    sentPlans.value = []
-    load()
-  },
-)
-
-async function load({ quiet = false } = {}) {
-  if (!quiet) loading.value = true
+const load = async ({ preserveSelection = false } = {}) => {
+  loading.value = true
   error.value = ''
+  const previous = preserveSelection ? selectedId.value : null
+  const [academicYearId, semesterId] = termKey.value ? termKey.value.split(':').map(Number) : []
+
   try {
-    aiStatus.value = await fetchAiStatus().catch(() => ({ live_ai_configured: false, provider: 'gemini' }))
-    if (isStudent.value) {
-      data.value = await fetchMyRisk()
-    } else {
-      const params = {}
-      if (seesSchoolList.value) {
-        if (filters.department) params.department = filters.department
-        if (filters.course) params.course = filters.course
-        if (filters.section) params.section = filters.section
-      }
-      data.value = await fetchEarlyWarnings(params)
-      filterOptions.departments = data.value?.filters?.departments || []
-      filterOptions.courses = data.value?.filters?.courses || []
-      filterOptions.sections = data.value?.filters?.sections || []
+    overview.value = await fetchMonitoringOverview({
+      academic_year_id: academicYearId || undefined,
+      semester_id: semesterId || undefined,
+      search: search.value.trim() || undefined,
+      risk: risk.value || undefined,
+    })
+    if (!termKey.value && overview.value?.selected_term) {
+      termKey.value = String(overview.value.selected_term.academic_year_id) + ':' + String(overview.value.selected_term.semester_id)
     }
-    const stillVisible = students.value.some((student) => student.student_id === selectedId.value)
-    if (!quiet || !stillVisible) selectedId.value = students.value[0]?.student_id || null
-  } catch (err) {
-    const timedOut = err.code === 'ECONNABORTED'
-    error.value = timedOut
-      ? 'Faculty monitoring took too long to answer. The API may be unreachable.'
-      : err.response?.data?.message || 'Unable to load monitoring.'
+    const stillVisible = students.value.some((student) => student.student_id === previous)
+    selectedId.value = stillVisible
+      ? previous
+      : isAdmin.value
+        ? null
+        : students.value[0]?.student_id || null
+  } catch (requestError) {
+    error.value = requestError.response?.data?.message || 'Academic Monitoring is temporarily unavailable.'
   } finally {
     loading.value = false
   }
 }
 
-async function loadPlans(studentId) {
+const resetFilters = () => {
+  search.value = ''
+  risk.value = ''
+  load()
+}
+
+const filterByRisk = (level) => {
+  risk.value = risk.value === level ? '' : level
+  load()
+}
+
+const toggleStudent = (studentId) => {
+  selectedId.value = selectedId.value === studentId ? null : studentId
+}
+
+const focusSubjects = (student) =>
+  (student.subjects || [])
+    .filter((subject) => subject.risk_level === 'high' || subject.risk_level === 'moderate')
+    .map((subject) => subject.subject_code)
+    .join(', ') || '—'
+
+const openStudent = (studentId) => {
+  selectedId.value = studentId
+  activeTab.value = 'warnings'
+}
+
+const selectedHasLowGrade = computed(() => {
+  const student = selected.value
+  if (!student) return false
+  if (student.risk_level === 'high' || student.risk_level === 'moderate' || student.trend === 'declining') return true
+  return (student.subjects || []).some((subject) =>
+    [subject.midterm_grade, subject.finals_grade, subject.final_grade, subject.average_grade].some(
+      (grade) => grade != null && Number(grade) < 75,
+    ),
+  )
+})
+
+const defaultLowGradeNotice = 'A grade in this class is below 75. Please review that subject, complete missed work, and see me during consultation hours.'
+
+const toggleNotice = () => {
+  noticeOpen.value = !noticeOpen.value
+  noticeFeedback.value = ''
+  noticeError.value = ''
+  if (noticeOpen.value && !noticeMessage.value.trim() && selectedHasLowGrade.value) {
+    noticeMessage.value = defaultLowGradeNotice
+  }
+}
+
+const sendStudentNotice = async () => {
+  if (!selected.value?.student_id || noticeSending.value) return
+  noticeSending.value = true
+  noticeFeedback.value = ''
+  noticeError.value = ''
   try {
-    const payload = await fetchStudentSentPlans(studentId)
-    sentPlans.value = payload.plans || []
-  } catch {
-    sentPlans.value = []
+    const notice = await sendRiskNotification(
+      selected.value.student_id,
+      noticeMessage.value,
+      selectedHasLowGrade.value ? 'Low grade notice' : 'Academic support notice',
+    )
+    noticeFeedback.value = notice.duplicate
+      ? 'An identical recent notice already exists.'
+      : 'Notice sent. The student will see it under My Notices.'
+    noticeMessage.value = ''
+  } catch (requestError) {
+    noticeError.value = requestError.response?.data?.message || 'Unable to send this notice.'
+  } finally {
+    noticeSending.value = false
   }
 }
 
-async function openPlan(plan) {
-  if (isStudent.value && !plan.is_read) {
-    try {
-      const updated = await markSentPlanRead(plan.id)
-      sentPlans.value = sentPlans.value.map((p) => (p.id === plan.id ? updated : p))
-    } catch {
-      /* ignore */
+const formatGrade = (value) => (value === null || value === undefined ? 'Not published' : Number(value).toFixed(2))
+const formatChange = (value) => {
+  if (value === null || value === undefined) return 'Insufficient data'
+  const number = Number(value)
+  return (number > 0 ? '+' : '') + number.toFixed(2)
+}
+const termLabel = (term) => term.academic_year + ' · ' + term.semester
+
+watch(
+  () => selected.value?.student_id,
+  () => {
+    noticeOpen.value = false
+    noticeMessage.value = ''
+    noticeFeedback.value = ''
+    noticeError.value = ''
+  },
+)
+watch(
+  () => auth.currentUser?.id,
+  () => load(),
+)
+watch(
+  tabs,
+  (items) => {
+    if (!items.some((tab) => tab.id === activeTab.value)) {
+      activeTab.value = items[0]?.id || 'warnings'
     }
-  }
-}
-
+  },
+  { immediate: true },
+)
 onMounted(load)
 </script>
 
 <template>
-  <main class="page" :class="{ student: isStudent }">
-    <header class="head">
+  <main class="monitoring-page" :class="{ bulk: isAdmin }">
+    <header class="monitoring-header">
       <div>
-        <p class="kicker">AI Monitoring</p>
-        <h1>{{ title }}</h1>
-        <p class="lead">
-          {{
-            isStudent
-              ? 'Your standing uses approved period grades and every other graded score. Study files are separate and do not change the risk score.'
-              : isProfessor
-                ? 'Record every class score here, then submit midterm and final for the registrar. Those two grades count in the risk score only after approval.'
-                : isRegistrar
-                  ? 'Check each submitted midterm or final by student, subject, and period, then approve it. You do not record class scores or send study plans.'
-                  : 'View the official school record and the grades waiting for the registrar. Approving them is the registrar’s work.'
-          }}
-        </p>
+        <p class="eyebrow">Academic Monitoring</p>
+        <h1>Academic risk overview</h1>
+        <p>{{ roleDescription }}</p>
       </div>
-      <button type="button" class="btn" @click="load">Refresh</button>
+      <button class="button secondary" type="button" :disabled="loading" @click="load({ preserveSelection: true })">
+        {{ loading ? 'Refreshing…' : 'Refresh' }}
+      </button>
     </header>
 
-    <p v-if="error" class="alert" role="alert">{{ error }}</p>
-    <p v-if="loading" class="muted">Loading…</p>
+    <nav class="monitoring-tabs" aria-label="Academic Monitoring sections">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        type="button"
+        :class="{ active: activeTab === tab.id }"
+        :aria-current="activeTab === tab.id ? 'page' : undefined"
+        @click="activeTab = tab.id"
+      >
+        {{ tab.label }}
+      </button>
+    </nav>
 
-    <template v-else>
-      <section v-if="!isStudent" class="stats">
-        <article><span>High</span><strong>{{ data?.summary?.high || 0 }}</strong></article>
-        <article><span>Moderate</span><strong>{{ data?.summary?.moderate || 0 }}</strong></article>
-        <article><span>Stable</span><strong>{{ data?.summary?.low || 0 }}</strong></article>
-        <article><span>Total</span><strong>{{ data?.summary?.total || students.length }}</strong></article>
-      </section>
+    <section v-show="activeTab === 'warnings'" class="monitoring-tab-panel">
 
-      <ProfessorGradebook v-if="isProfessor" class="card" @changed="() => load({ quiet: true })" />
+    <p v-if="error" class="state-message error" role="alert">
+      <span>{{ error }}</span>
+      <button type="button" @click="load()">Try again</button>
+    </p>
 
-      <div class="layout" :class="{ solo: isStudent }">
-        <aside v-if="!isStudent" class="list">
-          <input v-model="search" type="search" placeholder="Search student…" />
-          <template v-if="seesSchoolList">
-            <select v-model="filters.department" @change="load">
-              <option value="">All departments</option>
-              <option v-for="d in filterOptions.departments" :key="d" :value="d">{{ d }}</option>
-            </select>
-            <select v-model="filters.course" @change="load">
-              <option value="">All courses</option>
-              <option v-for="c in filterOptions.courses" :key="c" :value="c">{{ c }}</option>
-            </select>
-            <select v-model="filters.section" @change="load">
-              <option value="">All sections</option>
-              <option v-for="s in filterOptions.sections" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </template>
+    <form v-if="!isStudent" class="filters" aria-label="Monitoring filters" @submit.prevent="load()">
+      <label>
+        Search students
+        <input v-model="search" type="search" placeholder="Name or student number" />
+      </label>
+      <label>
+        Academic term
+        <select v-model="termKey" @change="load()">
+          <option v-if="!overview?.terms?.length" value="">No configured term</option>
+          <option
+            v-for="term in overview?.terms || []"
+            :key="term.academic_year_id + ':' + term.semester_id"
+            :value="term.academic_year_id + ':' + term.semester_id"
+          >
+            {{ termLabel(term) }}
+          </option>
+        </select>
+      </label>
+      <label>
+        Risk level
+        <select v-model="risk">
+          <option value="">All levels</option>
+          <option value="high">High</option>
+          <option value="moderate">Moderate</option>
+          <option value="stable">Stable</option>
+          <option value="insufficient">Insufficient data</option>
+        </select>
+      </label>
+      <div class="filter-actions">
+        <button class="button primary" type="submit" :disabled="loading">Apply</button>
+        <button class="button secondary" type="button" :disabled="loading" @click="resetFilters">Clear</button>
+      </div>
+    </form>
 
+    <label v-else-if="overview?.terms?.length > 1" class="student-term">
+      Academic term
+      <select v-model="termKey" @change="load()">
+        <option
+          v-for="term in overview.terms"
+          :key="term.academic_year_id + ':' + term.semester_id"
+          :value="term.academic_year_id + ':' + term.semester_id"
+        >
+          {{ termLabel(term) }}
+        </option>
+      </select>
+    </label>
+
+    <section class="summary-grid" aria-label="Academic risk summary">
+      <button
+        v-for="card in [
+          { level: 'high', label: 'High', hint: 'Severe or repeated signals', count: summary.high || 0 },
+          { level: 'moderate', label: 'Moderate', hint: 'One signal merits review', count: summary.moderate || 0 },
+          { level: 'stable', label: 'Stable', hint: 'No material signal found', count: summary.stable || 0 },
+          { level: 'insufficient', label: 'Insufficient data', hint: 'No published classification yet', count: summary.insufficient || 0 },
+        ]"
+        :key="card.level"
+        type="button"
+        :data-level="card.level"
+        :class="{ active: risk === card.level }"
+        :aria-pressed="risk === card.level"
+        @click="filterByRisk(card.level)"
+      >
+        <span>{{ card.label }}</span>
+        <strong>{{ card.count }}</strong>
+        <small>{{ card.hint }}</small>
+      </button>
+    </section>
+
+    <p v-if="loading" class="state-message" role="status">Loading published academic signals…</p>
+
+    <div v-else-if="students.length && isAdmin" class="bulk-roster">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Selected term</p>
+          <h2>Student risk roster</h2>
+          <p>Scan every published monitoring record, then open a row for subject-level signals.</p>
+        </div>
+        <span>{{ students.length }}</span>
+      </div>
+      <div class="table-scroll bulk-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Program</th>
+              <th>Risk</th>
+              <th>Trend</th>
+              <th>Completeness</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="student in students" :key="student.student_id">
+              <tr
+                :class="{ active: selectedId === student.student_id }"
+                role="button"
+                tabindex="0"
+                @click="toggleStudent(student.student_id)"
+                @keydown.enter.prevent="toggleStudent(student.student_id)"
+              >
+                <td>
+                  <strong>{{ student.student_name }}</strong>
+                  <small>{{ student.student_number }}</small>
+                </td>
+                <td>
+                  {{ student.course_code || 'Course unavailable' }}
+                  <small>Year {{ student.year_level || '—' }} · {{ student.section_name || student.section || 'Section unavailable' }}</small>
+                </td>
+                <td><span class="risk-badge" :data-level="student.risk_level">{{ student.risk_label }}</span></td>
+                <td>{{ student.trend_label }}</td>
+                <td>
+                  {{ student.data_completeness?.label || '—' }}
+                  <small>
+                    {{ student.data_completeness?.published_subjects || 0 }} /
+                    {{ student.data_completeness?.expected_subjects || 0 }} published
+                  </small>
+                </td>
+              </tr>
+              <tr v-if="selectedId === student.student_id" class="bulk-detail">
+                <td colspan="5">
+                  <p>{{ student.headline }}</p>
+                  <p v-if="focusSubjects(student) !== '—'"><strong>Focus subjects:</strong> {{ focusSubjects(student) }}</p>
+                  <ul>
+                    <li v-for="reason in student.reasons" :key="reason">{{ reason }}</li>
+                  </ul>
+                  <div v-if="student.subjects?.length" class="table-scroll nested">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Subject</th>
+                          <th>Midterm</th>
+                          <th>Finals</th>
+                          <th>Official final</th>
+                          <th>Change</th>
+                          <th>Trend</th>
+                          <th>Signal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="subject in student.subjects" :key="subject.enrollment_subject_id || subject.subject_code">
+                          <td>
+                            <strong>{{ subject.subject_code }}</strong>
+                            <small>{{ subject.subject_name }}</small>
+                          </td>
+                          <td>{{ formatGrade(subject.midterm_grade) }}</td>
+                          <td>{{ formatGrade(subject.finals_grade) }}</td>
+                          <td>{{ formatGrade(subject.final_grade) }}</td>
+                          <td>{{ formatChange(subject.checkpoint_change) }}</td>
+                          <td>{{ subject.trend === 'insufficient' ? 'Insufficient data' : subject.trend }}</td>
+                          <td><span class="risk-badge" :data-level="subject.risk_level">{{ subject.risk_label }}</span></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p v-else class="empty-state">No published official grade snapshots are available for this student.</p>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div v-else-if="students.length" class="monitoring-workspace">
+      <aside v-if="!isStudent" class="student-panel" aria-label="Monitored students">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Selected term</p>
+            <h2>Students</h2>
+          </div>
+          <span>{{ students.length }}</span>
+        </div>
+        <div class="student-list">
           <button
-            v-for="student in filteredStudents"
+            v-for="student in students"
             :key="student.student_id"
             type="button"
-            class="row"
             :class="{ active: selected?.student_id === student.student_id }"
             @click="selectedId = student.student_id"
           >
-            <strong>{{ student.student_name }}</strong>
-            <span>{{ student.student_number }} · Year {{ student.year_level || '—' }} · {{ student.course_code || '—' }} · {{ student.section_name || '—' }}</span>
-            <em :class="student.risk_level">{{ student.risk_label }}</em>
+            <span>
+              <strong>{{ student.student_name }}</strong>
+              <small>{{ student.student_number }} · {{ student.course_code || 'Course unavailable' }}</small>
+            </span>
+            <em class="risk-badge" :data-level="student.risk_level">{{ student.risk_label }}</em>
           </button>
-          <p v-if="!filteredStudents.length" class="muted">No students found.</p>
-        </aside>
+        </div>
+      </aside>
 
-        <section v-if="selected" class="detail">
-          <div class="card hero">
-            <div>
-              <h2>{{ isStudent ? 'Your standing' : selected.student_name }}</h2>
-              <p>{{ selected.headline }}</p>
-              <p class="meta">
-                <span v-if="selected.department_name">{{ selected.department_name }}</span>
-                <span v-if="selected.course_code">{{ selected.course_code }}</span>
-                <span v-if="selected.section_name">Sec {{ selected.section_name }}</span>
-              </p>
-            </div>
-            <div class="right">
-              <span class="pill" :class="selected.risk_level">{{ selected.risk_label }}</span>
-              <p v-if="selected.risk_score != null">Score <strong>{{ selected.risk_score }}/100</strong></p>
-              <p>Avg <strong>{{ selected.average_grade ?? '—' }}</strong></p>
-              <p>Trend <strong>{{ selected.trend_label || selected.trend }}</strong></p>
-            </div>
+      <section v-if="selected" class="assessment-panel" aria-live="polite">
+        <header class="assessment-heading">
+          <div>
+            <p class="eyebrow">{{ isStudent ? 'My official data' : selected.student_number }}</p>
+            <h2>{{ isStudent ? 'My academic monitoring' : selected.student_name }}</h2>
+            <p>{{ selected.headline }}</p>
           </div>
-
-          <div v-if="selected.signals" class="card">
-            <h3>Early warning signals</h3>
-            <div class="subjects">
-              <article>
-                <strong>Grades</strong>
-                <span>How far averages sit from a safe standing</span>
-                <em>{{ selected.signals.grade_risk }}</em>
-              </article>
-              <article>
-                <strong>Trend</strong>
-                <span>Drops and missing midterms</span>
-                <em>{{ selected.signals.trend_drop }}</em>
-              </article>
-              <article>
-                <strong>Graded scores</strong>
-                <span>{{ selected.signals.weak_quiz_count || 0 }} scored records, not only quizzes</span>
-                <em>{{ selected.signals.weak_quizzes }}</em>
-              </article>
-              <article>
-                <strong>Gaps</strong>
-                <span>Failed, incomplete, or missing work</span>
-                <em>{{ selected.signals.incomplete }}</em>
-              </article>
-            </div>
-            <ul v-if="selected.warnings?.length" class="warnings">
-              <li v-for="warning in selected.warnings" :key="warning">{{ warning }}</li>
-            </ul>
+          <div class="assessment-actions">
+            <span class="risk-badge large" :data-level="selected.risk_level">{{ selected.risk_label }}</span>
+            <button
+              v-if="isProfessor"
+              class="button primary"
+              type="button"
+              @click="toggleNotice"
+            >
+              {{ noticeOpen ? 'Close notice' : selectedHasLowGrade ? 'Notify student — low grade' : 'Notify student' }}
+            </button>
           </div>
+        </header>
 
-          <div class="card">
-            <h3>Subjects</h3>
-            <div v-if="selected.subjects?.length" class="subjects">
-              <article v-for="subject in selected.subjects" :key="subject.subject_code">
-                <strong>{{ subject.subject_code }}</strong>
-                <span>
-                  {{ subject.subject_name }}
-                  <template v-if="subject.periods">
-                    · Midterm {{ subject.periods.Midterm ?? '—' }}
-                    · Final {{ subject.periods.Final ?? '—' }}
-                  </template>
-                </span>
-                <em :class="subject.risk_level">{{ subject.average_grade }} · {{ subject.risk_level }}</em>
-              </article>
-            </div>
-            <p v-else class="muted">No approved grades yet.</p>
+        <form v-if="isProfessor && noticeOpen" class="notice-composer" @submit.prevent="sendStudentNotice">
+          <label>
+            Message to {{ selected.student_name }}
+            <textarea
+              v-model="noticeMessage"
+              rows="4"
+              maxlength="1000"
+              placeholder="Tell the student which subject is low and what to do next."
+            />
+          </label>
+          <div class="notice-composer-footer">
+            <p v-if="noticeFeedback" class="notice-ok" role="status">{{ noticeFeedback }}</p>
+            <p v-else-if="noticeError" class="notice-err" role="alert">{{ noticeError }}</p>
+            <button class="button primary" type="submit" :disabled="noticeSending">
+              {{ noticeSending ? 'Sending…' : 'Send notice' }}
+            </button>
           </div>
+        </form>
 
-          <div v-if="isProfessor" class="card">
-            <h3>Sent plans</h3>
-            <article v-for="plan in sentPlans" :key="plan.id" class="plan" @click="openPlan(plan)">
-              <strong>{{ plan.title }}</strong>
-              <span>{{ plan.subject_code }} · {{ plan.topic }}</span>
-              <pre>{{ plan.plan_body }}</pre>
-            </article>
-            <p v-if="!sentPlans.length" class="muted">No study plans yet.</p>
-          </div>
+        <div class="assessment-metrics">
+          <article>
+            <span>Academic trend</span>
+            <strong>{{ selected.trend_label }}</strong>
+          </article>
+          <article>
+            <span>Subjects analyzed</span>
+            <strong>{{ selected.subjects_analyzed }}</strong>
+          </article>
+          <article>
+            <span>Data completeness</span>
+            <strong>{{ selected.data_completeness.label }}</strong>
+            <small>
+              {{ selected.data_completeness.published_subjects }} of
+              {{ selected.data_completeness.expected_subjects }} expected subjects published
+            </small>
+          </article>
+        </div>
 
-          <StudentStudyStudio v-if="isStudent" :key="`studio-${auth.currentUser?.id}`" />
-
-          <ProfessorRecordPanel
-            v-if="selected && isProfessor"
-            :key="`records-${auth.currentUser?.id}-${selected.student_id}`"
-            :student-id="selected.student_id"
-            :subjects="selected.subjects || []"
-            viewer-role="professor"
-            @sent="loadPlans(selected.student_id)"
-          />
-
+        <section class="reason-card">
+          <h3>Why this level was assigned</h3>
+          <ul>
+            <li v-for="reason in selected.reasons" :key="reason">{{ reason }}</li>
+          </ul>
         </section>
 
-        <p v-else-if="!isRegistrar" class="muted card">No academic record available.</p>
+        <section>
+          <div class="section-heading">
+            <div>
+              <h3>Published subject signals</h3>
+              <p>Each trend compares checkpoints inside the same subject.</p>
+            </div>
+          </div>
+          <div v-if="selected.subjects.length" class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Subject</th>
+                  <th>Midterm</th>
+                  <th>Finals</th>
+                  <th>Official final</th>
+                  <th>Change</th>
+                  <th>Trend</th>
+                  <th>Signal</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="subject in selected.subjects" :key="subject.enrollment_subject_id">
+                  <td>
+                    <strong>{{ subject.subject_code }}</strong>
+                    <small>{{ subject.subject_name }}</small>
+                  </td>
+                  <td>{{ formatGrade(subject.midterm_grade) }}</td>
+                  <td>{{ formatGrade(subject.finals_grade) }}</td>
+                  <td>{{ formatGrade(subject.final_grade) }}</td>
+                  <td>{{ formatChange(subject.checkpoint_change) }}</td>
+                  <td>{{ subject.trend === 'insufficient' ? 'Insufficient data' : subject.trend }}</td>
+                  <td><span class="risk-badge" :data-level="subject.risk_level">{{ subject.risk_label }}</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="empty-state">No published official grade snapshots are available for this term.</p>
+        </section>
 
-        <div v-if="isRegistrar || isAdmin" class="card">
-          <RegistrarGradePanel :key="`registrar-${auth.currentUser?.id}`" />
-        </div>
-      </div>
-    </template>
+        <details class="method-card">
+          <summary>How Academic Monitoring works</summary>
+          <p>{{ overview.methodology?.source }}</p>
+          <p>{{ overview.methodology?.risk_rule }}</p>
+          <p>{{ overview.methodology?.trend_rule }}</p>
+          <p><strong>Excluded:</strong> {{ (overview.methodology?.excluded || []).join(', ') }}.</p>
+        </details>
+      </section>
+    </div>
 
-    <AiHelpChatbot
-      :key="`chat-${auth.currentUser?.id || 0}-${selected?.student_id || 0}`"
-      :student-id="selected?.student_id || null"
-      :student-name="selected?.student_name || (isStudent ? 'You' : 'Student')"
-      :risk-label="selected?.risk_label || ''"
-      :average-grade="selected?.average_grade ?? null"
-      :trend-label="selected?.trend_label || ''"
-      :subjects="selected?.subjects || []"
-      :live-configured="Boolean(aiStatus.live_ai_configured)"
-      :provider="aiStatus.provider || 'gemini'"
-    />
+    <section v-else-if="!error" class="empty-state large">
+      <h2>No monitoring records for this view</h2>
+      <p v-if="isStudent">
+        Academic Monitoring will show an explicit assessment after official grades are published for a finalized enrollment.
+      </p>
+      <p v-else>Try another term or clear the search and risk filters.</p>
+    </section>
+    </section>
+
+    <section v-if="isStudent && activeTab === 'studio'" class="monitoring-tab-panel">
+      <StudentStudyStudio :key="`studio-${auth.currentUser?.id}`" />
+    </section>
+
+    <section v-if="isProfessor && activeTab === 'gradebook'" class="monitoring-tab-panel">
+      <ProfessorGradebook @changed="() => load({ preserveSelection: true })" />
+    </section>
+
+    <section v-if="isProfessor && activeTab === 'records'" class="monitoring-tab-panel">
+      <label v-if="students.length" class="student-term">
+        Student
+        <select v-model="selectedId">
+          <option v-for="student in students" :key="student.student_id" :value="student.student_id">
+            {{ student.student_name }} · {{ student.student_number }}
+          </option>
+        </select>
+      </label>
+      <ProfessorRecordPanel
+        v-if="selected"
+        :key="`records-${selected.student_id}`"
+        :student-id="selected.student_id"
+        :subjects="recordSubjects"
+        viewer-role="professor"
+      />
+      <p v-else class="empty-state">Select a student to view approved grades and send a study plan.</p>
+    </section>
+
+    <section v-if="(isRegistrar || isAdmin) && activeTab === 'review'" class="monitoring-tab-panel">
+      <RegistrarGradePanel :key="`review-${auth.currentUser?.id}`" />
+    </section>
+
+    <section v-if="(isStudent || isProfessor) && activeTab === 'plans'" class="monitoring-tab-panel">
+      <StudyPlansPanel :student-id="selectedId" />
+    </section>
+    <section v-if="!isStudent && activeTab === 'alerts'" class="monitoring-tab-panel">
+      <AdviserAlertsPanel @select-student="openStudent" />
+    </section>
+    <section v-if="isStudent && activeTab === 'notices'" class="monitoring-tab-panel">
+      <MyNoticesPanel @open-monitoring="activeTab = 'warnings'" />
+    </section>
+    <section v-if="activeTab === 'ai-help'" class="monitoring-tab-panel">
+      <AiHelpPanel :student-id="selectedId" :assessment="selected" />
+    </section>
+
+    <button type="button" class="ai-help-fab" @click="activeTab = 'ai-help'">AI Help</button>
   </main>
 </template>
 
 <style scoped>
-.page {
-  --ink: var(--student-heading, #1b2a22);
-  --muted: var(--student-muted, #66706a);
-  --line: var(--student-border, #d7dfd9);
-  --surface: var(--student-surface, #fff);
-  --soft: var(--student-surface-soft, #f5f7f6);
-  --green: var(--student-accent, #106a2e);
-  color: var(--ink);
-  display: grid;
-  gap: 16px;
+.monitoring-page {
+  width: 100%;
+  max-width: 1420px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: clamp(16px, 2.5vw, 32px);
+  color: var(--text-primary);
 }
 
-.head {
-  align-items: flex-start;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
+.monitoring-page.bulk {
+  max-width: 1680px;
 }
 
-.kicker {
-  color: var(--green);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  margin: 0 0 4px;
-  text-transform: uppercase;
-}
-
-h1 {
-  font-size: clamp(1.4rem, 2.4vw, 1.85rem);
-  margin: 0;
-}
-
-.lead,
-.muted,
-.meta,
-.row span,
-.subjects span,
-.plan span {
-  color: var(--muted);
-}
-
-.lead {
-  margin: 6px 0 0;
-  max-width: 52ch;
-}
-
-.btn,
-.row {
-  cursor: pointer;
-}
-
-.btn {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--green);
-  font-weight: 700;
-  min-height: 38px;
-  padding: 0 12px;
-}
-
-.alert {
-  background: #fff1f0;
-  border: 1px solid #ffd1cc;
-  border-radius: 8px;
-  color: #9f2d25;
-  margin: 0;
-  padding: 10px 12px;
-}
-
-.stats {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.stats article,
-.card,
-.list {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-
-.stats article {
-  padding: 12px 14px;
-}
-
-.stats span {
-  color: var(--muted);
-  display: block;
-  font-size: 0.8rem;
-}
-
-.stats strong {
-  display: block;
-  font-size: 1.4rem;
-  margin-top: 2px;
-}
-
-.layout {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: 280px minmax(0, 1fr);
-}
-
-.layout.solo {
-  grid-template-columns: 1fr;
-}
-
-.list {
-  display: grid;
-  gap: 8px;
-  max-height: 72vh;
-  overflow: auto;
-  padding: 12px;
-}
-
-.list input,
-.list select {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 9px 10px;
-}
-
-.row {
-  background: var(--soft);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  display: grid;
-  gap: 2px;
-  padding: 10px;
-  text-align: left;
-}
-
-.row.active {
-  border-color: var(--green);
-}
-
-.row em,
-.pill,
-.subjects em {
-  font-style: normal;
-  font-size: 0.72rem;
-  font-weight: 700;
-  justify-self: start;
-  margin-top: 4px;
-  text-transform: uppercase;
-}
-
-.detail {
-  display: grid;
-  gap: 12px;
+.monitoring-tab-panel,
+.monitoring-workspace,
+.assessment-panel,
+.assessment-panel > section,
+.assessment-metrics,
+.method-card,
+.assessment-heading > div,
+.section-heading > div,
+.student-panel,
+.student-list button > span {
   min-width: 0;
 }
 
-.card {
-  padding: 14px;
+.monitoring-header,
+.assessment-heading,
+.panel-heading,
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.hero {
+.monitoring-header h1,
+.assessment-heading h2,
+.panel-heading h2,
+.section-heading h3 {
+  margin: 4px 0 6px;
+}
+
+.monitoring-header p,
+.assessment-heading p,
+.section-heading p {
+  margin: 0;
+  color: var(--tab-inactive, var(--text-secondary));
+  overflow-wrap: anywhere;
+}
+
+.assessment-actions {
+  align-items: flex-end;
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.notice-composer {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-surface-alt, #f4f8f5);
+}
+
+.notice-composer label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.notice-composer textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.notice-composer-footer {
+  align-items: center;
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
   justify-content: space-between;
 }
 
-.hero h2,
-.card h3 {
-  margin: 0 0 6px;
+.notice-ok { margin: 0; color: var(--success, #166534); }
+.notice-err { margin: 0; color: var(--danger, #9f2d25); }
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.meta {
+.monitoring-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 12px;
-  margin: 8px 0 0;
-}
-
-.right {
-  text-align: right;
-}
-
-.right p {
-  margin: 6px 0 0;
-}
-
-.pill,
-.row em,
-.subjects em {
-  border-radius: 999px;
-  padding: 4px 8px;
-}
-
-.high,
-em.high,
-.pill.high {
-  background: #fff1e8;
-  color: #9a3412;
-}
-
-.moderate,
-em.moderate,
-.pill.moderate {
-  background: #fff8db;
-  color: #854d0e;
-}
-
-.low,
-em.low,
-.pill.low {
-  background: #e8f7ee;
-  color: #166534;
-}
-
-.subjects {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-}
-
-.subjects article,
-.plan {
-  background: var(--soft);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
-}
-
-.subjects strong,
-.plan strong {
-  display: block;
-}
-
-.warnings {
-  color: var(--muted);
-  display: grid;
   gap: 4px;
-  margin: 12px 0 0;
-  padding-left: 18px;
+  margin-top: 24px;
+  overflow: visible;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.plan {
+.monitoring-tabs button {
+  flex: 0 1 auto;
+  min-height: 44px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  padding: 9px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 750;
+  white-space: nowrap;
   cursor: pointer;
-  margin-top: 8px;
 }
 
-.plan pre {
-  font-family: inherit;
-  line-height: 1.45;
-  margin: 8px 0 0;
-  white-space: pre-wrap;
+.monitoring-tabs button:hover {
+  background: var(--tab-hover, var(--bg-surface-alt));
+  color: var(--text-primary);
 }
 
-.page.student .head {
-  align-items: flex-end;
+.monitoring-tabs button.active {
+  border-bottom-color: var(--accent);
+  color: var(--tab-active, var(--accent));
 }
 
-.page.student .lead {
-  max-width: 62ch;
-  line-height: 1.55;
+.ai-help-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  min-height: 44px;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: var(--accent);
+  color: var(--text-on-accent, #fff);
+  font: inherit;
+  font-weight: 800;
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
 }
 
-.page.student .btn {
-  background: #0d6940;
-  border-color: #0a5734;
-  border-radius: 10px;
-  color: #fff;
+.monitoring-tab-panel {
+  margin-top: 20px;
+}
+
+.button,
+.state-message button {
   min-height: 40px;
-  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.page.student .detail {
-  gap: 14px;
+.button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--text-on-accent);
 }
 
-.page.student .card {
-  border-radius: 14px;
-  padding: 18px 20px;
+.button.secondary,
+.state-message button {
+  background: var(--bg-surface);
+  color: var(--accent);
 }
 
-.page.student .hero {
-  align-items: stretch;
-  background: #fff;
+.button:disabled {
+  cursor: wait;
+  opacity: 0.62;
 }
 
-.page.student .hero h2 {
-  font-size: 1.35rem;
-  letter-spacing: -0.02em;
-}
-
-.page.student .right {
-  background: var(--surface);
-  border: 1px solid var(--line);
+.filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(2, minmax(180px, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
   border-radius: 12px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.filters label,
+.student-term {
   display: grid;
-  gap: 4px;
-  min-width: 168px;
-  padding: 14px 16px;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.filters input,
+.filters select,
+.student-term select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.student-term {
+  max-width: 360px;
+  margin-top: 22px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.summary-grid button,
+.assessment-panel,
+.student-panel,
+.bulk-roster {
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.summary-grid button {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 116px;
+  border-radius: 12px;
+  padding: 16px 18px;
   text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
-.page.student .right p {
-  margin: 0;
+.summary-grid button::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--signal-color);
+  content: '';
 }
 
-.page.student .subjects {
-  grid-template-columns: 1fr;
+.summary-grid button.active {
+  border-color: var(--signal-color);
+  box-shadow: inset 0 0 0 1px var(--signal-color);
 }
 
-.page.student .subjects article {
-  align-items: center;
-  background: #fff;
+.summary-grid button[data-level='high'] { --signal-color: var(--danger); }
+.summary-grid button[data-level='moderate'] { --signal-color: var(--warning); }
+.summary-grid button[data-level='stable'] { --signal-color: var(--success); }
+.summary-grid button[data-level='insufficient'] { --signal-color: var(--text-muted); }
+
+.summary-grid span,
+.assessment-metrics span {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.summary-grid strong {
+  display: block;
+  margin: 3px 0;
+  font-size: 2rem;
+}
+
+.summary-grid small,
+.assessment-metrics small {
+  color: var(--text-muted);
+}
+
+.monitoring-workspace {
   display: grid;
-  gap: 6px 16px;
-  grid-template-columns: minmax(88px, 140px) minmax(0, 1fr) auto;
-  padding: 12px 14px;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
 }
 
-.page.student .subjects em {
+.monitoring-workspace > .assessment-panel:only-child {
+  grid-column: 1 / -1;
+}
+
+.student-panel,
+.assessment-panel,
+.bulk-roster {
+  border-radius: 14px;
+}
+
+.bulk-roster {
+  overflow: hidden;
+}
+
+.bulk-roster .panel-heading {
+  align-items: flex-start;
+}
+
+.bulk-roster .panel-heading p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.bulk-scroll {
+  max-height: min(70vh, 820px);
+  padding-bottom: 8px;
+}
+
+.bulk-roster table {
+  min-width: 0;
+}
+
+.bulk-roster tbody tr[role='button'] {
+  cursor: pointer;
+}
+
+.bulk-roster tbody tr[role='button']:hover,
+.bulk-roster tbody tr.active {
+  background: var(--bg-surface-alt);
+}
+
+.bulk-detail td {
+  background: var(--bg-surface-alt);
+  padding: 16px 18px 20px;
+}
+
+.bulk-detail p,
+.bulk-detail ul {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+}
+
+.bulk-detail .table-scroll.nested {
   margin-top: 0;
 }
 
-.page.student .card h3 {
-  font-size: 1rem;
-  letter-spacing: -0.01em;
-  margin-bottom: 12px;
+.student-panel {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
 }
 
-@media (max-width: 900px) {
-  .layout,
-  .stats,
-  .hero {
-    grid-template-columns: 1fr;
-    display: grid;
+.panel-heading {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.panel-heading > span {
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: var(--bg-surface-alt);
+  color: var(--text-secondary);
+  font-weight: 800;
+}
+
+.student-list {
+  display: grid;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+}
+
+.student-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border-color);
+  padding: 13px 15px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.student-list button :is(strong, small),
+.assessment-metrics :is(strong, small),
+.reason-card li,
+.method-card p {
+  overflow-wrap: anywhere;
+}
+
+.student-list button:hover,
+.student-list button.active {
+  background: var(--bg-surface-alt);
+}
+
+.student-list button.active {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.student-list button span,
+table td:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.student-list small,
+table td small {
+  color: var(--text-muted);
+}
+
+.assessment-panel {
+  display: grid;
+  gap: 22px;
+  padding: clamp(18px, 2.4vw, 28px);
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: var(--bg-surface-alt);
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+
+.risk-badge.large {
+  padding: 7px 12px;
+  font-size: 0.86rem;
+}
+
+.risk-badge[data-level='high'] { background: var(--danger-bg); color: var(--danger); }
+.risk-badge[data-level='moderate'] { background: var(--warning-bg); color: var(--warning); }
+.risk-badge[data-level='stable'] { background: var(--success-bg); color: var(--success); }
+
+.assessment-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.assessment-metrics article {
+  min-width: 0;
+  min-height: 92px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 13px;
+  background: var(--bg-surface-alt);
+}
+
+.assessment-metrics strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 1.06rem;
+}
+
+.reason-card,
+.method-card,
+.empty-state {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--bg-surface-alt);
+}
+
+.reason-card h3 {
+  margin: 0 0 8px;
+}
+
+.reason-card ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.reason-card li + li {
+  margin-top: 6px;
+}
+
+.table-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  margin-top: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--border-color);
+  padding: 11px 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+th {
+  background: var(--bg-surface-alt);
+  color: var(--text-secondary);
+  font-size: 0.77rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.method-card summary {
+  color: var(--accent);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.method-card p {
+  color: var(--text-secondary);
+}
+
+.state-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--bg-surface);
+}
+
+.state-message.error {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.empty-state {
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.empty-state.large {
+  margin-top: 20px;
+  padding: 40px 20px;
+  background: var(--bg-surface);
+}
+
+.empty-state h2 {
+  margin-top: 0;
+  color: var(--text-primary);
+}
+
+@media (max-width: 1400px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .list {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .monitoring-workspace {
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  }
+
+  .assessment-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1200px) {
+
+  .monitoring-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .student-panel {
+    position: static;
     max-height: none;
   }
 
-  .right,
-  .page.student .right {
-    text-align: left;
+  .student-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 330px;
+  }
+}
+
+@media (max-width: 680px) {
+  .monitoring-page {
+    padding: 0;
   }
 
-  .page.student .subjects article {
-    grid-template-columns: 1fr;
+  .monitoring-header,
+  .assessment-heading,
+  .assessment-actions,
+  .notice-composer-footer {
+    display: grid;
   }
+
+  .assessment-actions,
+  .notice-composer-footer .button {
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .filters,
+  .student-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .summary-grid,
+  .assessment-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .summary-grid button,
+  .assessment-metrics article {
+    min-height: 78px;
+    padding: 12px;
+  }
+
+  .filter-actions,
+  .filter-actions .button,
+  .monitoring-header .button {
+    width: 100%;
+  }
+
+  .assessment-panel {
+    padding: 14px;
+  }
+
+  .monitoring-tabs {
+    margin-right: -12px;
+    margin-left: -12px;
+    padding: 0 12px 4px;
+  }
+}
+
+@media (max-width: 380px) {
+  .summary-grid,
+  .assessment-metrics { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

@@ -41,6 +41,22 @@ function isSyllabus(record) {
   return String(record?.subject_code || '').toUpperCase() === 'SYLLABUS'
 }
 
+function displayName(value, max = 28) {
+  const name = String(value || '').trim()
+  if (name.length <= max) return name
+  const dot = name.lastIndexOf('.')
+  const ext = dot > 0 && name.length - dot <= 8 ? name.slice(dot) : ''
+  const keep = Math.max(12, max - ext.length - 1)
+  return `${name.slice(0, keep)}…${ext}`
+}
+
+function cardText(value) {
+  return String(value || '').replace(
+    /[A-Za-z0-9][A-Za-z0-9._-]{18,}\.(docx?|pdf|txt|xlsx?|csv)/gi,
+    (name) => displayName(name, 24),
+  )
+}
+
 const files = computed(() => (studio.value.records || [])
   .filter((record) => record.has_attachment)
   .slice()
@@ -130,7 +146,7 @@ const deletingId = ref(null)
 
 async function confirmDeleteFile(item) {
   const name = item.attachment_name || item.topic || 'file'
-  if (!window.confirm(`Are you sure you want to delete "${name}"? This file will be permanently removed.`)) {
+  if (!window.confirm(`Delete "${name}"? This file will be permanently removed.`)) {
     return
   }
   deletingId.value = item.id
@@ -348,36 +364,15 @@ onMounted(load)
       </article>
 
       <div class="uploads">
-        <label class="upload" :class="{ 'is-loading': uploading }">
+        <label class="upload">
           <input type="file" accept=".txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :disabled="uploading" @change="onUpload($event, 'syllabus')" />
-          <div class="upload-icon-wrap syllabus-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="upload-svg">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke-linecap="round" stroke-linejoin="round" />
-              <line x1="12" y1="7" x2="16" y2="7" stroke-linecap="round" />
-              <line x1="9" y1="11" x2="16" y2="11" stroke-linecap="round" />
-            </svg>
-          </div>
-          <div class="upload-text-group">
-            <span class="upload-title">{{ uploading ? 'Reading the file…' : 'Upload syllabus' }}</span>
-            <small class="upload-subtitle">The study guide is written from this outline</small>
-          </div>
+          <span>{{ uploading ? 'Reading the file…' : 'Upload syllabus' }}</span>
+          <small>Read first. Notes or random files are rejected</small>
         </label>
-        <label class="upload" :class="{ 'is-loading': uploading }">
+        <label class="upload">
           <input type="file" accept=".txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :disabled="uploading" @change="onUpload($event, 'notes')" />
-          <div class="upload-icon-wrap notes-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="upload-svg">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke-linecap="round" stroke-linejoin="round" />
-              <polyline points="14 2 14 8 20 8" stroke-linecap="round" stroke-linejoin="round" />
-              <line x1="16" y1="13" x2="8" y2="13" stroke-linecap="round" />
-              <line x1="16" y1="17" x2="8" y2="17" stroke-linecap="round" />
-              <polyline points="10 9 9 9 8 9" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </div>
-          <div class="upload-text-group">
-            <span class="upload-title">{{ uploading ? 'Reading the file…' : 'Upload notes' }}</span>
-            <small class="upload-subtitle">TXT, DOCX, or a PDF with selectable text</small>
-          </div>
+          <span>{{ uploading ? 'Reading the file…' : 'Upload notes' }}</span>
+          <small>Read first. A syllabus uploaded here is rejected</small>
         </label>
       </div>
 
@@ -388,12 +383,8 @@ onMounted(load)
           class="set"
           :class="{ active: selectedRecordId === item.id }"
         >
-          <button
-            type="button"
-            class="set-main"
-            @click="selectedRecordId = item.id"
-          >
-            <strong>{{ item.attachment_name || item.topic }}</strong>
+          <button type="button" class="set-main" :title="item.attachment_name || item.topic" @click="selectedRecordId = item.id">
+            <strong>{{ displayName(item.attachment_name || item.topic) }}</strong>
             <span>{{ isSyllabus(item) ? 'Syllabus' : 'Notes' }}</span>
           </button>
           <button
@@ -404,9 +395,7 @@ onMounted(load)
             :disabled="deletingId === item.id"
             @click.stop="confirmDeleteFile(item)"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+            {{ deletingId === item.id ? 'Deleting…' : 'Delete' }}
           </button>
         </div>
         <p v-if="!files.length" class="muted empty">
@@ -443,7 +432,7 @@ onMounted(load)
           <button type="button" class="ghost" @click="goHome">← Study modes</button>
           <div class="session-title">
             <strong>{{ modes.find((m) => m.id === mode)?.title }}</strong>
-            <span>{{ focusTopic }}</span>
+            <span :title="focusTopic">{{ displayName(focusTopic, 36) }}</span>
           </div>
           <div v-if="mode === 'learn' || mode === 'flashcards'" class="progress-pill">
             <span class="bar"><i :style="{ width: `${progressPct}%` }" /></span>
@@ -458,12 +447,12 @@ onMounted(load)
             <span class="inner">
               <span class="face front">
                 <small>Term · {{ cardIndex + 1 }} / {{ cards.length }}</small>
-                <strong>{{ currentCard?.front }}</strong>
+                <strong>{{ cardText(currentCard?.front) }}</strong>
                 <em>Click the card to flip</em>
               </span>
               <span class="face back">
                 <small>Answer · {{ cardIndex + 1 }} / {{ cards.length }}</small>
-                <strong>{{ currentCard?.back }}</strong>
+                <strong>{{ cardText(currentCard?.back) }}</strong>
                 <em>Click to flip back</em>
               </span>
             </span>
@@ -471,8 +460,8 @@ onMounted(load)
           <ul class="card-list">
             <li v-for="(card, index) in cards" :key="index" :class="{ on: index === cardIndex }">
               <button type="button" @click="cardIndex = index; flipped = false">
-                <strong>{{ card.front }}</strong>
-                <span>{{ card.back }}</span>
+                <strong>{{ cardText(card.front) }}</strong>
+                <span>{{ cardText(card.back) }}</span>
               </button>
             </li>
           </ul>
@@ -503,7 +492,7 @@ onMounted(load)
           <template v-else>
             <p class="progress-label">Question {{ quizIndex + 1 }} of {{ quiz.length }}</p>
             <span class="quiz-progress" aria-hidden="true"><i :style="{ width: `${((quizIndex + (revealed ? 1 : 0)) / quiz.length) * 100}%` }" /></span>
-            <h3 class="prompt">{{ currentQuestion?.prompt }}</h3>
+            <h3 class="prompt">{{ cardText(currentQuestion?.prompt) }}</h3>
             <div class="choices">
               <button
                 v-for="(choice, index) in currentQuestion?.choices || []"
@@ -518,7 +507,7 @@ onMounted(load)
                 @click="selectChoice(index)"
               >
                 <span class="letter">{{ String.fromCharCode(65 + index) }}</span>
-                <span class="choice-label">{{ choice }}</span>
+                <span class="choice-label">{{ cardText(choice) }}</span>
               </button>
             </div>
             <p v-if="revealed" class="explain">{{ currentQuestion?.explanation }}</p>
@@ -572,9 +561,9 @@ onMounted(load)
 
 <style scoped>
 .study-studio {
-  --ink: var(--student-heading, #0f172a);
-  --muted: var(--student-muted, #334155);
-  --line: var(--student-border, #cbd5e1);
+  --ink: var(--student-heading, #173d29);
+  --muted: var(--student-muted, #5c6b62);
+  --line: var(--student-border, #d5e1d8);
   --soft: var(--student-surface-soft, #f4f8f5);
   --surface: var(--student-surface, #fff);
   --accent: var(--student-accent, #0d6940);
@@ -582,6 +571,9 @@ onMounted(load)
   --ok: #166534;
   --danger: #9f2d25;
   --shadow: var(--student-card-shadow, 0 10px 24px rgba(15, 75, 41, 0.06));
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -721,85 +713,34 @@ onMounted(load)
 
 .uploads {
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0.35rem 0 0.5rem;
 }
 
 .upload {
   align-items: center;
-  background: var(--soft, #f4f8f5);
-  border: 2px dashed color-mix(in srgb, var(--accent) 55%, var(--line));
-  border-radius: 14px;
+  background: #fff;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 16px;
   color: var(--ink);
   cursor: pointer;
-  display: flex;
-  gap: 0.95rem;
-  padding: 1rem 1.15rem;
-  text-align: left;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-}
-
-.upload:hover {
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  border-color: var(--accent);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
+  display: grid;
+  gap: 0.15rem;
+  justify-items: start;
+  padding: 0.9rem 1rem;
 }
 
 .upload input {
   display: none;
 }
 
-.upload-icon-wrap {
-  align-items: center;
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  border-radius: 10px;
+.upload span {
   color: var(--accent);
-  display: flex;
-  flex: 0 0 42px;
-  height: 42px;
-  justify-content: center;
-  width: 42px;
-  transition: transform 0.2s ease;
-}
-
-.upload:hover .upload-icon-wrap {
-  transform: scale(1.08);
-}
-
-.upload-svg {
-  height: 22px;
-  width: 22px;
-}
-
-.upload-text-group {
-  display: grid;
-  flex: 1;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.upload-title {
-  color: var(--ink);
-  font-size: 1.05rem;
   font-weight: 800;
-  letter-spacing: -0.01em;
-  line-height: 1.3;
 }
 
-.upload-subtitle {
+.upload small {
   color: var(--muted);
-  font-size: 0.88rem;
-  font-weight: 550;
-  line-height: 1.35;
-  opacity: 0.95;
-}
-
-.upload.is-loading {
-  cursor: wait;
-  opacity: 0.75;
 }
 
 .search {
@@ -837,7 +778,8 @@ onMounted(load)
 .sets {
   display: grid;
   gap: 0.55rem;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  min-width: 0;
 }
 
 .set {
@@ -849,9 +791,40 @@ onMounted(load)
   display: flex;
   gap: 0.6rem;
   justify-content: space-between;
-  padding: 0.65rem 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.55rem 0.65rem 0.55rem 0.35rem;
   text-align: left;
   transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.set-main {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+}
+
+.delete-file-btn {
+  background: #fff;
+  border: 1px solid #d9b4b0;
+  border-radius: 8px;
+  color: #9f2d25;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+  font-weight: 800;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.delete-file-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .set:hover,
@@ -860,24 +833,11 @@ onMounted(load)
   border-color: var(--accent);
 }
 
-.set-main {
-  background: transparent;
-  border: 0;
-  color: inherit;
-  cursor: pointer;
-  display: grid;
-  flex: 1;
-  font: inherit;
-  gap: 0.15rem;
-  min-width: 0;
-  padding: 0;
-  text-align: left;
-}
-
 .set strong {
   color: var(--ink);
   display: block;
   font-size: 0.92rem;
+  line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -888,38 +848,6 @@ onMounted(load)
   color: var(--muted);
   font-size: 0.82rem;
   font-style: normal;
-}
-
-.delete-file-btn {
-  align-items: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: #dc2626;
-  cursor: pointer;
-  display: flex;
-  flex: 0 0 auto;
-  height: 32px;
-  justify-content: center;
-  padding: 0;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
-  width: 32px;
-}
-
-.delete-file-btn:hover:not(:disabled) {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #991b1b;
-}
-
-.delete-file-btn svg {
-  height: 16px;
-  width: 16px;
-}
-
-.delete-file-btn:disabled {
-  cursor: wait;
-  opacity: 0.5;
 }
 
 .modes {
@@ -996,11 +924,14 @@ onMounted(load)
   flex-wrap: wrap;
   gap: 0.75rem;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .session-title {
   display: grid;
+  flex: 1;
   gap: 0.1rem;
+  min-width: 0;
 }
 
 .session-title strong {
@@ -1009,7 +940,10 @@ onMounted(load)
 
 .session-title span {
   color: var(--muted);
-  font-size: 0.86rem;
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .progress-pill {
@@ -1154,11 +1088,24 @@ onMounted(load)
 
 .card-list strong {
   color: var(--ink);
+  display: -webkit-box;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .card-list span {
   color: var(--muted);
-  font-size: 0.88rem;
+  display: -webkit-box;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .flip-card {
@@ -1166,8 +1113,9 @@ onMounted(load)
   border: 0;
   color-scheme: light;
   cursor: pointer;
-  height: 320px;
+  height: min(38vh, 300px);
   max-width: 640px;
+  min-height: 220px;
   padding: 0;
   perspective: 1400px;
   width: min(100%, 640px);
@@ -1176,7 +1124,7 @@ onMounted(load)
 .inner {
   display: block;
   height: 100%;
-  min-height: 320px;
+  min-height: 220px;
   position: relative;
   transform-style: preserve-3d;
   transition: transform 560ms cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -1197,10 +1145,11 @@ onMounted(load)
   box-shadow: 0 16px 36px rgba(40, 46, 62, 0.12);
   color: #1a1d21;
   display: grid;
-  gap: 0.75rem;
+  gap: 0.55rem;
   inset: 0;
   justify-items: center;
-  padding: 1.6rem;
+  overflow: auto;
+  padding: 1.1rem 1.15rem;
   place-content: center;
   position: absolute;
   text-align: center;
@@ -1216,20 +1165,22 @@ onMounted(load)
 .face small,
 .face em {
   color: inherit;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.08em;
-  opacity: 0.95;
+  opacity: 0.8;
   text-transform: uppercase;
 }
 
 .face strong {
   color: inherit;
-  font-size: clamp(1.35rem, 2.8vw, 1.9rem);
+  font-size: clamp(0.98rem, 1.6vw, 1.22rem);
   font-weight: 700;
   line-height: 1.35;
-  max-width: 28ch;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .test-stage,
@@ -1257,11 +1208,13 @@ onMounted(load)
 
 .prompt {
   color: #1a1d21;
-  font-size: clamp(1.25rem, 2.4vw, 1.7rem);
-  font-weight: 800;
+  font-size: clamp(1.05rem, 1.8vw, 1.28rem);
+  font-weight: 750;
   letter-spacing: -0.02em;
-  line-height: 1.3;
+  line-height: 1.35;
   margin: 0.15rem 0 0.2rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .choices {
@@ -1293,9 +1246,12 @@ onMounted(load)
 
 .choice-label {
   color: #1a1d21;
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 600;
   line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .choice .letter {
@@ -1423,10 +1379,13 @@ onMounted(load)
   border-radius: 16px;
   color: var(--ink);
   font-family: inherit;
+  font-size: 0.95rem;
   line-height: 1.55;
   margin: 0;
+  overflow-wrap: anywhere;
   padding: 1rem;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .week {
@@ -1464,12 +1423,14 @@ onMounted(load)
     padding: 1rem;
   }
 
+  .flip-card,
+  .inner,
   .face {
-    min-height: 240px;
+    min-height: 200px;
   }
 
-  .inner {
-    min-height: 240px;
+  .face strong {
+    font-size: 1rem;
   }
 }
 </style>

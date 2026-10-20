@@ -29,6 +29,9 @@ class GradebookImporter
         if ($columns['student'] === null) {
             throw new RuntimeException('Add a Student number column so each row can be matched to a student.');
         }
+        if ($columns['midterm'] === null && $columns['final'] === null && $columns['class_scores'] === null && $columns['scores'] === []) {
+            throw new RuntimeException('This spreadsheet does not look like a class gradebook. Include Student number plus Quiz, Activity, Midterm, or Final columns.');
+        }
 
         $assignments = $this->assignments($professorUserId);
         if ($assignments === []) {

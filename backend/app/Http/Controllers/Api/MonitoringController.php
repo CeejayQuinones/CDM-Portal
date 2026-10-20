@@ -15,29 +15,32 @@ use App\Models\Student;
 use App\Services\EarlyWarningService;
 use App\Services\GradebookImporter;
 use App\Services\MonitoringAiHelpService;
+use App\Services\MonitoringDocumentReader;
+use App\Services\MonitoringInterventionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MonitoringController extends Controller
 {
-    public function __construct(private readonly EarlyWarningService $warnings, private readonly MonitoringAiHelpService $ai) {}
+    public function __construct(
+        private readonly EarlyWarningService $warnings,
+        private readonly MonitoringAiHelpService $ai,
+        private readonly MonitoringInterventionService $interventions,
+        private readonly MonitoringDocumentReader $documents,
+    ) {}
 
     public function earlyWarnings(Request $request): JsonResponse
     {
         $role = $request->user()->role?->role_name;
-        if ($role === Role::STUDENT) {
-            return $this->ok($this->warnings->assessForUserId($request->user()->id));
-        }
+        $filters = $this->filters($request);
 
-        $filters = $request->only(['department', 'course', 'section']);
-
-        return $this->ok($this->warnings->overview(
-            $role === Role::PROFESSOR ? $request->user()->id : null,
-            $filters,
-        ));
+        return $this->ok($role === Role::STUDENT
+            ? $this->warnings->assessForUserId($request->user()->id, $filters)
+            : $this->warnings->overview($role === Role::PROFESSOR ? $request->user()->id : null, $filters));
     }
 
     public function myRisk(Request $request): JsonResponse
@@ -46,7 +49,7 @@ class MonitoringController extends Controller
             return $this->forbidden('Only student accounts can load personal risk dashboards.');
         }
 
-        return $this->ok($this->warnings->assessForUserId($request->user()->id));
+        return $this->ok($this->warnings->assessForUserId($request->user()->id, $this->filters($request)));
     }
 
     public function supportPlan(Request $request, int $student): JsonResponse
@@ -61,15 +64,28 @@ class MonitoringController extends Controller
 
     public function studyPlans(Request $request): JsonResponse
     {
+        $filters = $this->filters($request);
         if ($request->user()->role?->role_name === Role::STUDENT) {
-            $assessment = $this->warnings->assessForUserId($request->user()->id)['students'][0] ?? null;
+            $assessment = $this->warnings->assessForUserId($request->user()->id, $filters)['students'][0] ?? null;
 
-            return $this->ok(['summary' => ['total' => $assessment ? 1 : 0], 'plans' => $assessment ? [$this->warnings->generateStudyPlan($assessment)] : []]);
+            return $this->ok([
+                'summary' => ['total' => $assessment ? 1 : 0, 'with_focus_subjects' => $assessment && $assessment['risk_level'] !== 'insufficient' ? 1 : 0],
+                'plans' => $assessment ? [$this->warnings->generateStudyPlan($assessment)] : [],
+            ]);
         }
 
         $professorUserId = $request->user()->role?->role_name === Role::PROFESSOR ? $request->user()->id : null;
+        $plans = collect($this->warnings->overview($professorUserId, $filters)['students'])
+            ->map(fn (array $assessment) => $this->warnings->generateStudyPlan($assessment))
+            ->values();
 
-        return $this->ok(collect($this->warnings->overview($professorUserId)['students'])->map(fn ($a) => $this->warnings->generateStudyPlan($a))->values()->all());
+        return $this->ok([
+            'summary' => [
+                'total' => $plans->count(),
+                'with_focus_subjects' => $plans->filter(fn (array $plan) => count($plan['focus_subjects'] ?? []) > 0)->count(),
+            ],
+            'plans' => $plans->all(),
+        ]);
     }
 
     public function studyPlan(Request $request, int $student): JsonResponse
@@ -89,7 +105,7 @@ class MonitoringController extends Controller
             return $this->forbidden('Adviser alerts are only available to professors, registrar staff, and admins.');
         }
 
-        return $this->ok($this->warnings->adviserAlerts($role === Role::PROFESSOR ? $request->user()->id : null));
+        return $this->ok($this->warnings->adviserAlerts($role === Role::PROFESSOR ? $request->user()->id : null, $this->filters($request)));
     }
 
     public function aiStatus(): JsonResponse
@@ -176,6 +192,14 @@ class MonitoringController extends Controller
         $originalName = null;
         if ($request->hasFile('attachment')) {
             $file = $request->file('attachment');
+            if ($role === Role::STUDENT) {
+                $kind = strtoupper((string) $data['subject_code']) === 'SYLLABUS' ? 'syllabus' : 'notes';
+                try {
+                    $this->documents->assertStudyUpload($kind, $file);
+                } catch (RuntimeException $exception) {
+                    return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
+                }
+            }
             $originalName = $file->getClientOriginalName();
             $path = $file->store("monitoring/records/{$student}", 'local');
         }
@@ -219,6 +243,30 @@ class MonitoringController extends Controller
         ]);
 
         return $this->ok($this->performanceRecord($performance->fresh()));
+    }
+
+    public function destroyPerformanceRecord(Request $request, int $record): JsonResponse
+    {
+        $performance = MonitoringPerformanceRecord::query()->find($record);
+        if (! $performance) {
+            return $this->notFound('File not found.');
+        }
+
+        $role = $request->user()->role?->role_name;
+        $ownStudentId = Student::query()->where('user_id', $request->user()->id)->value('id');
+        $ownsAsStudent = $role === Role::STUDENT && (int) $performance->student_id === (int) $ownStudentId;
+        $ownsAsProfessor = $role === Role::PROFESSOR && (int) $performance->professor_user_id === (int) $request->user()->id;
+
+        if (! $ownsAsStudent && ! $ownsAsProfessor) {
+            return $this->forbidden('You can only delete your own monitoring files.');
+        }
+
+        if ($performance->attachment_path) {
+            Storage::disk('local')->delete($performance->attachment_path);
+        }
+        $performance->delete();
+
+        return $this->ok(['deleted' => true]);
     }
 
     public function downloadPerformanceAttachment(Request $request, int $record): StreamedResponse|JsonResponse
@@ -522,14 +570,30 @@ class MonitoringController extends Controller
             ], 422);
         }
 
+        $sourcePath = (string) $file->getRealPath();
+        $readablePath = $sourcePath;
+        $copiedPath = null;
+        if (! str_ends_with(strtolower($sourcePath), '.'.$extension)) {
+            $copiedPath = $sourcePath.'.'.$extension;
+            if (! @copy($sourcePath, $copiedPath)) {
+                return response()->json(['success' => false, 'message' => 'The spreadsheet could not be read from storage.'], 422);
+            }
+            $readablePath = $copiedPath;
+        }
+
         try {
+            $this->documents->assertGradebookSpreadsheet($readablePath, $file->getClientOriginalName());
             $result = $importer->import(
                 (int) $request->user()->id,
-                (string) $file->getRealPath(),
+                $readablePath,
                 $request->string('subject_code')->toString() ?: null,
             );
         } catch (RuntimeException $exception) {
             return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
+        } finally {
+            if (is_string($copiedPath) && is_file($copiedPath)) {
+                @unlink($copiedPath);
+            }
         }
 
         return $this->ok($result);
@@ -709,26 +773,24 @@ class MonitoringController extends Controller
 
     public function sendRiskNotification(Request $request, int $student): JsonResponse
     {
-        if ($request->user()->role?->role_name !== Role::PROFESSOR) {
-            return $this->forbidden('Only professors can notify students.');
+        $target = Student::query()->find($student);
+        if (! $target) {
+            return $this->notFound('Student monitoring record not found.');
         }
-        if (! $this->warnings->professorCanAccessStudent($request->user()->id, $student)) {
-            return $this->forbidden('You can only notify students in your assigned subjects.');
-        }
-        $assessment = $this->warnings->assessByStudentId($student);
-        if (! $assessment) {
-            return $this->notFound();
-        }
-        $data = $request->validate(['message' => ['nullable', 'string', 'max:1000']]);
-        $notification = RiskNotification::query()->create([
-            'student_id' => $student,
-            'sender_user_id' => $request->user()->id,
-            'risk_level' => $assessment['risk_level'],
-            'title' => 'Academic risk notice',
-            'message' => trim($data['message'] ?? '') ?: $assessment['headline'],
-        ]);
 
-        return response()->json(['success' => true, 'data' => $this->notification($notification)], 201);
+        $data = $request->validate([
+            'title' => ['nullable', 'string', 'max:150'],
+            'message' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $result = $this->interventions->send($request->user(), $target, $data);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                ...$this->notification($result['notification']),
+                'duplicate' => $result['duplicate'],
+            ],
+        ], $result['duplicate'] ? 200 : 201);
     }
 
     public function myRiskNotifications(Request $request): JsonResponse
@@ -976,6 +1038,8 @@ class MonitoringController extends Controller
     private function gradePlanRecord(array $subject): array
     {
         $periods = $subject['periods'] ?? [];
+        $midterm = $periods['Midterm'] ?? $subject['midterm_grade'] ?? null;
+        $final = $periods['Final'] ?? $subject['finals_grade'] ?? $subject['final_grade'] ?? null;
         $format = fn ($value) => $value === null ? 'not yet released' : (string) $value;
 
         return [
@@ -984,10 +1048,21 @@ class MonitoringController extends Controller
             'subject_code' => $subject['subject_code'] ?? '',
             'score' => $subject['average_grade'] ?? null,
             'max_score' => 100,
-            'notes' => 'Midterm '.$format($periods['Midterm'] ?? null)
-                .', Final '.$format($periods['Final'] ?? null)
+            'notes' => 'Midterm '.$format($midterm)
+                .', Final '.$format($final)
                 .'. Trend '.($subject['trend'] ?? 'steady').'.',
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function filters(Request $request): array
+    {
+        return $request->validate([
+            'academic_year_id' => ['nullable', 'integer', 'exists:academic_years,id'],
+            'semester_id' => ['nullable', 'integer', 'exists:semesters,id'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'risk' => ['nullable', Rule::in(['high', 'moderate', 'stable', 'insufficient'])],
+        ]);
     }
 
     private function performanceRecord(MonitoringPerformanceRecord $record): array
@@ -1026,11 +1101,17 @@ class MonitoringController extends Controller
 
     private function notification(RiskNotification $n): array
     {
+        $n->loadMissing(['sender.profile', 'sender.role']);
+        $profile = $n->sender?->profile;
+        $senderName = trim(implode(' ', array_filter([$profile?->first_name, $profile?->last_name]))) ?: 'CDM Staff';
+
         return [
             'id' => $n->id,
             'risk_level' => $n->risk_level,
             'title' => $n->title,
             'message' => $n->message,
+            'context' => $n->context_json,
+            'sender' => ['name' => $senderName, 'role' => $n->sender?->role?->role_name],
             'is_read' => (bool) $n->read_at,
             'read_at' => $n->read_at?->toIso8601String(),
             'created_at' => $n->created_at?->toIso8601String(),

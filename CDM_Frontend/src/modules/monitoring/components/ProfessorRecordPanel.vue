@@ -1,6 +1,6 @@
 <script setup>
 import { reactive, ref, watch } from 'vue'
-import { generateGradeStudyPlan, sendGradeStudyPlan } from '../services/monitoringApi'
+import { generateGradeStudyPlan, sendGradeStudyPlan, sendRiskNotification } from '../services/monitoringApi'
 
 const props = defineProps({
   studentId: { type: Number, required: true },
@@ -12,6 +12,7 @@ const emit = defineEmits(['sent'])
 
 const generatingCode = ref('')
 const sendingCode = ref('')
+const notifyingCode = ref('')
 const error = ref('')
 const notice = ref('')
 const draftPlans = reactive({})
@@ -29,6 +30,32 @@ function periodText(subject) {
   const periods = subject.periods || {}
   const show = (value) => (value == null || value === '' ? '—' : value)
   return `Midterm ${show(periods.Midterm)} · Final ${show(periods.Final)}`
+}
+
+function isLowGrade(subject) {
+  const grades = [subject.average_grade, subject.periods?.Midterm, subject.periods?.Final, subject.midterm_grade, subject.finals_grade, subject.final_grade]
+  return grades.some((grade) => grade != null && grade !== '' && Number(grade) < 75)
+}
+
+async function notifyLowGrade(subject) {
+  if (notifyingCode.value) return
+  notifyingCode.value = subject.subject_code
+  error.value = ''
+  notice.value = ''
+  try {
+    const result = await sendRiskNotification(
+      props.studentId,
+      `${subject.subject_code} is below 75. Please review that subject, complete missed work, and consult during office hours.`,
+      'Low grade notice',
+    )
+    notice.value = result.duplicate
+      ? 'An identical recent notice already exists.'
+      : `Low-grade notice sent to the student for ${subject.subject_code}.`
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Unable to send that notice.'
+  } finally {
+    notifyingCode.value = ''
+  }
 }
 
 async function generatePlan(subject) {
@@ -109,6 +136,14 @@ async function sendPlan(subject) {
             @click="sendPlan(subject)"
           >
             {{ sendingCode === subject.subject_code ? 'Sending…' : 'Send to student' }}
+          </button>
+          <button
+            v-if="viewerRole === 'professor' && isLowGrade(subject)"
+            type="button"
+            :disabled="notifyingCode === subject.subject_code"
+            @click="notifyLowGrade(subject)"
+          >
+            {{ notifyingCode === subject.subject_code ? 'Sending notice…' : 'Notify student — low grade' }}
           </button>
         </div>
         <textarea
