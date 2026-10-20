@@ -1,0 +1,164 @@
+<script setup>
+import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import DocumentRequestStatusBadge from './DocumentRequestStatusBadge.vue'
+import DocumentRequestSkeleton from './DocumentRequestSkeleton.vue'
+import {
+  documentTypeAccentClass,
+  formatExactDateTime,
+  formatRelativeTime,
+  requestReference,
+  requestStatusAccentClass,
+  requestStatusFromActivity,
+  studentName,
+} from './documentRequestPresentation'
+import { documentRequestService as api } from './documentRequestService'
+
+defineProps({
+  readOnly: {
+    type: Boolean,
+    default: false,
+  },
+})
+
+const activities = ref([])
+const loading = ref(false)
+const error = ref('')
+const currentTime = ref(new Date())
+let clock = null
+
+const activityError = (err) => err.response?.data?.message || 'Recent document request activity could not be loaded.'
+const activityReference = (activity) =>
+  activity.request_reference || requestReference(activity.request_id || activity.document_request_id)
+const actionLabel = (value) =>
+  value ? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Updated'
+const activityHeadline = (activity) => {
+  const recordType = activity.type === 'appointment' ? 'Appointment' : 'Request'
+  const name = studentName(activity.student) || 'Student'
+
+  return `${name} — ${recordType} ${actionLabel(activity.action).toLowerCase()}`
+}
+
+function activityRoute(activity) {
+  const reference = activityReference(activity)
+  const requestId = activity.request_id || undefined
+  const appointmentId = activity.appointment_id || undefined
+
+  if (activity.destination === 'appointments') {
+    return {
+      name: 'registrar-document-appointments',
+      query: {
+        search: reference,
+        request_id: requestId,
+        appointment_id: appointmentId,
+        focus: appointmentId ? `appointment-${appointmentId}` : undefined,
+      },
+    }
+  }
+
+  if (activity.destination === 'history') {
+    const appointmentActivity = activity.type === 'appointment'
+
+    return {
+      name: 'registrar-document-request-history',
+      query: {
+        section: appointmentActivity ? 'appointments' : 'requests',
+        search: reference,
+        request_id: requestId,
+        appointment_id: appointmentActivity ? appointmentId : undefined,
+        focus: appointmentActivity && appointmentId ? `appointment-${appointmentId}` : `request-${requestId}`,
+      },
+    }
+  }
+
+  return {
+    name: 'registrar-document-requests',
+    query: {
+      search: reference,
+      request_id: requestId,
+      focus: requestId ? `request-${requestId}` : undefined,
+    },
+  }
+}
+
+async function loadActivity() {
+  loading.value = true
+  error.value = ''
+
+  try {
+    activities.value = await api.registrarRecentActivity({ limit: 8, time_filter: 'all' })
+  } catch (err) {
+    error.value = activityError(err)
+  } finally {
+    loading.value = false
+  }
+}
+
+defineExpose({ refresh: loadActivity })
+
+onMounted(() => {
+  loadActivity()
+  clock = window.setInterval(() => {
+    currentTime.value = new Date()
+  }, 60_000)
+})
+
+onBeforeUnmount(() => window.clearInterval(clock))
+</script>
+
+<template>
+  <section class="dr-panel recent-activity" aria-labelledby="recent-document-activity-heading">
+    <div class="recent-activity-heading">
+      <div>
+        <p class="record-eyebrow">Document workflow</p>
+        <h2 id="recent-document-activity-heading">Recent activity</h2>
+      </div>
+      <button type="button" class="dr-button dr-button--secondary" :disabled="loading" @click="loadActivity">Refresh</button>
+    </div>
+
+    <p v-if="error" class="notice error">{{ error }}</p>
+    <div v-if="loading && !activities.length" class="dr-activity-skeleton" aria-label="Loading recent activity" aria-busy="true">
+      <div v-for="index in 5" :key="index" class="dr-activity-skeleton-row">
+        <DocumentRequestSkeleton width="58%" />
+        <DocumentRequestSkeleton kind="text" width="76%" />
+      </div>
+    </div>
+    <p v-else-if="!activities.length && !error" class="empty">No recent document request activity.</p>
+
+    <div v-if="activities.length" class="recent-activity-list">
+      <component
+        :is="readOnly ? 'article' : RouterLink"
+        v-for="activity in activities"
+        :key="`${activity.type}-${activity.id}`"
+        class="recent-activity-item"
+        :class="requestStatusAccentClass(requestStatusFromActivity(activity))"
+        :to="readOnly ? undefined : activityRoute(activity)"
+      >
+        <span class="activity-marker" aria-hidden="true"></span>
+        <span class="activity-summary">
+          <strong>{{ activityHeadline(activity) }}</strong>
+          <span class="activity-meta">
+            <small>{{ activityReference(activity) }}</small>
+            <DocumentRequestStatusBadge
+              v-if="activity.type === 'request' && requestStatusFromActivity(activity)"
+              :status="requestStatusFromActivity(activity)"
+            />
+            <span
+              v-if="activity.document_type?.document_name"
+              class="document-type-chip"
+              :class="documentTypeAccentClass(activity.document_type.document_name)"
+            >
+              {{ activity.document_type.document_name }}
+            </span>
+          </span>
+        </span>
+        <time :datetime="activity.occurred_at" :title="formatExactDateTime(activity.occurred_at)">
+          {{ formatRelativeTime(activity.occurred_at, currentTime) }}
+          <small>{{ formatExactDateTime(activity.occurred_at) }}</small>
+        </time>
+      </component>
+    </div>
+  </section>
+</template>
+
+<style scoped src="./documentRequest.css"></style>

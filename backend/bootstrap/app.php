@@ -1,0 +1,136 @@
+<?php
+
+use App\Exceptions\AdmissionConflictException;
+use App\Exceptions\ClientPlatformException;
+use App\Http\Middleware\EnsureAdminRole;
+use App\Http\Middleware\EnsureClientPlatformAccess;
+use App\Http\Middleware\EnsureEventPlatformAccess;
+use App\Http\Middleware\EnsureMonitoringAccess;
+use App\Http\Middleware\EnsureProfessorRole;
+use App\Http\Middleware\EnsureProfessorWebAccess;
+use App\Http\Middleware\EnsureRegistrarOrAdminRole;
+use App\Http\Middleware\EnsureRegistrarStaffRole;
+use App\Http\Middleware\EnsureStudentRole;
+use App\Http\Middleware\RequireStepUpAuthentication;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__.'/../routes/web.php',
+        api: __DIR__.'/../routes/api.php',
+        commands: __DIR__.'/../routes/console.php',
+        health: '/up',
+    )
+    ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_PREFIX,
+        );
+
+        $middleware->alias([
+            'role.admin' => EnsureAdminRole::class,
+            'client.platform' => EnsureClientPlatformAccess::class,
+            'event.platform' => EnsureEventPlatformAccess::class,
+            'role.registrar-staff' => EnsureRegistrarStaffRole::class,
+            'role.professor' => EnsureProfessorRole::class,
+            'professor.web' => EnsureProfessorWebAccess::class,
+            'role.student' => EnsureStudentRole::class,
+            'role.registrar-or-admin' => EnsureRegistrarOrAdminRole::class,
+            'role.monitoring' => EnsureMonitoringAccess::class,
+            'step-up' => RequireStepUpAuthentication::class,
+        ]);
+    })
+    ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (ClientPlatformException $exception, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+            ], $exception->getStatusCode())->header('Cache-Control', 'private, no-store');
+        });
+
+        $exceptions->render(function (Throwable $exception, Request $request) {
+            if (! $request->is('api/events*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
+                return null;
+            }
+            if ($exception instanceof HttpExceptionInterface) {
+                $status = $exception->getStatusCode();
+
+                return response()->json(['success' => false, 'message' => $status >= 500 ? 'Events are temporarily unavailable.' : $exception->getMessage()], $status)
+                    ->header('Cache-Control', 'private, no-store');
+            }
+
+            return response()->json(['success' => false, 'message' => 'Events are temporarily unavailable. Please reload and try again.'], 503)
+                ->header('Cache-Control', 'private, no-store');
+        });
+
+        $exceptions->render(function (Throwable $exception, Request $request) {
+            if (! $request->is('api/enrollment/*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
+                return null;
+            }
+            $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 503;
+            $message = $status >= 500 ? 'Enrollment is temporarily unavailable. Please reload and try again.' : ($status === 404 ? 'Enrollment record not found.' : $exception->getMessage());
+
+            return response()->json(['success' => false, 'message' => $message], $status)->header('Cache-Control', 'private, no-store');
+        });
+        $exceptions->render(function (Throwable $exception, Request $request) {
+            if (! $request->is('api/admission/*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
+                return null;
+            }
+            if ($exception instanceof AdmissionConflictException) {
+                return response()->json([
+                    'success' => false,
+                    'code' => $exception->conflictCode,
+                    'message' => $exception->getMessage(),
+                    ...$exception->context,
+                ], 409)->header('Cache-Control', 'private, no-store');
+            }
+            if ($exception instanceof HttpExceptionInterface) {
+                $status = $exception->getStatusCode();
+
+                return response()->json(['success' => false, 'message' => $status >= 500 ? 'Admission is temporarily unavailable.' : $exception->getMessage()], $status)
+                    ->header('Cache-Control', 'private, no-store');
+            }
+
+            return response()->json(['success' => false, 'message' => 'Admission is temporarily unavailable. Please reload and try again.'], 503)
+                ->header('Cache-Control', 'private, no-store');
+        });
+
+        $exceptions->shouldRenderJsonWhen(
+            fn (Request $request) => $request->is('api/*'),
+        );
+
+        $exceptions->render(function (AuthenticationException $exception, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage() ?: 'Unauthenticated.',
+            ], 401);
+        });
+
+        $exceptions->render(function (ValidationException $exception, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors' => $exception->errors(),
+            ], $exception->status);
+        });
+    })->create();

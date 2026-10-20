@@ -1,0 +1,163 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Role;
+use App\Models\Student;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+class StudentSettingsTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_student_can_load_only_own_safe_settings(): void
+    {
+        $student = $this->studentFixture();
+        $this->actingAs($student->user)->getJson('/api/student/settings')
+            ->assertOk()->assertJsonPath('data.official.student_number', '2026-0001')
+            ->assertJsonMissingPath('data.password')->assertJsonMissingPath('data.remember_token')
+            ->assertJsonMissingPath('data.verification_code_hash');
+    }
+
+    public function test_non_student_roles_are_denied(): void
+    {
+        foreach ([Role::GUEST, Role::REGISTRAR_STAFF, Role::PROFESSOR, Role::ADMIN] as $roleName) {
+            $role = Role::query()->firstOrCreate(['role_name' => $roleName]);
+            $user = User::factory()->create(['role_id' => $role->id]);
+            $this->actingAs($user)->getJson('/api/student/settings')->assertForbidden();
+        }
+    }
+
+    public function test_settings_routes_have_no_arbitrary_student_identifier(): void
+    {
+        $this->assertFalse(collect(app('router')->getRoutes()->getRoutesByMethod()['GET'] ?? [])
+            ->contains(fn ($route) => $route->uri() === 'api/student/{student}/settings'));
+    }
+
+    public function test_profile_contact_and_preferences_persist_without_changing_official_data(): void
+    {
+        $student = $this->studentFixture();
+        $this->actingAs($student->user)->patchJson('/api/student/settings/profile', ['preferred_display_name' => 'Kai', 'bio' => 'Focused learner', 'student_number' => 'HACKED'])->assertOk();
+        $this->actingAs($student->user)->patchJson('/api/student/settings/contact', ['email' => 'kai@example.test', 'contact_number' => '09170000000', 'address' => 'Montalban'])->assertOk();
+        $this->actingAs($student->user)->patchJson('/api/student/settings/preferences', ['notification_preferences' => ['email' => true], 'academic_preferences' => ['ai_suggestions' => true], 'appearance' => 'dark'])->assertOk();
+        $this->assertDatabaseHas('student_settings', ['student_id' => $student->id, 'preferred_display_name' => 'Kai', 'appearance' => 'dark']);
+        $this->assertDatabaseHas('students', ['id' => $student->id, 'student_number' => '2026-0001']);
+        $this->assertDatabaseHas('user_profiles', ['user_id' => $student->user_id, 'email' => 'kai@example.test']);
+    }
+
+    public function test_avatar_validation_and_removal_use_public_storage(): void
+    {
+        Storage::fake('public');
+        $student = $this->studentFixture();
+        $this->actingAs($student->user)->post('/api/student/settings/avatar', ['avatar' => UploadedFile::fake()->image('avatar.png')])->assertOk();
+        $path = $student->fresh()->userProfile->profile_photo;
+        Storage::disk('public')->assertExists($path);
+        $this->actingAs($student->user)->post('/api/student/settings/avatar', ['avatar' => UploadedFile::fake()->create('bad.pdf', 10, 'application/pdf')])->assertUnprocessable();
+        $this->actingAs($student->user)->post('/api/student/settings/avatar', ['avatar' => UploadedFile::fake()->image('large.png')->size(2049)])->assertUnprocessable();
+        $this->actingAs($student->user)->deleteJson('/api/student/settings/avatar')->assertOk();
+        Storage::disk('public')->assertMissing($path);
+        $this->assertNull($student->fresh()->userProfile->profile_photo);
+        $this->actingAs($student->user)->getJson('/api/student/settings')->assertOk()
+            ->assertJsonPath('data.profile.avatar_url', null);
+    }
+
+    public function test_avatar_url_is_origin_independent_and_persists_on_reload(): void
+    {
+        config([
+            'app.url' => 'http://127.0.0.1:8000',
+            'app.asset_url' => 'http://localhost:8000',
+            'filesystems.disks.public.url' => 'http://127.0.0.1:8000/storage',
+        ]);
+        Storage::fake('public');
+        $student = $this->studentFixture();
+        $origin = 'https://student-api.example.test:8443';
+
+        $response = $this->actingAs($student->user)->post('http://127.0.0.1:8000/api/student/settings/avatar', [
+            'avatar' => UploadedFile::fake()->image('avatar.png'),
+        ])->assertOk();
+
+        $path = $student->fresh()->userProfile->profile_photo;
+        Storage::disk('public')->assertExists($path);
+        $response->assertJsonPath('data.profile.avatar_url', '/storage/'.$path);
+        $this->actingAs($student->user)->getJson($origin.'/api/student/settings')->assertOk()
+            ->assertJsonPath('data.profile.avatar_url', '/storage/'.$path);
+
+        $this->actingAs($student->user)->deleteJson($origin.'/api/student/settings/avatar')->assertOk();
+        Storage::disk('public')->assertMissing($path);
+        $this->actingAs($student->user)->getJson($origin.'/api/student/settings')->assertOk()
+            ->assertJsonPath('data.profile.avatar_url', null);
+    }
+
+    public function test_password_change_requires_the_current_password(): void
+    {
+        $student = $this->studentFixture();
+        $this->actingAs($student->user)->postJson('/api/change-password', ['current_password' => 'Password123!', 'password' => 'NewPassword123!', 'password_confirmation' => 'NewPassword123!'])->assertOk();
+        $this->assertTrue(Hash::check('NewPassword123!', $student->user->fresh()->password));
+        $this->actingAs($student->user)->postJson('/api/change-password', ['current_password' => 'wrong', 'password' => 'OtherPassword123!', 'password_confirmation' => 'OtherPassword123!'])->assertUnprocessable();
+    }
+
+    public function test_document_request_and_upcoming_appointment_summary_is_correct(): void
+    {
+        $student = $this->studentFixture();
+        $type = DB::table('document_types')->insertGetId(['document_name' => 'Good Moral', 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('student_documents')->insert(['student_id' => $student->id, 'document_type_id' => $type, 'verification_status' => 'verified', 'availability_status' => 'available', 'submitted_date' => now()->toDateString(), 'created_at' => now(), 'updated_at' => now()]);
+        $active = DB::table('document_requests')->insertGetId(['student_id' => $student->id, 'document_type_id' => $type, 'quantity' => 1, 'total_fee' => 0, 'purpose' => 'Test', 'status' => 'approved', 'request_date' => now()->toDateString(), 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('document_requests')->insert(['student_id' => $student->id, 'document_type_id' => $type, 'quantity' => 1, 'total_fee' => 0, 'purpose' => 'Test', 'status' => 'completed', 'request_date' => now()->toDateString(), 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('appointments')->insert(['student_id' => $student->id, 'document_request_id' => $active, 'appointment_date' => now()->addDay()->toDateString(), 'appointment_time' => '09:00:00', 'purpose' => 'Release', 'status' => 'confirmed', 'created_at' => now(), 'updated_at' => now()]);
+        $this->actingAs($student->user)->getJson('/api/student/settings')->assertOk()
+            ->assertJsonPath('data.document_status.complete', 1)->assertJsonPath('data.document_status.active_requests', 1)
+            ->assertJsonPath('data.document_status.completed_requests', 1)->assertJsonPath('data.document_status.upcoming_appointment', now()->addDay()->toDateString());
+    }
+
+    public function test_academic_status_uses_the_active_finalized_enrollment_and_real_school_year_field(): void
+    {
+        $student = $this->studentFixture();
+        $now = now();
+        $academicYear = DB::table('academic_years')->insertGetId([
+            'school_year' => '2026-2027', 'start_date' => '2026-08-01', 'end_date' => '2027-06-30',
+            'status' => 'active', 'created_at' => $now, 'updated_at' => $now,
+        ]);
+        $semester = DB::table('semesters')->insertGetId([
+            'semester_name' => 'First Semester', 'semester_order' => 1, 'status' => 'active',
+            'created_at' => $now, 'updated_at' => $now,
+        ]);
+        $section = DB::table('sections')->insertGetId([
+            'course_id' => $student->course_id, 'academic_year_id' => $academicYear, 'semester_id' => $semester,
+            'section_name' => 'BSIT-2B', 'year_level' => 2, 'capacity' => 40, 'status' => 'open',
+            'version' => 1, 'created_at' => $now, 'updated_at' => $now,
+        ]);
+        DB::table('enrollments')->insert([
+            'student_id' => $student->id, 'section_id' => $section, 'academic_year_id' => $academicYear,
+            'semester_id' => $semester, 'enrollment_date' => '2026-08-01', 'status' => 'enrolled',
+            'created_at' => $now, 'updated_at' => $now,
+        ]);
+
+        $this->actingAs($student->user)->getJson('/api/student/settings')->assertOk()
+            ->assertJsonPath('data.student_status.record_scope', 'current')
+            ->assertJsonPath('data.student_status.academic_year', '2026-2027')
+            ->assertJsonPath('data.student_status.semester', 'First Semester')
+            ->assertJsonPath('data.student_status.year_level', 2)
+            ->assertJsonPath('data.student_status.section', 'BSIT-2B')
+            ->assertJsonPath('data.official.year_level', 2)
+            ->assertJsonPath('data.official.section', 'BSIT-2B');
+    }
+
+    private function studentFixture(): Student
+    {
+        $role = Role::query()->firstOrCreate(['role_name' => Role::STUDENT]);
+        $user = User::factory()->create(['role_id' => $role->id, 'password' => Hash::make('Password123!'), 'status' => 'active']);
+        $now = now();
+        $department = DB::table('departments')->insertGetId(['department_code' => 'IT', 'department_name' => 'IT', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $course = DB::table('courses')->insertGetId(['department_id' => $department, 'course_code' => 'BSIT', 'course_name' => 'BSIT', 'years' => 4, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $curriculum = DB::table('curriculums')->insertGetId(['course_id' => $course, 'curriculum_code' => 'BSIT-26', 'curriculum_name' => 'BSIT', 'effective_year' => 2026, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        DB::table('user_profiles')->insert(['user_id' => $user->id, 'first_name' => 'Test', 'last_name' => 'Student', 'gender' => 'Prefer not to say', 'created_at' => $now, 'updated_at' => $now]);
+
+        return Student::query()->create(['user_id' => $user->id, 'user_profile_id' => DB::table('user_profiles')->where('user_id', $user->id)->value('id'), 'course_id' => $course, 'curriculum_id' => $curriculum, 'student_number' => '2026-0001', 'admission_date' => now()->toDateString(), 'year_level' => 1, 'student_status' => 'regular']);
+    }
+}

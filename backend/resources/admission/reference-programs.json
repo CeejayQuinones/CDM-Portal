@@ -1,0 +1,263 @@
+[
+    {
+        "code": "TCP",
+        "name": "Teacher Certificate Program",
+        "institute": "Institute of Teacher Education",
+        "description": "A special program for non-education graduates who want the theoretical and practical foundations of teaching.",
+        "duration": "Varies",
+        "subjects": [
+            "Instructional Design and Lesson Planning",
+            "Assessment of Learning",
+            "Learner Development",
+            "Classroom Management"
+        ],
+        "career_paths": [
+            "Teacher",
+            "College Instructor"
+        ],
+        "program_type": "certificate",
+        "is_recommendable": false,
+        "display_order": 1,
+        "recommendation_profile": null,
+        "image_path": "programs\/tcp.jpg"
+    },
+    {
+        "code": "BSED-SCI",
+        "name": "Bachelor of Secondary Education Major in Science",
+        "institute": "Institute of Teacher Education",
+        "description": "A four-year program that equips future educators with scientific expertise and modern teaching strategies.",
+        "duration": "4 years",
+        "subjects": [
+            "Biology, Chemistry, Physics and Earth Science",
+            "Laboratory Management",
+            "Curriculum Development and Assessment",
+            "Research and Data Analysis",
+            "Educational Technology"
+        ],
+        "career_paths": [
+            "High School Science Teacher",
+            "Laboratory Instructor",
+            "Teaching Assistant"
+        ],
+        "program_type": "degree",
+        "is_recommendable": true,
+        "display_order": 2,
+        "recommendation_profile": {
+            "Science": 0.45,
+            "Reading Comprehension": 0.2,
+            "General Mathematics": 0.2,
+            "Logical Reasoning": 0.15
+        },
+        "image_path": "programs\/bsed-science.jpg"
+    },
+    {
+        "code": "BSBA-HRM",
+        "name": "Bachelor of Science in Business Administration Major in Human Resource Management",
+        "institute": "Institute of Business and Entrepreneurship",
+        "description": "A business program preparing future HR professionals to manage and develop people across diverse organizations.",
+        "duration": "4 years",
+        "subjects": [
+            "Recruitment and Selection",
+            "Training and Development",
+            "Labor Relations and Labor Law",
+            "Organizational Behavior",
+            "Strategic Human Resource Planning"
+        ],
+        "career_paths": [
+            "Human Resource Officer",
+            "Payroll Officer",
+            "Administrative Officer",
+            "Training and Development Officer"
+        ],
+        "program_type": "degree",
+        "is_recommendable": true,
+        "display_order": 3,
+        "recommendation_profile": {
+            "Reading Comprehension": 0.4,
+            "Logical Reasoning": 0.3,
+            "General Mathematics": 0.2,
+            "Technical Aptitude": 0.1
+        },
+        "image_path": "programs\/bsba-hrm.jpg"
+    },
+    {
+        "code": "BEED-GEN",
+        "name": "Bachelor of Elementary Education Major in General Education",
+        "institute": "Institute of Teacher Education",
+        "description": "A four-year program preparing future elementary educators with a broad academic foundation for well-rounded learners.",
+        "duration": "4 years",
+        "subjects": [
+            "English, Mathematics, Science, Filipino and Social Studies",
+            "Instructional Design",
+            "Classroom Management and Inclusive Education",
+            "Assessment and Evaluation",
+            "Educational Research"
+        ],
+        "career_paths": [
+            "Elementary School Teacher",
+            "Private Tutor"
+        ],
+        "program_type": "degree",
+        "is_recommendable": true,
+        "display_order": 4,
+        "recommendation_profile": {
+            "Reading Comprehension": 0.35,
+            "Science": 0.2,
+            "General Mathematics": 0.2,
+            "Logical Reasoning": 0.15,
+            "Technical Aptitude": 0.1
+        },
+        "image_path": "programs\/beed-general.jpg"
+    },
+    {
+        "code": "BSIT",
+        "name": "Bachelor of Science in Information Technology",
+        "institute": "Institute of Computing Studies",
+        "description": "A four-year program that prepares IT professionals to design, develop and manage technology-driven solutions.",
+        "duration": "4 years",
+        "subjects": [
+            "Programming and Software Development",
+            "Database Design and Management",
+            "Systems Analysis and Design",
+            "Networking and Cybersecurity",
+            "IT Project Management"
+        ],
+        "career_paths": [
+            "Software Developer",
+            "Web Developer",
+            "Systems Analyst",
+            "Network Administrator",
+            "IT Support Specialist"
+        ],
+        "program_type": "degree",
+        "is_recommendable": true,
+        "display_order": 5,
+        "recommendation_profile": {
+            "Technical Aptitude": 0.4,
+            "Logical Reasoning": 0.3,
+            "General Mathematics": 0.25,
+            "Reading Comprehension": 0.05
+        },
+        "image_path": "programs\/bsit.jpg"
+    },
+    {
+        "code": "BECED",
+        "name": "Bachelor of Early Childhood Education",
+        "institute": "Institute of Teacher Education",
+        "description": "A four-year program preparing teachers to lead child-centered, play-based early childhood classrooms.",
+        "duration": "4 years",
+        "subjects": [
+            "Child Growth and Development",
+            "Developmentally Appropriate Learning Activities",
+            "Early Literacy and Numeracy",
+            "Observation, Assessment and Documentation"
+        ],
+        "career_paths": [
+            "Preschool Teacher",
+            "Elementary Teacher",
+            "Home-based Tutor",
+            "Children’s Book Writer"
+        ],
+        "program_type": "degree",
+        "is_recommendable": true,
+        "display_order": 6,
+        "recommendation_profile": {
+            "Reading Comprehension": 0.45,
+            "Science": 0.2,
+            "Logical Reasoning": 0.15,
+            "General Mathematics": 0.1,
+            "Technical Aptitude": 0.1
+        },
+        "image_path": "programs\/beced.jpg"
+    },
+    {
+        "code": "BTLED-ICT",
+        "name": "Bachelor of Technology and Livelihood Education Major in Information and Communication Technology",
+        "institute": "Institute of Teacher Education",
+        "description": "A four-year program integrating teaching practice and ICT expertise for elementary and secondary education.",
+        "duration": "4 years",
+        "subjects": [
+            "Computer Hardware and Software Systems",
+            "Digital Literacy and Educational Technology",
+            "ICT and TLE Instructional Planning",
+            "Programming, Web Development and Networking"
+        ],
+        "career_paths": [
+            "TLE-ICT Teacher",
+            "TVET Trainer",
+            "Technical Support Specialist",
+            "IT Administrator"
+        ],
+        "program_type": "degree",
+        "is_recommendable": true,
+        "display_order": 7,
+        "recommendation_profile": {
+            "Technical Aptitude": 0.35,
+            "Reading Comprehension": 0.25,
+            "Logical Reasoning": 0.2,
+            "General Mathematics": 0.15,
+            "Science": 0.05
+        },
+        "image_path": "programs\/btled-ict.jpg"
+    },
+    {
+        "code": "BSCPE",
+        "name": "Bachelor of Science in Computer Engineering",
+        "institute": "Institute of Computing Studies",
+        "description": "A four-year program developing skills to create and integrate computer software and hardware systems.",
+        "duration": "4 years",
+        "subjects": [
+            "Digital and Microprocessor Systems",
+            "Embedded Systems",
+            "Computer Hardware Architecture",
+            "Networks and Communications",
+            "Robotics and Automation"
+        ],
+        "career_paths": [
+            "Software Engineer",
+            "Embedded Systems Engineer",
+            "Network Administrator",
+            "Robotics Engineer"
+        ],
+        "program_type": "degree",
+        "is_recommendable": true,
+        "display_order": 8,
+        "recommendation_profile": {
+            "General Mathematics": 0.35,
+            "Technical Aptitude": 0.3,
+            "Logical Reasoning": 0.2,
+            "Science": 0.15
+        },
+        "image_path": "programs\/bscpe.jpg"
+    },
+    {
+        "code": "BSENTREP",
+        "name": "Bachelor of Science in Entrepreneurship",
+        "institute": "Institute of Business and Entrepreneurship",
+        "description": "A four-year program developing the strategic leadership and practical skills needed to launch sustainable ventures.",
+        "duration": "4 years",
+        "subjects": [
+            "Business Opportunity Evaluation",
+            "Business Plan Development",
+            "Financial Management",
+            "Innovation and Product Development",
+            "Enterprise Operations"
+        ],
+        "career_paths": [
+            "Entrepreneur",
+            "Business Consultant",
+            "Sales Manager",
+            "Operations Manager"
+        ],
+        "program_type": "degree",
+        "is_recommendable": true,
+        "display_order": 9,
+        "recommendation_profile": {
+            "Logical Reasoning": 0.35,
+            "Reading Comprehension": 0.3,
+            "General Mathematics": 0.25,
+            "Technical Aptitude": 0.1
+        },
+        "image_path": "programs\/bs-entrepreneurship.jpg"
+    }
+]

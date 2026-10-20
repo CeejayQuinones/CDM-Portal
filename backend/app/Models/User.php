@@ -1,0 +1,125 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Admission\AdmissionApplicant;
+use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
+use Laravel\Sanctum\HasApiTokens;
+
+/**
+ * @property int $id
+ * @property string $username
+ * @property string $password
+ * @property int $role_id
+ * @property string $status
+ * @property Carbon|null $last_login
+ * @property bool $is_first_login
+ * @property-read Role $role
+ * @property-read UserProfile|null $profile
+ */
+class User extends Authenticatable
+{
+    /** @use HasFactory<UserFactory> */
+    use HasApiTokens;
+
+    use HasFactory;
+    use Notifiable;
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var list<string>
+     */
+    protected $fillable = [
+        'username',
+        'password',
+        'google_subject_id',
+        'google_email',
+        'google_linked_at',
+        'role_id',
+        'status',
+        'is_first_login',
+    ];
+
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var list<string>
+     */
+    protected $hidden = [
+        'password',
+    ];
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'password' => 'hashed',
+            'last_login' => 'datetime',
+            'google_linked_at' => 'datetime',
+            'is_first_login' => 'boolean',
+        ];
+    }
+
+    /**
+     * Get the role assigned to the user.
+     */
+    public function role(): BelongsTo
+    {
+        return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * Get the user's personal profile.
+     */
+    public function profile(): HasOne
+    {
+        return $this->hasOne(UserProfile::class);
+    }
+
+    public function admissionApplications(): HasMany
+    {
+        return $this->hasMany(AdmissionApplicant::class);
+    }
+
+    public function student(): HasOne
+    {
+        return $this->hasOne(Student::class);
+    }
+
+    public function registrarStaff(): HasOne
+    {
+        return $this->hasOne(RegistrarStaff::class);
+    }
+
+    public function sentRiskNotifications(): HasMany
+    {
+        return $this->hasMany(RiskNotification::class, 'sender_user_id');
+    }
+
+    public function eventRoleAssignments(): HasMany
+    {
+        return $this->hasMany(EventRoleAssignment::class);
+    }
+
+    public function eventModeratorRequests(): HasMany
+    {
+        return $this->hasMany(EventModeratorRequest::class, 'requester_user_id');
+    }
+
+    public function routeNotificationForMail(): ?string
+    {
+        return $this->profile?->email;
+    }
+}
