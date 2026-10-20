@@ -37,15 +37,15 @@ class SeedDemoMonitoringDataset extends Command
         $this->line('registrar1 / Registrar123!');
         $this->line('professor1 / Professor123!  (sees student1)');
         $this->line('student1 / Student123!     (Study Studio + weak topics)');
+        $this->line('ken / ken123!              (Guest / Applicant)');
 
         return self::SUCCESS;
     }
 
     private function seedRoles(): void
     {
-        $this->removeGuestRole();
-
         $roles = [
+            1 => ['role_name' => 'Guest', 'description' => 'Guest User / Applicant'],
             2 => ['role_name' => 'Admin', 'description' => 'System Administrator'],
             3 => ['role_name' => 'Registrar Staff', 'description' => 'Registrar Office Staff'],
             4 => ['role_name' => 'Professor', 'description' => 'Faculty Member'],
@@ -60,17 +60,6 @@ class SeedDemoMonitoringDataset extends Command
         }
     }
 
-    private function removeGuestRole(): void
-    {
-        $roleId = DB::table('roles')->where('role_name', 'Guest')->value('id');
-        if ($roleId === null) {
-            return;
-        }
-
-        DB::table('users')->where('role_id', $roleId)->delete();
-        DB::table('roles')->where('id', $roleId)->delete();
-    }
-
     /**
      * @return array<string, object>
      */
@@ -78,6 +67,7 @@ class SeedDemoMonitoringDataset extends Command
     {
         $roleIds = DB::table('roles')->pluck('id', 'role_name');
         $accounts = [
+            'ken' => ['password' => 'ken123!', 'role' => 'Guest'],
             'admin' => ['password' => 'Admin123!', 'role' => 'Admin'],
             'registrar1' => ['password' => 'Registrar123!', 'role' => 'Registrar Staff'],
             'professor1' => ['password' => 'Professor123!', 'role' => 'Professor'],
@@ -119,6 +109,7 @@ class SeedDemoMonitoringDataset extends Command
     private function seedProfiles(array $users): array
     {
         $defs = [
+            'ken' => ['Kenneth', null, 'Gallaza', 'ken@example.com'],
             'admin' => ['System', null, 'Administrator', 'admin@cdm.edu.ph'],
             'registrar1' => ['Maria', 'Santos', 'Cruz', 'registrar@cdm.edu.ph'],
             'professor1' => ['Juan', 'Dela', 'Reyes', 'professor@cdm.edu.ph'],
@@ -432,21 +423,23 @@ class SeedDemoMonitoringDataset extends Command
                 'Midterm' => $gradeMap[$code]['midterm'],
                 'Final' => $gradeMap[$code]['final'],
             ] as $periodName => $grade) {
-                DB::table('grades')->updateOrInsert(
-                    [
-                        'enrollment_subject_id' => $enrollmentSubjectId,
-                        'grading_period_id' => $periods[$periodName],
-                    ],
-                    [
-                        'professor_id' => $professorId,
-                        'grade' => $grade,
-                        'remarks' => $grade >= 75 ? 'Passed' : 'Failed',
-                        'status' => 'approved',
-                        'submitted_at' => now(),
-                        'updated_at' => now(),
-                        'created_at' => now(),
-                    ],
-                );
+                if (isset($periods[$periodName])) {
+                    DB::table('grades')->updateOrInsert(
+                        [
+                            'enrollment_subject_id' => $enrollmentSubjectId,
+                            'grading_period_id' => $periods[$periodName],
+                        ],
+                        [
+                            'professor_id' => $professorId,
+                            'grade' => $grade,
+                            'remarks' => $grade >= 75 ? 'Passed' : 'Failed',
+                            'status' => 'approved',
+                            'submitted_at' => now(),
+                            'updated_at' => now(),
+                            'created_at' => now(),
+                        ],
+                    );
+                }
             }
         }
 

@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
   createPerformanceRecord,
+  deletePerformanceRecord,
   fetchStudyStudio,
   generateStudyFlashcards,
   generateStudyQuiz,
@@ -122,6 +123,29 @@ async function onUpload(event, kind = 'notes') {
   } catch (err) {
     error.value = err.response?.data?.message || 'Unable to upload that file. Use TXT, DOCX, or a text-based PDF.'
     uploading.value = false
+  }
+}
+
+const deletingId = ref(null)
+
+async function confirmDeleteFile(item) {
+  const name = item.attachment_name || item.topic || 'file'
+  if (!window.confirm(`Are you sure you want to delete "${name}"? This file will be permanently removed.`)) {
+    return
+  }
+  deletingId.value = item.id
+  error.value = ''
+  try {
+    await deletePerformanceRecord(item.id)
+    if (selectedRecordId.value === item.id) {
+      selectedRecordId.value = null
+      mode.value = 'home'
+    }
+    await load()
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Unable to delete that file.'
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -324,32 +348,67 @@ onMounted(load)
       </article>
 
       <div class="uploads">
-        <label class="upload">
+        <label class="upload" :class="{ 'is-loading': uploading }">
           <input type="file" accept=".txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :disabled="uploading" @change="onUpload($event, 'syllabus')" />
-          <span>{{ uploading ? 'Reading the file…' : 'Upload syllabus' }}</span>
-          <small>The study guide is written from this outline</small>
+          <div class="upload-icon-wrap syllabus-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="upload-svg">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke-linecap="round" stroke-linejoin="round" />
+              <line x1="12" y1="7" x2="16" y2="7" stroke-linecap="round" />
+              <line x1="9" y1="11" x2="16" y2="11" stroke-linecap="round" />
+            </svg>
+          </div>
+          <div class="upload-text-group">
+            <span class="upload-title">{{ uploading ? 'Reading the file…' : 'Upload syllabus' }}</span>
+            <small class="upload-subtitle">The study guide is written from this outline</small>
+          </div>
         </label>
-        <label class="upload">
+        <label class="upload" :class="{ 'is-loading': uploading }">
           <input type="file" accept=".txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :disabled="uploading" @change="onUpload($event, 'notes')" />
-          <span>{{ uploading ? 'Reading the file…' : 'Upload notes' }}</span>
-          <small>TXT, DOCX, or a PDF with selectable text</small>
+          <div class="upload-icon-wrap notes-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="upload-svg">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke-linecap="round" stroke-linejoin="round" />
+              <polyline points="14 2 14 8 20 8" stroke-linecap="round" stroke-linejoin="round" />
+              <line x1="16" y1="13" x2="8" y2="13" stroke-linecap="round" />
+              <line x1="16" y1="17" x2="8" y2="17" stroke-linecap="round" />
+              <polyline points="10 9 9 9 8 9" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+          <div class="upload-text-group">
+            <span class="upload-title">{{ uploading ? 'Reading the file…' : 'Upload notes' }}</span>
+            <small class="upload-subtitle">TXT, DOCX, or a PDF with selectable text</small>
+          </div>
         </label>
       </div>
 
       <div class="sets">
-        <button
+        <div
           v-for="item in files"
           :key="item.id"
-          type="button"
           class="set"
           :class="{ active: selectedRecordId === item.id }"
-          @click="selectedRecordId = item.id"
         >
-          <div>
+          <button
+            type="button"
+            class="set-main"
+            @click="selectedRecordId = item.id"
+          >
             <strong>{{ item.attachment_name || item.topic }}</strong>
             <span>{{ isSyllabus(item) ? 'Syllabus' : 'Notes' }}</span>
-          </div>
-        </button>
+          </button>
+          <button
+            type="button"
+            class="delete-file-btn"
+            title="Delete this uploaded file"
+            aria-label="Delete this uploaded file"
+            :disabled="deletingId === item.id"
+            @click.stop="confirmDeleteFile(item)"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
         <p v-if="!files.length" class="muted empty">
           No syllabus yet. Upload one and the study guide is written from it.
         </p>
@@ -513,9 +572,9 @@ onMounted(load)
 
 <style scoped>
 .study-studio {
-  --ink: var(--student-heading, #173d29);
-  --muted: var(--student-muted, #5c6b62);
-  --line: var(--student-border, #d5e1d8);
+  --ink: var(--student-heading, #0f172a);
+  --muted: var(--student-muted, #334155);
+  --line: var(--student-border, #cbd5e1);
   --soft: var(--student-surface-soft, #f4f8f5);
   --surface: var(--student-surface, #fff);
   --accent: var(--student-accent, #0d6940);
@@ -662,34 +721,85 @@ onMounted(load)
 
 .uploads {
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0.35rem 0 0.5rem;
 }
 
 .upload {
   align-items: center;
-  background: #fff;
-  border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, var(--line));
-  border-radius: 16px;
+  background: var(--soft, #f4f8f5);
+  border: 2px dashed color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: 14px;
   color: var(--ink);
   cursor: pointer;
-  display: grid;
-  gap: 0.15rem;
-  justify-items: start;
-  padding: 0.9rem 1rem;
+  display: flex;
+  gap: 0.95rem;
+  padding: 1rem 1.15rem;
+  text-align: left;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.upload:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
 }
 
 .upload input {
   display: none;
 }
 
-.upload span {
+.upload-icon-wrap {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border-radius: 10px;
   color: var(--accent);
-  font-weight: 800;
+  display: flex;
+  flex: 0 0 42px;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+  transition: transform 0.2s ease;
 }
 
-.upload small {
+.upload:hover .upload-icon-wrap {
+  transform: scale(1.08);
+}
+
+.upload-svg {
+  height: 22px;
+  width: 22px;
+}
+
+.upload-text-group {
+  display: grid;
+  flex: 1;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.upload-title {
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.upload-subtitle {
   color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 550;
+  line-height: 1.35;
+  opacity: 0.95;
+}
+
+.upload.is-loading {
+  cursor: wait;
+  opacity: 0.75;
 }
 
 .search {
@@ -731,16 +841,15 @@ onMounted(load)
 }
 
 .set {
-  align-items: start;
+  align-items: center;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 12px;
   color: var(--ink);
-  cursor: pointer;
   display: flex;
-  gap: 0.75rem;
+  gap: 0.6rem;
   justify-content: space-between;
-  padding: 0.9rem 1rem;
+  padding: 0.65rem 0.85rem;
   text-align: left;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
@@ -751,9 +860,27 @@ onMounted(load)
   border-color: var(--accent);
 }
 
+.set-main {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  flex: 1;
+  font: inherit;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
 .set strong {
   color: var(--ink);
   display: block;
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .set span,
@@ -761,6 +888,38 @@ onMounted(load)
   color: var(--muted);
   font-size: 0.82rem;
   font-style: normal;
+}
+
+.delete-file-btn {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #dc2626;
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  height: 32px;
+  justify-content: center;
+  padding: 0;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  width: 32px;
+}
+
+.delete-file-btn:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.delete-file-btn svg {
+  height: 16px;
+  width: 16px;
+}
+
+.delete-file-btn:disabled {
+  cursor: wait;
+  opacity: 0.5;
 }
 
 .modes {
@@ -1057,11 +1216,11 @@ onMounted(load)
 .face small,
 .face em {
   color: inherit;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.08em;
-  opacity: 0.8;
+  opacity: 0.95;
   text-transform: uppercase;
 }
 
