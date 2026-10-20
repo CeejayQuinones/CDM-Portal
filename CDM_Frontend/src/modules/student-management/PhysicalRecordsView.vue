@@ -23,6 +23,8 @@ const slotPreview = ref(null)
 const slotModalOpen = ref(false)
 const slotDialog = ref(null)
 const slotCloseButton = ref(null)
+const slotEditDialog = ref(null)
+const slotEditCloseButton = ref(null)
 const detailLoading = ref(false)
 const detailError = ref('')
 const formErrors = ref({})
@@ -46,6 +48,7 @@ const slotForm = reactive({
 })
 let slotRequestId = 0
 let slotTrigger = null
+let slotEditTrigger = null
 let previousBodyOverflow = ''
 
 const students = computed(() => selectedSlot.value?.students?.data || [])
@@ -241,8 +244,9 @@ function viewStudent(studentId) {
   router.push({ name: 'student-details', params: { id: studentId } })
 }
 
-function editSlot() {
+async function editSlot(event) {
   if (!selectedSlot.value) return
+  slotEditTrigger = event?.currentTarget || document.activeElement
   Object.assign(slotForm, {
     slot_code: selectedSlot.value.slot_code || '',
     capacity: selectedSlot.value.capacity ?? '',
@@ -253,13 +257,39 @@ function editSlot() {
   slotFormErrors.value = {}
   slotEditError.value = ''
   showSlotEdit.value = true
+  await nextTick()
+  slotEditCloseButton.value?.focus()
 }
 
-function closeSlotEdit() {
-  if (slotSaving.value) return
+async function finishSlotEdit() {
   showSlotEdit.value = false
   slotFormErrors.value = {}
   slotEditError.value = ''
+  await nextTick()
+  slotEditTrigger?.focus()
+  slotEditTrigger = null
+}
+
+async function closeSlotEdit() {
+  if (slotSaving.value) return
+  await finishSlotEdit()
+}
+
+function trapSlotEditFocus(event) {
+  if (event.key !== 'Tab' || !slotEditDialog.value) return
+  const focusable = [...slotEditDialog.value.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )]
+  if (!focusable.length) return
+  const first = focusable[0]
+  const last = focusable.at(-1)
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
 }
 
 function handleEscape(event) {
@@ -290,7 +320,7 @@ async function updateSlot() {
       }),
     )
     selectedSlot.value = { ...selectedSlot.value, ...updatedSlot }
-    showSlotEdit.value = false
+    await finishSlotEdit()
     success.value = `Slot ${updatedSlot.slot_code} was updated successfully.`
     await loadCabinets()
   } catch (requestError) {
@@ -420,6 +450,8 @@ onBeforeUnmount(() => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="slot-records-title"
+        :aria-hidden="showSlotEdit ? 'true' : undefined"
+        :inert="showSlotEdit"
         tabindex="-1"
       >
     <header class="slot-records-header">
@@ -432,7 +464,7 @@ onBeforeUnmount(() => {
         </h2>
       </div>
       <div class="slot-detail-actions">
-        <button v-if="selectedSlot" class="primary-button" type="button" @click="editSlot">Drawer Settings</button>
+        <button v-if="selectedSlot" class="primary-button" type="button" @click="editSlot($event)">Drawer Settings</button>
         <button
           ref="slotCloseButton"
           class="slot-modal-close"
@@ -536,19 +568,23 @@ onBeforeUnmount(() => {
     </div>
   </Teleport>
 
-  <div
-    v-if="showSlotEdit"
-    class="modal-backdrop slot-edit-backdrop"
-    role="presentation"
-    @mousedown.self="closeSlotEdit"
-  >
-    <section
-      class="slot-edit-modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="slot-edit-title"
-      aria-describedby="slot-edit-description"
+  <Teleport to="body">
+    <div
+      v-if="showSlotEdit"
+      class="modal-backdrop slot-edit-backdrop"
+      role="presentation"
+      @mousedown.self="closeSlotEdit"
     >
+      <section
+        ref="slotEditDialog"
+        class="slot-edit-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="slot-edit-title"
+        aria-describedby="slot-edit-description"
+        @keydown="trapSlotEditFocus"
+      >
+      <button ref="slotEditCloseButton" class="slot-modal-close slot-edit-close" type="button" aria-label="Close Drawer Settings" :disabled="slotSaving" @click="closeSlotEdit">&times;</button>
       <p class="eyebrow">Cabinet {{ cabinetName(selectedSlot?.cabinet) }}</p>
       <h2 id="slot-edit-title">Drawer Settings</h2>
       <p id="slot-edit-description">Update this drawer without changing its assigned student records.</p>
@@ -597,8 +633,9 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </form>
-    </section>
-  </div>
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -1098,7 +1135,13 @@ button:disabled {
   box-shadow: 0 24px 70px rgb(0 0 0 / 24%);
   max-width: 620px;
   padding: 26px;
+  position: relative;
   width: 100%;
+}
+.slot-edit-close {
+  position: absolute;
+  right: 18px;
+  top: 18px;
 }
 .slot-edit-modal h2 {
   margin: 4px 0 5px;

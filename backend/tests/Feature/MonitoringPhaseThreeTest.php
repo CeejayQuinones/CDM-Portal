@@ -204,7 +204,7 @@ class MonitoringPhaseThreeTest extends TestCase
         Sanctum::actingAs($this->fixture['professorUser']);
         $this->withHeader('X-CDM-Client', 'web')->postJson($this->url(), ['question' => 'How can I advise this student?'])->assertOk();
         $this->withHeader('X-CDM-Client', 'web')->postJson($this->url($other->id), ['question' => 'How can I advise this student?'])->assertForbidden();
-        $this->withHeader('X-CDM-Client', 'mobile')->postJson($this->url(), ['question' => 'How can I advise this student?'])->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson($this->url(), ['question' => 'How can I advise this student?'])->assertOk();
         $this->withHeader('X-CDM-Client', 'desktop')->postJson($this->url(), ['question' => 'How can I advise this student?'])->assertForbidden();
 
         Sanctum::actingAs($this->fixture['registrar']);
@@ -213,7 +213,7 @@ class MonitoringPhaseThreeTest extends TestCase
 
         $admin = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id, 'status' => 'active']);
         Sanctum::actingAs($admin);
-        $this->withHeader('X-CDM-Client', 'web')->postJson($this->url(), ['question' => 'Suggest support actions.'])->assertOk();
+        $this->withHeader('X-CDM-Client', 'web')->postJson($this->url(), ['question' => 'Suggest support actions.'])->assertForbidden();
         $this->withHeader('X-CDM-Client', 'desktop')->postJson($this->url(), ['question' => 'Suggest support actions.'])->assertOk();
 
         $guest = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::GUEST])->id, 'status' => 'active']);

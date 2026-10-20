@@ -7,12 +7,13 @@ use App\Models\Event;
 use App\Models\Section;
 use App\Models\User;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class EventService
 {
-    public function __construct(private readonly EventAuditWriter $audit) {}
+    public function __construct(private readonly EventAuditWriter $audit, private readonly EventNotificationService $notifications) {}
 
     public function create(array $data, User $actor): Event
     {
@@ -21,6 +22,10 @@ class EventService
             $parent = $this->validateHierarchy($data);
             $audiences = $data['audiences'] ?? [];
             $this->validateAudiences($audiences, $parent !== null);
+            $this->validateAttendancePolicy($data);
+            if ($parent && ! array_key_exists('sort_order', $data)) {
+                $data['sort_order'] = ((int) $parent->subEvents()->max('sort_order')) + 1;
+            }
             if ($status === 'published') {
                 $this->assertVenueAvailable($data);
             }
@@ -31,6 +36,7 @@ class EventService
             $this->audit->write($event, $actor, $parent ? 'subevent.created' : 'created', ['status' => $status, 'version' => 1, 'parent_event_id' => $parent?->id]);
             if ($status === 'published') {
                 $this->audit->write($event, $actor, 'published', ['status' => $status, 'version' => 1]);
+                DB::afterCommit(fn () => $this->notifications->eventAudience($event, $parent ? 'subevent_changed' : 'event_published', ($parent ? 'A new activity was added: ' : 'Event published: ').$event->title.'.', $event->version, true));
             }
 
             return $event->load(['audiences.course', 'audiences.section']);
@@ -50,12 +56,14 @@ class EventService
             $parent = $this->validateHierarchy($data + ['parent_event_id' => $locked->parent_event_id], $locked);
             $audiences = $data['audiences'] ?? [];
             $this->validateAudiences($audiences, $parent !== null);
+            $this->validateAttendancePolicy($data, $locked);
             if ($locked->status === 'published') {
                 $this->assertVenueAvailable($data, $locked->id);
             }
             $locked->fill($this->attributes($data) + ['updated_by' => $actor->id, 'version' => $locked->version + 1])->save();
             $this->replaceAudiences($locked, $audiences);
             $this->audit->write($locked, $actor, $parent ? 'subevent.updated' : 'updated', ['version' => $locked->version, 'parent_event_id' => $parent?->id]);
+            DB::afterCommit(fn () => $this->notifications->eventAudience($locked, $parent ? 'subevent_changed' : 'event_updated', ($parent ? 'An Event activity changed: ' : 'Event details changed: ').$locked->title.'.', $locked->version, true));
 
             return $locked->load(['audiences.course', 'audiences.section']);
         }, 3);
@@ -86,6 +94,9 @@ class EventService
                 $auditAction = 'subevent.cancelled';
             }
             $this->audit->write($locked, $actor, $auditAction, ['status' => $next, 'version' => $locked->version]);
+            if ($action === 'cancel') {
+                DB::afterCommit(fn () => $this->notifications->eventAudience($locked, $locked->parent_event_id ? 'subevent_changed' : 'event_cancelled', $locked->title.' was cancelled.', $locked->version, true));
+            }
 
             return $locked->load(['audiences.course', 'audiences.section']);
         }, 3);
@@ -95,7 +106,15 @@ class EventService
     {
         $venue = trim(preg_replace('/\s+/', ' ', $data['venue']));
 
-        return Arr::only($data, ['parent_event_id', 'title', 'description', 'starts_at', 'ends_at']) + ['venue' => $venue, 'venue_key' => mb_strtolower($venue)];
+        $attributes = Arr::only($data, [
+            'parent_event_id', 'title', 'description', 'starts_at', 'ends_at', 'sort_order',
+            'attendance_mode', 'late_threshold_minutes', 'minimum_participation_minutes', 'attendance_methods',
+        ]);
+        if (($attributes['attendance_mode'] ?? null) === Event::ATTENDANCE_MODE_CHECK_IN_ONLY) {
+            $attributes['minimum_participation_minutes'] = null;
+        }
+
+        return $attributes + ['venue' => $venue, 'venue_key' => mb_strtolower($venue)];
     }
 
     private function replaceAudiences(Event $event, array $audiences): void
@@ -116,6 +135,9 @@ class EventService
 
     private function validateAudiences(array $audiences, bool $canInherit = false): void
     {
+        if ($canInherit && $audiences !== []) {
+            throw ValidationException::withMessages(['audiences' => 'Sub-events inherit the parent Event audience and cannot define a broader audience.']);
+        }
         if ($audiences === [] && ! $canInherit) {
             throw ValidationException::withMessages(['audiences' => 'Select at least one audience.']);
         }
@@ -133,6 +155,26 @@ class EventService
                 throw ValidationException::withMessages(["audiences.$index.year_level" => 'Select a year level.']);
             }
         }
+    }
+
+    private function validateAttendancePolicy(array $data, ?Event $event = null): void
+    {
+        $mode = $data['attendance_mode'] ?? $event?->attendance_mode ?? Event::ATTENDANCE_MODE_CHECK_IN_ONLY;
+        $minimum = $data['minimum_participation_minutes'] ?? $event?->minimum_participation_minutes;
+        if ($mode === Event::ATTENDANCE_MODE_CHECK_IN_AND_OUT && $minimum !== null) {
+            $duration = Carbon::parse($data['starts_at'] ?? $event?->starts_at)
+                ->diffInMinutes(Carbon::parse($data['ends_at'] ?? $event?->ends_at));
+            if ((int) $minimum > $duration) {
+                throw ValidationException::withMessages(['minimum_participation_minutes' => 'Minimum participation cannot exceed the Event duration.']);
+            }
+        }
+    }
+
+    public function archiveSubEvent(Event $event, int $version, User $actor): Event
+    {
+        abort_unless($event->parent_event_id !== null, 422, 'Only sub-events can be removed from this endpoint.');
+
+        return $this->transition($event, 'archive', $version, $actor);
     }
 
     private function validateHierarchy(array $data, ?Event $event = null): ?Event

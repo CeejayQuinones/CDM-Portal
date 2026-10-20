@@ -76,6 +76,7 @@ class EventRoleAssignment extends Model
     public function scopeGranting(Builder $query): Builder
     {
         return $query
+            ->whereNotIn('responsibility', [self::REQUESTED_MODERATOR, self::CLASS_MAYOR])
             ->whereNull('revoked_at')
             ->where(fn (Builder $window) => $window->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
             ->where(fn (Builder $window) => $window->whereNull('ends_at')->orWhere('ends_at', '>', now()));
@@ -83,7 +84,8 @@ class EventRoleAssignment extends Model
 
     public function isGranting(): bool
     {
-        return $this->revoked_at === null
+        return ! in_array($this->responsibility, [self::REQUESTED_MODERATOR, self::CLASS_MAYOR], true)
+            && $this->revoked_at === null
             && ($this->starts_at === null || ! $this->starts_at->isFuture())
             && ($this->ends_at === null || $this->ends_at->isFuture());
     }

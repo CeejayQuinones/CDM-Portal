@@ -17,10 +17,10 @@ class EnsureProfessorWebAccess
         $user?->loadMissing('role');
 
         if ($user?->role?->role_name === Role::PROFESSOR
-            && $request->header(ClientPlatform::HEADER) !== ClientPlatform::WEB) {
+            && ! in_array($request->header(ClientPlatform::HEADER), [ClientPlatform::WEB, ClientPlatform::MOBILE], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Professor academic work is available through the Web client.',
+                'message' => 'Professor academic work is available through the Website or Android application.',
             ], 403);
         }
 

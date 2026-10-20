@@ -3,7 +3,24 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { apiBaseUrlForMode, assertProductionApiBaseUrl, clientPlatformForMode } from '../vite.config.js'
+import { isRoleAllowedOnClient } from '../src/config/clientPlatform.js'
 import { loginErrorMessage, runLoginRequest } from '../src/utils/loginFlow.js'
+
+const expectedPlatformMatrix = {
+  Admin: { desktop: true, web: false, mobile: false },
+  'Registrar Staff': { desktop: true, web: false, mobile: false },
+  Professor: { desktop: false, web: true, mobile: true },
+  Student: { desktop: false, web: true, mobile: true },
+  Guest: { desktop: false, web: true, mobile: true },
+}
+
+test('all 15 role and platform combinations match the official access matrix', () => {
+  for (const [role, platforms] of Object.entries(expectedPlatformMatrix)) {
+    for (const [platform, allowed] of Object.entries(platforms)) {
+      assert.equal(isRoleAllowedOnClient(role, platform), allowed, `${role} on ${platform}`)
+    }
+  }
+})
 
 test('Vite modes select the fixed CDM client platform', () => {
   assert.equal(clientPlatformForMode('production'), 'web')
@@ -11,6 +28,7 @@ test('Vite modes select the fixed CDM client platform', () => {
   assert.equal(clientPlatformForMode('desktop'), 'desktop')
   assert.equal(clientPlatformForMode('desktop-development'), 'desktop')
   assert.equal(clientPlatformForMode('mobile'), 'mobile')
+  assert.equal(clientPlatformForMode('mobile-development'), 'mobile')
   assert.equal(clientPlatformForMode('demo-mobile'), 'mobile')
 })
 
@@ -75,15 +93,35 @@ test('the shared API client sends the build-owned platform header', async () => 
   assert.doesNotMatch(source, /localStorage\.getItem\([^)]*client/i)
 })
 
-test('Professor Mobile navigation is restricted to Event participation', async () => {
+test('Professor Mobile navigation preserves dashboard and academic workflows', async () => {
   const navigation = await readFile(new URL('../src/stores/navigation.js', import.meta.url), 'utf8')
   const router = await readFile(new URL('../src/router/index.js', import.meta.url), 'utf8')
 
-  assert.match(navigation, /role === 'Professor' && clientPlatform === 'mobile'/)
-  assert.match(navigation, /item\.name !== 'event-attendance'/)
+  assert.doesNotMatch(navigation, /role === 'Professor' && clientPlatform === 'mobile'/)
+  assert.doesNotMatch(router, /authStore\.currentRole === ROLES\.PROFESSOR && clientPlatform === 'mobile'/)
+  assert.match(router, /const landingForRole = \(role\) => dashboardForRole\(role\)/)
+})
+
+test('router blocks persisted cross-platform roles and clears their local session', async () => {
+  const router = await readFile(new URL('../src/router/index.js', import.meta.url), 'utf8')
+
+  assert.match(router, /!isRoleAllowedOnClient\(authStore\.currentRole\)/)
+  assert.match(router, /authStore\.clearAuth\(\)/)
+  assert.match(router, /platformDenied: '1'/)
+})
+
+test('Guest mobile uses the Guest dashboard while Event QR operations stay role restricted', async () => {
+  const [access, router, navigation] = await Promise.all([
+    readFile(new URL('../src/config/accessControl.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/router/index.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/stores/navigation.js', import.meta.url), 'utf8'),
+  ])
+
+  assert.match(access, /\[ROLES\.GUEST\]: '\/guest-dashboard'/)
+  assert.match(router, /\['Professor', 'Student'\]\.includes\(role\) && clientPlatform === 'mobile'/)
+  assert.match(navigation, /\['Professor', 'Student'\]\.includes\(role\) && clientPlatform === 'mobile'/)
   assert.match(router, /role === ROLES\.PROFESSOR && clientPlatform === 'mobile'/)
-  assert.match(router, /!to\.meta\.eventModule/)
-  assert.match(router, /name: 'event-attendance'/)
+  assert.match(router, /to\.meta\.eventReports && !canAccessEventReportsClient/)
 })
 
 test('login renders failures in an accessible alert', async () => {

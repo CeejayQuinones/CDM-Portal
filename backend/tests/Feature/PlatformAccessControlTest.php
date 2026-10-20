@@ -23,10 +23,14 @@ class PlatformAccessControlTest extends TestCase
         $user = $this->user($role);
 
         $response = $this->login($user, $client)->assertOk();
-        $token = PersonalAccessToken::findToken($response->json('data.token'));
+        $plainTextToken = $response->json('data.token');
+        $token = PersonalAccessToken::findToken($plainTextToken);
 
         $this->assertNotNull($token);
         $this->assertSame([ClientPlatform::ability($client)], $token->abilities);
+        $this->withToken($plainTextToken)
+            ->getJson('/api/me', [ClientPlatform::HEADER => $client])
+            ->assertOk();
     }
 
     public static function allowedLoginMatrix(): array
@@ -34,12 +38,12 @@ class PlatformAccessControlTest extends TestCase
         return [
             'desktop registrar' => [Role::REGISTRAR_STAFF, ClientPlatform::DESKTOP],
             'desktop admin' => [Role::ADMIN, ClientPlatform::DESKTOP],
-            'web admin' => [Role::ADMIN, ClientPlatform::WEB],
             'web guest' => [Role::GUEST, ClientPlatform::WEB],
             'web professor' => [Role::PROFESSOR, ClientPlatform::WEB],
             'mobile professor' => [Role::PROFESSOR, ClientPlatform::MOBILE],
             'web student' => [Role::STUDENT, ClientPlatform::WEB],
             'mobile student' => [Role::STUDENT, ClientPlatform::MOBILE],
+            'mobile guest' => [Role::GUEST, ClientPlatform::MOBILE],
         ];
     }
 
@@ -64,11 +68,13 @@ class PlatformAccessControlTest extends TestCase
     public static function deniedLoginMatrix(): array
     {
         return [
+            'desktop professor' => [Role::PROFESSOR, ClientPlatform::DESKTOP, 'This account is not permitted to use the Desktop client.'],
+            'desktop student' => [Role::STUDENT, ClientPlatform::DESKTOP, 'Student accounts cannot access the Registrar Desktop application.'],
             'desktop guest' => [Role::GUEST, ClientPlatform::DESKTOP, 'This account is not permitted to use the Desktop client.'],
+            'web admin' => [Role::ADMIN, ClientPlatform::WEB, 'Admin accounts are available only through the CDM Desktop application.'],
             'web registrar' => [Role::REGISTRAR_STAFF, ClientPlatform::WEB, 'Registrar Staff accounts are available only through the CDM Desktop application.'],
             'mobile registrar' => [Role::REGISTRAR_STAFF, ClientPlatform::MOBILE, 'Registrar Staff accounts are available only through the CDM Desktop application.'],
-            'mobile admin' => [Role::ADMIN, ClientPlatform::MOBILE, 'This account is not permitted to use the Student mobile application.'],
-            'mobile guest' => [Role::GUEST, ClientPlatform::MOBILE, 'This account is not permitted to use the Student mobile application.'],
+            'mobile admin' => [Role::ADMIN, ClientPlatform::MOBILE, 'Admin accounts are available only through the CDM Desktop application.'],
         ];
     }
 
@@ -91,7 +97,7 @@ class PlatformAccessControlTest extends TestCase
         $this->assertSame(0, $user->tokens()->count());
     }
 
-    public function test_professor_semi_coordinator_uses_desktop_and_is_denied_on_mobile(): void
+    public function test_professor_semi_coordinator_follows_the_professor_platform_matrix(): void
     {
         $admin = $this->user(Role::ADMIN);
         $professor = $this->user(Role::PROFESSOR);
@@ -113,9 +119,8 @@ class PlatformAccessControlTest extends TestCase
             'assigned_at' => now(),
         ]);
 
-        $this->login($professor, ClientPlatform::DESKTOP)->assertOk();
-        $this->login($professor, ClientPlatform::MOBILE)->assertForbidden()
-            ->assertJsonPath('message', 'Semi-Coordinator accounts use Desktop for Event management and Web for promotional viewing.');
+        $this->login($professor, ClientPlatform::DESKTOP)->assertForbidden();
+        $this->login($professor, ClientPlatform::MOBILE)->assertOk();
     }
 
     #[DataProvider('boundTokenMatrix')]
@@ -140,8 +145,8 @@ class PlatformAccessControlTest extends TestCase
     public static function boundTokenMatrix(): array
     {
         return [
-            'web token replayed on desktop' => [Role::ADMIN, ClientPlatform::WEB, ClientPlatform::DESKTOP],
-            'desktop token replayed on web' => [Role::ADMIN, ClientPlatform::DESKTOP, ClientPlatform::WEB],
+            'web token replayed on mobile' => [Role::PROFESSOR, ClientPlatform::WEB, ClientPlatform::MOBILE],
+            'mobile token replayed on web' => [Role::STUDENT, ClientPlatform::MOBILE, ClientPlatform::WEB],
         ];
     }
 
@@ -196,12 +201,25 @@ class PlatformAccessControlTest extends TestCase
     public function test_admission_routes_enforce_the_token_client_binding(): void
     {
         $admin = $this->user(Role::ADMIN);
-        $token = $this->login($admin, ClientPlatform::WEB)->assertOk()->json('data.token');
+        $token = $this->login($admin, ClientPlatform::DESKTOP)->assertOk()->json('data.token');
 
         $this->withToken($token)
-            ->getJson('/api/admission/admin/programs', [ClientPlatform::HEADER => ClientPlatform::DESKTOP])
+            ->getJson('/api/admission/admin/programs', [ClientPlatform::HEADER => ClientPlatform::WEB])
             ->assertForbidden()
-            ->assertJsonPath('message', 'This session is not valid for the selected CDM client.');
+            ->assertJsonPath('message', 'Admin accounts are available only through the CDM Desktop application.');
+    }
+
+    public function test_mobile_guest_keeps_admission_access_but_cannot_use_student_or_staff_apis(): void
+    {
+        $guest = $this->user(Role::GUEST);
+        $token = $this->login($guest, ClientPlatform::MOBILE)->assertOk()->json('data.token');
+        $request = fn (string $path) => $this->withToken($token)
+            ->getJson($path, [ClientPlatform::HEADER => ClientPlatform::MOBILE]);
+
+        $request('/api/admission/applications/availability')->assertOk();
+        $request('/api/student/dashboard')->assertForbidden();
+        $request('/api/students')->assertForbidden();
+        $request('/api/admin/dashboard')->assertForbidden();
     }
 
     private function user(string $roleName, string $status = 'active'): User

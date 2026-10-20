@@ -5,6 +5,7 @@ import { eventErrorMessage, eventService } from './eventService'
 const props = defineProps({
   event: { type: Object, required: true },
   canManage: { type: Boolean, default: false },
+  responsibilityFilter: { type: String, default: 'all' },
 })
 const assignments = ref([])
 const candidates = ref([])
@@ -20,9 +21,19 @@ const error = ref('')
 const notice = ref('')
 
 const selectedCandidate = computed(() => candidates.value.find((candidate) => candidate.id === Number(selectedUserId.value)))
-const eligibleResponsibilities = computed(() => responsibilities.value.filter((item) => item.eligible_roles.includes(selectedCandidate.value?.portal_role)))
-const activeAssignments = computed(() => assignments.value.filter((item) => item.status === 'active'))
-const historicalAssignments = computed(() => assignments.value.filter((item) => item.status !== 'active'))
+const visibleResponsibilityValues = computed(() => ({
+  moderators: ['registered_moderator', 'requested_moderator', 'moderator', 'class_mayor'],
+  staff: ['event_staff'],
+  coordinators: ['semi_coordinator'],
+}[props.responsibilityFilter] || responsibilities.value.map((item) => item.value)))
+const eligibleResponsibilities = computed(() => responsibilities.value.filter((item) => item.eligible_roles.includes(selectedCandidate.value?.portal_role) && visibleResponsibilityValues.value.includes(item.value)))
+const matchesFilter = (item) => props.responsibilityFilter === 'all'
+  || (props.responsibilityFilter === 'moderators' && ['registered_moderator', 'requested_moderator', 'moderator', 'class_mayor'].includes(item.responsibility))
+  || (props.responsibilityFilter === 'staff' && item.responsibility === 'event_staff')
+  || (props.responsibilityFilter === 'coordinators' && item.responsibility === 'semi_coordinator')
+const activeAssignments = computed(() => assignments.value.filter((item) => item.status === 'active' && matchesFilter(item)))
+const historicalAssignments = computed(() => assignments.value.filter((item) => item.status !== 'active' && matchesFilter(item)))
+const panelTitle = computed(() => ({ moderators: 'Registered Moderators', staff: 'Event Staff', coordinators: 'Semi-Coordinators' }[props.responsibilityFilter] || 'Authorized Personnel'))
 const localValue = (value) => value ? new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : null
 const formatDate = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'
 
@@ -44,9 +55,8 @@ const load = async (includeSearch = false) => {
 const searchUsers = () => load(true)
 const chooseCandidate = (candidate) => {
   selectedUserId.value = candidate.id
-  responsibility.value = ['Admin', 'Registrar Staff'].includes(candidate.portal_role)
-    ? 'semi_coordinator'
-    : candidate.portal_role === 'Student' ? 'class_mayor' : 'moderator'
+  const preferred = ({ moderators: 'registered_moderator', staff: 'event_staff', coordinators: 'semi_coordinator' })[props.responsibilityFilter]
+  responsibility.value = preferred || (candidate.portal_role === 'Student' ? 'event_staff' : 'registered_moderator')
 }
 
 const assign = async () => {
@@ -116,7 +126,7 @@ onMounted(load)
 <template>
   <section class="personnel-panel" aria-labelledby="personnel-title">
     <header>
-      <div><p class="event-eyebrow">Event-scoped access</p><h3 id="personnel-title">Authorized Personnel</h3></div>
+      <div><p class="event-eyebrow">Event-scoped access</p><h3 id="personnel-title">{{ panelTitle }}</h3></div>
       <span>{{ activeAssignments.length }} active</span>
     </header>
     <p>Assignments grant capabilities for this Event only. Portal roles and platform restrictions remain unchanged.</p>
@@ -130,17 +140,18 @@ onMounted(load)
 
     <div v-if="canManage && candidates.length" class="candidate-list" aria-label="Eligible portal users">
       <button v-for="candidate in candidates" :key="candidate.id" type="button" :class="{ selected: selectedUserId === candidate.id }" @click="chooseCandidate(candidate)">
-        <span><strong>{{ candidate.name }}</strong><small>Portal Role: {{ candidate.portal_role }}</small></span><span>Select</span>
+        <span><strong>{{ candidate.name }}</strong><small>{{ candidate.email || 'No email on file' }} · Portal Role: {{ candidate.portal_role }}</small></span><span>Select</span>
       </button>
     </div>
 
-    <form v-if="canManage && selectedCandidate" class="assignment-form" @submit.prevent="assign">
+    <form v-if="canManage && selectedCandidate && eligibleResponsibilities.length" class="assignment-form" @submit.prevent="assign">
       <div class="selected-person"><strong>{{ selectedCandidate.name }}</strong><span>Portal Role: {{ selectedCandidate.portal_role }}</span></div>
       <label><span>Event Responsibility</span><select v-model="responsibility" required><option v-for="item in eligibleResponsibilities" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
       <label><span>Starts (optional)</span><input v-model="startsAt" type="datetime-local" /></label>
       <label><span>Ends (optional)</span><input v-model="endsAt" type="datetime-local" /></label>
       <button class="event-button primary" type="submit" :disabled="busy">Assign Personnel</button>
     </form>
+    <p v-else-if="canManage && selectedCandidate" class="personnel-state">This portal user is not eligible for the selected Event responsibility.</p>
 
     <p v-if="loading" class="personnel-state" role="status">Loading Event personnel…</p>
     <div v-else-if="activeAssignments.length" class="personnel-table">

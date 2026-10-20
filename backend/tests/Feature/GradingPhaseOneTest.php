@@ -154,6 +154,33 @@ class GradingPhaseOneTest extends TestCase
         ])->assertCreated();
     }
 
+    public function test_professor_bulk_assessment_entry_is_atomic_owned_and_duplicate_safe(): void
+    {
+        $this->period();
+        $workspace = $this->workspace();
+        $url = '/api/grading/sheets/'.$workspace['sheet']['id'].'/assessments/bulk';
+        $payload = ['period' => 'midterm', 'assessments' => [
+            ['label' => 'Quiz 1', 'category' => 'Quiz', 'max_score' => 20, 'display_order' => 1],
+            ['label' => 'Laboratory 1', 'category' => 'Activity', 'max_score' => 50, 'display_order' => 2],
+        ]];
+
+        $this->postJson($url, $payload)->assertCreated()->assertJsonCount(2, 'data');
+        $this->assertDatabaseCount('grade_assessments', 2);
+        $this->assertDatabaseHas('grade_audit_events', ['action' => 'assessments.bulk_created']);
+        $this->postJson($url, $payload)->assertConflict();
+        $this->assertDatabaseCount('grade_assessments', 2);
+
+        $duplicatePayload = ['period' => 'midterm', 'assessments' => [
+            ['label' => 'Quiz 2', 'category' => 'Quiz', 'max_score' => 10, 'display_order' => 3],
+            ['label' => 'quiz 2', 'category' => 'Quiz', 'max_score' => 10, 'display_order' => 4],
+        ]];
+        $this->postJson($url, $duplicatePayload)->assertUnprocessable();
+        $this->assertDatabaseMissing('grade_assessments', ['label' => 'Quiz 2']);
+
+        Sanctum::actingAs($this->f['user']);
+        $this->postJson($url, $payload)->assertForbidden();
+    }
+
     public function test_unused_schedule_deletes_but_used_and_locked_history_is_preserved(): void
     {
         Sanctum::actingAs($this->f['registrar']);
@@ -307,8 +334,7 @@ class GradingPhaseOneTest extends TestCase
         Sanctum::actingAs($this->f['professorUser']);
         $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/classes')->assertOk();
         $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/grading/classes')
-            ->assertForbidden()
-            ->assertJsonPath('message', 'Professor academic work is available through the Web client.');
+            ->assertOk();
         $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/grading/classes')->assertForbidden();
         Sanctum::actingAs($this->f['registrar']);
         $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/grading/periods')->assertOk();

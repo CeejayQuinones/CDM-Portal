@@ -112,4 +112,14 @@ class User extends Authenticatable
     {
         return $this->hasMany(EventRoleAssignment::class);
     }
+
+    public function eventModeratorRequests(): HasMany
+    {
+        return $this->hasMany(EventModeratorRequest::class, 'requester_user_id');
+    }
+
+    public function routeNotificationForMail(): ?string
+    {
+        return $this->profile?->email;
+    }
 }

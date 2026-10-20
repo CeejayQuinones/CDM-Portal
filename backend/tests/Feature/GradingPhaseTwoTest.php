@@ -237,10 +237,10 @@ class GradingPhaseTwoTest extends TestCase
         $submitted = $this->submit();
         $admin = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id]);
         Sanctum::actingAs($admin);
-        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/reviews')->assertOk();
-        $this->withHeader('X-CDM-Client', 'web')->postJson('/api/grading/reviews/'.$this->sheet->id.'/approve', ['version' => $submitted['version']])->assertStatus(428);
-        $this->withHeader('X-CDM-Client', 'web')->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
-        $this->withHeader('X-CDM-Client', 'web')->postJson('/api/grading/reviews/'.$this->sheet->id.'/approve', ['version' => $submitted['version']])->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/grading/reviews')->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/approve', ['version' => $submitted['version']])->assertStatus(428);
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/approve', ['version' => $submitted['version']])->assertOk();
     }
 
     public function test_approved_sheet_can_be_scheduled_and_future_release_is_not_automatic_early(): void

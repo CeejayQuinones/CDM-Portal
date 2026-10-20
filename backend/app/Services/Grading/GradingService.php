@@ -118,6 +118,45 @@ class GradingService
         });
     }
 
+    /** @return array<int, GradeAssessment> */
+    public function saveAssessmentsBulk(User $user, GradeSheet $sheet, array $input): array
+    {
+        $this->ownedSheet($user, $sheet);
+        $this->assertOpen($sheet, $input['period']);
+
+        return DB::transaction(function () use ($user, $sheet, $input): array {
+            $lockedSheet = GradeSheet::query()->lockForUpdate()->findOrFail($sheet->id);
+            $this->ownedSheet($user, $lockedSheet);
+            $this->assertOpen($lockedSheet, $input['period']);
+
+            $labels = collect($input['assessments'])->map(fn (array $row): string => mb_strtolower(trim($row['label'])));
+            abort_if($labels->duplicates()->isNotEmpty(), 422, 'Bulk entry contains duplicate assessment labels.');
+
+            $existingLabels = GradeAssessment::query()
+                ->where('grade_sheet_id', $lockedSheet->id)
+                ->where('period', $input['period'])
+                ->lockForUpdate()
+                ->pluck('label')
+                ->map(fn (string $label): string => mb_strtolower(trim($label)));
+            abort_if($labels->intersect($existingLabels)->isNotEmpty(), 409, 'An assessment with the same label already exists in this grading period.');
+
+            $created = [];
+            foreach ($input['assessments'] as $assessment) {
+                $created[] = GradeAssessment::create($assessment + [
+                    'grade_sheet_id' => $lockedSheet->id,
+                    'period' => $input['period'],
+                ]);
+            }
+            $this->audit($user, 'assessments.bulk_created', $lockedSheet, null, [
+                'period' => $input['period'],
+                'assessment_ids' => collect($created)->pluck('id')->all(),
+                'count' => count($created),
+            ]);
+
+            return $created;
+        });
+    }
+
     public function assessmentStatus(User $user, GradeSheet $sheet, GradeAssessment $assessment, array $input): GradeAssessment
     {
         $this->ownedSheet($user, $sheet);

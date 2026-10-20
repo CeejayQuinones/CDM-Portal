@@ -20,16 +20,16 @@ class EnsureEventPlatformAccess
 
         $client = trim((string) $request->header(ClientPlatform::HEADER));
         $role = $user->role?->role_name;
-        $semiCoordinator = $role === Role::PROFESSOR
+        $mobileSemiCoordinator = $client === ClientPlatform::MOBILE
+            && $role === Role::PROFESSOR
             && $user->eventRoleAssignments()->granting()->where('responsibility', 'semi_coordinator')->exists();
-        $desktopAdministrator = $client === ClientPlatform::DESKTOP && ($role === Role::ADMIN || $semiCoordinator);
+        $desktopAdministrator = $client === ClientPlatform::DESKTOP && $role === Role::ADMIN;
         $mobileParticipant = $client === ClientPlatform::MOBILE
-            && in_array($role, [Role::PROFESSOR, Role::STUDENT], true)
-            && ! $semiCoordinator;
+            && in_array($role, [Role::PROFESSOR, Role::STUDENT], true);
 
         $allowed = match ($purpose) {
             'promotion' => $client === ClientPlatform::WEB,
-            'desktop' => $desktopAdministrator,
+            'desktop' => $desktopAdministrator || $mobileSemiCoordinator,
             'mobile' => $mobileParticipant,
             default => $desktopAdministrator || $mobileParticipant,
         };

@@ -15,6 +15,9 @@ const saving = ref(false)
 const error = ref('')
 const notice = ref('')
 const form = ref(null)
+const formErrors = ref({})
+const showInitialPassword = ref(false)
+const showConfirmationPassword = ref(false)
 const statusTarget = ref(null)
 const filters = reactive({ search: '', status: '', department_id: '', page: 1 })
 
@@ -45,15 +48,33 @@ async function load() {
   }
 }
 
-function openCreate() { form.value = emptyForm(); error.value = ''; notice.value = '' }
+function resetPasswordControls() {
+  formErrors.value = {}
+  showInitialPassword.value = false
+  showConfirmationPassword.value = false
+}
+
+function closeForm() {
+  form.value = null
+  error.value = ''
+  resetPasswordControls()
+}
+
+function openCreate() { form.value = emptyForm(); error.value = ''; notice.value = ''; resetPasswordControls() }
 function openEdit(account) {
   form.value = { ...emptyForm(), ...account, password: '', password_confirmation: '' }
   error.value = ''
   notice.value = ''
+  resetPasswordControls()
 }
 
 async function save() {
   if (saving.value) return
+  formErrors.value = {}
+  if (form.value.password !== form.value.password_confirmation) {
+    formErrors.value = { password_confirmation: ['The password confirmation does not match.'] }
+    return
+  }
   saving.value = true
   error.value = ''
   try {
@@ -73,9 +94,10 @@ async function save() {
       await apiClient.post(endpoint.value, payload)
     }
     notice.value = `${roleLabel.value} account ${form.value.id ? 'updated' : 'created'} successfully.`
-    form.value = null
+    closeForm()
     await load()
   } catch (err) {
+    formErrors.value = err.response?.data?.errors || {}
     error.value = safeError(err)
   } finally {
     saving.value = false
@@ -112,7 +134,7 @@ onMounted(load)
       <button type="button" class="account-primary" :disabled="loading" @click="openCreate">Add {{ roleLabel }}</button>
     </header>
 
-    <p v-if="error" class="account-alert error" role="alert">{{ error }} <button type="button" @click="load">Retry</button></p>
+    <p v-if="error && !form" class="account-alert error" role="alert">{{ error }} <button type="button" @click="load">Retry</button></p>
     <p v-if="notice" class="account-alert success" role="status">{{ notice }}</p>
 
     <form class="account-filter" @submit.prevent="applyFilters">
@@ -138,9 +160,10 @@ onMounted(load)
       <footer class="account-pagination"><button :disabled="loading || accounts.current_page <= 1" @click="go(accounts.current_page - 1)">Previous</button><span>Page {{ accounts.current_page }} of {{ accounts.last_page }}</span><button :disabled="loading || accounts.current_page >= accounts.last_page" @click="go(accounts.current_page + 1)">Next</button></footer>
     </div>
 
-    <div v-if="form" class="account-dialog-backdrop" @click.self="form=null">
+    <div v-if="form" class="account-dialog-backdrop" @click.self="closeForm">
       <section class="account-dialog" role="dialog" aria-modal="true" aria-labelledby="account-form-title">
-        <header><div><p class="account-kicker">{{ form.id ? 'Update identity' : 'New account' }}</p><h2 id="account-form-title">{{ form.id ? 'Edit' : 'Add' }} {{ roleLabel }}</h2></div><button type="button" aria-label="Close" @click="form=null">×</button></header>
+        <header><div><p class="account-kicker">{{ form.id ? 'Update identity' : 'New account' }}</p><h2 id="account-form-title">{{ form.id ? 'Edit' : 'Add' }} {{ roleLabel }}</h2></div><button type="button" aria-label="Close" @click="closeForm">×</button></header>
+        <p v-if="error" class="account-alert error account-dialog-error" role="alert">{{ error }}</p>
         <form @submit.prevent="save">
           <div class="account-form-grid">
             <label><span>Username</span><input v-model.trim="form.username" required maxlength="50" autocomplete="off"></label>
@@ -160,11 +183,25 @@ onMounted(load)
             <label v-if="!isAdmin"><span>Specialization</span><input v-model.trim="form.specialization" maxlength="255"></label>
             <label><span>Employment status</span><select v-model="form.employment_status" required><template v-if="isAdmin"><option value="regular">Regular</option><option value="contractual">Contractual</option><option value="part_time">Part time</option></template><template v-else><option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contractual">Contractual</option></template></select></label>
             <label v-if="!form.id"><span>Account status</span><select v-model="form.status" required><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
-            <label><span>{{ form.id ? 'New password (optional)' : 'Initial password' }}</span><input v-model="form.password" type="password" :required="!form.id" minlength="8" autocomplete="new-password"></label>
-            <label><span>Confirm password</span><input v-model="form.password_confirmation" type="password" :required="Boolean(form.password)" minlength="8" autocomplete="new-password"></label>
+            <label>
+              <span>{{ form.id ? 'New password (optional)' : 'Initial password' }}</span>
+              <span class="account-password-control">
+                <input id="account-initial-password" v-model="form.password" :type="showInitialPassword ? 'text' : 'password'" :required="!form.id" minlength="8" autocomplete="new-password" :aria-invalid="Boolean(formErrors.password)" :aria-describedby="formErrors.password ? 'account-initial-password-error' : undefined">
+                <button type="button" :aria-label="`${showInitialPassword ? 'Hide' : 'Show'} initial password`" :aria-pressed="showInitialPassword" @click="showInitialPassword = !showInitialPassword">{{ showInitialPassword ? 'Hide' : 'Show' }}</button>
+              </span>
+              <small v-if="formErrors.password" id="account-initial-password-error" class="account-field-error" role="alert">{{ formErrors.password[0] }}</small>
+            </label>
+            <label>
+              <span>Confirm password</span>
+              <span class="account-password-control">
+                <input id="account-confirm-password" v-model="form.password_confirmation" :type="showConfirmationPassword ? 'text' : 'password'" :required="Boolean(form.password)" minlength="8" autocomplete="new-password" :aria-invalid="Boolean(formErrors.password_confirmation)" :aria-describedby="formErrors.password_confirmation ? 'account-confirm-password-error' : undefined">
+                <button type="button" :aria-label="`${showConfirmationPassword ? 'Hide' : 'Show'} password confirmation`" :aria-pressed="showConfirmationPassword" @click="showConfirmationPassword = !showConfirmationPassword">{{ showConfirmationPassword ? 'Hide' : 'Show' }}</button>
+              </span>
+              <small v-if="formErrors.password_confirmation" id="account-confirm-password-error" class="account-field-error" role="alert">{{ formErrors.password_confirmation[0] }}</small>
+            </label>
           </div>
           <p class="account-form-note">The role is assigned by the server. The initial password must be shared through an approved private channel.</p>
-          <footer><button type="button" class="secondary" :disabled="saving" @click="form=null">Cancel</button><button type="submit" class="account-primary" :disabled="saving">{{ saving ? 'Saving…' : `Save ${roleLabel}` }}</button></footer>
+          <footer><button type="button" class="secondary" :disabled="saving" @click="closeForm">Cancel</button><button type="submit" class="account-primary" :disabled="saving">{{ saving ? 'Saving…' : `Save ${roleLabel}` }}</button></footer>
         </form>
       </section>
     </div>

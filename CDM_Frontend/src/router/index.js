@@ -3,7 +3,7 @@ import { admissionRoutes } from '../modules/admission/routes.js'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
 import { performanceMonitor } from '../services/performance/performanceMonitor'
-import { clientPlatform } from '../config/clientPlatform'
+import { clientPlatform, isRoleAllowedOnClient } from '../config/clientPlatform'
 
 const AuthLayout = () => import('../layouts/AuthLayout.vue')
 const DashboardLayout = () => import('../layouts/DashboardLayout.vue')
@@ -15,6 +15,7 @@ const GuestDashboardView = () => import('../views/GuestDashboardView.vue')
 const RoleDashboardView = () => import('../views/RoleDashboardView.vue')
 const StudentDashboardView = () => import('../modules/dashboard/StudentDashboardView.vue')
 const ProfessorDashboardView = () => import('../modules/dashboard/ProfessorDashboardView.vue')
+const AdminDashboardView = () => import('../modules/dashboard/AdminDashboardView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const EnrollmentAcademicView = () => import('../modules/enrollment/EnrollmentAcademicView.vue')
 const EnrollmentSubjectManagement = () => import('../modules/enrollment/EnrollmentSubjectManagement.vue')
@@ -37,7 +38,6 @@ const PhysicalRecordsView = () => import('../modules/student-management/Physical
 const StudentRecordReportsView = () => import('../modules/student-management/StudentRecordReportsView.vue')
 const EventAttendanceView = () => import('../modules/event-attendance/EventAttendanceView.vue')
 const EventPromotionView = () => import('../modules/event-attendance/EventPromotionView.vue')
-const EventReportsView = () => import('../modules/event-attendance/EventReportsView.vue')
 const RegistrarDashboardView = () => import('../modules/registrar-dashboard/RegistrarDashboardView.vue')
 const AccountProvisioningView = () => import('../modules/account-management/AccountProvisioningView.vue')
 
@@ -47,14 +47,15 @@ const protectedRoute = (route) => ({
 })
 
 const canAccessEventClient = (role) =>
-  clientPlatform === 'web' ||
-  (['Admin', 'Professor'].includes(role) && clientPlatform === 'desktop') ||
+  (['Guest', 'Student', 'Professor'].includes(role) && clientPlatform === 'web') ||
+  (role === 'Admin' && clientPlatform === 'desktop') ||
   (['Professor', 'Student'].includes(role) && clientPlatform === 'mobile')
 
-const landingForRole = (role) =>
-  role === ROLES.PROFESSOR && clientPlatform === 'mobile'
-    ? { name: 'event-attendance' }
-    : dashboardForRole(role)
+const canAccessEventReportsClient = (role) =>
+  (role === ROLES.ADMIN && clientPlatform === 'desktop') ||
+  (role === ROLES.PROFESSOR && clientPlatform === 'mobile')
+
+const landingForRole = (role) => dashboardForRole(role)
 
 const routes = [
   {
@@ -151,8 +152,7 @@ const routes = [
       protectedRoute({
         path: 'admin-dashboard',
         name: 'admin-dashboard',
-        component: RoleDashboardView,
-        props: { role: ROLES.ADMIN },
+        component: AdminDashboardView,
         meta: {
           title: 'Admin Dashboard',
           roles: ROUTE_ROLES['admin-dashboard'],
@@ -338,8 +338,8 @@ const routes = [
       protectedRoute({
         path: 'event-attendance/reports',
         name: 'event-attendance-reports',
-        component: EventReportsView,
-        meta: { title: 'Event Reports', roles: ['Admin', 'Professor'], eventModule: true, desktopEventOnly: true },
+        component: EventAttendanceView,
+        meta: { title: 'Event Reports', roles: ['Admin', 'Professor'], eventModule: true, eventReports: true },
       }),
       protectedRoute({
         path: 'unauthorized',
@@ -363,9 +363,11 @@ router.beforeEach(async (to) => {
     return landingForRole(authStore.currentRole)
   if (!to.matched.some((record) => record.meta.requiresAuth)) return true
   if (!authStore.isAuthenticated) return { name: 'login', query: { redirect: to.fullPath } }
+  if (!isRoleAllowedOnClient(authStore.currentRole)) {
+    authStore.clearAuth()
+    return { name: 'login', query: { platformDenied: '1' } }
+  }
   if (to.name === 'home') return landingForRole(authStore.currentRole)
-  if (authStore.currentRole === ROLES.PROFESSOR && clientPlatform === 'mobile' && !to.meta.eventModule)
-    return { name: 'event-attendance' }
   if (!canAccess(authStore.currentRole, to.meta.roles || ALL_ROLES)) return { name: 'unauthorized' }
   const admission = authStore.currentUser?.admission || {}
   if (authStore.currentRole === ROLES.GUEST && to.path.startsWith('/enrollment') && !admission.admitted_guest)
@@ -373,7 +375,7 @@ router.beforeEach(async (to) => {
   if ((admission.completed || authStore.currentRole === ROLES.STUDENT) && ['/admission/exam', '/admission/result', '/admission/recommendation'].includes(to.path))
     return { name: 'admission' }
   if (to.meta.eventModule && !canAccessEventClient(authStore.currentRole)) return { name: 'unauthorized' }
-  if (to.meta.desktopEventOnly && clientPlatform !== 'desktop') return { name: 'unauthorized' }
+  if (to.meta.eventReports && !canAccessEventReportsClient(authStore.currentRole)) return { name: 'unauthorized' }
   return true
 })
 

@@ -85,7 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
       setUser(data.data)
       return data.data
     } catch (error) {
-      if (error.response?.status === 401) clearAuth()
+      if ([401, 403].includes(error.response?.status)) clearAuth()
       throw error
     }
   }

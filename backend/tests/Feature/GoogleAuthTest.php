@@ -154,7 +154,7 @@ class GoogleAuthTest extends TestCase
     {
         foreach ([Role::ADMIN, Role::REGISTRAR_STAFF, Role::GUEST] as $role) {
             $user = $this->user($role, strtolower(str_replace(' ', '-', $role)).'@example.com');
-            $client = $role === Role::REGISTRAR_STAFF ? ClientPlatform::DESKTOP : ClientPlatform::WEB;
+            $client = in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true) ? ClientPlatform::DESKTOP : ClientPlatform::WEB;
             $this->postJson('/api/login', ['username' => $user->username, 'password' => 'Password123!'], ['X-CDM-Client' => $client])->assertOk();
         }
     }

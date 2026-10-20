@@ -24,6 +24,11 @@ test('student settings contains every editable settings surface and loading/erro
   assert.match(source, /Loading settings\.\.\./)
   assert.match(source, /Unable to load settings/)
   assert.match(source, /student\/settings\/avatar/)
+  assert.match(source, /image\/jpeg.*image\/png.*image\/webp/)
+  assert.match(source, /avatarMaxBytes = 2 \* 1024 \* 1024/)
+  assert.match(source, /createImageBitmap\(file\)/)
+  assert.match(source, /canvas\.toBlob/)
+  assert.match(source, /settings\/avatar'[^\n]*Content-Type': 'multipart\/form-data'/)
   assert.match(source, /change-password/)
 })
 

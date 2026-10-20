@@ -2,6 +2,7 @@
 
 use App\Models\Student;
 use App\Services\Demo\StudentDocumentDemoFixtureService;
+use App\Services\Event\EventNotificationService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -60,3 +61,12 @@ if (app()->environment('local')) {
 Schedule::command('admission:finalize-expired')->everyMinute()->withoutOverlapping();
 
 Schedule::command('grading:release-due')->everyMinute()->withoutOverlapping();
+
+Artisan::command('events:send-reminders', function (): int {
+    $sent = app(EventNotificationService::class)->upcomingReminders();
+    $this->info("Queued {$sent} Event reminder notifications.");
+
+    return Command::SUCCESS;
+})->purpose('Send deduplicated reminders for Events starting in about 24 hours');
+
+Schedule::command('events:send-reminders')->hourly()->withoutOverlapping();

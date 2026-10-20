@@ -50,14 +50,14 @@ class EnrollmentAcademicController extends Controller
     {
         $this->staff($r);
 
-        return $this->ok(['courses' => Course::where('status', 'active')->orderBy('course_name')->limit(300)->get(['id', 'course_name', 'years']), 'academic_years' => AcademicYear::where('status', 'active')->latest('id')->limit(50)->get(), 'semesters' => Semester::where('status', 'active')->get(), 'professors' => Professor::with('user.profile')->where('status', 'active')->whereHas('user', fn ($q) => $q->where('status', 'active')->whereHas('role', fn ($r) => $r->where('role_name', Role::PROFESSOR)))->orderBy('id')->paginate(100)]);
+        return $this->ok(['courses' => Course::where('status', 'active')->orderBy('course_name')->limit(300)->get(['id', 'course_name', 'years']), 'curriculums' => Curriculum::where('status', 'active')->orderByDesc('effective_year')->get(['id', 'course_id', 'curriculum_code', 'curriculum_name', 'effective_year']), 'academic_years' => AcademicYear::where('status', 'active')->latest('id')->limit(50)->get(), 'semesters' => Semester::where('status', 'active')->get(), 'professors' => Professor::with('user.profile')->where('status', 'active')->whereHas('user', fn ($q) => $q->where('status', 'active')->whereHas('role', fn ($r) => $r->where('role_name', Role::PROFESSOR)))->orderBy('id')->paginate(100)]);
     }
 
     public function sections(Request $r)
     {
         $this->staff($r);
         $in = $r->validate(['search' => 'nullable|string|max:100', 'course_id' => 'nullable|integer', 'academic_year_id' => 'nullable|integer', 'semester_id' => 'nullable|integer', 'status' => ['nullable', Rule::in(['open', 'closed'])]]);
-        $q = Section::with(['course', 'academicYear', 'semester']);
+        $q = Section::with(['course', 'curriculum', 'academicYear', 'semester']);
         foreach (['course_id', 'academic_year_id', 'semester_id', 'status'] as $key) {
             if (! empty($in[$key])) {
                 $q->where($key, $in[$key]);
@@ -72,8 +72,8 @@ class EnrollmentAcademicController extends Controller
     public function saveSection(Request $r, ?int $id = null)
     {
         $this->staff($r);
-        $in = $r->validate(['course_id' => 'required|integer|exists:courses,id', 'academic_year_id' => 'required|integer|exists:academic_years,id', 'semester_id' => 'required|integer|exists:semesters,id', 'section_name' => 'required|string|max:20', 'year_level' => 'required|integer|min:1|max:20', 'capacity' => 'required|integer|min:1|max:65535', 'adviser_id' => 'nullable|integer|exists:professors,id', 'status' => ['required', Rule::in(['open', 'closed'])], 'version' => $id ? 'required|integer|min:1' : 'sometimes|integer']);
-        foreach (['course_id', 'academic_year_id', 'semester_id', 'year_level', 'capacity', 'version', 'adviser_id'] as $key) {
+        $in = $r->validate(['course_id' => 'required|integer|exists:courses,id', 'curriculum_id' => 'nullable|integer|exists:curriculums,id', 'academic_year_id' => 'required|integer|exists:academic_years,id', 'semester_id' => 'required|integer|exists:semesters,id', 'section_name' => 'required|string|max:20', 'year_level' => 'required|integer|min:1|max:20', 'capacity' => 'required|integer|min:1|max:65535', 'adviser_id' => 'nullable|integer|exists:professors,id', 'status' => ['required', Rule::in(['open', 'closed'])], 'version' => $id ? 'required|integer|min:1' : 'sometimes|integer']);
+        foreach (['course_id', 'curriculum_id', 'academic_year_id', 'semester_id', 'year_level', 'capacity', 'version', 'adviser_id'] as $key) {
             if (isset($in[$key])) {
                 $in[$key] = (int) $in[$key];
             }
@@ -150,7 +150,7 @@ class EnrollmentAcademicController extends Controller
     {
         $this->staff($r);
         $in = $r->validate(['section_id' => 'required|integer|exists:sections,id', 'search' => 'nullable|string|max:100', 'day' => ['nullable', Rule::in(EnrollmentSchedulingService::DAYS)]]);
-        $section = Section::with(['course', 'academicYear', 'semester'])->findOrFail($in['section_id']);
+        $section = Section::with(['course', 'curriculum', 'academicYear', 'semester'])->findOrFail($in['section_id']);
         $q = SectionSubject::with(['subject', 'professor.user.profile'])->where('section_id', $section->id);
         if (! empty($in['day'])) {
             $q->where('day', $in['day']);
@@ -158,7 +158,13 @@ class EnrollmentAcademicController extends Controller
             $q->whereHas('subject', fn ($s) => $s->where('subject_name', 'like', '%'.$in['search'].'%')->orWhere('subject_code', 'like', '%'.$in['search'].'%'));
         }
 
-        return $this->ok(['section' => $section, 'schedules' => $q->orderBy('day')->orderBy('start_time')->paginate(100), 'subjects' => Subject::whereHas('curriculum', fn ($c) => $c->where('course_id', $section->course_id)->where('status', 'active')->where('effective_year', '<=', now()->year))->where('semester_id', $section->semester_id)->where('year_level', $section->year_level)->where('status', 'active')->orderBy('subject_code')->limit(500)->get(), 'days' => EnrollmentSchedulingService::DAYS]);
+        $curricula = Curriculum::where('course_id', $section->course_id)->where('status', 'active')
+            ->when($section->curriculum_id, fn ($query) => $query->whereKey($section->curriculum_id))
+            ->orderBy('id')->limit(2)->get();
+        $curriculum = $curricula->count() === 1 ? $curricula->first() : null;
+        $configurationIssue = $curriculum ? null : 'This Section has no unambiguous active curriculum. Edit the Section and choose its curriculum.';
+
+        return $this->ok(['section' => $section, 'curriculum' => $curriculum, 'configuration_issue' => $configurationIssue, 'schedules' => $q->orderBy('day')->orderBy('start_time')->paginate(100), 'subjects' => $curriculum ? Subject::where('curriculum_id', $curriculum->id)->where('semester_id', $section->semester_id)->where('year_level', $section->year_level)->where('status', 'active')->orderBy('subject_code')->limit(500)->get() : [], 'days' => EnrollmentSchedulingService::DAYS]);
     }
 
     public function saveSchedule(Request $r, ?int $id = null)

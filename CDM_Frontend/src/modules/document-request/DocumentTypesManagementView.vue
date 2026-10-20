@@ -18,7 +18,10 @@ const error = ref('')
 const form = reactive({
   document_name: '',
   description: '',
+  workflow_category: 'official_issuance',
   requires_appointment: false,
+  student_requestable: true,
+  student_uploadable: false,
   processing_fee: 0,
   processing_days: 1,
 })
@@ -39,7 +42,10 @@ function clearForm() {
   Object.assign(form, {
     document_name: '',
     description: '',
+    workflow_category: 'official_issuance',
     requires_appointment: false,
+    student_requestable: true,
+    student_uploadable: false,
     processing_fee: 0,
     processing_days: 1,
   })
@@ -55,7 +61,10 @@ function edit(type) {
   Object.assign(form, {
     document_name: type.document_name,
     description: type.description || '',
+    workflow_category: type.workflow_category,
     requires_appointment: Boolean(type.requires_appointment),
+    student_requestable: Boolean(type.student_requestable),
+    student_uploadable: Boolean(type.student_uploadable),
     processing_fee: type.processing_fee,
     processing_days: type.processing_days,
   })
@@ -88,6 +97,7 @@ async function save() {
   try {
     const payload = {
       ...form,
+      student_uploadable: form.workflow_category === 'supporting_record' && form.student_uploadable,
       processing_fee: Number(form.processing_fee),
       processing_days: Number(form.processing_days),
     }
@@ -159,11 +169,12 @@ onMounted(refresh)
     />
     <div v-else class="dr-table-scroll">
       <table class="dr-table document-types-records-table">
-        <thead><tr><th scope="col">Document Type</th><th scope="col">Description</th><th scope="col">Requirements</th><th scope="col">Processing Time</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+        <thead><tr><th scope="col">Document Type</th><th scope="col">Description</th><th scope="col">Workflow</th><th scope="col">Requirements</th><th scope="col">Processing Time</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
         <tbody>
           <tr v-for="type in filteredTypes" :key="type.id">
             <td><strong>{{ type.document_name }}</strong><small>₱{{ Number(type.processing_fee || 0).toFixed(2) }} fee</small></td>
             <td>{{ type.description || 'No description provided.' }}</td>
+            <td><strong>{{ type.workflow_category === 'supporting_record' ? 'Supporting record' : 'Official issuance' }}</strong><small>{{ type.student_requestable ? 'Student request enabled' : 'Not requestable' }} · {{ type.student_uploadable ? 'Student upload enabled' : 'No student upload' }}</small></td>
             <td>{{ type.requires_appointment ? 'Appointment required' : 'No appointment required' }}</td>
             <td>{{ type.processing_days }} business day{{ Number(type.processing_days) === 1 ? '' : 's' }}</td>
             <td><span class="dr-type-status" :class="type.status">{{ type.status === 'active' ? 'Active' : 'Inactive' }}</span></td>
@@ -199,9 +210,18 @@ onMounted(refresh)
       <div class="dr-dialog-body document-type-form">
         <label class="wide">Document name<input v-model="form.document_name" required maxlength="150" /></label>
         <label class="wide">Description / instructions<textarea v-model="form.description" rows="3" maxlength="3000"></textarea></label>
+        <label class="wide">Workflow
+          <select v-model="form.workflow_category" @change="form.student_uploadable = false">
+            <option value="official_issuance">Registrar-issued official document</option>
+            <option value="supporting_record">Student-submitted supporting record</option>
+          </select>
+        </label>
         <label>Processing fee<input v-model="form.processing_fee" type="number" min="0" step="0.01" required /></label>
         <label>Processing days<input v-model="form.processing_days" type="number" min="1" max="255" required /></label>
         <label class="checkbox wide"><input v-model="form.requires_appointment" type="checkbox" /> Appointment required</label>
+        <label class="checkbox wide"><input v-model="form.student_requestable" type="checkbox" /> Students may request this document from the Registrar</label>
+        <label v-if="form.workflow_category === 'supporting_record'" class="checkbox wide"><input v-model="form.student_uploadable" type="checkbox" /> Students may upload this supporting record</label>
+        <p v-else class="wide document-type-policy-note">Official documents cannot be uploaded or issued by Students.</p>
       </div>
       <footer class="dr-dialog-footer">
         <button type="button" class="dr-button dr-button--secondary" :disabled="saving" @click="closeModal">Cancel</button>

@@ -21,9 +21,14 @@ test('main sidebar follows Settings identity changes, retries, and restored Stud
   } } })
   globalThis.__studentSidebarApi = {
     get: async () => { settingsRequests += 1; return settings() },
-    post: async (url, payload) => {
+    post: async (url, payload, config) => {
       assert.equal(url, '/student/settings/avatar')
-      avatarPath = `/storage/student-avatars/${payload.get('avatar').name}`
+      assert.ok(payload instanceof FormData)
+      assert.equal(config?.headers?.['Content-Type'], 'multipart/form-data')
+      const avatar = payload.get('avatar')
+      assert.ok(avatar instanceof File)
+      assert.ok(avatar.size > 0)
+      avatarPath = `/storage/student-avatars/${avatar.name}`
       return settings()
     },
     delete: async (url) => {

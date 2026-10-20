@@ -183,7 +183,7 @@ class GradingPhaseThreeTest extends TestCase
         $this->get('/api/grading/staff/students/'.$this->f['student']->id.'/export')->assertOk()->assertDownload();
         $admin = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id]);
         Sanctum::actingAs($admin);
-        $this->withHeader('X-CDM-Client', 'web')->get('/api/grading/staff/sheets/'.$this->sheet->id.'/export')->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->get('/api/grading/staff/sheets/'.$this->sheet->id.'/export')->assertOk();
         $this->assertDatabaseHas('grade_audit_events', ['action' => 'grade_report.exported']);
     }
 

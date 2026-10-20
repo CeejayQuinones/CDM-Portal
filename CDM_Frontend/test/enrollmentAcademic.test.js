@@ -29,6 +29,8 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
         builder.onLoad({filter:/.*/,namespace:'memory'},()=>({contents:"export * from 'vue-router'; import {createMemoryHistory} from 'vue-router'; export const createWebHashHistory = () => createMemoryHistory('/');",resolveDir:frontend}))
         builder.onResolve({filter:/stores\/authStore$/},()=>({path:'auth',namespace:'auth'}))
         builder.onLoad({filter:/.*/,namespace:'auth'},()=>({contents:"import {reactive} from 'vue'; export const auth=reactive({currentRole:'Student',currentUser:{id:1},isAuthenticated:true,async initialize(){}}); export const useAuthStore=()=>auth;",resolveDir:frontend}))
+        builder.onResolve({filter:/config\/clientPlatform$/},()=>({path:'client-platform',namespace:'platform'}))
+        builder.onLoad({filter:/.*/,namespace:'platform'},()=>({contents:"export const clientPlatform='web'; export const isRoleAllowedOnClient=()=>true;"}))
         builder.onResolve({filter:/services\/performance\/performanceMonitor$/},()=>({path:'performance',namespace:'performance'}))
         builder.onLoad({filter:/.*/,namespace:'performance'},()=>({contents:"export const performanceMonitor={beginRoute(){},markRouteRendered(){}};"}))
         builder.onResolve({filter:/services\/apiClient$/},()=>({path:'api',namespace:'api'}))
@@ -165,7 +167,7 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
         return result
       }
       const {root,app}=mount()
-      try{await settle();const selector=all(root,'select').find(n=>n.props.onChange);await model(selector,1);await selector.props.onChange();await settle();assert.match(textOf(root),/No subjects are configured for this curriculum/);assert.match(textOf(root),/Open Subject Management/)}finally{app.unmount();apiState.handler=handler}
+      try{await settle();const selector=all(root,'select').find(n=>n.props.onChange);await model(selector,1);await selector.props.onChange();await settle();assert.match(textOf(root),/No active subjects are configured for/);assert.match(textOf(root),/Open Subject Management/)}finally{app.unmount();apiState.handler=handler}
     })
     await t.test('Student sees real schedule and printable COR; Professor sees assigned roster',async()=>{
       auth.currentRole=ROLES.STUDENT;apiState.handler=handler;await router.push('/enrollment/schedule');const mounted=mount()

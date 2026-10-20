@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "mobile:dev": "vite --mode mobile",
     "mobile:build": "vite build --mode mobile",
+    "mobile:development:build": "vite build --mode mobile-development",
     "mobile:sync": "npm run mobile:build && npx cap sync",
     "mobile:add:android": "npx cap add android",
     "mobile:open:android": "npx cap open android",
@@ -25,7 +26,10 @@
     "desktop:build": "vite build --mode desktop && electron-builder"
   },
   "dependencies": {
+    "@capacitor/app": "^7.1.2",
     "@capacitor/core": "^7.4.4",
+    "@capacitor/filesystem": "^7.1.9",
+    "@capacitor/share": "^7.0.4",
     "axios": "^1.18.1",
     "html5-qrcode": "^2.3.8",
     "pinia": "^3.0.3",

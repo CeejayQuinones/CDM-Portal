@@ -13,7 +13,7 @@
 .enrollment-workspace :focus-visible { outline:3px solid var(--color-naples-yellow,#d7b32c); outline-offset:3px; }
 .enrollment-workspace .en-actions { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:16px; }
 .enrollment-workspace .en-secondary { background:transparent; color:inherit; }
-.enrollment-workspace .en-badge { display:inline-block; background:var(--bg-hover,#e7f2e9); color:var(--accent,#185a35); border:1px solid var(--border-color,transparent); border-radius:20px; padding:5px 12px; font-size:.85rem; font-weight:600; }
+.enrollment-workspace .en-badge { display:inline-block; width:max-content; max-width:100%; background:var(--bg-hover,#e7f2e9); color:var(--accent,#185a35); border:1px solid var(--border-color,transparent); border-radius:20px; padding:5px 12px; font-size:.85rem; font-weight:600; overflow-wrap:normal; word-break:keep-all; white-space:nowrap; }
 .enrollment-workspace .en-badge[data-status=rejected],.enrollment-workspace [role=alert] { color:var(--danger,#9b2525); }
 .enrollment-workspace .en-badge[data-status=under_review],.enrollment-workspace .en-badge[data-status=upcoming] { background:var(--student-note,#fff2c1); color:var(--color-naples-yellow,#66500b); }
 .enrollment-workspace .en-badge[data-status=inactive] { background:var(--surface-2,#eef1ef); color:var(--text-secondary,#526159); }
@@ -26,9 +26,19 @@
 .enrollment-workspace dt { color:var(--color-muted,#5f6c64); font-size:.85rem; }
 .enrollment-workspace dd { margin:6px 0 16px; font-weight:600; }
 .enrollment-workspace .en-table { overflow-x:auto; }
-.enrollment-workspace table { width:100%; border-collapse:collapse; background:var(--surface-1,var(--bg-surface)); color:var(--text-primary); text-align:left; }
-.enrollment-workspace th,.enrollment-workspace td { padding:12px; border-bottom:1px solid var(--color-border,#dce5df); }
+.enrollment-workspace table { width:100%; min-width:720px; border-collapse:collapse; background:var(--surface-1,var(--bg-surface)); color:var(--text-primary); text-align:left; }
+.enrollment-workspace th,.enrollment-workspace td { padding:12px; border-bottom:1px solid var(--color-border,#dce5df); overflow-wrap:normal; word-break:normal; }
 .enrollment-workspace th { color:var(--text-secondary); background:var(--surface-2,var(--bg-surface-alt)); }
+.enrollment-workspace .en-sections-table th:nth-child(4),.enrollment-workspace .en-sections-table td:nth-child(4) { min-width:7rem; white-space:nowrap; }
+.enrollment-workspace .en-sections-table th:last-child,.enrollment-workspace .en-sections-table td:last-child { min-width:8rem; white-space:nowrap; }
+.enrollment-workspace .subject-management-table { min-width:1080px; }
+.enrollment-workspace .subject-management-table th:nth-child(1),.enrollment-workspace .subject-management-table td:nth-child(1) { min-width:7rem; white-space:nowrap; }
+.enrollment-workspace .subject-management-table th:nth-child(2),.enrollment-workspace .subject-management-table td:nth-child(2) { min-width:14rem; }
+.enrollment-workspace .subject-management-table th:nth-child(3),.enrollment-workspace .subject-management-table td:nth-child(3) { min-width:5rem; white-space:nowrap; }
+.enrollment-workspace .subject-management-table th:nth-child(6),.enrollment-workspace .subject-management-table td:nth-child(6) { min-width:7rem; white-space:nowrap; }
+.enrollment-workspace .subject-management-table th:last-child,.enrollment-workspace .subject-management-table td:last-child { min-width:25rem; }
+.enrollment-workspace .subject-management-table td > .en-actions { flex-wrap:nowrap; margin-top:0; min-width:max-content; }
+.enrollment-workspace .subject-management-table .en-actions button { flex:0 0 auto; white-space:nowrap; }
 .enrollment-workspace tbody tr:hover { background:var(--bg-hover); }
 .enrollment-workspace .en-overlay { position:fixed; inset:0; z-index:1500; background:#001b1599; display:flex; align-items:center; justify-content:center; padding:16px; }
 .enrollment-workspace [role=dialog] { background:var(--color-surface,#fff); color:var(--text-primary); border:1px solid var(--border-color); border-radius:16px; padding:24px; width:min(520px,100%); max-height:85vh; overflow:auto; }

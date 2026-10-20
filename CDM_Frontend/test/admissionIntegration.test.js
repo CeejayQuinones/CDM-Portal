@@ -52,6 +52,10 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
             contents: `import { reactive } from 'vue'; export const auth = reactive({ currentRole: 'Student', currentUser: { id: 1 }, isAuthenticated: true, async initialize() {} });
               export const useAuthStore = () => auth;`, resolveDir: frontend,
           }))
+          builder.onResolve({ filter: /config\/clientPlatform$/ }, () => ({ path: 'client-platform', namespace: 'test-platform' }))
+          builder.onLoad({ filter: /.*/, namespace: 'test-platform' }, () => ({
+            contents: `export const clientPlatform = 'web'; export const isRoleAllowedOnClient = () => true;`,
+          }))
           builder.onResolve({ filter: /services\/performance\/performanceMonitor$/ }, () => ({ path: 'performance', namespace: 'test-performance' }))
           builder.onLoad({ filter: /.*/, namespace: 'test-performance' }, () => ({
             contents: 'export const performanceMonitor = { beginRoute() {}, markRouteRendered() {} };',

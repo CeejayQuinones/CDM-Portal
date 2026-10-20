@@ -3,8 +3,8 @@ import { NAVIGATION_ITEMS, canAccess } from '../config/accessControl'
 import { clientPlatform } from '../config/clientPlatform'
 
 const canAccessEventClient = (role) =>
-  clientPlatform === 'web' ||
-  (['Admin', 'Professor'].includes(role) && clientPlatform === 'desktop') ||
+  (['Guest', 'Student', 'Professor'].includes(role) && clientPlatform === 'web') ||
+  (role === 'Admin' && clientPlatform === 'desktop') ||
   (['Professor', 'Student'].includes(role) && clientPlatform === 'mobile')
 
 export const useNavigationStore = defineStore('navigation', {
@@ -16,14 +16,13 @@ export const useNavigationStore = defineStore('navigation', {
           canAccess(role, item.roles) &&
           !(item.name === 'admission-menu' && (role === 'Student' || (role === 'Guest' && admission.completed))) &&
           !(item.name === 'enrollment' && role === 'Guest' && !admission.admitted_guest) &&
-          (item.name !== 'event-attendance' || canAccessEventClient(role)) &&
-          !(role === 'Professor' && clientPlatform === 'mobile' && item.name !== 'event-attendance'),
+          (item.name !== 'event-attendance' || canAccessEventClient(role)),
         )
         .map((item) =>
           item.children
             ? {
                 ...item,
-                children: item.children.filter((child) => canAccess(role, child.roles) && (!child.desktopOnly || clientPlatform === 'desktop')),
+                children: item.children.filter((child) => canAccess(role, child.roles) && (!child.desktopOnly || clientPlatform === 'desktop') && (!child.eventOperational || clientPlatform !== 'web')),
               }
             : item,
         )

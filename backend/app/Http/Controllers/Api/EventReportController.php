@@ -11,7 +11,7 @@ use App\Services\Event\EventReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class EventReportController extends Controller
 {
@@ -42,14 +42,18 @@ class EventReportController extends Controller
         return response()->json(['success' => true, 'data' => $data])->header('Cache-Control', 'private, no-store');
     }
 
-    public function export(Request $request, Event $event): StreamedResponse
+    public function export(Request $request, Event $event): Response
     {
         $actor = $this->staff($request);
         abort_unless($this->authorization->isCoordinator($actor, $event), 403, 'Only an Event Coordinator may export Event reports.');
         $actor->loadMissing('profile');
-        $validated = $this->filters($request) + $request->validate(['format' => ['required', Rule::in(['csv'])]]);
+        $validated = $this->filters($request) + $request->validate(['format' => ['required', Rule::in(['csv', 'xlsx', 'pdf'])]]);
 
-        return $this->reports->csv($event, $validated, $actor);
+        return match ($validated['format']) {
+            'xlsx' => $this->reports->xlsx($event, $validated, $actor),
+            'pdf' => $this->reports->pdf($event, $validated, $actor),
+            default => $this->reports->csv($event, $validated, $actor),
+        };
     }
 
     private function filters(Request $request): array

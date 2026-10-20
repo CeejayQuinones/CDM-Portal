@@ -12,7 +12,10 @@ class RegistrarDocumentTypeController extends Controller
 {
     public function index(): JsonResponse
     {
-        return $this->ok(DocumentType::query()->orderBy('document_name')->get(['id', 'document_name', 'description', 'processing_fee', 'processing_days', 'requires_appointment', 'status', 'created_at', 'updated_at']), 'Document types retrieved successfully.');
+        return $this->ok(DocumentType::query()->orderBy('document_name')->get([
+            'id', 'document_name', 'description', 'workflow_category', 'processing_fee', 'processing_days',
+            'requires_appointment', 'student_requestable', 'student_uploadable', 'status', 'created_at', 'updated_at',
+        ]), 'Document types retrieved successfully.');
     }
 
     public function store(StoreDocumentTypeRequest $request): JsonResponse
@@ -29,7 +32,11 @@ class RegistrarDocumentTypeController extends Controller
 
     public function update(UpdateDocumentTypeRequest $request, DocumentType $documentType): JsonResponse
     {
-        $documentType->update($request->validated());
+        $attributes = $request->validated();
+        if (($attributes['workflow_category'] ?? null) === 'official_issuance') {
+            $attributes['student_uploadable'] = false;
+        }
+        $documentType->update($attributes);
 
         return $this->ok($documentType->fresh(), 'Document type updated successfully.');
     }

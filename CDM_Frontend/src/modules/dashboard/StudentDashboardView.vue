@@ -5,6 +5,7 @@ import { clientPlatform } from '../../config/clientPlatform'
 import { apiAssetUrl } from '../../services/apiClient'
 import { eventErrorMessage, eventService } from '../event-attendance/eventService'
 import { getStudentDashboard } from './dashboardService'
+import { formatDashboardStatus } from './dashboardPresentation'
 import { carouselCardState, horizontalSwipeDirection, moveCarouselIndex } from './eventCarousel'
 import cdmLogo from '../../assets/styles/images/cdm_logo.png'
 import './guideDashboard.css'
@@ -20,7 +21,7 @@ const pointerStart = ref(null)
 const activeEvent = computed(() => events.value[activeEventIndex.value] || null)
 
 const cards = computed(() => [
-  { label: 'Enrollment', value: dashboard.value.summary.enrollment_status || 'Not finalized' },
+  { label: 'Enrollment', value: formatDashboardStatus(dashboard.value.summary.enrollment_status) },
   { label: 'Academic term', value: dashboard.value.summary.academic_term || 'No current term' },
   { label: 'Enrolled subjects', value: dashboard.value.summary.enrolled_subjects ?? 0 },
   { label: 'Unread notices', value: dashboard.value.summary.unread_monitoring_notices ?? 0 },

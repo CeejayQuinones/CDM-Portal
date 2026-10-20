@@ -18,7 +18,7 @@ class EnsureMonitoringAccess
         abort_unless(in_array($role, [Role::STUDENT, Role::PROFESSOR, Role::REGISTRAR_STAFF, Role::ADMIN], true), 403);
         $client = $request->header(ClientPlatform::HEADER);
         if ($role === Role::PROFESSOR && filled($client)) {
-            abort_unless($client === ClientPlatform::WEB, 403, 'Professor Monitoring is available through the Web client.');
+            abort_unless(in_array($client, [ClientPlatform::WEB, ClientPlatform::MOBILE], true), 403, 'Professor Monitoring is available through the Website or Android application.');
         }
 
         return $next($request);

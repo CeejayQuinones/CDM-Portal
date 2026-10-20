@@ -27,6 +27,7 @@ class EventAuthorizationService
         }
 
         return $this->semiCoordinatorUsers[$user->id] = $user->status === 'active' && EventRoleAssignment::query()
+            ->granting()
             ->where('user_id', $user->id)
             ->where('responsibility', EventRoleAssignment::SEMI_COORDINATOR)
             ->exists();
@@ -79,23 +80,45 @@ class EventAuthorizationService
             return false;
         }
 
-        return $this->effectiveAssignment($event, $user) !== null;
+        return in_array($this->effectiveAssignment($event, $user)?->canonicalResponsibility(), [
+            EventRoleAssignment::SEMI_COORDINATOR,
+            EventRoleAssignment::REGISTERED_MODERATOR,
+            EventRoleAssignment::EVENT_STAFF,
+        ], true);
     }
 
     public function canUseRegisteredModeratorScanner(Event $event, User $user): bool
     {
-        return in_array($this->effectiveAssignment($event, $user)?->responsibility, [
+        if ($event->status !== 'published'
+            || ! now()->lt($event->ends_at)
+            || ! $event->supportsAttendanceMethod('participant_static')
+            || ! $this->canOperateAttendance($event, $user)) {
+            return false;
+        }
+
+        if ($this->isCoordinator($user, $event)) {
+            return true;
+        }
+
+        return in_array($this->effectiveAssignment($event, $user)?->canonicalResponsibility(), [
             EventRoleAssignment::REGISTERED_MODERATOR,
-            EventRoleAssignment::MODERATOR,
         ], true);
     }
 
-    public function canUseRequestedModeratorScanner(Event $event, User $user): bool
+    public function canUseDynamicParticipantScanner(Event $event, User $user): bool
     {
-        return in_array($this->effectiveAssignment($event, $user)?->responsibility, [
-            EventRoleAssignment::REQUESTED_MODERATOR,
-            EventRoleAssignment::CLASS_MAYOR,
-        ], true);
+        if ($event->status !== 'published'
+            || ! now()->lt($event->ends_at)
+            || ! $event->supportsAttendanceMethod('participant_dynamic')
+            || ! $this->canOperateAttendance($event, $user)) {
+            return false;
+        }
+
+        if ($this->isCoordinator($user, $event) || $this->isSemiCoordinator($event, $user)) {
+            return true;
+        }
+
+        return $this->effectiveAssignment($event, $user)?->canonicalResponsibility() === EventRoleAssignment::EVENT_STAFF;
     }
 
     public function canEditEvent(Event $event, User $user): bool
@@ -123,13 +146,35 @@ class EventAuthorizationService
         return $this->canEditEvent($event, $user);
     }
 
+    public function canRequestModerator(Event $event, User $user): bool
+    {
+        $user->loadMissing('role');
+
+        if ($user->status !== 'active'
+            || ! in_array($user->role?->role_name, [Role::STUDENT, Role::PROFESSOR], true)
+            || $event->status !== 'published'
+            || ! now()->lt($event->ends_at)
+            || $this->effectiveAssignment($event, $user) !== null) {
+            return false;
+        }
+
+        if ($event->relationLoaded('moderatorRequests')) {
+            return ! $event->moderatorRequests->contains(fn ($request) => $request->requester_user_id === $user->id && $request->status === 'pending');
+        }
+
+        return ! $event->moderatorRequests()
+            ->where('requester_user_id', $user->id)
+            ->where('status', 'pending')
+            ->exists();
+    }
+
     /** @return array<string, mixed> */
     public function capabilities(Event $event, User $user): array
     {
         $coordinator = $this->isCoordinator($user, $event);
         $assignment = $coordinator ? null : $this->effectiveAssignment($event, $user);
         $semiCoordinator = $assignment?->responsibility === EventRoleAssignment::SEMI_COORDINATOR;
-        $operational = $coordinator || ($assignment !== null && $event->status === 'published' && now()->lt($event->ends_at));
+        $operational = $this->canOperateAttendance($event, $user);
 
         return [
             'portal_role' => $user->role?->role_name,
@@ -143,11 +188,14 @@ class EventAuthorizationService
             'can_manage_sub_events' => $coordinator || $semiCoordinator,
             'can_manage_personnel' => $coordinator,
             'can_view_personnel' => $coordinator || $semiCoordinator,
+            'can_manage_people' => $coordinator || $semiCoordinator,
             'can_manage_attendance_session' => $coordinator || $semiCoordinator,
             'can_operate_attendance' => $operational,
+            'can_scan_attendance' => $operational,
             'can_verify_attendance' => $operational,
             'can_scan_static_participant_qr' => $this->canUseRegisteredModeratorScanner($event, $user),
-            'can_scan_dynamic_participant_qr' => $this->canUseRequestedModeratorScanner($event, $user),
+            'can_scan_dynamic_participant_qr' => $this->canUseDynamicParticipantScanner($event, $user),
+            'can_request_moderator' => $this->canRequestModerator($event, $user),
             'can_correct_attendance' => $coordinator,
             'can_view_reports' => $coordinator || $semiCoordinator,
             'can_export_reports' => $coordinator,

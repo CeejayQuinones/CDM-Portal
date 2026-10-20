@@ -4,11 +4,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export const clientPlatformForMode = (mode) => {
   if (mode === 'desktop' || mode === 'desktop-development') return 'desktop'
-  if (mode === 'mobile' || mode === 'demo-mobile') return 'mobile'
+  if (mode === 'mobile' || mode === 'mobile-development' || mode === 'demo-mobile') return 'mobile'
   return 'web'
 }
 
-const developmentBuildModes = new Set(['demo', 'demo-mobile', 'desktop-development'])
+const developmentBuildModes = new Set(['demo', 'demo-mobile', 'desktop-development', 'mobile-development'])
 
 const isDevelopmentHostname = (hostname) => {
   const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '')

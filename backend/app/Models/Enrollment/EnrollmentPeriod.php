@@ -33,4 +33,24 @@ class EnrollmentPeriod extends Model
     {
         return $this->belongsTo(Semester::class);
     }
+
+    public function documentConfiguration(string $classification): array
+    {
+        $configuration = $this->document_requirements[$classification] ?? [];
+        if (array_is_list($configuration)) {
+            return ['required' => array_values($configuration), 'optional' => []];
+        }
+
+        return [
+            'required' => array_values($configuration['required'] ?? []),
+            'optional' => array_values($configuration['optional'] ?? []),
+        ];
+    }
+
+    public function documentTypeIds(string $classification): array
+    {
+        $configuration = $this->documentConfiguration($classification);
+
+        return array_values(array_unique([...$configuration['required'], ...$configuration['optional']]));
+    }
 }

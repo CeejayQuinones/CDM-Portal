@@ -9,13 +9,13 @@ class EventAttendance extends Model
 {
     public const STATUSES = ['present', 'late', 'excused', 'absent'];
 
-    protected $fillable = ['event_id', 'attendance_session_id', 'student_id', 'course_id_at_attendance', 'year_level_at_attendance', 'section_id_at_attendance', 'status', 'checked_in_at', 'checked_out_at', 'source', 'recorded_by', 'remarks', 'version'];
+    protected $fillable = ['event_id', 'attendance_session_id', 'student_id', 'course_id_at_attendance', 'year_level_at_attendance', 'section_id_at_attendance', 'status', 'checked_in_at', 'checked_out_at', 'participation_minutes', 'completion_status', 'check_in_method', 'check_out_method', 'source', 'recorded_by', 'remarks', 'version'];
 
     protected $attributes = ['version' => 1];
 
     protected function casts(): array
     {
-        return ['checked_in_at' => 'datetime', 'checked_out_at' => 'datetime', 'year_level_at_attendance' => 'integer', 'version' => 'integer'];
+        return ['checked_in_at' => 'datetime', 'checked_out_at' => 'datetime', 'participation_minutes' => 'integer', 'year_level_at_attendance' => 'integer', 'version' => 'integer'];
     }
 
     public function event(): BelongsTo

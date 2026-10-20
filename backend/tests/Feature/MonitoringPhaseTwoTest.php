@@ -204,7 +204,7 @@ class MonitoringPhaseTwoTest extends TestCase
 
         $admin = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id, 'status' => 'active']);
         Sanctum::actingAs($admin);
-        $this->withHeader('X-CDM-Client', 'web')
+        $this->withHeader('X-CDM-Client', 'desktop')
             ->postJson('/api/monitoring/students/'.$this->students['stable']->id.'/risk-notifications')
             ->assertCreated();
         $this->withHeader('X-CDM-Client', 'mobile')

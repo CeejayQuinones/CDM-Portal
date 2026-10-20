@@ -31,8 +31,10 @@ class EventRoleTestingSeederTest extends TestCase
         $this->seed(EventRoleTestingSeeder::class);
         $this->seed(EventRoleTestingSeeder::class);
 
-        $this->assertDatabaseCount('events', 1);
-        $this->assertDatabaseCount('event_role_assignments', 4);
+        $this->assertDatabaseCount('events', 2);
+        $this->assertDatabaseCount('event_role_assignments', 3);
+        $this->assertDatabaseCount('event_moderator_requests', 1);
+        $this->assertDatabaseCount('event_attendances', 2);
         $this->assertSame(7, DB::table('users')->count());
         $this->assertSame(2, DB::table('students')->count());
         $this->assertSame(4, DB::table('professors')->count());
@@ -61,7 +63,8 @@ class EventRoleTestingSeederTest extends TestCase
         $assignedUsernames = DB::table('event_role_assignments')
             ->join('users', 'users.id', '=', 'event_role_assignments.user_id')
             ->orderBy('users.username')->pluck('users.username')->all();
-        $this->assertSame(['event_registered_moderator', 'event_requested_moderator', 'event_semicoordinator', 'event_staff'], $assignedUsernames);
+        $this->assertSame(['event_registered_moderator', 'event_semicoordinator', 'event_staff'], $assignedUsernames);
+        $this->assertDatabaseHas('event_moderator_requests', ['status' => 'pending']);
         $this->assertDatabaseHas('students', ['student_number' => 'EVT-26-001']);
         $this->assertDatabaseHas('students', ['student_number' => 'EVT-26-002']);
         $this->assertDatabaseHas('professors', ['employee_number' => 'EVT-FAC-001']);

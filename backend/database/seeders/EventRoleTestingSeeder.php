@@ -5,7 +5,10 @@ namespace Database\Seeders;
 use App\Models\Course;
 use App\Models\Curriculum;
 use App\Models\Event;
+use App\Models\EventAttendance;
+use App\Models\EventAttendanceSession;
 use App\Models\EventAudience;
+use App\Models\EventModeratorRequest;
 use App\Models\EventRoleAssignment;
 use App\Models\Role;
 use App\Models\User;
@@ -54,8 +57,8 @@ class EventRoleTestingSeeder extends Seeder
         if (app()->environment('production')) {
             throw new LogicException('EventRoleTestingSeeder is disabled in production.');
         }
-        if (! Schema::hasTable('event_role_assignments')) {
-            throw new LogicException('Run the Event role assignment migration before this local development seeder.');
+        if (! Schema::hasTable('event_role_assignments') || ! Schema::hasTable('event_moderator_requests')) {
+            throw new LogicException('Run the Event role and moderator request migrations before this local development seeder.');
         }
 
         DB::transaction(function (): void {
@@ -91,17 +94,69 @@ class EventRoleTestingSeeder extends Seeder
                 ['course_id' => null, 'year_level' => null, 'section_id' => null],
             );
 
-            $assignedUserIds = $accounts->only(['semi_coordinator', 'registered_moderator', 'staff', 'requested_moderator'])->pluck('id');
-            EventRoleAssignment::query()->where('event_id', $event->id)->whereNotIn('user_id', $assignedUserIds)->delete();
+            EventModeratorRequest::query()->where('event_id', $event->id)->where('requester_user_id', $accounts['requested_moderator']->id)->delete();
+            EventRoleAssignment::query()->where('event_id', $event->id)->where('user_id', $accounts['requested_moderator']->id)->delete();
 
             $personnel = app(EventPersonnelService::class);
             $personnel->assign($event, $accounts['semi_coordinator'], EventRoleAssignment::SEMI_COORDINATOR, $accounts['coordinator']);
             $personnel->assign($event, $accounts['registered_moderator'], EventRoleAssignment::REGISTERED_MODERATOR, $accounts['coordinator']);
             $personnel->assign($event, $accounts['staff'], EventRoleAssignment::EVENT_STAFF, $accounts['coordinator']);
-            $personnel->assign($event, $accounts['requested_moderator'], EventRoleAssignment::REQUESTED_MODERATOR, $accounts['coordinator']);
+            EventModeratorRequest::query()->create([
+                'event_id' => $event->id, 'requester_user_id' => $accounts['requested_moderator']->id, 'status' => 'pending',
+                'active_request_key' => EventModeratorRequest::activeKey($event->id, $accounts['requested_moderator']->id), 'requested_at' => now(),
+            ]);
+
+            EventAttendanceSession::query()->updateOrCreate(
+                ['event_id' => $event->id],
+                ['opened_by' => $accounts['coordinator']->id, 'opened_at' => now()->subHour(), 'closed_at' => null, 'status' => 'open', 'qr_token_fingerprint' => null, 'qr_expires_at' => null],
+            );
+            $this->seedHistoricAttendance($accounts);
 
             $this->printSummary($event, $accounts->all());
         }, 3);
+    }
+
+    private function seedHistoricAttendance($accounts): void
+    {
+        $historic = Event::query()->updateOrCreate(
+            ['title' => 'IT Validation Historic Event'],
+            [
+                'parent_event_id' => null,
+                'description' => 'Historic local-development attendance fixture.',
+                'venue' => 'IT Validation Room',
+                'venue_key' => 'it validation room',
+                'starts_at' => now()->subDays(8),
+                'ends_at' => now()->subDays(8)->addHours(2),
+                'status' => 'published',
+                'created_by' => $accounts['coordinator']->id,
+                'updated_by' => $accounts['coordinator']->id,
+            ],
+        );
+        EventAudience::query()->updateOrCreate(
+            ['event_id' => $historic->id, 'audience_type' => 'all_students'],
+            ['course_id' => null, 'year_level' => null, 'section_id' => null],
+        );
+        $session = EventAttendanceSession::query()->updateOrCreate(
+            ['event_id' => $historic->id],
+            ['opened_by' => $accounts['coordinator']->id, 'opened_at' => $historic->starts_at, 'closed_at' => $historic->ends_at, 'status' => 'closed'],
+        );
+        foreach (['student', 'requested_moderator'] as $persona) {
+            $student = $accounts[$persona]->student()->firstOrFail();
+            EventAttendance::query()->updateOrCreate(
+                ['event_id' => $historic->id, 'student_id' => $student->id],
+                [
+                    'attendance_session_id' => $session->id,
+                    'course_id_at_attendance' => $student->course_id,
+                    'year_level_at_attendance' => $student->year_level,
+                    'section_id_at_attendance' => null,
+                    'status' => 'present',
+                    'checked_in_at' => $historic->starts_at->copy()->addMinutes(5),
+                    'source' => 'manual',
+                    'recorded_by' => $accounts['coordinator']->id,
+                    'remarks' => 'Deterministic local Event history fixture.',
+                ],
+            );
+        }
     }
 
     /** @param array<string, string> $definition */
@@ -194,7 +249,7 @@ class EventRoleTestingSeeder extends Seeder
             ['Registered Moderator', $accounts['registered_moderator'], self::ACCOUNTS['registered_moderator']['password'], 'Registered Moderator', 'Mobile'],
             ['Event Staff', $accounts['staff'], self::ACCOUNTS['staff']['password'], 'Event Staff / Manual Verification', 'Mobile'],
             ['Professor', $accounts['professor'], self::ACCOUNTS['professor']['password'], 'None', 'Mobile / Web promotion'],
-            ['Requested Moderator', $accounts['requested_moderator'], self::ACCOUNTS['requested_moderator']['password'], 'Requested Moderator / Class Mayor', 'Mobile'],
+            ['Requested Moderator', $accounts['requested_moderator'], self::ACCOUNTS['requested_moderator']['password'], 'Requested Moderator (pending; no privileges)', 'Mobile'],
             ['Student', $accounts['student'], self::ACCOUNTS['student']['password'], 'None', 'Mobile / Web promotion'],
         ];
 

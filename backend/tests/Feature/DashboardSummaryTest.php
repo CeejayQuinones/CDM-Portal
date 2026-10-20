@@ -174,8 +174,7 @@ class DashboardSummaryTest extends TestCase
         Sanctum::actingAs($this->fixture['professorUser']);
         $this->getJson('/api/student/dashboard', $this->web)->assertForbidden();
         $this->getJson('/api/professor/dashboard', ['X-CDM-Client' => 'mobile'])
-            ->assertForbidden()
-            ->assertJsonPath('message', 'Professor academic work is available through the Web client.');
+            ->assertOk();
     }
 
     public function test_professor_without_assignments_receives_zero_counts_and_empty_state_flag(): void

@@ -33,6 +33,29 @@ const appearances = [
   { value: 'dark', label: 'Dark', description: 'A darker appearance' },
   { value: 'system', label: 'System', description: 'Match your device' },
 ]
+const avatarMaxBytes = 2 * 1024 * 1024
+const optimizeAvatar = async (file) => {
+  if (file.size <= avatarMaxBytes) return file
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+  const context = canvas.getContext('2d')
+  context.fillStyle = '#fff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  const type = file.type === 'image/webp' ? 'image/webp' : 'image/jpeg'
+  const extension = type === 'image/webp' ? 'webp' : 'jpg'
+  for (const quality of [0.86, 0.74, 0.62, 0.5]) {
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, type, quality))
+    if (blob?.size && blob.size <= avatarMaxBytes) {
+      return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.${extension}`, { type, lastModified: file.lastModified })
+    }
+  }
+  throw new Error('AVATAR_TOO_LARGE')
+}
 watch(avatarUrl, () => { avatarFailed.value = false })
 const messageFor = (err, fallback) => {
   const response = err?.response?.data
@@ -90,16 +113,25 @@ const changePassword = async () => { saving.value = true; error.value = success.
 const upload = async (event) => {
   const file = event.target.files?.[0]
   if (!file) return
-  const payload = new FormData()
-  payload.append('avatar', file)
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    error.value = 'Choose a JPG, PNG, or WebP image.'
+    event.target.value = ''
+    return
+  }
   saving.value = true
   error.value = success.value = ''
   try {
+    const preparedFile = await optimizeAvatar(file)
+    const payload = new FormData()
+    payload.append('avatar', preparedFile)
+    // Override the API client's JSON default; Axios then lets WebView add the multipart boundary.
     data.value = (await apiClient.post(props.staffMode ? '/registrar/settings/avatar' : '/student/settings/avatar', payload, { headers: { 'Content-Type': 'multipart/form-data' } })).data.data
     avatarFailed.value = false
     success.value = 'Profile picture updated.'
   } catch (err) {
-    error.value = messageFor(err, 'Avatar upload failed.')
+    error.value = err?.message === 'AVATAR_TOO_LARGE'
+      ? 'This photo could not be reduced below the 2 MB profile-picture limit. Choose a smaller image.'
+      : messageFor(err, 'Avatar upload failed.')
   } finally {
     event.target.value = ''
     saving.value = false
@@ -248,6 +280,9 @@ onMounted(load)
   --settings-shadow: var(--student-shadow, 0 5px 18px #123a1a0d);
   --settings-color-scheme: var(--student-color-scheme, light);
   max-width: 850px;
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
   margin: auto;
   padding: 24px;
   border-radius: 16px;
@@ -259,7 +294,7 @@ onMounted(load)
 .settings header p { margin: 0; color: var(--settings-accent); font-weight: 700; }
 .settings h1 { margin: 4px 0; }
 .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; margin-top: 18px; }
-.content { min-width: 0; }
+.content, .layout, .content article { max-width: 100%; min-width: 0; }
 aside, article { background: var(--settings-surface); border: 1px solid var(--settings-border); border-radius: 14px; box-shadow: var(--settings-shadow); }
 aside { display: grid; align-content: start; padding: 12px; }
 aside button { border: 0; background: transparent; color: var(--settings-text); text-align: left; padding: 10px; border-radius: 8px; transition: background 180ms ease; }
@@ -359,6 +394,7 @@ article > button { justify-self: start; padding: 7px 10px; font-size: .85rem; }
   .layout { display: block; }
   .menu { display: block; min-height: 44px; }
   article { gap: 13px; padding: 15px; }
+  .settings > header { padding-left: max(0px,env(safe-area-inset-left)); padding-right: max(0px,env(safe-area-inset-right)); }
   aside { position: fixed; inset: 0 auto 0 0; width: min(290px, 84vw); padding-top:calc(12px + env(safe-area-inset-top)); padding-bottom:calc(12px + env(safe-area-inset-bottom)); z-index: 50; transform: translateX(-105%); transition: transform 180ms ease; }
   aside.open { transform: translateX(0); }
   .backdrop { position: fixed; inset: 0; background: #10261a66; z-index: 40; }

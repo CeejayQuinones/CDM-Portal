@@ -60,6 +60,8 @@ abstract class TestCase extends BaseTestCase
             return $role === Role::ADMIN ? ClientPlatform::DESKTOP : ClientPlatform::MOBILE;
         }
 
-        return $role === Role::REGISTRAR_STAFF ? ClientPlatform::DESKTOP : ClientPlatform::WEB;
+        return in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true)
+            ? ClientPlatform::DESKTOP
+            : ClientPlatform::WEB;
     }
 }

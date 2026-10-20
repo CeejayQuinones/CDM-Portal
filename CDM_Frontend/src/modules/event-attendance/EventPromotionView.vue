@@ -1,6 +1,8 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { formatEventDateTime } from './eventDateTime'
 import { eventErrorMessage, eventService } from './eventService'
+import { useEventModalScrollLock } from './useEventModalScrollLock'
 import './event.css'
 
 const events = ref([])
@@ -8,7 +10,8 @@ const selected = ref(null)
 const loading = ref(true)
 const error = ref('')
 const search = ref('')
-const fmt = (value) => new Intl.DateTimeFormat(undefined, { dateStyle: 'long', timeStyle: 'short' }).format(new Date(value))
+useEventModalScrollLock(() => Boolean(selected.value))
+const fmt = (value) => formatEventDateTime(value, { dateStyle: 'long' })
 
 async function load() {
   loading.value = true
@@ -38,6 +41,6 @@ onMounted(load)
         <div><span class="event-badge" :data-status="event.status">{{ event.status }}</span><h2>{{ event.title }}</h2><p>{{ event.description || 'More Event information will be announced soon.' }}</p><dl><div><dt>Date and time</dt><dd>{{ fmt(event.starts_at) }}</dd></div><div><dt>Venue</dt><dd>{{ event.venue }}</dd></div><div><dt>Organizer</dt><dd>{{ event.organizer }}</dd></div></dl><button class="event-button secondary" type="button" @click="inspect(event)">View Details</button></div>
       </article>
     </section>
-    <div v-if="selected" class="event-modal-backdrop" @click.self="selected = null"><section class="event-modal promotion-detail" role="dialog" aria-modal="true" aria-labelledby="promotion-title" tabindex="-1" @keydown.esc="selected = null"><header><h2 id="promotion-title">{{ selected.title }}</h2><button type="button" aria-label="Close Event details" @click="selected = null">×</button></header><p>{{ selected.description || 'More Event information will be announced soon.' }}</p><dl><div><dt>Starts</dt><dd>{{ fmt(selected.starts_at) }}</dd></div><div><dt>Ends</dt><dd>{{ fmt(selected.ends_at) }}</dd></div><div><dt>Venue</dt><dd>{{ selected.venue }}</dd></div><div><dt>Audience</dt><dd>{{ selected.public_audience }}</dd></div><div><dt>Organizer</dt><dd>{{ selected.organizer }}</dd></div></dl></section></div>
+    <Teleport to="body"><div v-if="selected" class="event-modal-backdrop" @click.self="selected = null"><section class="event-modal promotion-detail" role="dialog" aria-modal="true" aria-labelledby="promotion-title" tabindex="-1" @keydown.esc="selected = null"><header><h2 id="promotion-title">{{ selected.title }}</h2><button type="button" aria-label="Close Event details" @click="selected = null">×</button></header><div class="event-modal-body"><p>{{ selected.description || 'More Event information will be announced soon.' }}</p><dl><div><dt>Starts</dt><dd>{{ fmt(selected.starts_at) }}</dd></div><div><dt>Ends</dt><dd>{{ fmt(selected.ends_at) }}</dd></div><div><dt>Venue</dt><dd>{{ selected.venue }}</dd></div><div><dt>Audience</dt><dd>{{ selected.public_audience }}</dd></div><div><dt>Organizer</dt><dd>{{ selected.organizer }}</dd></div></dl></div></section></div></Teleport>
   </main>
 </template>

@@ -24,7 +24,7 @@ class StudentDocumentRequestController extends Controller
 
     public function documentTypes(): JsonResponse
     {
-        return $this->ok(DocumentType::query()->where('status', 'active')->orderBy('document_name')->get(['id', 'document_name', 'description', 'processing_fee', 'processing_days', 'requires_appointment']), 'Document types retrieved successfully.');
+        return $this->ok(DocumentType::query()->where('status', 'active')->where('student_requestable', true)->orderBy('document_name')->get(['id', 'document_name', 'description', 'processing_fee', 'processing_days', 'requires_appointment']), 'Document types retrieved successfully.');
     }
 
     public function index(Request $request): JsonResponse
@@ -45,7 +45,7 @@ class StudentDocumentRequestController extends Controller
     public function store(StoreDocumentRequest $request): JsonResponse
     {
         $student = $this->studentFor($request);
-        $documentType = DocumentType::query()->where('status', 'active')->findOrFail($request->integer('document_type_id'));
+        $documentType = DocumentType::query()->where('status', 'active')->where('student_requestable', true)->findOrFail($request->integer('document_type_id'));
         $quantity = $request->integer('quantity', 1);
         $item = DocumentRequest::create([
             'student_id' => $student->id,

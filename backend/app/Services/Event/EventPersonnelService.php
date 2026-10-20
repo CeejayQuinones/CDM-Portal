@@ -49,9 +49,8 @@ class EventPersonnelService
             'candidates' => $candidates,
             'responsibilities' => [
                 ['value' => EventRoleAssignment::SEMI_COORDINATOR, 'label' => 'Semi-Coordinator', 'eligible_roles' => [Role::PROFESSOR]],
-                ['value' => EventRoleAssignment::REGISTERED_MODERATOR, 'label' => 'Registered Moderator', 'eligible_roles' => [Role::PROFESSOR]],
+                ['value' => EventRoleAssignment::REGISTERED_MODERATOR, 'label' => 'Registered Moderator', 'eligible_roles' => [Role::PROFESSOR, Role::STUDENT]],
                 ['value' => EventRoleAssignment::EVENT_STAFF, 'label' => 'Event Staff / Manual Verification', 'eligible_roles' => [Role::PROFESSOR, Role::STUDENT]],
-                ['value' => EventRoleAssignment::REQUESTED_MODERATOR, 'label' => 'Requested Moderator / Class Mayor', 'eligible_roles' => [Role::STUDENT]],
             ],
         ];
     }
@@ -156,9 +155,9 @@ class EventPersonnelService
         $target->loadMissing('role');
         $role = $target->role?->role_name;
         $eligible = match ($responsibility) {
-            EventRoleAssignment::SEMI_COORDINATOR, EventRoleAssignment::REGISTERED_MODERATOR => $role === Role::PROFESSOR,
+            EventRoleAssignment::SEMI_COORDINATOR => $role === Role::PROFESSOR,
+            EventRoleAssignment::REGISTERED_MODERATOR => in_array($role, [Role::PROFESSOR, Role::STUDENT], true),
             EventRoleAssignment::EVENT_STAFF => in_array($role, [Role::PROFESSOR, Role::STUDENT], true),
-            EventRoleAssignment::REQUESTED_MODERATOR => $role === Role::STUDENT,
             default => false,
         };
 
@@ -170,7 +169,7 @@ class EventPersonnelService
     /** @return array<string, mixed> */
     private function candidate(User $user): array
     {
-        return ['id' => $user->id, 'name' => $this->name($user), 'portal_role' => $user->role?->role_name];
+        return ['id' => $user->id, 'name' => $this->name($user), 'email' => $user->profile?->email, 'portal_role' => $user->role?->role_name];
     }
 
     private function name(?User $user): string

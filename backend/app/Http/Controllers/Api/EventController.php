@@ -7,11 +7,13 @@ use App\Models\Course;
 use App\Models\Event;
 use App\Models\EventAttendance;
 use App\Models\EventAudience;
+use App\Models\EventModeratorRequest;
 use App\Models\Role;
 use App\Models\Section;
 use App\Models\User;
 use App\Services\Event\EventAudienceResolver;
 use App\Services\Event\EventAuthorizationService;
+use App\Services\Event\EventCertificateService;
 use App\Services\Event\EventService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +26,7 @@ class EventController extends Controller
         private readonly EventAudienceResolver $audiences,
         private readonly EventService $events,
         private readonly EventAuthorizationService $authorization,
+        private readonly EventCertificateService $certificates,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -34,10 +37,13 @@ class EventController extends Controller
             'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'per_page' => ['nullable', 'integer', 'between:1,100'],
         ]);
         $assignment = fn ($query) => $query->granting()->where('user_id', $user->id);
+        $pendingRequest = fn ($query) => $query->where('requester_user_id', $user->id)->where('status', 'pending');
         $query = $this->audiences->visibleTo(Event::query(), $user)->with([
+            'creator.profile',
             'audiences.course:id,course_code,course_name', 'audiences.section:id,section_name,year_level',
             'parent.audiences.course:id,course_code,course_name', 'parent.audiences.section:id,section_name,year_level',
             'roleAssignments' => $assignment, 'parent.roleAssignments' => $assignment,
+            'moderatorRequests' => $pendingRequest,
         ]);
         $query->when($validated['search'] ?? null, fn ($q, $search) => $q->where(fn ($inner) => $inner->where('title', 'like', "%$search%")->orWhere('venue', 'like', "%$search%")))
             ->when($validated['status'] ?? null, fn ($q, $status) => $status === 'completed' ? $q->where('status', 'published')->where('ends_at', '<=', now()) : ($status === 'ongoing' ? $q->where('status', 'published')->where('starts_at', '<=', now())->where('ends_at', '>', now()) : $q->where('status', $status)))
@@ -58,13 +64,18 @@ class EventController extends Controller
         $user = $this->activeUser($request);
         abort_unless($this->audiences->canView($event, $user), 404, 'Event not found.');
         $assignment = fn ($query) => $query->granting()->where('user_id', $user->id);
+        $pendingRequest = fn ($query) => $query->where('requester_user_id', $user->id)->where('status', 'pending');
         $event->load([
+            'creator.profile',
             'audiences.course:id,course_code,course_name', 'audiences.section:id,section_name,year_level',
             'parent.audiences.course:id,course_code,course_name', 'parent.audiences.section:id,section_name,year_level',
             'roleAssignments' => $assignment, 'parent.roleAssignments' => $assignment,
+            'moderatorRequests' => $pendingRequest,
             'subEvents.audiences.course:id,course_code,course_name', 'subEvents.audiences.section:id,section_name,year_level',
             'subEvents.parent.audiences.course:id,course_code,course_name', 'subEvents.parent.audiences.section:id,section_name,year_level',
             'subEvents.roleAssignments' => $assignment, 'subEvents.parent.roleAssignments' => $assignment,
+            'subEvents.moderatorRequests' => $pendingRequest,
+            'certificateRequirements.requiredEvent:id,title',
         ]);
         if ($this->authorization->isCoordinator($user, $event)) {
             $event->load(['auditEvents']);
@@ -74,8 +85,21 @@ class EventController extends Controller
         if ($user->role?->role_name === Role::STUDENT && $user->student) {
             $attendance = EventAttendance::query()->where('event_id', $event->id)->where('student_id', $user->student->id)->first();
             $data['my_attendance'] = $attendance ? [
-                'status' => $attendance->status, 'checked_in_at' => $attendance->checked_in_at?->toIso8601String(), 'source' => $attendance->source,
-            ] : ['status' => 'not_recorded', 'checked_in_at' => null, 'source' => null];
+                'status' => $attendance->status, 'checked_in_at' => $attendance->checked_in_at?->toIso8601String(),
+                'checked_out_at' => $attendance->checked_out_at?->toIso8601String(), 'participation_minutes' => $attendance->participation_minutes,
+                'completion_status' => $attendance->completion_status, 'source' => $attendance->source,
+            ] : ['status' => 'not_recorded', 'checked_in_at' => null, 'checked_out_at' => null, 'source' => null];
+            $data['my_certificate'] = $this->certificates->status($event, $user->student);
+        }
+        if (in_array($user->role?->role_name, [Role::STUDENT, Role::PROFESSOR], true)) {
+            $request = EventModeratorRequest::query()->where('event_id', $event->id)
+                ->where('requester_user_id', $user->id)->latest('requested_at')->first();
+            $data['my_moderator_request'] = $request ? [
+                'id' => $request->id,
+                'status' => $request->status,
+                'requested_at' => $request->requested_at?->toIso8601String(),
+                'review_reason' => $request->review_reason,
+            ] : null;
         }
 
         return response()->json(['success' => true, 'data' => $data])->header('Cache-Control', 'private, no-store');
@@ -121,16 +145,41 @@ class EventController extends Controller
         return response()->json(['success' => true, 'message' => 'Event status updated.', 'data' => $this->serialize($event, $actor)]);
     }
 
+    public function destroy(Request $request, Event $event): JsonResponse
+    {
+        $actor = $this->activeUser($request);
+        abort_unless($event->parent_event_id && $this->authorization->canManageSubEvents($event->parent, $actor), 403, 'You are not authorized to archive this sub-event.');
+        $validated = $request->validate(['version' => ['required', 'integer', 'min:1']]);
+        $event = $this->events->archiveSubEvent($event, (int) $validated['version'], $actor);
+
+        return response()->json(['success' => true, 'message' => 'Sub-event archived.', 'data' => $this->serialize($event, $actor)]);
+    }
+
     private function validatedPayload(Request $request, bool $updating = false): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'], 'description' => ['nullable', 'string', 'max:10000'],
             'parent_event_id' => ['nullable', 'integer', 'exists:events,id'],
             'venue' => ['required', 'string', 'max:180'], 'starts_at' => ['required', 'date'], 'ends_at' => ['required', 'date', 'after:starts_at'],
+            'sort_order' => ['sometimes', 'integer', 'between:0,65535'],
+            'attendance_mode' => ['sometimes', Rule::in(Event::ATTENDANCE_MODES)],
+            'late_threshold_minutes' => ['sometimes', 'integer', 'between:0,1440'],
+            'minimum_participation_minutes' => ['nullable', 'integer', 'between:1,10080'],
+            'attendance_methods' => ['sometimes', 'array', 'min:1', 'max:5'],
+            'attendance_methods.*' => ['required', 'distinct', Rule::in(Event::ATTENDANCE_METHODS)],
             'intent' => ['sometimes', Rule::in(['draft', 'publish'])], 'version' => [$updating ? 'required' : 'sometimes', 'integer', 'min:1'],
             'audiences' => ['nullable', 'array', 'max:20'], 'audiences.*.audience_type' => ['required', Rule::in(EventAudience::TYPES)],
             'audiences.*.course_id' => ['nullable', 'integer'], 'audiences.*.year_level' => ['nullable', 'integer', 'between:1,10'], 'audiences.*.section_id' => ['nullable', 'integer'],
         ]);
+
+        foreach (['starts_at', 'ends_at'] as $field) {
+            $value = (string) $validated[$field];
+            $validated[$field] = Carbon::parse($value)
+                ->utc()
+                ->format('Y-m-d H:i:s');
+        }
+
+        return $validated;
     }
 
     private function activeUser(Request $request): User
@@ -186,15 +235,40 @@ class EventController extends Controller
     {
         $effectiveAudiences = $event->audiences->isNotEmpty() ? $event->audiences : ($event->parent?->audiences ?? collect());
         $capabilities = $this->authorization->capabilities($event, $user);
-        $capabilities['can_self_scan'] = $detail
+        $eligibleStudent = $detail
             && $user->role?->role_name === Role::STUDENT
             && $user->student
             && $this->audiences->isStudentEligible($event, $user->student);
+        $capabilities['can_self_scan'] = (bool) $eligibleStudent;
+        $capabilities['can_scan_event_qr'] = (bool) $eligibleStudent
+            && ($event->supportsAttendanceMethod('dynamic_event') || $event->supportsAttendanceMethod('static_event'));
+        $capabilities['can_generate_participant_qr'] = (bool) $eligibleStudent
+            && ($event->supportsAttendanceMethod('participant_static') || $event->supportsAttendanceMethod('participant_dynamic'));
+        $capabilities['can_generate_static_participant_qr'] = (bool) $eligibleStudent
+            && $event->supportsAttendanceMethod('participant_static');
+        $capabilities['can_generate_dynamic_participant_qr'] = (bool) $eligibleStudent
+            && $event->supportsAttendanceMethod('participant_dynamic');
         $data = [
-            'id' => $event->id, 'parent_event_id' => $event->parent_event_id, 'title' => $event->title, 'description' => $event->description, 'venue' => $event->venue,
+            'id' => $event->id, 'parent_event_id' => $event->parent_event_id, 'sort_order' => $event->sort_order,
+            'title' => $event->title, 'description' => $event->description, 'venue' => $event->venue,
             'starts_at' => $event->starts_at?->toIso8601String(), 'ends_at' => $event->ends_at?->toIso8601String(),
             'status' => $event->presentationStatus(), 'managed_status' => $event->status, 'version' => $event->version,
+            'creator' => [
+                'id' => $event->created_by,
+                'name' => trim(implode(' ', array_filter([$event->creator?->profile?->first_name, $event->creator?->profile?->middle_name, $event->creator?->profile?->last_name]))) ?: 'Event Coordinator',
+            ],
             'audience_inherited' => $event->audiences->isEmpty() && $event->parent !== null,
+            'attendance_policy' => [
+                'mode' => $event->attendance_mode,
+                'late_threshold_minutes' => $event->late_threshold_minutes,
+                'minimum_participation_minutes' => $event->minimum_participation_minutes,
+                'methods' => $event->attendance_methods ?: Event::DEFAULT_ATTENDANCE_METHODS,
+            ],
+            'certificate_settings' => [
+                'enabled' => (bool) $event->certificates_enabled,
+                'minimum_minutes' => $event->certificate_minimum_minutes,
+                'required_event_ids' => $event->relationLoaded('certificateRequirements') ? $event->certificateRequirements->pluck('required_event_id')->values() : [],
+            ],
             'audiences' => $effectiveAudiences->map(fn ($a) => [
                 'id' => $a->id, 'audience_type' => $a->audience_type, 'course_id' => $a->course_id, 'year_level' => $a->year_level, 'section_id' => $a->section_id,
                 'label' => match ($a->audience_type) {

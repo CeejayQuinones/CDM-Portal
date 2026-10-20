@@ -5423,3 +5423,9 @@
 :is(.student-request-modal, .student-booking-modal, .student-request-cancellation-modal, .student-cancellation-modal) :is(button, input, select, textarea):disabled {
   opacity: .66;
 }
+
+.document-type-policy-note {
+  color: var(--text-muted);
+  font-size: .82rem;
+  margin: 0;
+}

@@ -65,7 +65,36 @@ class EventFoundationTest extends TestCase
             ->assertJsonFragment(['id' => $visible])->assertJsonFragment(['title' => 'All students'])
             ->assertJsonFragment(['title' => 'Correct course'])->assertJsonFragment(['title' => 'Correct year'])
             ->assertJsonMissing(['title' => 'Other section'])->assertJsonMissing(['title' => 'Other course'])->assertJsonMissing(['title' => 'Other year']);
-        $this->getJson('/api/events/'.$visible)->assertOk();
+        $this->getJson('/api/events/'.$visible)->assertOk()
+            ->assertJsonPath('data.capabilities.can_scan_event_qr', true)
+            ->assertJsonPath('data.capabilities.can_generate_participant_qr', true)
+            ->assertJsonPath('data.capabilities.can_scan_static_participant_qr', false)
+            ->assertJsonPath('data.capabilities.can_scan_dynamic_participant_qr', false);
+    }
+
+    public function test_student_qr_visibility_uses_event_methods_without_granting_operator_access(): void
+    {
+        $admin = $this->user(Role::ADMIN);
+        [$student] = $this->academicStudent();
+        Sanctum::actingAs($admin);
+        $eventQrOnly = $this->postJson('/api/events', $this->payload([
+            'title' => 'Event QR only', 'intent' => 'publish', 'attendance_methods' => ['dynamic_event'],
+        ]))->assertCreated()->json('data.id');
+        $participantQrOnly = $this->postJson('/api/events', $this->payload([
+            'title' => 'Participant QR only', 'venue' => 'Second Hall', 'intent' => 'publish', 'attendance_methods' => ['participant_static'],
+        ]))->assertCreated()->json('data.id');
+
+        Sanctum::actingAs($student);
+        $this->getJson('/api/events/'.$eventQrOnly)->assertOk()
+            ->assertJsonPath('data.capabilities.can_scan_event_qr', true)
+            ->assertJsonPath('data.capabilities.can_generate_participant_qr', false)
+            ->assertJsonPath('data.capabilities.can_operate_attendance', false);
+        $this->getJson('/api/events/'.$participantQrOnly)->assertOk()
+            ->assertJsonPath('data.capabilities.can_scan_event_qr', false)
+            ->assertJsonPath('data.capabilities.can_generate_participant_qr', true)
+            ->assertJsonPath('data.capabilities.can_generate_static_participant_qr', true)
+            ->assertJsonPath('data.capabilities.can_generate_dynamic_participant_qr', false)
+            ->assertJsonPath('data.capabilities.can_operate_attendance', false);
     }
 
     public function test_event_routes_retain_role_platform_policy(): void
@@ -93,6 +122,30 @@ class EventFoundationTest extends TestCase
         $this->putJson('/api/events/'.$professorEvent, $this->payload(['version' => 1]))->assertForbidden();
     }
 
+    public function test_professor_sees_newly_published_all_user_event_but_not_student_only_event(): void
+    {
+        $admin = $this->user(Role::ADMIN);
+        $professor = $this->user(Role::PROFESSOR);
+        Sanctum::actingAs($admin);
+        $shared = $this->postJson('/api/events', $this->payload([
+            'title' => 'New shared Event',
+            'intent' => 'publish',
+            'audiences' => [['audience_type' => 'all_users']],
+        ]))->assertCreated()->json('data.id');
+        $this->postJson('/api/events', $this->payload([
+            'title' => 'Student audience only',
+            'venue' => 'Student Hall',
+            'intent' => 'publish',
+            'audiences' => [['audience_type' => 'all_students']],
+        ]))->assertCreated();
+
+        Sanctum::actingAs($professor);
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events?per_page=100')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $shared, 'title' => 'New shared Event'])
+            ->assertJsonMissing(['title' => 'Student audience only']);
+    }
+
     public function test_overlapping_published_venue_is_rejected_but_draft_may_be_saved(): void
     {
         Sanctum::actingAs($this->user(Role::ADMIN));
@@ -114,12 +167,93 @@ class EventFoundationTest extends TestCase
         $this->assertDatabaseCount('event_audit_events', 2);
     }
 
+    public function test_event_schedule_round_trips_philippine_time_without_drift(): void
+    {
+        Sanctum::actingAs($this->user(Role::ADMIN));
+        $created = $this->postJson('/api/events', $this->payload([
+            'title' => 'Philippine Morning Event',
+            'starts_at' => '2027-02-10T09:15:00+08:00',
+            'ends_at' => '2027-02-10T11:45:00+08:00',
+        ]))->assertCreated()
+            ->assertJsonPath('data.starts_at', '2027-02-10T01:15:00+00:00')
+            ->assertJsonPath('data.ends_at', '2027-02-10T03:45:00+00:00')
+            ->json('data');
+        $this->assertDatabaseHas('events', [
+            'id' => $created['id'],
+            'starts_at' => '2027-02-10 01:15:00',
+            'ends_at' => '2027-02-10 03:45:00',
+        ]);
+
+        $unchanged = $this->putJson('/api/events/'.$created['id'], $this->payload([
+            'title' => 'Renamed Philippine Morning Event',
+            'venue' => 'Updated Main Hall',
+            'starts_at' => '2027-02-10T09:15:00+08:00',
+            'ends_at' => '2027-02-10T11:45:00+08:00',
+            'version' => $created['version'],
+        ]))->assertOk()
+            ->assertJsonPath('data.starts_at', '2027-02-10T01:15:00+00:00')
+            ->assertJsonPath('data.ends_at', '2027-02-10T03:45:00+00:00')
+            ->json('data');
+
+        $changed = $this->putJson('/api/events/'.$created['id'], $this->payload([
+            'title' => $unchanged['title'],
+            'venue' => $unchanged['venue'],
+            'starts_at' => '2027-02-10T18:30:00+08:00',
+            'ends_at' => '2027-02-10T20:00:00+08:00',
+            'version' => $unchanged['version'],
+        ]))->assertOk()
+            ->assertJsonPath('data.starts_at', '2027-02-10T10:30:00+00:00')
+            ->assertJsonPath('data.ends_at', '2027-02-10T12:00:00+00:00')
+            ->json('data');
+
+        $this->putJson('/api/events/'.$created['id'], $this->payload([
+            'title' => $changed['title'],
+            'venue' => $changed['venue'],
+            'starts_at' => '2027-02-10T18:30:00+08:00',
+            'ends_at' => '2027-02-10T20:00:00+08:00',
+            'version' => $changed['version'],
+        ]))->assertOk()
+            ->assertJsonPath('data.starts_at', '2027-02-10T10:30:00+00:00')
+            ->assertJsonPath('data.ends_at', '2027-02-10T12:00:00+00:00');
+
+        $this->getJson('/api/events/'.$created['id'])->assertOk()
+            ->assertJsonPath('data.starts_at', '2027-02-10T10:30:00+00:00')
+            ->assertJsonPath('data.ends_at', '2027-02-10T12:00:00+00:00');
+    }
+
     public function test_invalid_dates_inactive_targets_and_unknown_audience_are_rejected(): void
     {
         Sanctum::actingAs($this->user(Role::ADMIN));
         $this->postJson('/api/events', $this->payload(['ends_at' => now()->addDays(4)->toDateTimeString()]))->assertUnprocessable()->assertJsonValidationErrors('ends_at');
         $this->postJson('/api/events', $this->payload(['audiences' => [['audience_type' => 'secret_group']]]))->assertUnprocessable()->assertJsonValidationErrors('audiences.0.audience_type');
         $this->postJson('/api/events', $this->payload(['audiences' => [['audience_type' => 'course', 'course_id' => 99999]]]))->assertUnprocessable()->assertJsonValidationErrors('audiences.0.course_id');
+        $this->postJson('/api/events', $this->payload([
+            'attendance_mode' => 'check_in_and_out', 'minimum_participation_minutes' => 300,
+        ]))->assertUnprocessable()->assertJsonValidationErrors('minimum_participation_minutes');
+    }
+
+    public function test_sub_event_inherits_audience_orders_and_archives_without_deleting_history(): void
+    {
+        $admin = $this->user(Role::ADMIN);
+        Sanctum::actingAs($admin);
+        $parent = $this->postJson('/api/events', $this->payload())->assertCreated()->json('data');
+        $childPayload = $this->payload([
+            'parent_event_id' => $parent['id'], 'title' => 'Workshop', 'sort_order' => 4,
+            'starts_at' => now()->addDays(5)->addMinutes(15)->toDateTimeString(),
+            'ends_at' => now()->addDays(5)->addHour()->toDateTimeString(), 'audiences' => [],
+        ]);
+        $child = $this->postJson('/api/events', $childPayload)->assertCreated()
+            ->assertJsonPath('data.audience_inherited', true)->assertJsonPath('data.sort_order', 4)->json('data');
+        Sanctum::actingAs($this->user(Role::STUDENT));
+        $this->postJson('/api/events', array_replace($childPayload, ['title' => 'Unauthorized Child']))->assertForbidden();
+        Sanctum::actingAs($admin);
+        $this->postJson('/api/events', array_replace($childPayload, ['title' => 'Invalid Audience', 'audiences' => [['audience_type' => 'all_users']]]))
+            ->assertUnprocessable()->assertJsonValidationErrors('audiences');
+
+        $this->deleteJson('/api/events/'.$child['id'], ['version' => $child['version']])->assertOk()
+            ->assertJsonPath('data.managed_status', 'archived');
+        $this->assertDatabaseHas('events', ['id' => $child['id'], 'status' => 'archived', 'parent_event_id' => $parent['id']]);
+        $this->assertDatabaseHas('event_audit_events', ['event_id' => $child['id'], 'action' => 'event.archived']);
     }
 
     private function payload(array $overrides = []): array

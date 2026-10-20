@@ -14,7 +14,9 @@ const route = useRoute()
 const authStore = useAuthStore()
 const form = reactive({ username: '', password: '' })
 const errors = ref({})
-const formError = ref('')
+const formError = ref(route.query.platformDenied === '1'
+  ? 'This account cannot use this CDM Portal application. Sign in through an authorized platform.'
+  : '')
 const isLoading = ref(false)
 const showPassword = ref(false)
 const showRegistration = ref(route.query.signup === '1')

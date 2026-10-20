@@ -34,17 +34,17 @@ class EventPersonnelAuthorizationTest extends TestCase
         Sanctum::actingAs($this->fixture['admin']);
         $assigned = $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
             'user_id' => $this->fixture['classMayor']->id,
-            'responsibility' => EventRoleAssignment::REQUESTED_MODERATOR,
+            'responsibility' => EventRoleAssignment::REGISTERED_MODERATOR,
         ])->assertCreated()
             ->assertJsonPath('data.portal_role', Role::STUDENT)
-            ->assertJsonPath('data.responsibility', EventRoleAssignment::REQUESTED_MODERATOR)
+            ->assertJsonPath('data.responsibility', EventRoleAssignment::REGISTERED_MODERATOR)
             ->assertJsonPath('data.status', 'active')
             ->json('data');
 
         $this->assertSame(Role::STUDENT, $this->fixture['classMayor']->fresh()->role->role_name);
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
             'user_id' => $this->fixture['classMayor']->id,
-            'responsibility' => EventRoleAssignment::REQUESTED_MODERATOR,
+            'responsibility' => EventRoleAssignment::REGISTERED_MODERATOR,
         ])->assertCreated();
         $this->assertDatabaseCount('event_role_assignments', 1);
         $this->assertSame(1, DB::table('event_audit_events')->where('action', 'event.personnel.assigned')->count());
@@ -52,7 +52,7 @@ class EventPersonnelAuthorizationTest extends TestCase
             ->assertJsonPath('data.candidates.0.name', 'Mayor User')
             ->assertJsonPath('data.candidates.0.portal_role', Role::STUDENT)
             ->assertJsonMissingPath('data.candidates.0.username')
-            ->assertJsonMissingPath('data.candidates.0.email');
+            ->assertJsonPath('data.candidates.0.email', null);
 
         $this->putJson('/api/events/'.$this->fixture['event']->id.'/personnel/'.$assigned['id'], [
             'responsibility' => EventRoleAssignment::EVENT_STAFF,
@@ -100,7 +100,7 @@ class EventPersonnelAuthorizationTest extends TestCase
         }
     }
 
-    public function test_semi_coordinator_has_desktop_only_scoped_management_without_coordinator_authority(): void
+    public function test_semi_coordinator_has_mobile_scoped_management_without_coordinator_authority(): void
     {
         Sanctum::actingAs($this->fixture['admin']);
         $assignment = $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
@@ -109,7 +109,7 @@ class EventPersonnelAuthorizationTest extends TestCase
         ])->assertCreated()->assertJsonPath('data.responsibility', EventRoleAssignment::SEMI_COORDINATOR)->json('data');
 
         Sanctum::actingAs($this->fixture['registrar']);
-        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/events/'.$this->fixture['event']->id)
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events/'.$this->fixture['event']->id)
             ->assertOk()
             ->assertJsonPath('data.capabilities.can_edit_event', true)
             ->assertJsonPath('data.capabilities.can_manage_personnel', false)
@@ -117,8 +117,8 @@ class EventPersonnelAuthorizationTest extends TestCase
             ->assertJsonPath('data.capabilities.can_view_reports', true)
             ->assertJsonPath('data.capabilities.can_export_reports', false);
         $this->withHeader('X-CDM-Client', 'web')->getJson('/api/events/'.$this->fixture['event']->id)->assertForbidden();
-        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events/'.$this->fixture['event']->id)->assertForbidden();
-        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/events/'.$this->fixture['unrelatedEvent']->id)->assertNotFound();
+        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/events/'.$this->fixture['event']->id)->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events/'.$this->fixture['unrelatedEvent']->id)->assertNotFound();
         $this->putJson('/api/events/'.$this->fixture['event']->id, $this->eventPayload('Semi Updated'))->assertOk();
         $this->postJson('/api/events', array_merge($this->eventPayload('Semi Child'), ['parent_event_id' => $this->fixture['event']->id, 'audiences' => []]))
             ->assertCreated()->assertJsonPath('data.parent_event_id', $this->fixture['event']->id);
@@ -135,17 +135,16 @@ class EventPersonnelAuthorizationTest extends TestCase
         $this->get('/api/event-reports/'.$this->fixture['event']->id.'/export?format=csv')->assertForbidden();
 
         Sanctum::actingAs($this->fixture['admin']);
-        $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel/'.$assignment['id'].'/revoke')->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/personnel/'.$assignment['id'].'/revoke')->assertOk();
         Sanctum::actingAs($this->fixture['registrar']);
         $this->getJson('/api/events/'.$this->fixture['event']->id)->assertForbidden();
     }
 
-    public function test_moderator_event_staff_and_class_mayor_receive_only_scoped_operational_access(): void
+    public function test_registered_moderator_and_event_staff_receive_only_scoped_operational_access(): void
     {
         $assignments = [
             [$this->fixture['professor'], EventRoleAssignment::REGISTERED_MODERATOR, $this->fixture['event']],
             [$this->fixture['eventStaff'], EventRoleAssignment::EVENT_STAFF, $this->fixture['secondEvent']],
-            [$this->fixture['classMayor'], EventRoleAssignment::REQUESTED_MODERATOR, $this->fixture['thirdEvent']],
         ];
 
         Sanctum::actingAs($this->fixture['admin']);
@@ -161,6 +160,8 @@ class EventPersonnelAuthorizationTest extends TestCase
             $this->getJson('/api/events/'.$event->id)->assertOk()
                 ->assertJsonPath('data.capabilities.event_responsibility', $responsibility)
                 ->assertJsonPath('data.capabilities.can_operate_attendance', true)
+                ->assertJsonPath('data.capabilities.can_scan_static_participant_qr', $responsibility === EventRoleAssignment::REGISTERED_MODERATOR)
+                ->assertJsonPath('data.capabilities.can_scan_dynamic_participant_qr', $responsibility === EventRoleAssignment::EVENT_STAFF)
                 ->assertJsonPath('data.capabilities.can_manage_event', false)
                 ->assertJsonPath('data.capabilities.can_view_reports', false);
             $this->getJson('/api/events/'.$event->id.'/attendance')->assertOk();
@@ -184,6 +185,10 @@ class EventPersonnelAuthorizationTest extends TestCase
     public function test_normal_student_cannot_gain_operations_by_changing_event_id_and_revoke_removes_access(): void
     {
         Sanctum::actingAs($this->fixture['normalStudent']);
+        $this->getJson('/api/events/'.$this->fixture['event']->id)->assertOk()
+            ->assertJsonPath('data.capabilities.can_scan_static_participant_qr', false)
+            ->assertJsonPath('data.capabilities.can_scan_dynamic_participant_qr', false)
+            ->assertJsonPath('data.capabilities.can_operate_attendance', false);
         $this->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertForbidden();
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/manual', [
             'student_id' => $this->fixture['attendee']->id,
@@ -191,19 +196,25 @@ class EventPersonnelAuthorizationTest extends TestCase
             'reason' => 'Unauthorized check-in attempt.',
         ])->assertForbidden();
 
-        Sanctum::actingAs($this->fixture['admin']);
-        $assignment = $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
-            'user_id' => $this->fixture['classMayor']->id,
-            'responsibility' => EventRoleAssignment::REQUESTED_MODERATOR,
-        ])->assertCreated()->json('data');
         Sanctum::actingAs($this->fixture['classMayor']);
-        $this->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertOk();
-        $this->getJson('/api/events/'.$this->fixture['secondEvent']->id.'/attendance')->assertForbidden();
+        $request = $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/moderator-requests')
+            ->assertCreated()->assertJsonPath('data.status', 'pending')->json('data');
+        $this->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertForbidden();
 
         Sanctum::actingAs($this->fixture['admin']);
-        $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel/'.$assignment['id'].'/revoke')->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/moderator-requests/'.$request['id'].'/approve')
+            ->assertOk()->assertJsonPath('data.status', 'approved');
         Sanctum::actingAs($this->fixture['classMayor']);
-        $this->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events/'.$this->fixture['event']->id)->assertOk()
+            ->assertJsonPath('data.capabilities.can_scan_static_participant_qr', true)
+            ->assertJsonPath('data.capabilities.can_scan_dynamic_participant_qr', false);
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertOk();
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events/'.$this->fixture['secondEvent']->id.'/attendance')->assertForbidden();
+
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/moderator-requests/'.$request['id'].'/revoke', ['reason' => 'Validation access is complete.'])->assertOk();
+        Sanctum::actingAs($this->fixture['classMayor']);
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertForbidden();
     }
 
     public function test_parent_assignment_inherits_to_sub_event_but_direct_child_assignment_does_not_grant_parent(): void
@@ -211,7 +222,7 @@ class EventPersonnelAuthorizationTest extends TestCase
         Sanctum::actingAs($this->fixture['admin']);
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
             'user_id' => $this->fixture['classMayor']->id,
-            'responsibility' => EventRoleAssignment::REQUESTED_MODERATOR,
+            'responsibility' => EventRoleAssignment::REGISTERED_MODERATOR,
         ])->assertCreated();
         $this->postJson('/api/events/'.$this->fixture['childEvent']->id.'/personnel', [
             'user_id' => $this->fixture['eventStaff']->id,
@@ -235,7 +246,7 @@ class EventPersonnelAuthorizationTest extends TestCase
         Sanctum::actingAs($this->fixture['admin']);
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
             'user_id' => $this->fixture['classMayor']->id,
-            'responsibility' => EventRoleAssignment::REQUESTED_MODERATOR,
+            'responsibility' => EventRoleAssignment::REGISTERED_MODERATOR,
             'starts_at' => now()->subHour()->toIso8601String(),
             'ends_at' => now()->addMinute()->toIso8601String(),
         ])->assertCreated();
@@ -259,7 +270,7 @@ class EventPersonnelAuthorizationTest extends TestCase
         Sanctum::actingAs($this->fixture['admin']);
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
             'user_id' => $this->fixture['classMayor']->id,
-            'responsibility' => EventRoleAssignment::REQUESTED_MODERATOR,
+            'responsibility' => EventRoleAssignment::REGISTERED_MODERATOR,
         ])->assertCreated();
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
             'user_id' => $this->fixture['registrar']->id,
@@ -288,7 +299,8 @@ class EventPersonnelAuthorizationTest extends TestCase
         $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertForbidden();
         $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertOk();
         Sanctum::actingAs($this->fixture['registrar']);
-        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertOk();
         $this->withHeader('X-CDM-Client', 'web')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertForbidden();
         Sanctum::actingAs($this->fixture['admin']);
         $this->withHeader('X-CDM-Client', 'web')->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertForbidden();
@@ -298,12 +310,10 @@ class EventPersonnelAuthorizationTest extends TestCase
 
     public function test_class_mayor_keeps_normal_student_self_check_in_for_an_eligible_assigned_event(): void
     {
+        Sanctum::actingAs($this->fixture['classMayor']);
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/moderator-requests')->assertCreated();
         Sanctum::actingAs($this->fixture['admin']);
-        $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
-            'user_id' => $this->fixture['classMayor']->id,
-            'responsibility' => EventRoleAssignment::REQUESTED_MODERATOR,
-        ])->assertCreated();
-        $token = $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/token')->assertOk()->json('data.token');
+        $token = $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/token')->assertOk()->json('data.token');
 
         Sanctum::actingAs($this->fixture['classMayor']);
         $this->withHeader('X-CDM-Client', 'mobile')

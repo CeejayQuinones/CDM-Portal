@@ -121,7 +121,7 @@ class StepUpAuthenticationTest extends TestCase
     {
         $studentRecord = $this->createStudent();
         $admin = $this->userWithRole(Role::ADMIN);
-        $adminToken = $admin->createToken('admin', ['client:web'])->plainTextToken;
+        $adminToken = $admin->createToken('admin', ['client:desktop'])->plainTextToken;
 
         $this->withToken($adminToken)->patchJson(
             "/api/students/{$studentRecord->id}",

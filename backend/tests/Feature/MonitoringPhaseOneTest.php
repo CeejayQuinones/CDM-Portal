@@ -183,7 +183,7 @@ class MonitoringPhaseOneTest extends TestCase
 
         $admin = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id, 'status' => 'active']);
         Sanctum::actingAs($admin);
-        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/monitoring/overview')->assertOk()
+        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/monitoring/overview')->assertOk()
             ->assertJsonPath('data.summary.total', 2);
 
         $guest = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::GUEST])->id, 'status' => 'active']);
@@ -200,10 +200,11 @@ class MonitoringPhaseOneTest extends TestCase
             [$this->fixture['user'], 'mobile', 200],
             [$this->fixture['user'], 'desktop', 403],
             [$this->fixture['professorUser'], 'web', 200],
+            [$this->fixture['professorUser'], 'mobile', 200],
             [$this->fixture['professorUser'], 'desktop', 403],
             [$this->fixture['registrar'], 'desktop', 200],
             [$this->fixture['registrar'], 'web', 403],
-            [$admin, 'web', 200],
+            [$admin, 'web', 403],
             [$admin, 'desktop', 200],
             [$admin, 'mobile', 403],
         ] as [$user, $client, $status]) {
@@ -214,7 +215,7 @@ class MonitoringPhaseOneTest extends TestCase
         foreach (['inactive', 'suspended'] as $status) {
             $admin->update(['status' => $status]);
             Sanctum::actingAs($admin->fresh());
-            $this->withHeader('X-CDM-Client', 'web')->getJson('/api/monitoring/overview')->assertForbidden();
+            $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/monitoring/overview')->assertForbidden();
         }
     }
 

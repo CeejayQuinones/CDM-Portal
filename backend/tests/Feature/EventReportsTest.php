@@ -9,10 +9,12 @@ use App\Models\EventRoleAssignment;
 use App\Models\Role;
 use App\Models\Student;
 use App\Models\User;
+use App\Services\Event\EventNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 class EventReportsTest extends TestCase
@@ -34,7 +36,8 @@ class EventReportsTest extends TestCase
     {
         foreach ([$this->fixture['admin'], $this->fixture['registrar']] as $staff) {
             Sanctum::actingAs($staff);
-            $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/event-reports/'.$this->fixture['event']->id)
+            $client = $staff->is($this->fixture['admin']) ? 'desktop' : 'mobile';
+            $this->withHeader('X-CDM-Client', $client)->getJson('/api/event-reports/'.$this->fixture['event']->id)
                 ->assertOk()->assertJsonPath('data.summary.eligible', 3)->assertJsonPath('data.summary.present', 1)
                 ->assertJsonPath('data.summary.late', 1)->assertJsonPath('data.summary.excused', 0)
                 ->assertJsonPath('data.summary.absent', 1)->assertJsonPath('data.summary.attendance_rate', 66.7)
@@ -42,7 +45,7 @@ class EventReportsTest extends TestCase
         }
 
         Sanctum::actingAs($this->fixture['admin']);
-        $this->getJson('/api/event-reports/'.$this->fixture['event']->id.'?status=late&course_id='.$this->fixture['course'].'&year_level=1&section_id='.$this->fixture['section'].'&search=0002')
+        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/event-reports/'.$this->fixture['event']->id.'?status=late&course_id='.$this->fixture['course'].'&year_level=1&section_id='.$this->fixture['section'].'&search=0002')
             ->assertOk()->assertJsonCount(1, 'data.students.data')->assertJsonPath('data.students.data.0.status', 'late');
         $response = $this->get('/api/event-reports/'.$this->fixture['event']->id.'/export?format=csv&status=present')->assertOk();
         $csv = $response->streamedContent();
@@ -63,7 +66,8 @@ class EventReportsTest extends TestCase
             $this->get('/api/event-reports/'.$this->fixture['event']->id.'/export?format=csv')->assertForbidden();
         }
         Sanctum::actingAs($this->fixture['registrar']);
-        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/event-reports')->assertOk();
+        $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/event-reports')->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/event-reports')->assertForbidden();
         $this->withHeader('X-CDM-Client', 'web')->getJson('/api/event-reports')->assertForbidden();
         Sanctum::actingAs($this->fixture['admin']);
         $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/event-reports')->assertOk();
@@ -123,6 +127,128 @@ class EventReportsTest extends TestCase
         $this->getJson('/api/event-reports/'.$parent->id)->assertOk()->assertJsonCount(2, 'data.sub_events.items')->assertJsonPath('data.sub_events.overall_unique_attendees', 2);
         Sanctum::actingAs($this->fixture['students'][2]->user);
         $this->getJson('/api/events/'.$childModel->id)->assertOk()->assertJsonPath('data.audience_inherited', true);
+    }
+
+    public function test_phase_two_analytics_finalize_absence_only_after_window_and_exports_share_metrics(): void
+    {
+        $event = $this->fixture['event'];
+        $event->attendanceSession()->update(['status' => 'open', 'closed_at' => null]);
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->getJson('/api/event-reports/'.$event->id)->assertOk()
+            ->assertJsonPath('data.summary.checked_in', 2)
+            ->assertJsonPath('data.summary.completed', 2)
+            ->assertJsonPath('data.summary.attendance_rate', 66.7)
+            ->assertJsonPath('data.summary.completion_rate', 66.7)
+            ->assertJsonPath('data.summary.absent', 0)
+            ->assertJsonPath('data.summary.absence_finalized', false)
+            ->assertJsonStructure(['data' => ['breakdowns' => ['session', 'date', 'method']]])
+            ->assertJsonPath('data.breakdowns.method.0.label', 'qr')
+            ->assertJsonPath('data.breakdowns.method.0.total', 2);
+
+        $event->attendanceSession()->update(['status' => 'closed', 'closed_at' => now()]);
+        $this->getJson('/api/event-reports/'.$event->id)->assertOk()->assertJsonPath('data.summary.absent', 1)->assertJsonPath('data.summary.absence_finalized', true);
+        $xlsx = $this->get('/api/event-reports/'.$event->id.'/export?format=xlsx')->assertOk();
+        $this->assertStringStartsWith('PK', $xlsx->streamedContent());
+        $pdf = $this->get('/api/event-reports/'.$event->id.'/export?format=pdf')->assertOk();
+        $this->assertStringStartsWith('%PDF-', $pdf->getContent());
+        $this->assertDatabaseHas('event_audit_events', ['event_id' => $event->id, 'action' => 'report.exported']);
+    }
+
+    public function test_empty_event_report_and_all_exports_remain_available(): void
+    {
+        $event = Event::query()->create([
+            'title' => 'Empty Report Event', 'venue' => 'Library', 'venue_key' => 'library',
+            'starts_at' => '2026-10-04 09:00:00', 'ends_at' => '2026-10-04 10:00:00',
+            'status' => 'published', 'created_by' => $this->fixture['admin']->id, 'updated_by' => $this->fixture['admin']->id,
+        ]);
+        $event->audiences()->create(['audience_type' => 'all_professors']);
+        Sanctum::actingAs($this->fixture['admin']);
+
+        $this->getJson('/api/event-reports/'.$event->id)->assertOk()
+            ->assertJsonPath('data.summary.checked_in', 0)
+            ->assertJsonCount(0, 'data.breakdowns.method')
+            ->assertJsonCount(0, 'data.breakdowns.date')
+            ->assertJsonCount(0, 'data.students.data');
+        $this->assertStringContainsString('Event Attendance Report', $this->get('/api/event-reports/'.$event->id.'/export?format=csv')->assertOk()->streamedContent());
+        $this->assertStringStartsWith('PK', $this->get('/api/event-reports/'.$event->id.'/export?format=xlsx')->assertOk()->streamedContent());
+        $this->assertStringStartsWith('%PDF-', $this->get('/api/event-reports/'.$event->id.'/export?format=pdf')->assertOk()->getContent());
+    }
+
+    public function test_csv_and_excel_neutralize_spreadsheet_formula_values(): void
+    {
+        DB::table('user_profiles')->where('id', $this->fixture['students'][0]->user_profile_id)->update(['first_name' => '=HYPERLINK("bad")', 'last_name' => '']);
+        Sanctum::actingAs($this->fixture['admin']);
+        $csv = $this->get('/api/event-reports/'.$this->fixture['event']->id.'/export?format=csv')->assertOk()->streamedContent();
+        $this->assertStringContainsString("'=HYPERLINK", $csv);
+        $xlsx = $this->get('/api/event-reports/'.$this->fixture['event']->id.'/export?format=xlsx')->assertOk()->streamedContent();
+        $temporary = tempnam(sys_get_temp_dir(), 'event-report-');
+        file_put_contents($temporary, $xlsx);
+        $sheet = IOFactory::load($temporary)->getSheetByName('Attendance');
+        $names = [];
+        for ($row = 2; $row <= $sheet->getHighestRow(); $row++) {
+            $names[] = $sheet->getCell('B'.$row)->getValue();
+        }
+        unlink($temporary);
+        $this->assertContains("'=HYPERLINK(\"bad\")", $names);
+    }
+
+    public function test_certificate_is_server_eligible_idempotent_verifiable_revocable_and_reissuable(): void
+    {
+        $event = $this->fixture['event'];
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->putJson('/api/events/'.$event->id.'/certificate-settings', [
+            'version' => $event->version, 'certificates_enabled' => true, 'certificate_minimum_minutes' => null, 'required_event_ids' => [],
+        ])->assertOk()->assertJsonPath('data.settings.enabled', true);
+        $this->travel(3)->hours();
+
+        $student = $this->fixture['students'][0];
+        Sanctum::actingAs($student->user);
+        $this->getJson('/api/events/'.$event->id.'/certificate')->assertOk()->assertJsonPath('data.eligible', true);
+        $first = $this->postJson('/api/events/'.$event->id.'/certificate/issue')->assertOk()->json('data');
+        $again = $this->postJson('/api/events/'.$event->id.'/certificate/issue')->assertOk()->json('data');
+        $this->assertSame($first['identifier'], $again['identifier']);
+        $this->assertDatabaseCount('event_certificates', 1);
+        $this->getJson('/api/event-certificates/verify/'.$first['identifier'])->assertOk()->assertJsonPath('data.status', 'Valid')->assertJsonMissingPath('data.email');
+        $this->get('/api/events/'.$event->id.'/certificate/download')->assertOk()->assertHeader('content-type', 'application/pdf');
+
+        Sanctum::actingAs($this->fixture['admin']);
+        $attendance = EventAttendance::query()->where('event_id', $event->id)->where('student_id', $student->id)->firstOrFail();
+        $this->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
+        $this->patchJson('/api/events/'.$event->id.'/attendance/'.$attendance->id, ['status' => 'absent', 'version' => $attendance->version, 'reason' => 'Verified correction after review.'])->assertOk();
+        $this->assertDatabaseHas('event_certificates', ['verification_code' => $first['identifier'], 'status' => 'revoked']);
+        $this->getJson('/api/event-certificates/verify/'.$first['identifier'])->assertOk()->assertJsonPath('data.status', 'Revoked');
+
+        $attendance->refresh();
+        $this->patchJson('/api/events/'.$event->id.'/attendance/'.$attendance->id, ['status' => 'present', 'version' => $attendance->version, 'reason' => 'Supporting evidence restored eligibility.'])->assertOk();
+        Sanctum::actingAs($student->user);
+        $second = $this->postJson('/api/events/'.$event->id.'/certificate/issue')->assertOk()->json('data');
+        $this->assertNotSame($first['identifier'], $second['identifier']);
+        $this->assertDatabaseCount('event_certificates', 2);
+        $this->assertDatabaseHas('event_audit_events', ['event_id' => $event->id, 'action' => 'certificate.reissued']);
+    }
+
+    public function test_certificate_requires_configured_child_events_and_denies_other_roles(): void
+    {
+        $parent = $this->fixture['event'];
+        $child = Event::query()->create(['parent_event_id' => $parent->id, 'title' => 'Required Workshop', 'venue' => 'Gym', 'venue_key' => 'gym', 'starts_at' => '2026-10-03 10:00:00', 'ends_at' => '2026-10-03 11:00:00', 'status' => 'published', 'created_by' => $this->fixture['admin']->id, 'updated_by' => $this->fixture['admin']->id]);
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->putJson('/api/events/'.$parent->id.'/certificate-settings', ['version' => $parent->version, 'certificates_enabled' => true, 'required_event_ids' => [$child->id]])->assertOk();
+        $this->travel(3)->hours();
+        Sanctum::actingAs($this->fixture['students'][0]->user);
+        $this->postJson('/api/events/'.$parent->id.'/certificate/issue')->assertConflict();
+        Sanctum::actingAs($this->fixture['registrar']);
+        $this->getJson('/api/events/'.$parent->id.'/certificate')->assertForbidden();
+    }
+
+    public function test_event_notifications_target_only_the_effective_audience_and_deduplicate(): void
+    {
+        $outsider = $this->user(Role::PROFESSOR);
+        $service = app(EventNotificationService::class);
+        $sent = $service->eventAudience($this->fixture['event'], 'event_updated', 'The Event schedule changed.', 77, false);
+        $this->assertSame(3, $sent);
+        $this->assertSame(0, $service->eventAudience($this->fixture['event'], 'event_updated', 'The Event schedule changed.', 77, false));
+        $this->assertDatabaseCount('notifications', 3);
+        $this->assertFalse($outsider->notifications()->exists());
     }
 
     private function fixture(): array

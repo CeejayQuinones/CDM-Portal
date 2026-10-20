@@ -293,12 +293,10 @@ export const NAVIGATION_ITEMS = Object.freeze([
   {
     name: 'event-attendance',
     label: 'Events',
+    path: '/event-attendance',
     icon: 'EV',
     roles: ROUTE_ROLES['event-attendance'],
-    children: [
-      { name: 'event-attendance', label: 'Events', path: '/event-attendance', roles: ROUTE_ROLES['event-attendance'] },
-      { name: 'event-attendance-reports', label: 'Reports', path: '/event-attendance/reports', roles: ['Admin', 'Professor'], desktopOnly: true },
-    ],
+    activeRoutes: ['event-attendance', 'event-attendance-reports'],
   },
   {
     name: 'settings',

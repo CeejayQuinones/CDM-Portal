@@ -8,13 +8,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class EventAttendanceSession extends Model
 {
-    protected $fillable = ['event_id', 'opened_by', 'opened_at', 'closed_at', 'status', 'qr_token_fingerprint', 'qr_expires_at', 'token_version', 'version'];
+    protected $fillable = ['event_id', 'opened_by', 'opened_at', 'closed_at', 'status', 'qr_token_fingerprint', 'qr_expires_at', 'static_qr_token_fingerprint', 'static_token_version', 'token_version', 'version'];
 
-    protected $attributes = ['status' => 'open', 'token_version' => 0, 'version' => 1];
+    protected $attributes = ['status' => 'open', 'token_version' => 0, 'static_token_version' => 1, 'version' => 1];
 
     protected function casts(): array
     {
-        return ['opened_at' => 'datetime', 'closed_at' => 'datetime', 'qr_expires_at' => 'datetime', 'token_version' => 'integer', 'version' => 'integer'];
+        return ['opened_at' => 'datetime', 'closed_at' => 'datetime', 'qr_expires_at' => 'datetime', 'token_version' => 'integer', 'static_token_version' => 'integer', 'version' => 'integer'];
     }
 
     public function event(): BelongsTo

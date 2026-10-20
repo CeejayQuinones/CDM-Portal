@@ -16,8 +16,6 @@ use RuntimeException;
 
 class StudentRecordRequirementService
 {
-    public const DOCUMENT_TYPES = ['Form 137', 'Good Moral Certificate', 'Certificate of Enrollment'];
-
     private const DISK = 'local';
 
     public function __construct(private readonly StudentRecordAuditWriter $audit) {}
@@ -25,8 +23,8 @@ class StudentRecordRequirementService
     /** @return Collection<int, DocumentType> */
     public function types(): Collection
     {
-        return DocumentType::query()->whereIn('document_name', self::DOCUMENT_TYPES)
-            ->orderByRaw("CASE document_name WHEN 'Form 137' THEN 1 WHEN 'Good Moral Certificate' THEN 2 ELSE 3 END")
+        return DocumentType::query()->where('status', 'active')->where('student_uploadable', true)
+            ->orderBy('document_name')
             ->get();
     }
 
@@ -82,7 +80,7 @@ class StudentRecordRequirementService
 
     public function upload(User $actor, Student $student, DocumentType $type, UploadedFile $file): StudentDocument
     {
-        abort_unless(in_array($type->document_name, self::DOCUMENT_TYPES, true), 404);
+        abort_unless($type->status === 'active' && $type->workflow_category === 'supporting_record' && $type->student_uploadable, 404);
         $path = $this->store($student, $type, $file);
         $oldPath = null;
 
@@ -184,7 +182,13 @@ class StudentRecordRequirementService
 
     public function physical(User $actor, Student $student, DocumentType $type, string $action, ?string $instruction, ?string $reason, ?string $remark = null): StudentDocument
     {
-        abort_unless(in_array($type->document_name, self::DOCUMENT_TYPES, true), 404);
+        abort_unless(
+            $type->student_uploadable || StudentDocument::query()
+                ->where('student_id', $student->id)
+                ->where('document_type_id', $type->id)
+                ->exists(),
+            404,
+        );
 
         return DB::transaction(function () use ($actor, $student, $type, $action, $instruction, $reason, $remark): StudentDocument {
             Student::query()->whereKey($student->id)->lockForUpdate()->firstOrFail();

@@ -133,6 +133,15 @@ class DocumentRequestAppointmentTest extends TestCase
         Sanctum::actingAs($staff->user);
         $this->patchJson("/api/registrar/document-requests/{$second->id}", ['action' => 'reject', 'reason' => 'Incomplete supporting record'])->assertOk();
         $this->assertDatabaseHas('appointments', ['document_request_id' => $second->id, 'status' => 'cancelled']);
+        $this->assertDatabaseHas('document_request_status_changes', [
+            'document_request_id' => $second->id,
+            'action' => 'rejected',
+            'reason' => 'Incomplete supporting record',
+        ]);
+        Sanctum::actingAs($second->student->user);
+        $this->getJson('/api/document-requests')->assertOk()
+            ->assertJsonFragment(['id' => $second->id, 'status' => 'rejected', 'remarks' => 'Incomplete supporting record']);
+        $this->patchJson("/api/registrar/document-requests/{$second->id}", ['action' => 'reject', 'reason' => 'Duplicate'])->assertForbidden();
     }
 
     public function test_admin_is_not_granted_registrar_workflow_permissions(): void

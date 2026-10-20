@@ -32,17 +32,30 @@ class EnrollmentWorkflowService
     {
         return DB::transaction(function () use ($user, $input, $id) {
             $actor = EnrollmentAccess::require($user, true, true);
-            // Lock the academic year as a stable parent even before a period exists.
-            AcademicYear::whereKey($input['academic_year_id'])->lockForUpdate()->firstOrFail();
+            // Serialize period configuration through the stable academic-year parents,
+            // including when another term has no period row yet.
+            $years = AcademicYear::query()->orderBy('id')->lockForUpdate()->get();
+            $year = $years->firstWhere('id', $input['academic_year_id']);
+            abort_unless($year, 404);
+            abort_if($input['enabled'] && $year->status !== 'active', 422, 'Only the active academic year can have an enabled enrollment period.');
+            EnrollmentPeriod::query()->orderBy('id')->lockForUpdate()->get(['id']);
             $p = $id ? EnrollmentPeriod::lockForUpdate()->findOrFail($id) : new EnrollmentPeriod;
             if ($id) {
                 abort_unless($p->version === $input['version'], 409, 'This period changed. Reload before saving.');
                 abort_unless($p->academic_year_id === $input['academic_year_id'] && $p->semester_id === $input['semester_id'], 422, 'A period cannot be moved to another term.');
                 if (EnrollmentApplication::where('period_id', $id)->lockForUpdate()->first(['id'])) {
-                    abort_unless($p->document_requirements == $input['document_requirements'], 409, 'Document requirements cannot change after an application is created.');
+                    abort_unless($this->normalizedRequirements($p->document_requirements) === $this->normalizedRequirements($input['document_requirements']), 409, 'Document requirements cannot change after an application is created.');
                 }
             }
             abort_if(EnrollmentPeriod::where('academic_year_id', $input['academic_year_id'])->where('semester_id', $input['semester_id'])->when($id, fn ($q) => $q->where('id', '!=', $id))->lockForUpdate()->first(['id']), 409, 'This term already has a period. Edit that period.');
+            if ($input['enabled']) {
+                abort_if(EnrollmentPeriod::where('enabled', true)
+                    ->when($id, fn ($query) => $query->whereKeyNot($id))
+                    ->where('opens_at', '<', $input['closes_at'])
+                    ->where('closes_at', '>', $input['opens_at'])
+                    ->exists(), 409, 'Another enabled enrollment period overlaps this window. Close or reschedule it first.');
+            }
+            $input['document_requirements'] = $this->normalizedRequirements($input['document_requirements']);
             $p->fill(collect($input)->only(['academic_year_id', 'semester_id', 'opens_at', 'closes_at', 'enabled', 'document_requirements'])->all());
             $p->updated_by = $actor->id;
             if (! $id) {
@@ -55,6 +68,51 @@ class EnrollmentWorkflowService
 
             return $p->fresh(['academicYear', 'semester']);
         }, 3);
+    }
+
+    public function academicYear(User $user, array $input, ?int $id = null): AcademicYear
+    {
+        return DB::transaction(function () use ($user, $input, $id): AcademicYear {
+            $actor = EnrollmentAccess::require($user, true, true);
+            AcademicYear::query()->orderBy('id')->lockForUpdate()->get(['id']);
+            $year = $id ? AcademicYear::lockForUpdate()->findOrFail($id) : new AcademicYear;
+            $referenced = $id && (EnrollmentPeriod::where('academic_year_id', $id)->exists()
+                || DB::table('sections')->where('academic_year_id', $id)->exists()
+                || DB::table('enrollments')->where('academic_year_id', $id)->exists());
+            if ($referenced) {
+                abort_unless($year->school_year === $input['school_year']
+                    && $year->start_date?->toDateString() === $input['start_date']
+                    && $year->end_date?->toDateString() === $input['end_date'], 409, 'A referenced academic year cannot change its label or dates.');
+            }
+            abort_if(AcademicYear::where('school_year', $input['school_year'])->when($id, fn ($query) => $query->whereKeyNot($id))->exists(), 409, 'This academic year already exists.');
+            if ($input['status'] === 'active') {
+                abort_if(AcademicYear::where('status', 'active')->when($id, fn ($query) => $query->whereKeyNot($id))->exists(), 409, 'Complete the current active academic year before activating another.');
+            }
+            if ($input['status'] === 'completed' && $id) {
+                abort_if(EnrollmentPeriod::where('academic_year_id', $id)->where('enabled', true)->where('closes_at', '>', now())->exists(), 409, 'Close enabled enrollment periods before completing this academic year.');
+            }
+            $year->fill($input)->save();
+            $this->audit->record($actor, $id ? 'academic_year_updated' : 'academic_year_created', 'academic_year', $year->id, ['status' => $year->status]);
+
+            return $year->fresh();
+        }, 3);
+    }
+
+    private function normalizedRequirements(array $requirements): array
+    {
+        $normalized = [];
+        foreach (['regular', 'irregular', 'transferee', 'returnee'] as $classification) {
+            $value = $requirements[$classification] ?? [];
+            $required = array_is_list($value) ? $value : ($value['required'] ?? []);
+            $optional = array_is_list($value) ? [] : ($value['optional'] ?? []);
+            $required = array_values(array_unique(array_map('intval', $required)));
+            $optional = array_values(array_unique(array_diff(array_map('intval', $optional), $required)));
+            sort($required);
+            sort($optional);
+            $normalized[$classification] = ['required' => $required, 'optional' => $optional];
+        }
+
+        return $normalized;
     }
 
     public function create(User $user, array $input): EnrollmentApplication
@@ -183,24 +241,25 @@ class EnrollmentWorkflowService
 
     public function requirements(EnrollmentApplication $a): array
     {
-        $ids = $a->period->document_requirements[$a->classification] ?? [];
+        $configuration = $a->period->documentConfiguration($a->classification);
+        $ids = $a->period->documentTypeIds($a->classification);
         $attached = $a->documents->keyBy('document_type_id');
         $existing = $a->student_id
             ? StudentDocument::where('student_id', $a->student_id)->whereIn('document_type_id', $ids)->where('verification_status', 'verified')->get()->keyBy('document_type_id')
             : collect();
 
-        return DocumentType::whereIn('id', $ids)->get()->map(function ($type) use ($attached, $existing) {
+        return DocumentType::whereIn('id', $ids)->orderBy('document_name')->get()->map(function ($type) use ($attached, $existing, $configuration) {
             $doc = $attached->get($type->id);
             $reuse = $existing->get($type->id);
             $reusable = $reuse && $reuse->file_path && Storage::disk('local')->exists($reuse->file_path);
 
-            return ['id' => $type->id, 'name' => $type->document_name, 'attached' => $doc !== null, 'document_id' => $doc?->id, 'reusable' => $reusable, 'student_document_id' => $reusable ? $reuse->id : null];
+            return ['id' => $type->id, 'name' => $type->document_name, 'required' => in_array($type->id, $configuration['required'], true), 'attached' => $doc !== null, 'document_id' => $doc?->id, 'reusable' => $reusable, 'student_document_id' => $reusable ? $reuse->id : null];
         })->all();
     }
 
     private function documentsComplete(EnrollmentApplication $a, EnrollmentPeriod $p): void
     {
-        foreach ($p->document_requirements[$a->classification] ?? [] as $type) {
+        foreach ($p->documentConfiguration($a->classification)['required'] as $type) {
             $doc = $a->documents()->where('document_type_id', $type)->lockForUpdate()->first();
             // Reuse verified evidence automatically; no repeat Student upload.
             if (! $doc) {
@@ -237,7 +296,7 @@ class EnrollmentWorkflowService
                 $student = $ref->student_id ? Student::whereKey($ref->student_id)->lockForUpdate()->firstOrFail() : null;
                 $a = EnrollmentApplication::lockForUpdate()->findOrFail($id);
                 abort_unless($a->status === 'draft' && $a->version === $input['version'], 409, 'Reload your draft before uploading.');
-                abort_unless(in_array($input['document_type_id'], $a->period->document_requirements[$a->classification] ?? [], true), 422, 'This document is not required for your classification.');
+                abort_unless(in_array($input['document_type_id'], $a->period->documentTypeIds($a->classification), true), 422, 'This document is not configured for your classification.');
                 abort_if($a->documents()->where('document_type_id', $input['document_type_id'])->lockForUpdate()->first(['id']), 409, 'This requirement already has a document.');
                 $existing = $student ? StudentDocument::where('student_id', $student->id)->where('document_type_id', $input['document_type_id'])->where('verification_status', 'verified')->lockForUpdate()->first() : null;
                 abort_if($existing && $existing->file_path && Storage::disk('local')->exists($existing->file_path), 409, 'A verified document is already available and will be reused when submitting.');

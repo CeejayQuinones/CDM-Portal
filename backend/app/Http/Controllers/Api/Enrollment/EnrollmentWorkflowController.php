@@ -35,18 +35,45 @@ class EnrollmentWorkflowController extends Controller
         EnrollmentAccess::require($r->user(), true);
 
         return $this->ok(['periods' => EnrollmentPeriod::with(['academicYear', 'semester'])->latest('id')->paginate(20),
-            'academic_years' => AcademicYear::where('status', 'active')->orderByDesc('id')->get(['id', 'school_year']), 'semesters' => Semester::where('status', 'active')->get(['id', 'semester_name']),
-            'document_types' => DocumentType::where('status', 'active')->orderBy('document_name')->get(['id', 'document_name'])]);
+            'academic_years' => AcademicYear::orderByDesc('start_date')->get(), 'semesters' => Semester::where('status', 'active')->get(['id', 'semester_name']),
+            'document_types' => DocumentType::where('status', 'active')->where('student_uploadable', true)->orderBy('document_name')->get(['id', 'document_name'])]);
+    }
+
+    public function saveAcademicYear(Request $r, ?int $id = null)
+    {
+        EnrollmentAccess::require($r->user(), true);
+        $input = $r->validate([
+            'school_year' => ['required', 'string', 'max:20', 'regex:/^(\d{4})-(\d{4})$/'],
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after:start_date',
+            'status' => ['required', Rule::in(['upcoming', 'active', 'completed'])],
+        ]);
+        [$start, $end] = array_map('intval', explode('-', $input['school_year']));
+        abort_unless($end === $start + 1, 422, 'Academic year must use consecutive years, such as 2026-2027.');
+        abort_unless((int) substr($input['start_date'], 0, 4) === $start && (int) substr($input['end_date'], 0, 4) === $end, 422, 'Academic year dates must match the school-year label.');
+
+        return $this->ok($this->workflow->academicYear($r->user(), $input, $id), $id ? 200 : 201);
     }
 
     public function savePeriod(Request $r, ?int $id = null)
     {
         EnrollmentAccess::require($r->user(), true);
-        $rules = ['academic_year_id' => ['required', 'integer', Rule::exists('academic_years', 'id')->where('status', 'active')], 'semester_id' => ['required', 'integer', Rule::exists('semesters', 'id')->where('status', 'active')],
+        $requirements = $r->input('document_requirements', []);
+        foreach (['regular', 'irregular', 'transferee', 'returnee'] as $classification) {
+            $value = $requirements[$classification] ?? [];
+            if (is_array($value) && array_is_list($value)) {
+                $requirements[$classification] = ['required' => $value, 'optional' => []];
+            }
+        }
+        $r->merge(['document_requirements' => $requirements]);
+        $rules = ['academic_year_id' => ['required', 'integer', Rule::exists('academic_years', 'id')->whereIn('status', ['active', 'upcoming'])], 'semester_id' => ['required', 'integer', Rule::exists('semesters', 'id')->where('status', 'active')],
             'opens_at' => 'required|date', 'closes_at' => 'required|date|after:opens_at', 'enabled' => 'required|boolean', 'document_requirements' => 'required|array:regular,irregular,transferee,returnee', 'version' => $id ? 'required|integer|min:1' : 'sometimes|integer'];
         foreach (['regular', 'irregular', 'transferee', 'returnee'] as $c) {
-            $rules['document_requirements.'.$c] = 'present|array|max:20';
-            $rules['document_requirements.'.$c.'.*'] = ['integer', 'distinct', Rule::exists('document_types', 'id')->where('status', 'active')];
+            $rules['document_requirements.'.$c] = 'present|array:required,optional';
+            foreach (['required', 'optional'] as $kind) {
+                $rules['document_requirements.'.$c.'.'.$kind] = 'present|array|max:20';
+                $rules['document_requirements.'.$c.'.'.$kind.'.*'] = ['integer', 'distinct', Rule::exists('document_types', 'id')->where(fn ($query) => $query->where('status', 'active')->where('student_uploadable', true))];
+            }
         }
         $input = $r->validate($rules);
         $input['academic_year_id'] = (int) $input['academic_year_id'];
@@ -54,10 +81,13 @@ class EnrollmentWorkflowController extends Controller
         if ($id) {
             $input['version'] = (int) $input['version'];
         }
-        foreach ($input['document_requirements'] as &$ids) {
-            $ids = array_map('intval', $ids);
-            sort($ids);
-        }unset($ids);
+        foreach ($input['document_requirements'] as &$configuration) {
+            foreach (['required', 'optional'] as $kind) {
+                $configuration[$kind] = array_map('intval', $configuration[$kind]);
+                sort($configuration[$kind]);
+            }
+            abort_if(array_intersect($configuration['required'], $configuration['optional']), 422, 'A document cannot be both required and optional for the same classification.');
+        }unset($configuration);
 
         return $this->ok($this->workflow->period($r->user(), $input, $id), $id ? 200 : 201);
     }

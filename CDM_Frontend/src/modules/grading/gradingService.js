@@ -18,6 +18,7 @@ export const gradingService = {
   classes: (params = {}) => apiClient.get('/grading/classes', { params }).then(data),
   workspace: (id) => apiClient.post(`/grading/classes/${id}/workspace`).then(data),
   addAssessment: (sheet, payload) => apiClient.post(`/grading/sheets/${sheet}/assessments`, payload).then(data),
+  addAssessmentsBulk: (sheet, payload) => apiClient.post(`/grading/sheets/${sheet}/assessments/bulk`, payload).then(data),
   updateAssessment: (sheet, id, payload) => apiClient.put(`/grading/sheets/${sheet}/assessments/${id}`, payload).then(data),
   assessmentStatus: (sheet, id, payload) => apiClient.patch(`/grading/sheets/${sheet}/assessments/${id}/status`, payload).then(data),
   saveScores: (sheet, payload) => apiClient.put(`/grading/sheets/${sheet}/scores`, payload).then(data),

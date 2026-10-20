@@ -724,7 +724,7 @@ class EnrollmentAcademicTest extends TestCase
         $admin = User::factory()->create(['role_id' => Role::firstOrCreate(['role_name' => Role::ADMIN])->id]);
         $current = $assignment->fresh();
         Sanctum::actingAs($admin);
-        $this->withHeader('X-CDM-Client', 'web')->putJson($this->base().'/schedules/'.$assignment->id, array_replace($payload, [
+        $this->withHeader('X-CDM-Client', 'desktop')->putJson($this->base().'/schedules/'.$assignment->id, array_replace($payload, [
             'professor_id' => $this->f['professor']->id,
             'version' => $current->version,
         ]))->assertOk()->assertJsonPath('data.professor_id', $this->f['professor']->id);
@@ -773,8 +773,7 @@ class EnrollmentAcademicTest extends TestCase
         Sanctum::actingAs($this->f['professorUser']);
         $this->getJson($this->base().'/professor')->assertOk()->assertJsonPath('data.total', 1);
         $this->withHeader('X-CDM-Client', 'mobile')->getJson($this->base().'/professor')
-            ->assertForbidden()
-            ->assertJsonPath('message', 'Professor academic work is available through the Web client.');
+            ->assertOk()->assertJsonPath('data.total', 1);
         $this->withHeader('X-CDM-Client', 'web')->getJson($this->base().'/professor/sections/'.$this->f['section']->id)->assertOk()->assertJsonPath('data.total', 1);
 
         $unrelatedUser = User::factory()->create(['role_id' => Role::where('role_name', Role::STUDENT)->value('id')]);

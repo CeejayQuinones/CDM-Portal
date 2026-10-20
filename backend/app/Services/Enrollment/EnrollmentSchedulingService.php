@@ -4,6 +4,7 @@ namespace App\Services\Enrollment;
 
 use App\Models\AcademicYear;
 use App\Models\Course;
+use App\Models\Curriculum;
 use App\Models\EnrollmentSubject;
 use App\Models\GradeSheet;
 use App\Models\Professor;
@@ -42,11 +43,16 @@ class EnrollmentSchedulingService
             }
             $course = Course::lockForUpdate()->findOrFail($input['course_id']);
             abort_unless($year->status === 'active' && $semester->status === 'active' && $course->status === 'active' && $input['year_level'] <= $course->years, 422, 'Invalid active academic term, Course or year level.');
+            $curriculum = $this->curriculum($course->id, $input['curriculum_id'] ?? $s->curriculum_id);
+            if ($id && ($s->applications()->exists() || $s->enrollments()->exists() || $s->schedules()->exists())) {
+                abort_unless((int) $s->curriculum_id === $curriculum->id, 422, 'A referenced section cannot change curriculum.');
+            }
             abort_if(Section::where('course_id', $course->id)->where('academic_year_id', $year->id)->where('semester_id', $semester->id)->where('section_name', $input['section_name'])->when($id, fn ($q) => $q->where('id', '!=', $id))->lockForUpdate()->first(), 409, 'This section name already exists in the term.');
             if (! empty($input['adviser_id'])) {
                 $this->professor($input['adviser_id']);
             }
-            $s->fill(collect($input)->only(['course_id', 'academic_year_id', 'semester_id', 'section_name', 'year_level', 'adviser_id', 'capacity', 'status'])->all());
+            $input['curriculum_id'] = $curriculum->id;
+            $s->fill(collect($input)->only(['course_id', 'curriculum_id', 'academic_year_id', 'semester_id', 'section_name', 'year_level', 'adviser_id', 'capacity', 'status'])->all());
             if ($id) {
                 $s->version++;
             }$s->save();
@@ -61,6 +67,18 @@ class EnrollmentSchedulingService
         $p = Professor::whereKey($id)->lockForUpdate()->firstOrFail();
         $user = User::with('role')->whereKey($p->user_id)->lockForUpdate()->first();
         abort_unless($p->status === 'active' && $user?->status === 'active' && $user->role?->role_name === Role::PROFESSOR, 422, 'Choose an active Professor account.');
+    }
+
+    public function curriculum(int $courseId, ?int $curriculumId = null): Curriculum
+    {
+        $query = Curriculum::where('course_id', $courseId)->where('status', 'active');
+        if ($curriculumId) {
+            return $query->whereKey($curriculumId)->lockForUpdate()->firstOrFail();
+        }
+        $curricula = $query->orderBy('id')->lockForUpdate()->limit(2)->get();
+        abort_unless($curricula->count() === 1, 422, 'Choose the Section curriculum explicitly.');
+
+        return $curricula->first();
     }
 
     public function conflicts(SectionSubject $a, SectionSubject $b): bool
@@ -111,8 +129,9 @@ class EnrollmentSchedulingService
             if ($recordId) {
                 abort_unless($input['section_id'] === $section->id && (! $used || $input['subject_id'] === $s->subject_id), 422, 'Referenced schedules cannot change section or subject.');
             }
+            $curriculum = $this->curriculum($section->course_id, $section->curriculum_id);
             $subject = Subject::with('curriculum')->whereKey($input['subject_id'])->lockForUpdate()->firstOrFail();
-            abort_unless($subject->status === 'active' && $subject->curriculum?->course_id === $section->course_id && $subject->semester_id === $section->semester_id && (int) $subject->year_level === (int) $section->year_level && $subject->curriculum->status === 'active' && $subject->curriculum->effective_year <= now()->year, 422, 'Choose an active curriculum subject for this Course, year level and semester.');
+            abort_unless($subject->status === 'active' && $subject->curriculum_id === $curriculum->id && $subject->semester_id === $section->semester_id && (int) $subject->year_level === (int) $section->year_level && $subject->curriculum?->status === 'active', 422, 'Choose an active subject from this Section curriculum, year level and semester.');
             $this->professor($input['professor_id']);
             abort_if(SectionSubject::where('section_id', $section->id)->where('subject_id', $subject->id)->when($recordId, fn ($q) => $q->where('id', '!=', $recordId))->lockForUpdate()->first(), 409, 'This subject already has a meeting in the section.');
             $s->fill(collect($input)->only(['section_id', 'subject_id', 'professor_id', 'day', 'start_time', 'end_time', 'room'])->all());

@@ -91,7 +91,7 @@ class StudentRecordRequirementTest extends TestCase
     {
         $student = $this->student('26-10004', 'Physical');
         $registrar = $this->user(Role::REGISTRAR_STAFF);
-        $type = DocumentType::query()->where('document_name', 'Certificate of Enrollment')->firstOrFail();
+        $type = DocumentType::query()->where('document_name', 'Form 137')->firstOrFail();
         $document = StudentDocument::query()->create([
             'student_id' => $student->id, 'document_type_id' => $type->id,
             'file_path' => 'student-documents/'.$student->id.'/verified.pdf',
@@ -127,6 +127,53 @@ class StudentRecordRequirementTest extends TestCase
             Sanctum::actingAs($role === Role::STUDENT ? $student->user : $this->user($role));
             $this->patchJson($url)->assertForbidden();
         }
+    }
+
+    public function test_document_type_workflows_keep_official_documents_out_of_student_uploads(): void
+    {
+        $student = $this->student('26-10006', 'Permissions');
+        $official = DocumentType::query()->where('document_name', 'Statement of Grades')->firstOrFail();
+        $supporting = DocumentType::query()->where('document_name', 'Form 138')->firstOrFail();
+        Sanctum::actingAs($student->user);
+
+        $this->getJson('/api/document-types')->assertOk()
+            ->assertJsonFragment(['document_name' => 'Statement of Grades'])
+            ->assertJsonMissing(['document_name' => 'Form 138']);
+        $this->getJson('/api/student/settings')->assertOk()
+            ->assertJsonFragment(['name' => 'Form 138'])
+            ->assertJsonMissing(['name' => 'Statement of Grades']);
+        $this->post('/api/student/settings/record-requirements/'.$official->id.'/upload', [
+            'file' => UploadedFile::fake()->create('forbidden.pdf', 10, 'application/pdf'),
+        ], ['Accept' => 'application/json'])->assertNotFound();
+        $this->post('/api/student/settings/record-requirements/'.$supporting->id.'/upload', [
+            'file' => UploadedFile::fake()->create('form-138.pdf', 10, 'application/pdf'),
+        ], ['Accept' => 'application/json'])->assertCreated();
+    }
+
+    public function test_registrar_configures_document_workflow_permissions_safely(): void
+    {
+        Sanctum::actingAs($this->user(Role::REGISTRAR_STAFF));
+        $official = $this->postJson('/api/registrar/document-types', [
+            'document_name' => 'Official Credential',
+            'description' => 'Issued by the Registrar.',
+            'workflow_category' => 'official_issuance',
+            'student_requestable' => true,
+            'student_uploadable' => false,
+            'requires_appointment' => false,
+            'processing_fee' => 0,
+            'processing_days' => 1,
+        ])->assertCreated()->assertJsonPath('data.student_uploadable', false)->json('data');
+
+        $this->patchJson('/api/registrar/document-types/'.$official['id'], ['student_uploadable' => true])
+            ->assertUnprocessable();
+        $this->patchJson('/api/registrar/document-types/'.$official['id'], [
+            'workflow_category' => 'supporting_record',
+            'student_requestable' => false,
+            'student_uploadable' => true,
+        ])->assertOk()->assertJsonPath('data.student_uploadable', true);
+        $this->patchJson('/api/registrar/document-types/'.$official['id'], [
+            'workflow_category' => 'official_issuance',
+        ])->assertOk()->assertJsonPath('data.student_uploadable', false);
     }
 
     private function student(string $number, string $first): Student

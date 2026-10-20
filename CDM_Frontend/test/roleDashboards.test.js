@@ -4,14 +4,38 @@ import test from 'node:test'
 
 const source = async (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
-test('student and professor dashboard routes replace only their placeholder views', async () => {
+test('student, professor, and Admin dashboard routes use their live dashboard views', async () => {
   const router = await source('src/router/index.js')
 
   assert.match(router, /const StudentDashboardView = .*modules\/dashboard\/StudentDashboardView\.vue/)
   assert.match(router, /const ProfessorDashboardView = .*modules\/dashboard\/ProfessorDashboardView\.vue/)
+  assert.match(router, /const AdminDashboardView = .*modules\/dashboard\/AdminDashboardView\.vue/)
   assert.match(router, /path: 'student-dashboard',[\s\S]*?component: StudentDashboardView/)
   assert.match(router, /path: 'professor-dashboard',[\s\S]*?component: ProfessorDashboardView/)
-  assert.match(router, /path: 'admin-dashboard',[\s\S]*?component: RoleDashboardView/)
+  assert.match(router, /path: 'admin-dashboard',[\s\S]*?component: AdminDashboardView/)
+})
+
+test('Admin dashboard presents real workflow summaries and operational links', async () => {
+  const view = await source('src/modules/dashboard/AdminDashboardView.vue')
+  const service = await source('src/modules/dashboard/dashboardService.js')
+  const access = await source('src/config/accessControl.js')
+  const css = await source('src/modules/dashboard/adminDashboard.css')
+
+  for (const field of ['active_students', 'active_professors', 'registrar_staff_accounts', 'guest_accounts', 'pending_admission_applications', 'current_term_enrollments', 'pending_administrative_actions', 'published_or_ongoing_events']) {
+    assert.match(view, new RegExp(field))
+  }
+  for (const route of ['registrar-management', 'registrar-admissions', 'enrollment-applications', 'monitoring', 'student-management', 'event-attendance']) {
+    assert.match(view, new RegExp(`name: '${route}'`))
+  }
+  assert.match(view, /timeZone: 'Asia\/Manila'/)
+  assert.match(view, /role="img" aria-label="Admission application counts by status"/)
+  assert.match(view, /No current Enrollment period is configured/)
+  assert.match(view, /dashboard\.enrollment\.activity\.academic_enrollments/)
+  assert.match(view, /role="alert"/)
+  assert.match(service, /getDashboard\('\/admin\/dashboard'\)/)
+  assert.match(access, /\[ROLES\.ADMIN\]: '\/admin-dashboard'/)
+  assert.match(css, /@media \(max-width: 900px\)/)
+  assert.match(css, /@media \(max-width: 560px\)/)
 })
 
 test('student dashboard presents live identity, summary, empty state, and real portal links', async () => {

@@ -28,6 +28,8 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
         builder.onLoad({filter:/.*/,namespace:'memory'},()=>({contents:"export * from 'vue-router'; import {createMemoryHistory} from 'vue-router'; export const createWebHashHistory = () => createMemoryHistory('/');",resolveDir:frontend}))
         builder.onResolve({filter:/stores\/authStore$/},()=>({path:'auth',namespace:'auth'}))
         builder.onLoad({filter:/.*/,namespace:'auth'},()=>({contents:"import {reactive} from 'vue'; export const auth=reactive({currentRole:'Student',currentUser:{id:1},isAuthenticated:true,async initialize(){}}); export const useAuthStore=()=>auth;",resolveDir:frontend}))
+        builder.onResolve({filter:/config\/clientPlatform$/},()=>({path:'client-platform',namespace:'platform'}))
+        builder.onLoad({filter:/.*/,namespace:'platform'},()=>({contents:"export const clientPlatform='web'; export const isRoleAllowedOnClient=()=>true;"}))
         builder.onResolve({filter:/services\/performance\/performanceMonitor$/},()=>({path:'performance',namespace:'performance'}))
         builder.onLoad({filter:/.*/,namespace:'performance'},()=>({contents:"export const performanceMonitor={beginRoute(){},markRouteRendered(){}};"}))
         builder.onResolve({filter:/services\/apiClient$/},()=>({path:'api',namespace:'api'}))
@@ -149,7 +151,7 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       for(const role of [ROLES.ADMIN,ROLES.REGISTRAR_STAFF]){
         auth.currentRole=role;await router.push('/enrollment/applications')
         const nav=navigation.menuItemsForRole(role).find(n=>n.name==='enrollment');assert.deepEqual(nav.children.map(n=>n.label),['Applications','Enrollment Periods','Sections','Subjects','Scheduling','Enrollment Records'])
-        const {root,app}=mount();try{await settle();assert.match(textOf(root),/Applicant name or number/);const form=find(root,'form');await form.props.onSubmit({preventDefault(){}});await settle();assert.equal(apiState.calls.at(-1).url,'/enrollment/applications');await router.push('/enrollment/periods');await settle();await click(root,'Create period');assert.match(textOf(root),/Required documents by classification/);assert.match(textOf(root),/Enable period/)}finally{app.unmount()}
+        const {root,app}=mount();try{await settle();assert.match(textOf(root),/Applicant name or number/);const form=find(root,'form');await form.props.onSubmit({preventDefault(){}});await settle();assert.equal(apiState.calls.at(-1).url,'/enrollment/applications');await router.push('/enrollment/periods');await settle();await click(root,'Create period');assert.match(textOf(root),/Documents by classification/);assert.match(textOf(root),/Enable period/);assert.match(textOf(root),/Required/);assert.match(textOf(root),/Optional/)}finally{app.unmount()}
       }
     })
     await t.test('both staff roles confirm review and approval, with rejection notes required',async()=>{

@@ -37,7 +37,9 @@ test('Subject Management exposes filters, curriculum view, and useful empty/erro
 })
 
 test('Enrollment empty states direct staff to the authoritative subject catalog', () => {
-  assert.match(staff, /No subjects are configured for this curriculum, year level, and semester\./)
+  assert.match(staff, /No active subjects are configured for/)
+  assert.match(staff, /configuration_issue/)
+  assert.match(staff, /Edit Section/)
   assert.match(staff, /Open Subject Management/)
   assert.match(load, /No subjects are configured for this curriculum and semester\./)
 })

@@ -518,10 +518,15 @@ async function resendSelectedClaimCode() {
 }
 
 async function confirmReject({ reason }) {
+  if (reasonDialogBusy.value) return
   reasonDialogBusy.value = true
   try {
     const updated = await updateRequestStatus(selected.value, 'reject', reason)
-    if (updated) closeDetails()
+    if (updated) {
+      reasonDialogOpen.value = false
+      await nextTick()
+      closeDetails()
+    }
   } finally {
     reasonDialogBusy.value = false
   }

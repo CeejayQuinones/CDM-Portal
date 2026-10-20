@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\EventAttendance;
+use App\Models\EventAttendanceVerification;
 use App\Models\Role;
 use App\Models\Student;
 use App\Models\User;
@@ -55,6 +56,14 @@ class EventAttendanceController extends Controller
         return response()->json(['success' => true, 'data' => $this->attendance->token($event)])->header('Cache-Control', 'private, no-store');
     }
 
+    public function staticToken(Request $request, Event $event): JsonResponse
+    {
+        $this->activeSessionManager($request, $event);
+
+        return response()->json(['success' => true, 'data' => $this->attendance->staticToken($event)])
+            ->header('Cache-Control', 'private, no-store');
+    }
+
     public function scan(Request $request, Event $event): JsonResponse
     {
         $student = $this->activeStudent($request);
@@ -63,7 +72,7 @@ class EventAttendanceController extends Controller
 
         return response()->json([
             'success' => $result['http'] < 400, 'code' => $result['code'], 'message' => $result['message'],
-            'data' => $result['attendance'] ? ['event' => ['id' => $event->id, 'title' => $event->title], 'attendance' => $this->attendance->serializeAttendance($result['attendance'])] : null,
+            'data' => $this->resultData($event, $result),
         ], $result['http'])->header('Cache-Control', 'private, no-store');
     }
 
@@ -84,26 +93,64 @@ class EventAttendanceController extends Controller
         $actor = $this->activeOperator($request, $event);
         $validated = $request->validate([
             'token' => ['required', 'string', 'max:4096'],
-            'workflow' => ['required', Rule::in(['static', 'dynamic'])],
+            'workflow' => ['sometimes', Rule::in(['auto', 'static', 'dynamic'])],
+            'action' => ['sometimes', Rule::in(['auto', 'check_in', 'check_out'])],
         ]);
-        $allowed = $validated['workflow'] === 'static'
+        $tokenWorkflow = $this->attendance->participantQrMode($validated['token']);
+        $workflow = $tokenWorkflow ?? ($validated['workflow'] ?? 'auto');
+        $allowed = $workflow === 'static'
             ? $this->authorization->canUseRegisteredModeratorScanner($event, $actor)
-            : $this->authorization->canUseRequestedModeratorScanner($event, $actor);
+            : ($workflow === 'dynamic'
+                ? $this->authorization->canUseDynamicParticipantScanner($event, $actor)
+                : $this->authorization->canUseRegisteredModeratorScanner($event, $actor)
+                    || $this->authorization->canUseDynamicParticipantScanner($event, $actor));
         abort_unless($allowed, 403, 'This Event responsibility cannot use the selected QR workflow.');
 
         $result = $this->attendance->operatorScan(
             $event,
             $actor,
             $validated['token'],
-            $validated['workflow'],
+            $validated['workflow'] ?? 'auto',
             (string) $request->header(ClientPlatform::HEADER),
+            $validated['action'] ?? 'auto',
         );
 
         return response()->json([
             'success' => $result['http'] < 400,
             'code' => $result['code'],
             'message' => $result['message'],
-            'data' => $result['attendance'] ? ['event' => ['id' => $event->id, 'title' => $event->title], 'attendance' => $this->attendance->serializeAttendance($result['attendance'])] : null,
+            'data' => $this->resultData($event, $result),
+        ], $result['http']);
+    }
+
+    public function checkout(Request $request, Event $event, EventAttendance $attendance): JsonResponse
+    {
+        $actor = $this->activeOperator($request, $event);
+        $result = $this->attendance->checkout($event, $attendance, $actor);
+
+        return response()->json([
+            'success' => true, 'code' => $result['code'], 'message' => $result['message'],
+            'data' => $this->attendance->serializeAttendance($result['attendance']),
+        ], $result['http']);
+    }
+
+    public function verifications(Request $request, Event $event): JsonResponse
+    {
+        $this->activeOperator($request, $event);
+
+        return response()->json(['success' => true, 'data' => $this->attendance->verifications($event)])
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function reviewVerification(Request $request, Event $event, EventAttendanceVerification $verification, string $decision): JsonResponse
+    {
+        $actor = $this->activeOperator($request, $event);
+        $validated = $request->validate(['reason' => [$decision === 'reject' ? 'required' : 'nullable', 'string', 'min:5', 'max:1000']]);
+        $result = $this->attendance->reviewVerification($event, $verification, $decision, $validated['reason'] ?? null, $actor);
+
+        return response()->json([
+            'success' => true, 'code' => $result['code'], 'message' => $result['message'],
+            'data' => $this->resultData($event, $result),
         ], $result['http']);
     }
 
@@ -171,5 +218,18 @@ class EventAttendanceController extends Controller
         abort_unless($user->role?->role_name === Role::STUDENT && $user->student, 403, 'Only Students may scan Event attendance QR codes.');
 
         return $user->student;
+    }
+
+    private function resultData(Event $event, array $result): ?array
+    {
+        if (! ($result['attendance'] ?? null) && ! ($result['verification'] ?? null)) {
+            return null;
+        }
+
+        return [
+            'event' => ['id' => $event->id, 'title' => $event->title],
+            'attendance' => ($result['attendance'] ?? null) ? $this->attendance->serializeAttendance($result['attendance']) : null,
+            'verification' => ($result['verification'] ?? null) ? $this->attendance->serializeVerification($result['verification']) : null,
+        ];
     }
 }

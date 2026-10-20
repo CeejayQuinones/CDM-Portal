@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Event;
+use App\Models\EventAttendance;
 use App\Models\EventAttendanceSession;
 use App\Models\EventRoleAssignment;
 use App\Models\Role;
@@ -60,10 +61,103 @@ class EventQrAttendanceTest extends TestCase
         Sanctum::actingAs($this->fixture['admin']);
         $future = $this->event('Future Event', [['audience_type' => 'all_students']]);
         $future->forceFill(['starts_at' => now()->addHour(), 'ends_at' => now()->addHours(2)])->save();
+        $this->getJson("/api/events/{$future->id}/attendance")->assertOk()
+            ->assertJsonPath('data.availability.code', 'event_not_started')
+            ->assertJsonPath('data.availability.can_open', false);
         $this->postJson("/api/events/{$future->id}/attendance/session")->assertConflict();
         $draft = $this->event('Draft Event', [['audience_type' => 'all_students']]);
         $draft->forceFill(['status' => 'draft'])->save();
+        $this->getJson("/api/events/{$draft->id}/attendance")->assertOk()
+            ->assertJsonPath('data.availability.code', 'event_unpublished');
         $this->postJson("/api/events/{$draft->id}/attendance/session")->assertConflict();
+        $past = $this->event('Ended Event', [['audience_type' => 'all_students']]);
+        $past->forceFill(['starts_at' => now()->subHours(2), 'ends_at' => now()->subHour()])->save();
+        $this->getJson("/api/events/{$past->id}/attendance")->assertOk()
+            ->assertJsonPath('data.availability.code', 'event_ended')
+            ->assertJsonPath('data.availability.can_open', false);
+        $this->postJson("/api/events/{$past->id}/attendance/session")->assertConflict();
+    }
+
+    public function test_ongoing_philippine_event_requires_explicit_session_then_records_moderator_scan(): void
+    {
+        $admin = $this->fixture['admin'];
+        Sanctum::actingAs($admin);
+        $event = $this->postJson('/api/events', [
+            'title' => 'Controlled Manila Attendance',
+            'description' => 'Isolated attendance lifecycle fixture.',
+            'venue' => 'Timezone Test Hall',
+            'starts_at' => '2026-10-01T16:30:00+08:00',
+            'ends_at' => '2026-10-01T18:30:00+08:00',
+            'intent' => 'publish',
+            'attendance_mode' => 'check_in_only',
+            'attendance_methods' => ['participant_static', 'manual'],
+            'audiences' => [['audience_type' => 'section', 'section_id' => $this->fixture['section']]],
+        ])->assertCreated()
+            ->assertJsonPath('data.starts_at', '2026-10-01T08:30:00+00:00')
+            ->assertJsonPath('data.ends_at', '2026-10-01T10:30:00+00:00')
+            ->json('data');
+
+        $state = $this->getJson("/api/events/{$event['id']}/attendance")->assertOk()
+            ->assertJsonPath('data.session', null)
+            ->assertJsonPath('data.availability.code', 'session_not_started')
+            ->assertJsonPath('data.availability.event_window', 'ongoing')
+            ->assertJsonPath('data.availability.can_open', true);
+
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event['id']}/attendance/participant-qr", ['mode' => 'static'])
+            ->assertConflict()->assertJsonPath('message', 'Attendance has not been started by an Event Coordinator.');
+
+        Sanctum::actingAs($admin);
+        $session = $this->withHeader('X-CDM-Client', 'desktop')->postJson("/api/events/{$event['id']}/attendance/session")
+            ->assertCreated()->assertJsonPath('data.status', 'open')->json('data');
+        $updated = $this->withHeader('X-CDM-Client', 'desktop')->putJson("/api/events/{$event['id']}", [
+            'title' => 'Renamed Controlled Manila Attendance',
+            'description' => $event['description'],
+            'venue' => $event['venue'],
+            'starts_at' => '2026-10-01T16:30:00+08:00',
+            'ends_at' => '2026-10-01T18:30:00+08:00',
+            'attendance_mode' => 'check_in_only',
+            'attendance_methods' => ['participant_static', 'manual'],
+            'audiences' => [['audience_type' => 'section', 'section_id' => $this->fixture['section']]],
+            'version' => $event['version'],
+        ])->assertOk()
+            ->assertJsonPath('data.starts_at', '2026-10-01T08:30:00+00:00')
+            ->assertJsonPath('data.ends_at', '2026-10-01T10:30:00+00:00')
+            ->json('data');
+        $this->assertSame('ongoing', Event::query()->findOrFail($updated['id'])->presentationStatus());
+        $this->withHeader('X-CDM-Client', 'desktop')->getJson("/api/events/{$event['id']}/attendance")->assertOk()
+            ->assertJsonPath('data.availability.code', 'open')
+            ->assertJsonPath('data.session.id', $session['id']);
+
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson("/api/events/{$event['id']}/personnel", [
+            'user_id' => $this->fixture['registeredModerator']->id,
+            'responsibility' => EventRoleAssignment::REGISTERED_MODERATOR,
+        ])->assertCreated();
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $token = $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event['id']}/attendance/participant-qr", ['mode' => 'static'])
+            ->assertOk()->json('data.token');
+        Sanctum::actingAs($this->fixture['registeredModerator']);
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event['id']}/attendance/operator-scan", ['token' => $token])
+            ->assertCreated()->assertJsonPath('code', 'ATTENDANCE_RECORDED');
+
+        Sanctum::actingAs($admin);
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson("/api/events/{$event['id']}/attendance/session/close", ['version' => $session['version']])->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->getJson("/api/events/{$event['id']}/attendance")->assertOk()
+            ->assertJsonPath('data.availability.code', 'session_closed')
+            ->assertJsonPath('data.availability.can_open', false);
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event['id']}/attendance/participant-qr", ['mode' => 'static'])
+            ->assertConflict()->assertJsonPath('message', 'Attendance was closed by an Event Coordinator.');
+        $this->assertDatabaseHas('event_attendances', [
+            'event_id' => $event['id'],
+            'student_id' => $this->fixture['eligible']->id,
+            'recorded_by' => $this->fixture['registeredModerator']->id,
+            'check_in_method' => 'participant_static',
+        ]);
     }
 
     public function test_valid_qr_records_student_and_repeat_is_idempotent(): void
@@ -81,6 +175,217 @@ class EventQrAttendanceTest extends TestCase
         $this->assertDatabaseHas('event_attendance_scans', ['result' => 'accepted']);
         $this->assertDatabaseHas('event_attendance_scans', ['result' => 'duplicate']);
         $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.recorded']);
+    }
+
+    public function test_check_in_and_out_uses_rotated_tokens_server_timestamps_and_minimum_participation(): void
+    {
+        $event = $this->fixture['event'];
+        $event->forceFill(['attendance_mode' => 'check_in_and_out', 'late_threshold_minutes' => 10, 'minimum_participation_minutes' => 30])->save();
+        $token = $this->openAndToken();
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $endpoint = "/api/events/{$event->id}/attendance/scan";
+        $this->postJson($endpoint, ['token' => $token])->assertCreated()
+            ->assertJsonPath('data.attendance.completion_status', 'in_progress');
+        $this->postJson($endpoint, ['token' => $token])->assertOk()->assertJsonPath('code', 'ALREADY_RECORDED')
+            ->assertJsonPath('data.attendance.checked_out_at', null);
+
+        $this->travel(35)->minutes();
+        Sanctum::actingAs($this->fixture['admin']);
+        $checkoutToken = $this->postJson("/api/events/{$event->id}/attendance/token")->assertOk()->json('data.token');
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $this->postJson($endpoint, ['token' => $checkoutToken])->assertOk()->assertJsonPath('code', 'ATTENDANCE_CHECKED_OUT')
+            ->assertJsonPath('data.attendance.participation_minutes', 35)
+            ->assertJsonPath('data.attendance.completion_status', 'completed');
+
+        Sanctum::actingAs($this->fixture['admin']);
+        $shortToken = $this->postJson("/api/events/{$event->id}/attendance/token")->assertOk()->json('data.token');
+        Sanctum::actingAs($this->fixture['requestedTarget']->user);
+        $this->postJson($endpoint, ['token' => $shortToken])->assertCreated()->assertJsonPath('data.attendance.status', 'late');
+        $this->travel(5)->minutes();
+        Sanctum::actingAs($this->fixture['admin']);
+        $shortCheckoutToken = $this->postJson("/api/events/{$event->id}/attendance/token")->assertOk()->json('data.token');
+        Sanctum::actingAs($this->fixture['requestedTarget']->user);
+        $this->postJson($endpoint, ['token' => $shortCheckoutToken])->assertOk()
+            ->assertJsonPath('data.attendance.participation_minutes', 5)
+            ->assertJsonPath('data.attendance.completion_status', 'incomplete');
+        $this->assertDatabaseCount('event_attendances', 2);
+        $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.checked_out']);
+    }
+
+    public function test_participant_qr_cannot_check_out_before_check_in(): void
+    {
+        $event = $this->fixture['event'];
+        $event->forceFill(['attendance_mode' => 'check_in_and_out'])->save();
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->postJson("/api/events/{$event->id}/attendance/session")->assertCreated();
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $token = $this->postJson("/api/events/{$event->id}/attendance/participant-qr", ['mode' => 'dynamic'])->assertOk()->json('data.token');
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->postJson("/api/events/{$event->id}/attendance/operator-scan", ['token' => $token, 'workflow' => 'dynamic', 'action' => 'check_out'])
+            ->assertConflict()->assertJsonPath('message', 'Check-in must be recorded before check-out.');
+        $this->assertDatabaseCount('event_attendances', 0);
+    }
+
+    public function test_operator_scanner_derives_static_and_dynamic_workflows_from_signed_participant_qr(): void
+    {
+        $event = $this->fixture['event'];
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->postJson('/api/events/'.$event->id.'/personnel', [
+            'user_id' => $this->fixture['registeredModerator']->id,
+            'responsibility' => EventRoleAssignment::EVENT_STAFF,
+        ])->assertCreated();
+        $this->postJson("/api/events/{$event->id}/attendance/session")->assertCreated();
+
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $dynamic = $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event->id}/attendance/participant-qr", ['mode' => 'dynamic'])
+            ->assertOk()->assertJsonPath('data.mode', 'dynamic')->json('data.token');
+
+        Sanctum::actingAs($this->fixture['registeredModerator']);
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event->id}/attendance/operator-scan", ['token' => $dynamic, 'action' => 'auto'])
+            ->assertCreated()->assertJsonPath('code', 'ATTENDANCE_RECORDED');
+
+        Sanctum::actingAs($this->fixture['requestedTarget']->user);
+        $static = $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event->id}/attendance/participant-qr", ['mode' => 'static'])
+            ->assertOk()->assertJsonPath('data.mode', 'static')->json('data.token');
+
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->withHeader('X-CDM-Client', 'desktop')
+            ->postJson("/api/events/{$event->id}/attendance/operator-scan", ['token' => $static])
+            ->assertCreated()->assertJsonPath('code', 'ATTENDANCE_RECORDED');
+        $this->assertDatabaseCount('event_attendances', 2);
+    }
+
+    public function test_participant_qr_rejects_wrong_event_and_expiration_and_repeats_idempotently(): void
+    {
+        $event = $this->fixture['event'];
+        $other = $this->event('Participant QR Other Event', [['audience_type' => 'all_students']]);
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->postJson("/api/events/{$event->id}/attendance/session")->assertCreated();
+        $this->postJson("/api/events/{$other->id}/attendance/session")->assertCreated();
+
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $wrongEventToken = $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$other->id}/attendance/participant-qr", ['mode' => 'static'])
+            ->assertOk()->json('data.token');
+        $expiringToken = $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event->id}/attendance/participant-qr", ['mode' => 'dynamic'])
+            ->assertOk()->json('data.token');
+
+        Sanctum::actingAs($this->fixture['admin']);
+        $endpoint = "/api/events/{$event->id}/attendance/operator-scan";
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson($endpoint, ['token' => $wrongEventToken])
+            ->assertUnprocessable()->assertJsonPath('code', 'WRONG_EVENT');
+        $this->travel(46)->seconds();
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson($endpoint, ['token' => $expiringToken])
+            ->assertStatus(410)->assertJsonPath('code', 'EXPIRED_PARTICIPANT_QR');
+
+        Sanctum::actingAs($this->fixture['requestedTarget']->user);
+        $valid = $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event->id}/attendance/participant-qr", ['mode' => 'dynamic'])
+            ->assertOk()->json('data.token');
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson($endpoint, ['token' => $valid])
+            ->assertCreated()->assertJsonPath('code', 'ATTENDANCE_RECORDED');
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson($endpoint, ['token' => $valid])
+            ->assertOk()->assertJsonPath('code', 'ALREADY_PROCESSED');
+        $this->assertDatabaseCount('event_attendances', 1);
+    }
+
+    public function test_operator_scanner_authorizes_the_signed_workflow_and_reports_contract_errors(): void
+    {
+        $event = $this->fixture['event'];
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->postJson('/api/events/'.$event->id.'/personnel', [
+            'user_id' => $this->fixture['registeredModerator']->id,
+            'responsibility' => EventRoleAssignment::REGISTERED_MODERATOR,
+        ])->assertCreated();
+        $this->postJson("/api/events/{$event->id}/attendance/session")->assertCreated();
+
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $dynamic = $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event->id}/attendance/participant-qr", ['mode' => 'dynamic'])
+            ->assertOk()->json('data.token');
+
+        Sanctum::actingAs($this->fixture['registeredModerator']);
+        $endpoint = "/api/events/{$event->id}/attendance/operator-scan";
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson($endpoint, ['token' => $dynamic])
+            ->assertForbidden()->assertJsonPath('message', 'This Event responsibility cannot use the selected QR workflow.');
+
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson($endpoint, ['token' => $dynamic, 'workflow' => 'static'])
+            ->assertUnprocessable()->assertJsonPath('code', 'QR_WORKFLOW_MISMATCH')
+            ->assertJsonPath('message', 'This is a Dynamic participant QR. Use the matching scanner workflow.');
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson($endpoint, ['token' => 'malformed'])
+            ->assertUnprocessable()->assertJsonPath('code', 'INVALID_PARTICIPANT_QR')
+            ->assertJsonPath('message', 'This participant QR is malformed or has an invalid signature.');
+        $this->assertDatabaseCount('event_attendances', 0);
+    }
+
+    public function test_each_scanner_rejects_the_other_qr_contract_with_a_specific_error(): void
+    {
+        $event = $this->fixture['event'];
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->postJson("/api/events/{$event->id}/attendance/session")->assertCreated();
+        $eventQr = $this->postJson("/api/events/{$event->id}/attendance/token")
+            ->assertOk()->json('data.token');
+
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $participantQr = $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event->id}/attendance/participant-qr", ['mode' => 'dynamic'])
+            ->assertOk()->json('data.token');
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson("/api/events/{$event->id}/attendance/scan", ['token' => $participantQr])
+            ->assertUnprocessable()->assertJsonPath('code', 'WRONG_QR_TYPE')
+            ->assertJsonPath('message', 'This is your participant QR. Show it to authorized Event personnel; do not scan it with the Student Event QR scanner.');
+
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->withHeader('X-CDM-Client', 'desktop')
+            ->postJson("/api/events/{$event->id}/attendance/operator-scan", ['token' => $eventQr])
+            ->assertUnprocessable()->assertJsonPath('code', 'WRONG_QR_TYPE')
+            ->assertJsonPath('message', 'This is an Event QR for Students to scan. The operator scanner accepts participant QRs only.');
+        $this->assertDatabaseCount('event_attendances', 0);
+    }
+
+    public function test_static_event_qr_requires_scoped_staff_confirmation_and_is_idempotent(): void
+    {
+        $event = $this->fixture['event'];
+        $event->forceFill(['attendance_methods' => ['static_event', 'manual']])->save();
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->postJson("/api/events/{$event->id}/attendance/session")->assertCreated();
+        $token = $this->postJson("/api/events/{$event->id}/attendance/static-token")->assertOk()
+            ->assertJsonPath('data.requires_staff_confirmation', true)->json('data.token');
+
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $endpoint = "/api/events/{$event->id}/attendance/scan";
+        $verification = $this->postJson($endpoint, ['token' => $token])->assertStatus(202)
+            ->assertJsonPath('code', 'VERIFICATION_PENDING')->json('data.verification');
+        $this->postJson($endpoint, ['token' => $token])->assertStatus(202)->assertJsonPath('data.verification.id', $verification['id']);
+        $this->assertDatabaseCount('event_attendance_verifications', 1);
+        $this->assertDatabaseCount('event_attendances', 0);
+
+        $this->postJson("/api/events/{$event->id}/attendance/verifications/{$verification['id']}/approve")->assertForbidden();
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->postJson("/api/events/{$event->id}/attendance/verifications/{$verification['id']}/approve")->assertCreated()
+            ->assertJsonPath('data.attendance.status', 'present');
+        $this->postJson("/api/events/{$event->id}/attendance/verifications/{$verification['id']}/approve")->assertConflict();
+        $this->assertDatabaseCount('event_attendances', 1);
+        $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.static_qr_confirmed']);
+    }
+
+    public function test_closing_check_out_session_marks_open_participation_incomplete(): void
+    {
+        $event = $this->fixture['event'];
+        $event->forceFill(['attendance_mode' => 'check_in_and_out', 'minimum_participation_minutes' => 60])->save();
+        $token = $this->openAndToken();
+        Sanctum::actingAs($this->fixture['eligible']->user);
+        $this->postJson("/api/events/{$event->id}/attendance/scan", ['token' => $token])->assertCreated();
+        Sanctum::actingAs($this->fixture['admin']);
+        $session = EventAttendanceSession::query()->where('event_id', $event->id)->firstOrFail();
+        $this->postJson("/api/events/{$event->id}/attendance/session/close", ['version' => $session->version])->assertOk();
+        $this->assertDatabaseHas('event_attendances', ['student_id' => $this->fixture['eligible']->id, 'completion_status' => 'incomplete', 'checked_out_at' => null]);
     }
 
     public function test_expired_tampered_rotated_and_wrong_session_tokens_are_rejected(): void
@@ -153,7 +458,7 @@ class EventQrAttendanceTest extends TestCase
         $this->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
         $this->patchJson('/api/events/'.$this->fixture['event']->id.'/attendance/'.$record['id'], ['status' => 'excused', 'version' => $record['version']])->assertUnprocessable()->assertJsonValidationErrors('reason');
         $this->patchJson('/api/events/'.$this->fixture['event']->id.'/attendance/'.$record['id'], ['status' => 'excused', 'version' => $record['version'], 'reason' => 'Approved medical documentation.'])->assertOk()->assertJsonPath('data.status', 'excused')->assertJsonPath('data.source', 'manual');
-        $this->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertOk()->assertJsonPath('data.summary.eligible', 2)->assertJsonPath('data.summary.not_checked_in', 1)->assertJsonPath('data.students.data.0.attendance.status', 'excused');
+        $this->getJson('/api/events/'.$this->fixture['event']->id.'/attendance')->assertOk()->assertJsonPath('data.summary.eligible', 3)->assertJsonPath('data.summary.not_checked_in', 2)->assertJsonPath('data.students.data.0.attendance.status', 'excused');
         $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.manual_created']);
         $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.corrected']);
 
@@ -170,18 +475,18 @@ class EventQrAttendanceTest extends TestCase
         $this->patchJson('/api/events/'.$this->fixture['event']->id.'/attendance/'.$record['id'], ['status' => 'late', 'version' => 1, 'reason' => 'Correcting verified arrival time.'])->assertStatus(428)->assertJsonPath('code', 'STEP_UP_REQUIRED');
     }
 
-    public function test_registered_and_requested_moderators_use_only_their_mobile_qr_workflows(): void
+    public function test_pending_moderator_has_no_scanner_privilege_and_approval_grants_registered_scanner(): void
     {
         Sanctum::actingAs($this->fixture['admin']);
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
             'user_id' => $this->fixture['registeredModerator']->id,
             'responsibility' => EventRoleAssignment::REGISTERED_MODERATOR,
         ])->assertCreated();
-        $this->postJson('/api/events/'.$this->fixture['event']->id.'/personnel', [
-            'user_id' => $this->fixture['requestedModerator']->user_id,
-            'responsibility' => EventRoleAssignment::REQUESTED_MODERATOR,
-        ])->assertCreated();
         $this->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/session')->assertCreated();
+
+        Sanctum::actingAs($this->fixture['requestedModerator']->user);
+        $request = $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/moderator-requests')
+            ->assertCreated()->json('data');
 
         Sanctum::actingAs($this->fixture['eligible']->user);
         $static = $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/participant-qr', ['mode' => 'static'])
@@ -203,12 +508,31 @@ class EventQrAttendanceTest extends TestCase
         Sanctum::actingAs($this->fixture['requestedModerator']->user);
         $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $requestedStatic, 'workflow' => 'static'])->assertForbidden();
         $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $requestedDynamic, 'workflow' => 'dynamic'])
-            ->assertCreated()->assertJsonPath('code', 'ATTENDANCE_RECORDED');
-        $this->assertDatabaseHas('event_audit_events', ['action' => 'attendance.operator_qr_recorded']);
+            ->assertForbidden();
 
         Sanctum::actingAs($this->fixture['admin']);
-        $assignment = EventRoleAssignment::query()->where('event_id', $this->fixture['event']->id)->where('user_id', $this->fixture['requestedModerator']->user_id)->firstOrFail();
-        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/personnel/'.$assignment->id.'/revoke')->assertOk();
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/moderator-requests/'.$request['id'].'/approve')->assertOk();
+        Sanctum::actingAs($this->fixture['requestedModerator']->user);
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $requestedStatic, 'workflow' => 'static'])
+            ->assertCreated()->assertJsonPath('code', 'ATTENDANCE_RECORDED');
+        $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $requestedStatic])
+            ->assertOk()->assertJsonPath('code', 'ALREADY_RECORDED');
+        $this->assertDatabaseHas('event_attendances', [
+            'event_id' => $this->fixture['event']->id,
+            'student_id' => $this->fixture['requestedTarget']->id,
+            'recorded_by' => $this->fixture['requestedModerator']->user_id,
+            'source' => 'qr',
+            'check_in_method' => 'participant_static',
+        ]);
+        $this->assertSame(1, EventAttendance::query()->where('event_id', $this->fixture['event']->id)->where('student_id', $this->fixture['requestedTarget']->id)->count());
+        $this->assertDatabaseHas('event_audit_events', [
+            'event_id' => $this->fixture['event']->id,
+            'actor_user_id' => $this->fixture['requestedModerator']->user_id,
+            'action' => 'attendance.operator_qr_recorded',
+        ]);
+
+        Sanctum::actingAs($this->fixture['admin']);
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/events/'.$this->fixture['event']->id.'/moderator-requests/'.$request['id'].'/revoke', ['reason' => 'The validation assignment has ended.'])->assertOk();
         Sanctum::actingAs($this->fixture['requestedModerator']->user);
         $this->withHeader('X-CDM-Client', 'mobile')->postJson('/api/events/'.$this->fixture['event']->id.'/attendance/operator-scan', ['token' => $requestedDynamic, 'workflow' => 'dynamic'])->assertForbidden();
     }
@@ -254,7 +578,7 @@ class EventQrAttendanceTest extends TestCase
         $otherCourseSection = $this->section($otherCourse, $year, $semester, 'BSCS-1A', 1);
         $eligible = $this->student($course, $section, $year, $semester, '0001');
         $requestedTarget = $this->student($course, $section, $year, $semester, '0005');
-        $requestedModerator = $this->student($course, $otherSection, $year, $semester, '0006');
+        $requestedModerator = $this->student($course, $section, $year, $semester, '0006');
         $registeredModerator = $this->user(Role::PROFESSOR);
         $wrongSection = $this->student($course, $otherSection, $year, $semester, '0002');
         $wrongYear = $this->student($course, $yearTwoSection, $year, $semester, '0003');

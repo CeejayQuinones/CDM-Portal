@@ -32,7 +32,7 @@ test('mobile Events filters are compact and preserve one accessible label per co
     read('src/modules/event-attendance/event.css'),
   ])
 
-  const toolbar = view.match(/<section class="event-toolbar"[\s\S]*?<\/section>/)?.[0] || ''
+  const toolbar = view.match(/<section[^>]*class="event-toolbar"[\s\S]*?<\/section>/)?.[0] || ''
   for (const label of ['Search', 'Status', 'Audience', 'Date']) {
     assert.equal(toolbar.match(new RegExp(`<span>${label}<\\/span>`, 'g'))?.length, 1)
   }
@@ -40,6 +40,12 @@ test('mobile Events filters are compact and preserve one accessible label per co
   assert.match(css, /\.event-toolbar label \{ flex: 0 0 auto;/)
   assert.match(css, /@media \(max-width: 480px\)[\s\S]*\.event-toolbar \{ grid-template-columns: minmax\(0,1fr\)/)
   assert.match(css, /\.event-table-wrap \{[^}]*overflow-x: auto/)
+  assert.match(css, /\.event-page \{[^}]*min-width: 0;[^}]*width: 100%/)
+  assert.match(css, /\.qr-panel,\.qr-surface,\.participant-qr,\.student-scanner \{ max-width: 100%; min-width: 0 \}/)
+  assert.match(css, /safe-area-inset-right/)
+  assert.match(css, /\.event-profile-disclosure,\.event-profile,\.profile-event-tools,\.profile-event-tools > label,[^\n]*min-width: 0/)
+  assert.match(css, /\.profile-event-tools select \{[^}]*max-width: 100%;[^}]*min-width: 0;[^}]*width: 100%/)
+  assert.match(css, /\.scanner-viewport \{ aspect-ratio: 4 \/ 3; max-height: 40dvh; min-height: 0 \}/)
 })
 
 test('mobile tabs, dialogs, dashboards and decoration use shared responsive behavior', async () => {

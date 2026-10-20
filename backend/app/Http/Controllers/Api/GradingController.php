@@ -132,6 +132,20 @@ class GradingController extends Controller
         return $this->ok($this->grading->saveAssessment($request->user(), $gradeSheet, $request->validate($this->assessmentRules())), 201);
     }
 
+    public function storeAssessmentsBulk(Request $request, GradeSheet $gradeSheet)
+    {
+        $input = $request->validate([
+            'period' => ['required', Rule::in(['midterm', 'finals'])],
+            'assessments' => ['required', 'array', 'min:1', 'max:100'],
+            'assessments.*.label' => ['required', 'string', 'max:80'],
+            'assessments.*.category' => ['required', Rule::in(GradingService::CATEGORIES)],
+            'assessments.*.max_score' => ['required', 'numeric', 'gt:0', 'max:999999.99'],
+            'assessments.*.display_order' => ['required', 'integer', 'min:1', 'max:65535'],
+        ]);
+
+        return $this->ok($this->grading->saveAssessmentsBulk($request->user(), $gradeSheet, $input), 201);
+    }
+
     public function updateAssessment(Request $request, GradeSheet $gradeSheet, GradeAssessment $gradeAssessment)
     {
         abort_unless($gradeAssessment->grade_sheet_id === $gradeSheet->id, 404);

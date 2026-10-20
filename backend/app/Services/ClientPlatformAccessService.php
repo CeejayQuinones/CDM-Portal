@@ -13,10 +13,10 @@ class ClientPlatformAccessService
     /** @var array<string, list<string>> */
     private const ALLOWED_CLIENTS_BY_ROLE = [
         Role::REGISTRAR_STAFF => [ClientPlatform::DESKTOP],
-        Role::ADMIN => [ClientPlatform::DESKTOP, ClientPlatform::WEB],
+        Role::ADMIN => [ClientPlatform::DESKTOP],
         Role::STUDENT => [ClientPlatform::WEB, ClientPlatform::MOBILE],
         Role::PROFESSOR => [ClientPlatform::WEB, ClientPlatform::MOBILE],
-        Role::GUEST => [ClientPlatform::WEB],
+        Role::GUEST => [ClientPlatform::WEB, ClientPlatform::MOBILE],
     ];
 
     public function clientFrom(Request $request): string
@@ -39,15 +39,7 @@ class ClientPlatformAccessService
         $user->loadMissing('role');
         $role = $user->role?->role_name;
 
-        $semiCoordinator = $role === Role::PROFESSOR
-            && $user->eventRoleAssignments()->granting()->where('responsibility', 'semi_coordinator')->exists();
-        $semiCoordinatorDesktop = $semiCoordinator && $client === ClientPlatform::DESKTOP;
-
-        if ($semiCoordinator && $client === ClientPlatform::MOBILE) {
-            throw new ClientPlatformException(403, 'Semi-Coordinator accounts use Desktop for Event management and Web for promotional viewing.');
-        }
-
-        if ($semiCoordinatorDesktop || ($role !== null && in_array($client, self::ALLOWED_CLIENTS_BY_ROLE[$role] ?? [], true))) {
+        if ($role !== null && in_array($client, self::ALLOWED_CLIENTS_BY_ROLE[$role] ?? [], true)) {
             return;
         }
 
@@ -64,6 +56,10 @@ class ClientPlatformAccessService
     {
         if ($role === Role::REGISTRAR_STAFF) {
             return 'Registrar Staff accounts are available only through the CDM Desktop application.';
+        }
+
+        if ($role === Role::ADMIN) {
+            return 'Admin accounts are available only through the CDM Desktop application.';
         }
 
         if ($role === Role::STUDENT && $client === ClientPlatform::DESKTOP) {

@@ -7,7 +7,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DocumentType extends Model
 {
-    protected $fillable = ['document_name', 'description', 'processing_fee', 'processing_days', 'requires_appointment', 'status'];
+    protected $fillable = [
+        'document_name', 'description', 'workflow_category', 'processing_fee', 'processing_days',
+        'requires_appointment', 'student_requestable', 'student_uploadable', 'status',
+    ];
 
     protected function casts(): array
     {
@@ -15,6 +18,8 @@ class DocumentType extends Model
             'processing_fee' => 'decimal:2',
             'processing_days' => 'integer',
             'requires_appointment' => 'boolean',
+            'student_requestable' => 'boolean',
+            'student_uploadable' => 'boolean',
         ];
     }
 

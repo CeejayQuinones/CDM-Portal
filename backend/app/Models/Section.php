@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Section extends Model
 {
-    protected $fillable = ['course_id', 'academic_year_id', 'semester_id', 'section_name', 'year_level', 'adviser_id', 'capacity', 'status', 'version'];
+    protected $fillable = ['course_id', 'curriculum_id', 'academic_year_id', 'semester_id', 'section_name', 'year_level', 'adviser_id', 'capacity', 'status', 'version'];
 
     protected $attributes = ['version' => 1];
 
@@ -19,6 +19,11 @@ class Section extends Model
     public function academicYear()
     {
         return $this->belongsTo(AcademicYear::class);
+    }
+
+    public function curriculum()
+    {
+        return $this->belongsTo(Curriculum::class);
     }
 
     public function semester()

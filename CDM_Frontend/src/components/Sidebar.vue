@@ -47,6 +47,7 @@ const menuItems = computed(() => navigationStore.menuItemsForRole(authStore.curr
 const isExpanded = (name) => expandedItems.value.includes(name)
 const isChildActive = (item) =>
   item.children?.some((child) => child.path === route.path || child.activeRoutes?.includes(route.name))
+const isItemActive = (item) => item.activeRoutes?.includes(route.name)
 const toggleItem = (name) => {
   expandedItems.value = isExpanded(name)
     ? expandedItems.value.filter((item) => item !== name)
@@ -161,7 +162,7 @@ const logout = async () => {
           </Transition>
         </div>
 
-        <RouterLink v-else :to="item.path" class="nav-link" @click="emit('close')">
+        <RouterLink v-else :to="item.path" class="nav-link" :class="{ 'router-link-active': isItemActive(item) }" @click="emit('close')">
           <svg
             class="nav-icon"
             viewBox="0 0 24 24"
