@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Navbar from '../components/Navbar.vue'
+import CDMBuddy from '../components/CDMBuddy.vue'
 import PortalAnimatedBackdrop from '../components/PortalAnimatedBackdrop.vue'
 import Sidebar from '../components/Sidebar.vue'
 import StepUpAuthModal from '../components/StepUpAuthModal.vue'
@@ -109,6 +110,7 @@ useStudentTheme(authStore)
 <template>
   <div class="app-shell" :class="{ 'student-portal-shell': isStudentTheme, 'registrar-theme-shell': isStaffTheme, 'hover-sidebar-shell': usesHoverSidebar }">
     <StepUpAuthModal />
+    <CDMBuddy />
     <button
       v-if="usesHoverSidebar"
       ref="edgeTrigger"
