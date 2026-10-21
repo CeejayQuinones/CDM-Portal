@@ -4,7 +4,6 @@ use App\Exceptions\AdmissionConflictException;
 use App\Exceptions\ClientPlatformException;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureClientPlatformAccess;
-use App\Http\Middleware\EnsureEventPlatformAccess;
 use App\Http\Middleware\EnsureMonitoringAccess;
 use App\Http\Middleware\EnsureProfessorRole;
 use App\Http\Middleware\EnsureProfessorWebAccess;
@@ -38,7 +37,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role.admin' => EnsureAdminRole::class,
             'client.platform' => EnsureClientPlatformAccess::class,
-            'event.platform' => EnsureEventPlatformAccess::class,
             'role.registrar-staff' => EnsureRegistrarStaffRole::class,
             'role.professor' => EnsureProfessorRole::class,
             'professor.web' => EnsureProfessorWebAccess::class,
@@ -58,21 +56,6 @@ return Application::configure(basePath: dirname(__DIR__))
                 'success' => false,
                 'message' => $exception->getMessage(),
             ], $exception->getStatusCode())->header('Cache-Control', 'private, no-store');
-        });
-
-        $exceptions->render(function (Throwable $exception, Request $request) {
-            if (! $request->is('api/events*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
-                return null;
-            }
-            if ($exception instanceof HttpExceptionInterface) {
-                $status = $exception->getStatusCode();
-
-                return response()->json(['success' => false, 'message' => $status >= 500 ? 'Events are temporarily unavailable.' : $exception->getMessage()], $status)
-                    ->header('Cache-Control', 'private, no-store');
-            }
-
-            return response()->json(['success' => false, 'message' => 'Events are temporarily unavailable. Please reload and try again.'], 503)
-                ->header('Cache-Control', 'private, no-store');
         });
 
         $exceptions->render(function (Throwable $exception, Request $request) {

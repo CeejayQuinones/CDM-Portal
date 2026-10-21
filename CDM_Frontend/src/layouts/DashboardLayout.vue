@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import CDMBuddy from '../components/CDMBuddy.vue'
 import Navbar from '../components/Navbar.vue'
 import PortalAnimatedBackdrop from '../components/PortalAnimatedBackdrop.vue'
 import Sidebar from '../components/Sidebar.vue'
@@ -141,6 +142,7 @@ useStudentTheme(authStore)
             </div>
           </Transition>
         </RouterView>
+        <CDMBuddy />
       </main>
     </div>
   </div>

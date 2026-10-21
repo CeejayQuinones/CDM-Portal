@@ -65,7 +65,6 @@ export const ROUTE_ROLES = Object.freeze({
   'student-management': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'student-record-reports': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'physical-records': [ROLES.REGISTRAR_STAFF],
-  'event-attendance': [ROLES.GUEST, ROLES.STUDENT, ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
 })
 
 export const NAVIGATION_ITEMS = Object.freeze([
@@ -289,14 +288,6 @@ export const NAVIGATION_ITEMS = Object.freeze([
         roles: ROUTE_ROLES['student-record-reports'],
       },
     ],
-  },
-  {
-    name: 'event-attendance',
-    label: 'Events',
-    path: '/event-attendance',
-    icon: 'EV',
-    roles: ROUTE_ROLES['event-attendance'],
-    activeRoutes: ['event-attendance', 'event-attendance-reports'],
   },
   {
     name: 'settings',

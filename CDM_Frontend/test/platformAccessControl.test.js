@@ -110,7 +110,7 @@ test('router blocks persisted cross-platform roles and clears their local sessio
   assert.match(router, /platformDenied: '1'/)
 })
 
-test('Guest mobile uses the Guest dashboard while Event QR operations stay role restricted', async () => {
+test('Guest mobile uses the Guest dashboard without module-specific platform exceptions', async () => {
   const [access, router, navigation] = await Promise.all([
     readFile(new URL('../src/config/accessControl.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/router/index.js', import.meta.url), 'utf8'),
@@ -118,10 +118,8 @@ test('Guest mobile uses the Guest dashboard while Event QR operations stay role 
   ])
 
   assert.match(access, /\[ROLES\.GUEST\]: '\/guest-dashboard'/)
-  assert.match(router, /\['Professor', 'Student'\]\.includes\(role\) && clientPlatform === 'mobile'/)
-  assert.match(navigation, /\['Professor', 'Student'\]\.includes\(role\) && clientPlatform === 'mobile'/)
-  assert.match(router, /role === ROLES\.PROFESSOR && clientPlatform === 'mobile'/)
-  assert.match(router, /to\.meta\.eventReports && !canAccessEventReportsClient/)
+  assert.doesNotMatch(router, /eventModule|eventReports|canAccessEvent/)
+  assert.doesNotMatch(navigation, /canAccessEvent|eventOperational/)
 })
 
 test('login renders failures in an accessible alert', async () => {

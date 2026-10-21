@@ -9,9 +9,6 @@ use App\Models\Enrollment;
 use App\Models\Enrollment\EnrollmentApplication;
 use App\Models\Enrollment\EnrollmentPeriod;
 use App\Models\Enrollment\EnrollmentWorkflowEvent;
-use App\Models\Event;
-use App\Models\EventAuditEvent;
-use App\Models\EventModeratorRequest;
 use App\Models\Professor;
 use App\Models\Role;
 use App\Models\Student;
@@ -35,7 +32,6 @@ class AdminDashboardService
             AdmissionApplicant::UNDER_REVIEW,
         ]);
         $pendingEnrollment = $this->sumStatuses($enrollmentCounts, ['submitted', 'under_review']);
-        $pendingModeratorRequests = EventModeratorRequest::query()->where('status', 'pending')->count();
         $currentEnrollments = $period
             ? Enrollment::query()
                 ->where('academic_year_id', $period->academic_year_id)
@@ -43,15 +39,9 @@ class AdminDashboardService
                 ->whereIn('status', ['pending', 'enrolled'])
                 ->count()
             : 0;
-        $activeEvents = Event::query()
-            ->where('status', 'published')
-            ->where('ends_at', '>', now())
-            ->count();
-
         $pendingReviews = [
             ['type' => 'admission', 'label' => 'Admission applications', 'count' => $pendingAdmission, 'route_name' => 'registrar-admissions'],
             ['type' => 'enrollment', 'label' => 'Enrollment applications', 'count' => $pendingEnrollment, 'route_name' => 'enrollment-applications'],
-            ['type' => 'moderator_requests', 'label' => 'Event Moderator requests', 'count' => $pendingModeratorRequests, 'route_name' => 'event-attendance'],
         ];
 
         return [
@@ -67,8 +57,7 @@ class AdminDashboardService
                 'guest_accounts' => $this->usersWithRole(Role::GUEST)->count(),
                 'pending_admission_applications' => $pendingAdmission,
                 'current_term_enrollments' => $currentEnrollments,
-                'pending_administrative_actions' => $pendingAdmission + $pendingEnrollment + $pendingModeratorRequests,
-                'published_or_ongoing_events' => $activeEvents,
+                'pending_administrative_actions' => $pendingAdmission + $pendingEnrollment,
             ],
             'admissions' => [
                 'by_status' => $admissionCounts,
@@ -84,10 +73,6 @@ class AdminDashboardService
                     'finalized' => $enrollmentCounts['enrolled'] ?? 0,
                     'academic_enrollments' => $currentEnrollments,
                 ],
-            ],
-            'events' => [
-                'pending_moderator_requests' => $pendingModeratorRequests,
-                'items' => $this->eventOperations(),
             ],
             'administrative' => [
                 'pending_reviews' => $pendingReviews,
@@ -153,39 +138,12 @@ class AdminDashboardService
         ];
     }
 
-    private function eventOperations(): array
-    {
-        return Event::query()
-            ->whereNull('parent_event_id')
-            ->where('status', 'published')
-            ->where('ends_at', '>', now())
-            ->with('attendanceSession:id,event_id,status,opened_at,closed_at')
-            ->orderBy('starts_at')
-            ->limit(6)
-            ->get(['id', 'title', 'venue', 'starts_at', 'ends_at', 'status'])
-            ->map(fn (Event $event): array => [
-                'id' => $event->id,
-                'title' => $event->title,
-                'venue' => $event->venue,
-                'status' => $event->presentationStatus(),
-                'starts_at' => $event->starts_at?->toIso8601String(),
-                'ends_at' => $event->ends_at?->toIso8601String(),
-                'attendance_session' => $event->attendanceSession ? [
-                    'status' => $event->attendanceSession->status,
-                    'opened_at' => $event->attendanceSession->opened_at?->toIso8601String(),
-                    'closed_at' => $event->attendanceSession->closed_at?->toIso8601String(),
-                ] : null,
-            ])
-            ->all();
-    }
-
     private function recentActivity(): array
     {
         $activities = collect()
             ->concat($this->auditActivity(AccountAuditEvent::query(), 'accounts'))
             ->concat($this->auditActivity(AdmissionAuditEvent::query(), 'admission'))
-            ->concat($this->auditActivity(EnrollmentWorkflowEvent::query(), 'enrollment'))
-            ->concat($this->auditActivity(EventAuditEvent::query(), 'events'));
+            ->concat($this->auditActivity(EnrollmentWorkflowEvent::query(), 'enrollment'));
 
         return $activities
             ->sortByDesc('occurred_at')

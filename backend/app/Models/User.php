@@ -108,16 +108,6 @@ class User extends Authenticatable
         return $this->hasMany(RiskNotification::class, 'sender_user_id');
     }
 
-    public function eventRoleAssignments(): HasMany
-    {
-        return $this->hasMany(EventRoleAssignment::class);
-    }
-
-    public function eventModeratorRequests(): HasMany
-    {
-        return $this->hasMany(EventModeratorRequest::class, 'requester_user_id');
-    }
-
     public function routeNotificationForMail(): ?string
     {
         return $this->profile?->email;

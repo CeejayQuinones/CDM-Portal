@@ -114,14 +114,4 @@ class Student extends Model
     {
         return $this->hasOne(StudentSetting::class);
     }
-
-    public function eventAttendances(): HasMany
-    {
-        return $this->hasMany(EventAttendance::class);
-    }
-
-    public function eventCertificates(): HasMany
-    {
-        return $this->hasMany(EventCertificate::class);
-    }
 }

@@ -32,7 +32,6 @@ The following data is deliberately excluded:
 - live Professor score entries and assessments
 - legacy **grades** and **grading_periods**
 - Admission examination scores
-- Event attendance
 
 Phase 1 assessments remain computed read-only from current authoritative records. Phase 2 adds only notice context, a duplicate-lookup index, and an append-only intervention audit table.
 

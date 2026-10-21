@@ -10,7 +10,6 @@ const dashboard = ref({
   summary: {},
   admissions: { by_status: {}, total: 0 },
   enrollment: { current_term: null, by_status: {}, activity: {} },
-  events: { items: [], pending_moderator_requests: 0 },
   administrative: { pending_reviews: [], recent_activity: [] },
 })
 
@@ -22,7 +21,6 @@ const summaryCards = computed(() => [
   ['pending_admission_applications', 'Pending Admissions'],
   ['current_term_enrollments', 'Current Enrollments'],
   ['pending_administrative_actions', 'Pending Actions'],
-  ['published_or_ongoing_events', 'Active Events'],
 ].map(([key, label]) => ({ key, label, value: dashboard.value.summary[key] ?? 0 })))
 
 const quickLinks = [
@@ -31,7 +29,6 @@ const quickLinks = [
   { label: 'Enrollment', detail: 'Applications and academic terms', to: { name: 'enrollment-applications' } },
   { label: 'Academic Monitoring', detail: 'Risk signals and interventions', to: { name: 'monitoring' } },
   { label: 'Student Management', detail: 'Academic identities and records', to: { name: 'student-management' } },
-  { label: 'Events', detail: 'Operations, attendance, and reports', to: { name: 'event-attendance' } },
 ]
 
 const statusLabel = (status) => String(status || '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
@@ -47,11 +44,6 @@ function formatDateTime(value) {
   return new Intl.DateTimeFormat('en-PH', {
     timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short',
   }).format(new Date(value))
-}
-
-function eventSession(event) {
-  if (!event.attendance_session) return 'No attendance session'
-  return event.attendance_session.status === 'open' ? 'Attendance open' : 'Attendance closed'
 }
 
 async function loadDashboard() {
@@ -75,7 +67,7 @@ onMounted(loadDashboard)
       <div>
         <p class="admin-dashboard__kicker">System administration</p>
         <h1>Admin Dashboard</h1>
-        <p>A live overview of accounts, academic workflows, Events, and work awaiting review.</p>
+        <p>A live overview of accounts, academic workflows, and work awaiting review.</p>
       </div>
       <button v-if="error" type="button" :disabled="loading" @click="loadDashboard">Try again</button>
     </header>
@@ -139,21 +131,6 @@ onMounted(loadDashboard)
     </div>
 
     <div class="admin-dashboard__split">
-      <section class="admin-panel" aria-labelledby="event-operations-title">
-        <div class="admin-dashboard__heading">
-          <div><p class="admin-dashboard__kicker">Event operations</p><h2 id="event-operations-title">Upcoming and ongoing</h2></div>
-          <RouterLink :to="{ name: 'event-attendance' }">Open Events</RouterLink>
-        </div>
-        <p class="admin-panel__note">{{ dashboard.events.pending_moderator_requests || 0 }} Moderator request(s) awaiting review</p>
-        <p v-if="!loading && !dashboard.events.items.length" class="admin-empty">No upcoming or ongoing published Events.</p>
-        <ul v-else class="admin-list">
-          <li v-for="event in dashboard.events.items" :key="event.id">
-            <div><strong>{{ event.title }}</strong><span>{{ formatDateTime(event.starts_at) }} · {{ event.venue }}</span></div>
-            <span class="admin-badge" :class="{ 'is-open': event.attendance_session?.status === 'open' }">{{ eventSession(event) }}</span>
-          </li>
-        </ul>
-      </section>
-
       <section class="admin-panel" aria-labelledby="pending-reviews-title">
         <div class="admin-dashboard__heading"><div><p class="admin-dashboard__kicker">Administrative activity</p><h2 id="pending-reviews-title">Pending reviews</h2></div></div>
         <ul class="admin-list admin-list--reviews">

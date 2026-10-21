@@ -114,8 +114,6 @@ class AdmissionHandoffTest extends TestCase
         $this->postJson('/api/admission/exam/start')->assertForbidden();
         $this->getJson('/api/grading/student/grades')->assertForbidden();
         $this->getJson('/api/monitoring/my-risk')->assertForbidden();
-        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/event-promotions')->assertOk();
-        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/events')->assertForbidden();
     }
 
     public function test_completion_is_idempotent_and_removed_conversion_endpoint_cannot_create_student(): void

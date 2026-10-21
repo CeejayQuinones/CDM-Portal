@@ -2,8 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Event;
-use App\Models\EventRoleAssignment;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\ClientPlatform;
@@ -95,32 +93,6 @@ class PlatformAccessControlTest extends TestCase
             ->assertBadRequest();
 
         $this->assertSame(0, $user->tokens()->count());
-    }
-
-    public function test_professor_semi_coordinator_follows_the_professor_platform_matrix(): void
-    {
-        $admin = $this->user(Role::ADMIN);
-        $professor = $this->user(Role::PROFESSOR);
-        $event = Event::query()->create([
-            'title' => 'Semi-Coordinator Platform Event',
-            'venue' => 'Main Hall',
-            'venue_key' => 'main hall',
-            'starts_at' => now()->addDay(),
-            'ends_at' => now()->addDay()->addHour(),
-            'status' => 'published',
-            'created_by' => $admin->id,
-            'updated_by' => $admin->id,
-        ]);
-        EventRoleAssignment::query()->create([
-            'event_id' => $event->id,
-            'user_id' => $professor->id,
-            'responsibility' => EventRoleAssignment::SEMI_COORDINATOR,
-            'assigned_by_user_id' => $admin->id,
-            'assigned_at' => now(),
-        ]);
-
-        $this->login($professor, ClientPlatform::DESKTOP)->assertForbidden();
-        $this->login($professor, ClientPlatform::MOBILE)->assertOk();
     }
 
     #[DataProvider('boundTokenMatrix')]

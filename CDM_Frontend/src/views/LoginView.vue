@@ -23,19 +23,11 @@ const showRegistration = ref(route.query.signup === '1')
 const registrationSuccess = ref(Boolean(route.query.registered))
 const mobileMenuOpen = ref(false)
 
-// Placeholder homepage content: replace these arrays when a CMS or announcements backend is introduced.
-const announcements = [
-  { tag: 'Enrollment', month: 'AUG', day: '25', poster: 'Enrollment week', date: 'August 25, 2026', title: 'Enrollment Advisory', description: 'Review the enrollment reminders and prepare the required documents before visiting the Registrar’s Office.' },
-  { tag: 'Registrar', month: 'AUG', day: '22', poster: 'Service hours', date: 'August 22, 2026', title: 'Registrar Office Schedule', description: 'Updated service hours are available for records, certifications, and other registrar assistance.' },
-  { tag: 'Campus', month: 'AUG', day: '18', poster: 'Get involved', date: 'August 18, 2026', title: 'Campus Activity', description: 'Students are invited to join upcoming campus programs focused on community and engagement.' },
-  { tag: 'Documents', month: 'AUG', day: '15', poster: 'Before you visit', date: 'August 15, 2026', title: 'Document Request Notice', description: 'Verify your request details and appointment schedule before proceeding to the campus office.' },
-]
-
-// Placeholder event content: replace when an events data source becomes available.
-const events = [
-  { month: 'SEP', day: '02', type: 'Student services', title: 'Student Orientation', description: 'A welcome session introducing campus services, student resources, and portal access.' },
-  { month: 'SEP', day: '12', type: 'Campus community', title: 'Campus Foundation Day', description: 'A campus-wide program celebrating the Colegio de Montalban community.' },
-  { month: 'SEP', day: '21', type: 'Academic support', title: 'Academic Consultation Week', description: 'Dedicated consultation days for academic guidance and student support.' },
+const services = [
+  { tag: 'Admissions', poster: 'Application access', title: 'Admissions', description: 'Create and follow your application through the approved admissions workflow.' },
+  { tag: 'Enrollment', poster: 'Academic registration', title: 'Enrollment', description: 'Review enrollment status, subjects, schedules, and the Certificate of Registration.' },
+  { tag: 'Records', poster: 'Student records', title: 'Student Records', description: 'Access academic records and track physical document requirements.' },
+  { tag: 'Documents', poster: 'Registrar services', title: 'Document Requests', description: 'Request official documents and follow claim-code and appointment updates.' },
 ]
 
 const scrollTo = async (id) => {
@@ -117,8 +109,7 @@ const registrationComplete = () => {
         <button class="menu-button" type="button" :aria-expanded="mobileMenuOpen" aria-label="Toggle navigation" @click="mobileMenuOpen = !mobileMenuOpen"><span></span><span></span><span></span></button>
         <nav :class="{ open: mobileMenuOpen }" aria-label="Main navigation">
           <button type="button" @click="scrollTo('home')">Home</button>
-          <button type="button" @click="scrollTo('announcements')">Announcements</button>
-          <button type="button" @click="scrollTo('events')">Events</button>
+          <button type="button" @click="scrollTo('services')">Services</button>
           <button type="button" @click="scrollTo('about')">About</button>
           <button class="nav-login" type="button" @click="scrollTo('login')">Login</button>
         </nav>
@@ -179,27 +170,18 @@ const registrationComplete = () => {
         <div class="hero-wave"></div>
       </section>
 
-      <section id="announcements" class="announcements-section">
+      <section id="services" class="announcements-section">
         <div class="section-shell">
-          <div class="section-heading"><div><p class="section-kicker">Campus bulletin</p><h2>Announcements & updates</h2></div><p>Important notices and updates from offices across the Colegio de Montalban campus.</p></div>
+          <div class="section-heading"><div><p class="section-kicker">Portal scope</p><h2>Academic and registrar services</h2></div><p>Sign in to access the services available for your account and role.</p></div>
           <div class="announcement-grid">
-            <article v-for="(item, index) in announcements" :key="item.title" class="announcement-card" :class="{ featured: index === 0 }">
+            <article v-for="(item, index) in services" :key="item.title" class="announcement-card" :class="{ featured: index === 0 }">
               <div class="announcement-poster">
-                <time><strong>{{ item.day }}</strong><span>{{ item.month }}</span></time>
                 <div><span>{{ item.tag }}</span><strong>{{ item.poster }}</strong></div>
                 <span class="poster-number">0{{ index + 1 }}</span>
               </div>
-              <div class="announcement-body"><time>{{ item.date }}</time><h3>{{ item.title }}</h3><p>{{ item.description }}</p><span class="card-arrow" aria-hidden="true">→</span></div>
+              <div class="announcement-body"><h3>{{ item.title }}</h3><p>{{ item.description }}</p><span class="card-arrow" aria-hidden="true">→</span></div>
             </article>
           </div>
-          <p class="demo-note">Homepage announcements shown are presentation placeholders and will be replaced with official content.</p>
-        </div>
-      </section>
-
-      <section id="events" class="events-section">
-        <div class="section-shell events-grid">
-          <div class="events-intro"><p class="section-kicker light">What’s next at CDM</p><h2>Upcoming events</h2><p>Take part in activities that bring learning, service, and the CDM community together.</p><div class="gold-rule"></div></div>
-          <div class="event-list"><article v-for="event in events" :key="event.title"><time><strong>{{ event.day }}</strong><span>{{ event.month }}</span></time><div><span class="event-type">{{ event.type }}</span><h3>{{ event.title }}</h3><p>{{ event.description }}</p></div><span class="event-arrow">→</span></article></div>
         </div>
       </section>
 

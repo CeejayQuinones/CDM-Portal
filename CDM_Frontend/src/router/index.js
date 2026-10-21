@@ -3,7 +3,7 @@ import { admissionRoutes } from '../modules/admission/routes.js'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
 import { performanceMonitor } from '../services/performance/performanceMonitor'
-import { clientPlatform, isRoleAllowedOnClient } from '../config/clientPlatform'
+import { isRoleAllowedOnClient } from '../config/clientPlatform'
 
 const AuthLayout = () => import('../layouts/AuthLayout.vue')
 const DashboardLayout = () => import('../layouts/DashboardLayout.vue')
@@ -36,8 +36,6 @@ const StudentProfileView = () => import('../modules/student-management/StudentPr
 const StudentDocumentsView = () => import('../modules/student-management/StudentDocumentsView.vue')
 const PhysicalRecordsView = () => import('../modules/student-management/PhysicalRecordsView.vue')
 const StudentRecordReportsView = () => import('../modules/student-management/StudentRecordReportsView.vue')
-const EventAttendanceView = () => import('../modules/event-attendance/EventAttendanceView.vue')
-const EventPromotionView = () => import('../modules/event-attendance/EventPromotionView.vue')
 const RegistrarDashboardView = () => import('../modules/registrar-dashboard/RegistrarDashboardView.vue')
 const AccountProvisioningView = () => import('../modules/account-management/AccountProvisioningView.vue')
 
@@ -45,15 +43,6 @@ const protectedRoute = (route) => ({
   ...route,
   meta: { requiresAuth: true, ...route.meta },
 })
-
-const canAccessEventClient = (role) =>
-  (['Guest', 'Student', 'Professor'].includes(role) && clientPlatform === 'web') ||
-  (role === 'Admin' && clientPlatform === 'desktop') ||
-  (['Professor', 'Student'].includes(role) && clientPlatform === 'mobile')
-
-const canAccessEventReportsClient = (role) =>
-  (role === ROLES.ADMIN && clientPlatform === 'desktop') ||
-  (role === ROLES.PROFESSOR && clientPlatform === 'mobile')
 
 const landingForRole = (role) => dashboardForRole(role)
 
@@ -326,22 +315,6 @@ const routes = [
         },
       }),
       protectedRoute({
-        path: 'event-attendance',
-        name: 'event-attendance',
-        component: clientPlatform === 'web' ? EventPromotionView : EventAttendanceView,
-        meta: {
-          title: clientPlatform === 'web' ? 'Events' : 'Event Operations',
-          roles: ROUTE_ROLES['event-attendance'],
-          eventModule: true,
-        },
-      }),
-      protectedRoute({
-        path: 'event-attendance/reports',
-        name: 'event-attendance-reports',
-        component: EventAttendanceView,
-        meta: { title: 'Event Reports', roles: ['Admin', 'Professor'], eventModule: true, eventReports: true },
-      }),
-      protectedRoute({
         path: 'unauthorized',
         name: 'unauthorized',
         component: UnauthorizedView,
@@ -374,8 +347,6 @@ router.beforeEach(async (to) => {
     return { name: 'unauthorized' }
   if ((admission.completed || authStore.currentRole === ROLES.STUDENT) && ['/admission/exam', '/admission/result', '/admission/recommendation'].includes(to.path))
     return { name: 'admission' }
-  if (to.meta.eventModule && !canAccessEventClient(authStore.currentRole)) return { name: 'unauthorized' }
-  if (to.meta.eventReports && !canAccessEventReportsClient(authStore.currentRole)) return { name: 'unauthorized' }
   return true
 })
 

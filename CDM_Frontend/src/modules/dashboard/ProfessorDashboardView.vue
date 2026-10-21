@@ -86,12 +86,6 @@ onMounted(loadDashboard)
             <span class="guide-arrow" aria-hidden="true">→</span>
           </RouterLink>
         </li>
-        <li>
-          <article class="workflow-card workflow-card-static">
-            <span class="step-number" aria-hidden="true">7</span>
-            <span><strong>Events</strong><small>Use the Mobile app for Event participation or assigned Event responsibilities.</small></span>
-          </article>
-        </li>
       </ol>
     </section>
 
@@ -101,9 +95,6 @@ onMounted(loadDashboard)
         <RouterLink v-for="link in links" :key="link.label" :to="link.to" class="guide-quick-link">
           <span><strong>{{ link.label }}</strong><small>{{ link.text }}</small></span><span class="guide-arrow" aria-hidden="true">→</span>
         </RouterLink>
-        <article class="guide-quick-link guide-quick-link-static">
-          <span><strong>Events</strong><small>View announcements on Web. Participation and assigned Event responsibilities are available in the Mobile app.</small></span>
-        </article>
       </nav>
     </section>
   </main>

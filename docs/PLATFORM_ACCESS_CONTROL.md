@@ -9,12 +9,12 @@ CDM Portal applies platform access in addition to its existing role permissions.
 | Registrar Staff | Yes | No | No |
 | Admin/System Admin | Yes | Yes | No |
 | Student | No | Yes | Yes |
-| Professor | Event Semi-Coordinator only | Yes | Yes |
+| Professor | No | Yes | Yes |
 | Guest | No | Public web only | No |
 
 “Public web only” means a Guest can use public registration and verification routes and may sign in on the web for applicant self-service. Existing route policies still decide what that Guest can do after authentication.
 
-Professor Desktop access is conditional on an active Event `semi_coordinator` assignment. Professor Mobile supports Event participation and assigned moderation. Web Event pages use the promotion-safe API; this does not remove normal Professor Web access to unrelated modules.
+Professor access remains limited to Web and Mobile academic workflows. Desktop stays reserved for Admin and Registrar Staff operations.
 
 ## Client identification
 

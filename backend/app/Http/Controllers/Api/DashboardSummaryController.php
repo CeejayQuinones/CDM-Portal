@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\EnrollmentSubject;
-use App\Models\Event;
 use App\Models\GradeSheet;
 use App\Models\Role;
 use App\Models\SectionSubject;
@@ -54,7 +53,6 @@ class DashboardSummaryController extends Controller
                 'academic_term' => $enrollment ? trim(($enrollment->academicYear?->school_year ?? '').' · '.($enrollment->semester?->semester_name ?? ''), ' ·') : null,
                 'enrolled_subjects' => $enrollment?->enrollmentSubjects()->whereIn('subject_status', ['enrolled', 'completed'])->count() ?? 0,
                 'unread_monitoring_notices' => $student?->riskNotifications()->whereNull('read_at')->count() ?? 0,
-                'upcoming_events' => Event::query()->where('status', 'published')->whereNull('parent_event_id')->where('ends_at', '>', now())->count(),
             ],
             'has_finalized_enrollment' => $enrollment !== null,
         ]);

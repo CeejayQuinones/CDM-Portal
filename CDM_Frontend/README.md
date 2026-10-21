@@ -76,6 +76,6 @@ Each campus module has its own folder under `src/modules` so developers can work
 - `monitoring`
 - `registrar`
 - `records`
-- `events`
+- `student-management`
 
 Shared layout, navigation, stores, and services live outside module folders.

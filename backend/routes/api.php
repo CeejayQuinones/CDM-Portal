@@ -10,19 +10,12 @@ use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentAcademicController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentWorkflowController;
-use App\Http\Controllers\Api\EventAttendanceController;
-use App\Http\Controllers\Api\EventCertificateController;
-use App\Http\Controllers\Api\EventController;
-use App\Http\Controllers\Api\EventExperienceController;
-use App\Http\Controllers\Api\EventModeratorRequestController;
-use App\Http\Controllers\Api\EventPersonnelController;
-use App\Http\Controllers\Api\EventPromotionController;
-use App\Http\Controllers\Api\EventReportController;
 use App\Http\Controllers\Api\GradingController;
 use App\Http\Controllers\Api\GradingExperienceController;
 use App\Http\Controllers\Api\GradingScaleController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\MonitoringController;
+use App\Http\Controllers\Api\PortalNoticeController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDashboardController;
@@ -48,8 +41,6 @@ Route::post('/registration/email-verification/send', [AuthController::class, 'se
     ->middleware('throttle:3,1');
 Route::post('/registration/email-verification/verify', [AuthController::class, 'verifyEmail'])
     ->middleware('throttle:5,1');
-Route::get('/event-certificates/verify/{code}', [EventCertificateController::class, 'verify'])->where('code', '[a-f0-9]{64}')->middleware('throttle:30,1');
-
 Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void {
     Route::prefix('admin')->middleware('role.admin')->group(function (): void {
         Route::get('/dashboard', AdminDashboardController::class);
@@ -66,10 +57,7 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
     });
     Route::get('/student/dashboard', [DashboardSummaryController::class, 'student'])->middleware('role.student');
     Route::get('/professor/dashboard', [DashboardSummaryController::class, 'professor'])->middleware(['role.professor', 'professor.web']);
-    Route::middleware('event.platform:promotion')->group(function (): void {
-        Route::get('/event-promotions', [EventPromotionController::class, 'index'])->middleware('throttle:60,1');
-        Route::get('/event-promotions/{event}', [EventPromotionController::class, 'show'])->whereNumber('event')->middleware('throttle:60,1');
-    });
+    Route::get('/portal-notices', PortalNoticeController::class)->middleware('throttle:60,1');
     Route::prefix('grading')->middleware('professor.web')->group(function (): void {
         Route::middleware('role.registrar-or-admin')->group(function (): void {
             Route::get('/scales', [GradingScaleController::class, 'index']);
@@ -115,51 +103,6 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::post('/conversations/{gradeConversation}/messages', [GradingExperienceController::class, 'sendMessage'])->middleware('throttle:30,1');
         Route::delete('/messages/{gradeMessage}', [GradingExperienceController::class, 'unsendMessage'])->middleware('throttle:30,1');
         Route::get('/messages/{gradeMessage}/attachment', [GradingExperienceController::class, 'attachment'])->middleware('throttle:60,1');
-    });
-    Route::middleware('event.platform')->group(function (): void {
-        Route::get('/events/profile', [EventExperienceController::class, 'profile']);
-        Route::get('/events/notifications', [EventExperienceController::class, 'notifications']);
-        Route::post('/events/notifications/{notification}/read', [EventExperienceController::class, 'readNotification'])->middleware('throttle:60,1');
-        Route::get('/events', [EventController::class, 'index']);
-        Route::get('/events/{event}', [EventController::class, 'show'])->whereNumber('event');
-        Route::get('/events/{event}/certificate', [EventCertificateController::class, 'status'])->whereNumber('event');
-        Route::post('/events/{event}/certificate/issue', [EventCertificateController::class, 'issue'])->whereNumber('event')->middleware('throttle:10,1');
-        Route::get('/events/{event}/certificate/download', [EventCertificateController::class, 'download'])->whereNumber('event')->middleware('throttle:10,1');
-        Route::get('/events/{event}/attendance', [EventAttendanceController::class, 'state'])->whereNumber('event');
-        Route::post('/events/{event}/attendance/manual', [EventAttendanceController::class, 'manual'])->whereNumber('event')->middleware('throttle:30,1');
-        Route::post('/events/{event}/attendance/operator-scan', [EventAttendanceController::class, 'operatorScan'])->whereNumber('event')->middleware('throttle:30,1');
-        Route::post('/events/{event}/attendance/{attendance}/checkout', [EventAttendanceController::class, 'checkout'])->whereNumber(['event', 'attendance'])->middleware('throttle:30,1');
-        Route::get('/events/{event}/attendance/verifications', [EventAttendanceController::class, 'verifications'])->whereNumber('event');
-        Route::post('/events/{event}/attendance/verifications/{verification}/{decision}', [EventAttendanceController::class, 'reviewVerification'])
-            ->whereNumber(['event', 'verification'])->whereIn('decision', ['approve', 'reject'])->middleware('throttle:30,1');
-    });
-    Route::middleware('event.platform:mobile')->group(function (): void {
-        Route::post('/events/{event}/moderator-requests', [EventModeratorRequestController::class, 'store'])->whereNumber('event')->middleware('throttle:10,1');
-        Route::post('/events/{event}/attendance/scan', [EventAttendanceController::class, 'scan'])->whereNumber('event')->middleware(['role.student', 'throttle:20,1']);
-        Route::post('/events/{event}/attendance/participant-qr', [EventAttendanceController::class, 'participantQr'])->whereNumber('event')->middleware(['role.student', 'throttle:30,1']);
-    });
-    Route::middleware('event.platform:desktop')->group(function (): void {
-        Route::get('/event-reports', [EventReportController::class, 'index']);
-        Route::get('/event-reports/{event}', [EventReportController::class, 'show'])->whereNumber('event');
-        Route::get('/event-reports/{event}/export', [EventReportController::class, 'export'])->whereNumber('event')->middleware('throttle:10,1');
-        Route::post('/events/{event}/attendance/session', [EventAttendanceController::class, 'open'])->whereNumber('event')->middleware('throttle:10,1');
-        Route::post('/events/{event}/attendance/session/close', [EventAttendanceController::class, 'close'])->whereNumber('event')->middleware('throttle:10,1');
-        Route::post('/events/{event}/attendance/token', [EventAttendanceController::class, 'token'])->whereNumber('event')->middleware('throttle:30,1');
-        Route::post('/events/{event}/attendance/static-token', [EventAttendanceController::class, 'staticToken'])->whereNumber('event')->middleware('throttle:10,1');
-        Route::patch('/events/{event}/attendance/{attendance}', [EventAttendanceController::class, 'correct'])->whereNumber(['event', 'attendance'])->middleware(['step-up:staff', 'throttle:30,1']);
-        Route::get('/events/options', [EventController::class, 'options']);
-        Route::put('/events/{event}/certificate-settings', [EventCertificateController::class, 'configure'])->whereNumber('event')->middleware('throttle:20,1');
-        Route::post('/events', [EventController::class, 'store'])->middleware('throttle:20,1');
-        Route::put('/events/{event}', [EventController::class, 'update'])->whereNumber('event')->middleware('throttle:30,1');
-        Route::delete('/events/{event}', [EventController::class, 'destroy'])->whereNumber('event')->middleware('throttle:20,1');
-        Route::post('/events/{event}/{action}', [EventController::class, 'transition'])->whereNumber('event')->whereIn('action', ['publish', 'cancel', 'archive'])->middleware('throttle:30,1');
-        Route::get('/events/{event}/personnel', [EventPersonnelController::class, 'index'])->whereNumber('event');
-        Route::get('/events/{event}/moderator-requests', [EventModeratorRequestController::class, 'index'])->whereNumber('event');
-        Route::post('/events/{event}/moderator-requests/{moderatorRequest}/{action}', [EventModeratorRequestController::class, 'review'])
-            ->whereNumber(['event', 'moderatorRequest'])->whereIn('action', ['approve', 'reject', 'revoke'])->middleware('throttle:30,1');
-        Route::post('/events/{event}/personnel', [EventPersonnelController::class, 'store'])->whereNumber('event')->middleware('throttle:30,1');
-        Route::put('/events/{event}/personnel/{assignment}', [EventPersonnelController::class, 'update'])->whereNumber(['event', 'assignment'])->middleware('throttle:30,1');
-        Route::post('/events/{event}/personnel/{assignment}/revoke', [EventPersonnelController::class, 'revoke'])->whereNumber(['event', 'assignment'])->middleware('throttle:30,1');
     });
     Route::get('/enrollment/status', EnrollmentStatusController::class)->middleware('professor.web');
     Route::get('/enrollment/eligibility', EnrollmentStatusController::class)->middleware('professor.web');

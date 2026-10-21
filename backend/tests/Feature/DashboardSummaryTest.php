@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Enrollment;
 use App\Models\EnrollmentSubject;
-use App\Models\Event;
 use App\Models\GradeSheet;
 use App\Models\Professor;
 use App\Models\RiskNotification;
@@ -61,27 +60,6 @@ class DashboardSummaryTest extends TestCase
             'message' => 'An older notice.',
             'read_at' => now(),
         ]);
-        Event::create([
-            'title' => 'Student orientation',
-            'venue' => 'Campus hall',
-            'venue_key' => 'campus-hall',
-            'starts_at' => now()->addDay(),
-            'ends_at' => now()->addDays(2),
-            'status' => 'published',
-            'created_by' => $this->fixture['registrar']->id,
-            'updated_by' => $this->fixture['registrar']->id,
-        ]);
-        Event::create([
-            'title' => 'Unpublished event',
-            'venue' => 'Campus hall',
-            'venue_key' => 'campus-hall',
-            'starts_at' => now()->addDay(),
-            'ends_at' => now()->addDays(2),
-            'status' => 'draft',
-            'created_by' => $this->fixture['registrar']->id,
-            'updated_by' => $this->fixture['registrar']->id,
-        ]);
-
         Sanctum::actingAs($this->fixture['user']);
         $this->getJson('/api/student/dashboard', $this->web)
             ->assertOk()
@@ -93,7 +71,6 @@ class DashboardSummaryTest extends TestCase
             ->assertJsonPath('data.summary.enrollment_status', 'enrolled')
             ->assertJsonPath('data.summary.enrolled_subjects', 2)
             ->assertJsonPath('data.summary.unread_monitoring_notices', 1)
-            ->assertJsonPath('data.summary.upcoming_events', 1)
             ->assertJsonPath('data.has_finalized_enrollment', true);
     }
 

@@ -54,12 +54,6 @@ abstract class TestCase extends BaseTestCase
 
         $role = $user instanceof User ? $user->loadMissing('role')->role?->role_name : null;
 
-        $eventRequest = preg_match('#^/api/(events|event-reports)(?:/|$)#', parse_url($uri, PHP_URL_PATH) ?: '') === 1;
-
-        if ($eventRequest) {
-            return $role === Role::ADMIN ? ClientPlatform::DESKTOP : ClientPlatform::MOBILE;
-        }
-
         return in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true)
             ? ClientPlatform::DESKTOP
             : ClientPlatform::WEB;

@@ -70,7 +70,6 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       const enrollment=items.find(i=>i.name==='enrollment')
       assert.deepEqual(enrollment.children.map(i=>i.label),['Status'])
       assert.equal(items.find(i=>i.name==='admission-menu'),undefined)
-      assert.ok(items.find(i=>i.name==='event-attendance'))
       await router.push('/enrollment/status');assert.equal(router.currentRoute.value.name,'enrollment-status')
       await router.push('/admission/exam');assert.equal(router.currentRoute.value.name,'admission')
       auth.currentRole=ROLES.STUDENT;auth.currentUser={id:1}

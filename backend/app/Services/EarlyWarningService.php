@@ -337,7 +337,7 @@ class EarlyWarningService
             'selected_term' => $selectedTerm,
             'methodology' => [
                 'source' => 'Published Grade Sheets and their latest immutable submission snapshots, matched to finalized Enrollment subjects.',
-                'excluded' => ['Draft, Submitted, Returned, and Approved grade sheets', 'live professor score entries', 'legacy grades and grading periods', 'Admission examinations', 'Event attendance'],
+                'excluded' => ['Draft, Submitted, Returned, and Approved grade sheets', 'live professor score entries', 'legacy grades and grading periods', 'Admission examinations'],
                 'risk_rule' => 'Signals use within-subject checkpoint decreases and lower-quarter standing within the same published class snapshot. They do not apply an institutional passing grade or GWA cutoff.',
                 'trend_rule' => 'Trend compares finals with midterm for the same subject. Average movement of at least five points is Improving or Declining; smaller movement is Stable.',
             ],
