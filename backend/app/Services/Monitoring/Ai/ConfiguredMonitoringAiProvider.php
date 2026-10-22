@@ -60,9 +60,13 @@ class ConfiguredMonitoringAiProvider implements MonitoringAiProvider
     {
         $prompt = collect($messages)->map(fn (array $message): string => strtoupper($message['role']).":\n".$message['content'])->implode("\n\n");
         $model = rawurlencode((string) config('services.monitoring_ai.model'));
+        $baseUrl = rtrim((string) config('services.monitoring_ai.base_url'), '/');
+        $endpoint = str_ends_with($baseUrl, '/v1beta')
+            ? $baseUrl."/models/{$model}:generateContent"
+            : $baseUrl."/v1beta/models/{$model}:generateContent";
         $response = $this->request()
             ->withHeaders(['x-goog-api-key' => (string) config('services.monitoring_ai.api_key')])
-            ->post($this->url("/v1beta/models/{$model}:generateContent"), [
+            ->post($endpoint, [
                 'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
                 'generationConfig' => ['temperature' => 0.25, 'maxOutputTokens' => 700],
             ])->throw();

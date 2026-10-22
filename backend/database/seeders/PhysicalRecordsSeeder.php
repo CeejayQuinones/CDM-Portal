@@ -3,13 +3,17 @@
 namespace Database\Seeders;
 
 use App\Models\Student;
+use Database\Seeders\Concerns\DevelopmentOnlySeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 class PhysicalRecordsSeeder extends Seeder
 {
+    use DevelopmentOnlySeeder;
+
     public function run(): void
     {
+        $this->ensureDevelopmentEnvironment();
         DB::transaction(function (): void {
             $now = now();
             $johnDoe = Student::query()

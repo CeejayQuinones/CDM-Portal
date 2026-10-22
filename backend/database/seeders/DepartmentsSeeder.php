@@ -9,7 +9,7 @@ class DepartmentsSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('departments')->insert([
+        foreach ([
             [
                 'department_code' => 'ICS',
                 'department_name' => 'Institute of Computer Studies',
@@ -34,6 +34,8 @@ class DepartmentsSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
-        ]);
+        ] as $department) {
+            DB::table('departments')->insertOrIgnore($department);
+        }
     }
 }

@@ -9,7 +9,7 @@ class AcademicYearsSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('academic_years')->insert([
+        foreach ([
             [
                 'school_year' => '2025-2026',
                 'start_date' => '2025-08-01',
@@ -34,6 +34,8 @@ class AcademicYearsSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
-        ]);
+        ] as $academicYear) {
+            DB::table('academic_years')->insertOrIgnore($academicYear);
+        }
     }
 }

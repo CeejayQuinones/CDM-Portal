@@ -9,7 +9,7 @@ class SemestersSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('semesters')->insert([
+        foreach ([
             [
                 'semester_name' => 'First Semester',
                 'semester_order' => 1,
@@ -31,6 +31,8 @@ class SemestersSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
-        ]);
+        ] as $semester) {
+            DB::table('semesters')->insertOrIgnore($semester);
+        }
     }
 }

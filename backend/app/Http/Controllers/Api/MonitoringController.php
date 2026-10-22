@@ -100,14 +100,25 @@ class MonitoringController extends Controller
         if ($response = $this->authorizeStudent($request, $student)) {
             return $response;
         }
-        $validated = $request->validate(['question' => ['required', 'string', 'min:2', 'max:1500', 'not_regex:/<[^>]+>/']]);
+        $validated = $request->validate([
+            'question' => ['required', 'string', 'min:2', 'max:1500', 'not_regex:/<[^>]+>/'],
+            'conversation' => ['sometimes', 'array', 'max:6'],
+            'conversation.*.role' => ['required_with:conversation', Rule::in(['user', 'assistant'])],
+            'conversation.*.content' => ['required_with:conversation', 'string', 'max:1000', 'not_regex:/<[^>]+>/'],
+        ]);
         $assessment = $this->assessmentFor($request, $student);
         if (! $assessment) {
             return $this->notFound();
         }
         $target = Student::query()->find($student);
 
-        return $this->ok($this->ai->generateHelp($request->user(), $target, $assessment, $validated['question']));
+        return $this->ok($this->ai->generateHelp(
+            $request->user(),
+            $target,
+            $assessment,
+            $validated['question'],
+            $validated['conversation'] ?? [],
+        ));
     }
 
     public function sendRiskNotification(Request $request, int $student): JsonResponse

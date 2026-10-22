@@ -43,4 +43,28 @@ class MonitoringAiHelpServiceTest extends TestCase
 
         $this->assertFalse(app(ConfiguredMonitoringAiProvider::class)->configured());
     }
+
+    public function test_gemini_base_url_with_v1beta_does_not_duplicate_the_api_version(): void
+    {
+        config()->set('services.monitoring_ai', [
+            'enabled' => true,
+            'provider' => 'gemini',
+            'model' => 'gemini-test-model',
+            'base_url' => 'https://generativelanguage.googleapis.com/v1beta',
+            'api_key' => 'offline-secret-key',
+            'timeout' => 5,
+        ]);
+        Http::fake(['*' => Http::response([
+            'candidates' => [['content' => ['parts' => [['text' => 'Safe guidance.']]]]],
+        ], 200)]);
+
+        $reply = app(ConfiguredMonitoringAiProvider::class)->generate([
+            ['role' => 'system', 'content' => 'Academic guidance only.'],
+            ['role' => 'user', 'content' => 'How should I study?'],
+        ]);
+
+        $this->assertSame('Safe guidance.', $reply);
+        Http::assertSent(fn (Request $request): bool => $request->url() === 'https://generativelanguage.googleapis.com/v1beta/models/gemini-test-model:generateContent'
+            && ! str_contains($request->url(), '/v1beta/v1beta/'));
+    }
 }

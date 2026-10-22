@@ -1,6 +1,6 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue'
-import { askAiHelp } from '../services/monitoringApi'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { askAiHelp, fetchAiHelpStatus } from '../services/monitoringApi'
 
 const props = defineProps({
   studentId: { type: Number, default: null },
@@ -12,6 +12,7 @@ const sending = ref(false)
 const error = ref('')
 const messages = ref([])
 const transcript = ref(null)
+const providerStatus = ref(null)
 const quickPrompts = computed(() => props.assessment?.risk_level === 'insufficient'
   ? [
       'How can I organize my study time while official results are incomplete?',
@@ -21,7 +22,7 @@ const quickPrompts = computed(() => props.assessment?.risk_level === 'insufficie
   : [
       'Why was this Monitoring risk level assigned?',
       'Which published subject signals should I focus on first?',
-      'Help me understand the Suggested Academic Support Plan.',
+      'Help me understand the suggested support plan based on published results.',
       'What should I ask my Professor?',
     ])
 const canSend = computed(() => Boolean(props.studentId) && question.value.trim().length >= 2 && !sending.value)
@@ -37,7 +38,8 @@ const send = async () => {
   sending.value = true
   error.value = ''
   try {
-    const response = await askAiHelp(props.studentId, prompt)
+    const conversation = messages.value.slice(-6).map((message) => ({ role: message.role, content: message.text }))
+    const response = await askAiHelp(props.studentId, prompt, conversation)
     messages.value.push({ id: `${Date.now()}-question`, role: 'user', text: prompt })
     messages.value.push({
       id: `${Date.now()}-reply`,
@@ -46,6 +48,7 @@ const send = async () => {
       label: response.label,
       disclaimer: response.disclaimer,
       source: response.source,
+      availabilityMessage: response.availability_message,
     })
     question.value = ''
     await nextTick()
@@ -56,6 +59,14 @@ const send = async () => {
     sending.value = false
   }
 }
+
+onMounted(async () => {
+  try {
+    providerStatus.value = await fetchAiHelpStatus()
+  } catch {
+    providerStatus.value = null
+  }
+})
 </script>
 
 <template>
@@ -74,6 +85,10 @@ const send = async () => {
       AI Help cannot change grades, calculate GWA, decide pass or fail, apply policy, or predict an outcome. Messages stay in this page session; only safe request metadata is audited.
     </aside>
 
+    <p v-if="providerStatus && !providerStatus.configured" class="service-note" role="status">
+      {{ providerStatus.message }}
+    </p>
+
     <div class="quick-prompts" aria-label="Suggested questions">
       <button v-for="prompt in quickPrompts" :key="prompt" type="button" :disabled="!studentId || sending" @click="usePrompt(prompt)">
         {{ prompt }}
@@ -87,7 +102,8 @@ const send = async () => {
         <small>{{ message.role === 'user' ? 'Question' : message.label }}</small>
         <p>{{ message.text }}</p>
         <footer v-if="message.role === 'assistant'">
-          <span>{{ message.source === 'fallback' ? 'Deterministic guidance' : 'Configured AI provider' }}</span>
+          <span>{{ message.source === 'fallback' ? 'Safe built-in guidance' : 'Configured AI provider' }}</span>
+          <span v-if="message.availabilityMessage">{{ message.availabilityMessage }}</span>
           <span>{{ message.disclaimer }}</span>
         </footer>
       </article>
@@ -156,6 +172,7 @@ header p { max-width: 760px; margin: 0; color: var(--text-secondary); }
 .composer button { min-height: 42px; border: 1px solid var(--accent); border-radius: 8px; padding: 8px 16px; background: var(--accent); color: var(--text-on-accent); font: inherit; font-weight: 800; cursor: pointer; }
 .composer button:disabled { cursor: not-allowed; opacity: .6; }
 .panel-state, .panel-error { margin: 0; border-radius: 8px; padding: 12px 14px; background: var(--bg-surface-alt); color: var(--text-secondary); }
+.service-note { margin: 0; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 13px; background: var(--bg-surface-alt); color: var(--text-secondary); font-size: .86rem; }
 .panel-error { background: var(--danger-bg); color: var(--danger); }
 
 @media (max-width: 680px) {

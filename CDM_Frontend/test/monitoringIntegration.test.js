@@ -79,11 +79,14 @@ test('phase three AI Help is advisory, session-only, responsive, and safely rend
     'study strategies',
     'time-management',
     'English, Tagalog, or Taglish',
-    'Deterministic guidance',
+    'Safe built-in guidance',
     'official results are incomplete',
   ]) assert.match(panel, new RegExp(text, 'i'))
 
   assert.match(panel, /askAiHelp/)
+  assert.match(panel, /fetchAiHelpStatus/)
+  assert.match(panel, /messages\.value\.slice\(-6\)/)
+  assert.match(panel, /availabilityMessage/)
   assert.match(panel, /sending\.value = true/)
   assert.match(panel, /temporarily unavailable/)
   assert.match(panel, /risk_level === 'insufficient'/)
@@ -93,6 +96,7 @@ test('phase three AI Help is advisory, session-only, responsive, and safely rend
   assert.match(panel, /@media \(max-width: 680px\)/)
   assert.match(api, /\/monitoring\/ai-status/)
   assert.match(api, /\/monitoring\/students\/\$\{studentId\}\/ai-help/)
+  assert.match(api, /question, conversation/)
 })
 
 test('phase two study plans stay advisory and adapt to risk and incomplete data', async () => {

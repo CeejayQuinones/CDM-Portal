@@ -14,18 +14,22 @@ use App\Models\Semester;
 use App\Models\Student;
 use App\Models\Subject;
 use App\Models\User;
+use Database\Seeders\Concerns\DevelopmentOnlySeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
 class ProfessorsSeeder extends Seeder
 {
+    use DevelopmentOnlySeeder;
+
     private const USERNAME = 'professor1';
 
     private const EMPLOYEE_NUMBER = 'FAC-2026-001';
 
     public function run(): void
     {
+        $this->ensureDevelopmentEnvironment();
         DB::transaction(function (): void {
             $user = User::query()->with(['role', 'profile'])->where('username', self::USERNAME)->firstOrFail();
             $professorRoleId = Role::query()->where('role_name', Role::PROFESSOR)->value('id');

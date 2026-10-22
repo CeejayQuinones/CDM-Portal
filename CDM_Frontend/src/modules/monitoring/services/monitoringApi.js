@@ -9,7 +9,7 @@ export const fetchStudyPlans = (params = {}) => unwrap(apiClient.get('/monitorin
 export const fetchStudentStudyPlan = (studentId) => unwrap(apiClient.get(`/monitoring/students/${studentId}/study-plan`))
 export const fetchAdviserAlerts = (params = {}) => unwrap(apiClient.get('/monitoring/adviser-alerts', { params }))
 export const fetchAiHelpStatus = () => unwrap(apiClient.get('/monitoring/ai-status'))
-export const askAiHelp = (studentId, question) => unwrap(apiClient.post(`/monitoring/students/${studentId}/ai-help`, { question }))
+export const askAiHelp = (studentId, question, conversation = []) => unwrap(apiClient.post(`/monitoring/students/${studentId}/ai-help`, { question, conversation }))
 export const sendRiskNotification = (studentId, message = '', title = '') => unwrap(apiClient.post(`/monitoring/students/${studentId}/risk-notifications`, { message: message || null, title: title || null }))
 export const fetchMyRiskNotifications = () => unwrap(apiClient.get('/monitoring/my-risk-notifications'))
 export const markRiskNotificationRead = (notificationId) => unwrap(apiClient.patch(`/monitoring/risk-notifications/${notificationId}/read`))

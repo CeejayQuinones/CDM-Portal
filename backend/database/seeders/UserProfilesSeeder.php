@@ -2,18 +2,23 @@
 
 namespace Database\Seeders;
 
+use Database\Seeders\Concerns\DevelopmentOnlySeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 class UserProfilesSeeder extends Seeder
 {
+    use DevelopmentOnlySeeder;
+
     public function run(): void
     {
-        DB::table('user_profiles')->insert([
+        $this->ensureDevelopmentEnvironment();
+        foreach ([
 
             // Guest
             [
-                'user_id' => 1,
+                'username' => 'ken',
                 'first_name' => 'Kenneth',
                 'middle_name' => null,
                 'last_name' => 'Gallaza',
@@ -32,7 +37,7 @@ class UserProfilesSeeder extends Seeder
 
             // Admin
             [
-                'user_id' => 2,
+                'username' => 'admin',
                 'first_name' => 'System',
                 'middle_name' => null,
                 'last_name' => 'Administrator',
@@ -51,7 +56,7 @@ class UserProfilesSeeder extends Seeder
 
             // Registrar
             [
-                'user_id' => 3,
+                'username' => 'registrar1',
                 'first_name' => 'Maria',
                 'middle_name' => 'Santos',
                 'last_name' => 'Cruz',
@@ -70,7 +75,7 @@ class UserProfilesSeeder extends Seeder
 
             // Professor
             [
-                'user_id' => 4,
+                'username' => 'professor1',
                 'first_name' => 'Juan',
                 'middle_name' => 'Dela',
                 'last_name' => 'Reyes',
@@ -89,7 +94,7 @@ class UserProfilesSeeder extends Seeder
 
             // Student
             [
-                'user_id' => 5,
+                'username' => 'student1',
                 'first_name' => 'John',
                 'middle_name' => 'A.',
                 'last_name' => 'Doe',
@@ -106,6 +111,17 @@ class UserProfilesSeeder extends Seeder
                 'updated_at' => now(),
             ],
 
-        ]);
+        ] as $profile) {
+            $username = $profile['username'];
+            unset($profile['username']);
+            $userId = DB::table('users')->where('username', $username)->value('id');
+            if (! $userId) {
+                throw new LogicException("Development user {$username} must exist before its profile is seeded.");
+            }
+            DB::table('user_profiles')->updateOrInsert(
+                ['user_id' => $userId],
+                $profile,
+            );
+        }
     }
 }

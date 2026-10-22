@@ -2,13 +2,17 @@
 
 namespace Database\Seeders;
 
+use Database\Seeders\Concerns\DevelopmentOnlySeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 class AppointmentBlockedDateSeeder extends Seeder
 {
+    use DevelopmentOnlySeeder;
+
     public function run(): void
     {
+        $this->ensureDevelopmentEnvironment();
         $holidays = [
             ['reason' => "New Year's Day", 'blocked_date' => '2026-01-01'],
             ['reason' => 'Chinese New Year', 'blocked_date' => '2026-02-17'],
