@@ -230,6 +230,7 @@ class AdmissionExamService
 
         return [
             'session_id' => $session->id, 'attempt_number' => $session->attempt_number, 'revision' => $session->revision, 'position' => $session->position,
+            'max_attempts' => AdmissionExamPolicy::normalize($session->policy_snapshot)['max_attempts'],
             'exam_completed' => $completed, 'expired' => $completed && $session->result()->value('finalization_cause') === 'deadline',
             'deadline' => $session->deadline_at->toIso8601String(), 'server_now' => now()->toIso8601String(),
             'questions' => $questions->map(fn ($q) => ['id' => $q->id, 'topic' => $q->topic, 'question_text' => $q->question_text, 'options' => $q->options])->all(),

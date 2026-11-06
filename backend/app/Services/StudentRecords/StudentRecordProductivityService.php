@@ -67,6 +67,9 @@ class StudentRecordProductivityService
                 'total' => $attentionTotal + $requirementAttention['total'],
                 'students' => $attention,
                 'requirements_total' => $requirementAttention['total'],
+                'requirements_students_total' => $requirementAttention['students_total'],
+                'document_types' => $requirementAttention['document_types'],
+                'matrix_students' => $requirementAttention['matrix_students'],
                 'items' => $requirementAttention['items'],
                 'categories' => [
                     ['value' => 'all', 'label' => 'All'],
@@ -81,12 +84,12 @@ class StudentRecordProductivityService
         ];
     }
 
-    /** @return array{total:int,items:list<array<string,mixed>>} */
+    /** @return array{total:int,students_total:int,document_types:list<array{id:int,name:string}>,matrix_students:list<array<string,mixed>>,items:list<array<string,mixed>>} */
     private function requirementAttention(): array
     {
         $types = $this->requirements->types();
         if ($types->isEmpty()) {
-            return ['total' => 0, 'items' => []];
+            return ['total' => 0, 'students_total' => 0, 'document_types' => [], 'matrix_students' => [], 'items' => []];
         }
 
         $typeIds = $types->pluck('id');
@@ -99,7 +102,7 @@ class StudentRecordProductivityService
                     ->orWhereIn('verification_status', ['pending', 'rejected'])
                     ->orWhere('physical_copy_status', 'required'))
                 ->count());
-        $students = Student::query()
+        $studentsQuery = Student::query()
             ->where(function (Builder $query) use ($typeIds): void {
                 foreach ($typeIds as $typeId) {
                     $query->orWhereDoesntHave('documents', fn (Builder $documents) => $documents->where('document_type_id', $typeId));
@@ -110,7 +113,9 @@ class StudentRecordProductivityService
                         ->where('availability_status', 'missing')
                         ->orWhereIn('verification_status', ['pending', 'rejected'])
                         ->orWhere('physical_copy_status', 'required')));
-            })
+            });
+        $studentsTotal = (clone $studentsQuery)->count();
+        $students = $studentsQuery
             ->with([
                 'userProfile:id,first_name,middle_name,last_name,suffix',
                 'documents' => fn ($query) => $query->whereIn('document_type_id', $typeIds),
@@ -119,10 +124,10 @@ class StudentRecordProductivityService
             ->limit(50)
             ->get(['id', 'user_profile_id', 'student_number']);
 
-        $items = $students->flatMap(function (Student $student) use ($types): array {
+        $matrixStudents = $students->map(function (Student $student) use ($types): array {
             $documents = $student->documents->keyBy('document_type_id');
 
-            return $types->map(function ($type) use ($student, $documents): ?array {
+            $requirements = $types->map(function ($type) use ($student, $documents): array {
                 $document = $documents->get($type->id);
                 $digital = $this->requirements->digitalStatus($document);
                 $physical = $document?->physical_copy_status ?? 'not_required';
@@ -132,15 +137,8 @@ class StudentRecordProductivityService
                     $digital === 'needs_resubmission' ? 'needs_resubmission' : null,
                     $physical === 'required' ? 'hard_copy_required' : null,
                 ])->filter()->values();
-                if ($reasons->isEmpty()) {
-                    return null;
-                }
-
                 return [
                     'key' => $student->id.':'.$type->id,
-                    'student_id' => $student->id,
-                    'student_number' => $student->student_number,
-                    'student_name' => trim(collect([$student->userProfile?->first_name, $student->userProfile?->middle_name, $student->userProfile?->last_name, $student->userProfile?->suffix])->filter()->join(' ')),
                     'document_id' => $document?->id,
                     'document_type_id' => $type->id,
                     'document_type' => $type->document_name,
@@ -156,10 +154,41 @@ class StudentRecordProductivityService
                         default => 'Hard Copy Awaiting Submission',
                     })->join(' · '),
                 ];
-            })->filter()->all();
+            })->values();
+
+            return [
+                'student_id' => $student->id,
+                'student_number' => $student->student_number,
+                'student_name' => trim(collect([
+                    $student->userProfile?->first_name,
+                    $student->userProfile?->middle_name,
+                    $student->userProfile?->last_name,
+                    $student->userProfile?->suffix,
+                ])->filter()->join(' ')),
+                'requirements' => $requirements->all(),
+            ];
         })->values();
 
-        return ['total' => $total, 'items' => $items->take(50)->all()];
+        $items = $matrixStudents->flatMap(function (array $student): array {
+            return collect($student['requirements'])
+                ->filter(fn (array $requirement): bool => $requirement['attention_reasons'] !== [])
+                ->map(fn (array $requirement): array => $requirement + [
+                    'student_id' => $student['student_id'],
+                    'student_number' => $student['student_number'],
+                    'student_name' => $student['student_name'],
+                ])->all();
+        })->values();
+
+        return [
+            'total' => $total,
+            'students_total' => $studentsTotal,
+            'document_types' => $types->map(fn ($type): array => [
+                'id' => $type->id,
+                'name' => $type->document_name,
+            ])->values()->all(),
+            'matrix_students' => $matrixStudents->all(),
+            'items' => $items->take(50)->all(),
+        ];
     }
 
     /** @return array<string, int> */

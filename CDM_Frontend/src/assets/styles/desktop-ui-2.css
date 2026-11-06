@@ -1,0 +1,297 @@
+/* Electron-only Registrar/Admin presentation. Every rule is rooted in the
+   compile-time desktop marker so Website and Capacitor keep their own UI. */
+html.cdm-desktop-client {
+  --desktop-canvas: #f3f6f3;
+  --desktop-surface: #ffffff;
+  --desktop-surface-subtle: #f8faf8;
+  --desktop-border: #dbe5de;
+  --desktop-border-strong: #bdd1c3;
+  --desktop-text: #183326;
+  --desktop-text-secondary: #44584d;
+  --desktop-text-muted: #64746b;
+  --desktop-green: #0b633b;
+  --desktop-green-strong: #064a2d;
+  --desktop-green-soft: #e5f2e9;
+  --desktop-gold: #c9a52b;
+  --desktop-danger: #a43434;
+  --desktop-danger-soft: #fff0ee;
+  --desktop-warning: #7a5a08;
+  --desktop-warning-soft: #fff7d8;
+  --desktop-radius-sm: 7px;
+  --desktop-radius-md: 10px;
+  --desktop-shadow: 0 7px 22px rgba(19, 61, 37, 0.07);
+}
+
+html.cdm-desktop-client[data-student-theme='dark'] {
+  --desktop-canvas: #101713;
+  --desktop-surface: #17211b;
+  --desktop-surface-subtle: #1d2922;
+  --desktop-border: #2e4035;
+  --desktop-border-strong: #3c5848;
+  --desktop-text: #edf5ef;
+  --desktop-text-secondary: #c4d2c8;
+  --desktop-text-muted: #9fb0a5;
+  --desktop-green: #70c894;
+  --desktop-green-strong: #9addb6;
+  --desktop-green-soft: #203a2b;
+  --desktop-gold: #e1c35a;
+  --desktop-danger: #ffaaa4;
+  --desktop-danger-soft: #3c2422;
+  --desktop-warning: #eed27a;
+  --desktop-warning-soft: #3c341c;
+  --desktop-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  html.cdm-desktop-client[data-student-theme='system'] {
+    --desktop-canvas: #101713;
+    --desktop-surface: #17211b;
+    --desktop-surface-subtle: #1d2922;
+    --desktop-border: #2e4035;
+    --desktop-border-strong: #3c5848;
+    --desktop-text: #edf5ef;
+    --desktop-text-secondary: #c4d2c8;
+    --desktop-text-muted: #9fb0a5;
+    --desktop-green: #70c894;
+    --desktop-green-strong: #9addb6;
+    --desktop-green-soft: #203a2b;
+    --desktop-gold: #e1c35a;
+    --desktop-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  }
+}
+
+html.cdm-desktop-client body,
+.desktop-ui-two-shell {
+  background: var(--desktop-canvas);
+  color: var(--desktop-text);
+}
+
+.desktop-ui-two-shell .portal-animated-backdrop {
+  opacity: 0.25;
+}
+
+.desktop-ui-two-shell .navbar {
+  background: color-mix(in srgb, var(--desktop-surface) 96%, transparent);
+  border-bottom-color: var(--desktop-border);
+  box-shadow: 0 1px 0 rgba(12, 82, 48, 0.04);
+}
+
+.desktop-ui-two-shell .is-desktop-sidebar {
+  background: linear-gradient(178deg, #063e29 0%, #075334 58%, #0a6339 100%);
+  box-shadow: 6px 0 24px rgba(5, 45, 27, 0.16);
+  padding: 20px 13px 16px;
+  width: var(--sidebar-width);
+}
+
+.desktop-ui-two-shell .is-desktop-sidebar .brand {
+  margin-bottom: 15px;
+  padding-bottom: 16px;
+}
+
+.desktop-ui-two-shell .is-desktop-sidebar .brand-mark {
+  height: 46px;
+  width: 46px;
+}
+
+.desktop-ui-two-shell .is-desktop-sidebar .nav-link {
+  border-radius: 7px;
+  min-height: 40px;
+}
+
+.desktop-ui-two-shell .is-desktop-sidebar .nav-parent.is-active,
+.desktop-ui-two-shell .is-desktop-sidebar .nav-link.router-link-active {
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(244, 211, 94, 0.28);
+  color: #fff;
+}
+
+.desktop-ui-two-shell .is-desktop-sidebar .nav-parent.is-active::before,
+.desktop-ui-two-shell .is-desktop-sidebar .nav-link.router-link-active::before {
+  background: #f4d35e;
+}
+
+.desktop-ui-two-shell .main-content {
+  color: var(--desktop-text);
+}
+
+.desktop-ui-two-shell .portal-route-enter-active,
+.desktop-ui-two-shell .portal-route-leave-active {
+  transition: opacity 160ms ease;
+}
+
+.desktop-ui-two-shell .portal-route-enter-from,
+.desktop-ui-two-shell .portal-route-leave-to {
+  opacity: 0;
+  transform: none;
+}
+
+/* Shared desktop workspace primitives. Existing module classes keep their
+   behavior while receiving a consistent information-dense presentation. */
+.desktop-ui-two-shell :is(.page-header, .dashboard-header) {
+  margin-bottom: 20px;
+}
+
+.desktop-ui-two-shell :is(.page-title, .dashboard-header .page-title, h1, h2, h3) {
+  color: var(--desktop-text);
+}
+
+.desktop-ui-two-shell :is(.page-description, .page-subtitle, .helper-text) {
+  color: var(--desktop-text-muted);
+}
+
+.desktop-ui-two-shell .page-kicker {
+  color: var(--desktop-green);
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+}
+
+.desktop-ui-two-shell :is(
+  .dashboard-panel,
+  .summary-card,
+  .student-records-panel,
+  .productivity-card,
+  .quick-search-panel,
+  .en-card,
+  .dr-card,
+  .dr-filter-bar,
+  .settings-card,
+  .card,
+  .panel
+) {
+  background: var(--desktop-surface);
+  border-color: var(--desktop-border);
+  box-shadow: var(--desktop-shadow);
+  color: var(--desktop-text);
+}
+
+.desktop-ui-two-shell :is(input, select, textarea) {
+  background: var(--desktop-surface);
+  border-color: var(--desktop-border-strong);
+  border-radius: var(--desktop-radius-sm);
+  color: var(--desktop-text);
+}
+
+.desktop-ui-two-shell :is(input, select, textarea):focus {
+  border-color: var(--desktop-green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--desktop-green) 20%, transparent);
+}
+
+.desktop-ui-two-shell :is(.button-primary, .dr-button--primary, button.primary) {
+  background: var(--desktop-green);
+  border-color: var(--desktop-green);
+  color: #fff;
+}
+
+.desktop-ui-two-shell :is(.button-secondary, .dr-button--secondary) {
+  background: var(--desktop-surface);
+  border-color: var(--desktop-border-strong);
+  color: var(--desktop-green-strong);
+}
+
+.desktop-ui-two-shell .table-wrap,
+.desktop-ui-two-shell :is(.en-table, .attention-table-wrap) {
+  border: 1px solid var(--desktop-border);
+  border-radius: var(--desktop-radius-sm);
+  max-width: 100%;
+  overflow: auto;
+}
+
+.desktop-ui-two-shell table {
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--desktop-text-secondary);
+  width: 100%;
+}
+
+.desktop-ui-two-shell thead th {
+  background: var(--desktop-green-soft);
+  border-bottom: 1px solid var(--desktop-border-strong);
+  color: var(--desktop-green-strong);
+  font-size: 0.69rem;
+  letter-spacing: 0.035em;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 2;
+}
+
+.desktop-ui-two-shell tbody td {
+  border-bottom-color: var(--desktop-border);
+}
+
+.desktop-ui-two-shell tbody tr:hover td {
+  background: color-mix(in srgb, var(--desktop-green-soft) 58%, var(--desktop-surface));
+}
+
+.desktop-ui-two-shell :is(.notice-success, .success) {
+  background: var(--desktop-green-soft);
+  border-color: var(--desktop-border-strong);
+  color: var(--desktop-green-strong);
+}
+
+.desktop-ui-two-shell :is(.notice-error, .error) {
+  background: var(--desktop-danger-soft);
+  color: var(--desktop-danger);
+}
+
+/* Teleported dialogs are outside the shell, so the html marker is required. */
+html.cdm-desktop-client :is(.modal-backdrop, .dialog-backdrop, .en-dialog-backdrop) {
+  backdrop-filter: blur(2px);
+  background: rgba(4, 25, 15, 0.55);
+}
+
+html.cdm-desktop-client :is(.modal, [role='dialog'], .en-dialog, .request-detail-dialog) {
+  --bg-surface: var(--desktop-surface);
+  --bg-input: var(--desktop-surface);
+  --text-primary: var(--desktop-text);
+  --text-secondary: var(--desktop-text-secondary);
+  --text-muted: var(--desktop-text-muted);
+  --border-color: var(--desktop-border);
+  color: var(--desktop-text);
+}
+
+@media (max-width: 860px) {
+  .desktop-ui-two-shell .shell-content {
+    margin-left: 0;
+  }
+
+  .desktop-ui-two-shell .main-content {
+    padding: 18px;
+  }
+
+  .desktop-ui-two-shell .desktop-navbar {
+    padding-inline: 18px;
+  }
+
+  .desktop-ui-two-shell .desktop-account-copy {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-ui-two-shell *,
+  .desktop-ui-two-shell *::before,
+  .desktop-ui-two-shell *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  html.cdm-desktop-client {
+    --desktop-canvas: #fff;
+    --desktop-surface: #fff;
+    --desktop-surface-subtle: #fff;
+    --desktop-border: #cfd6d1;
+    --desktop-border-strong: #aebbb2;
+    --desktop-text: #111;
+    --desktop-text-secondary: #222;
+    --desktop-text-muted: #444;
+    --desktop-shadow: none;
+    color-scheme: light;
+  }
+
+  .desktop-ui-two-shell :is(.dashboard-panel, .summary-card, .student-records-panel, .en-card, .card, .panel) {
+    box-shadow: none;
+  }
+}

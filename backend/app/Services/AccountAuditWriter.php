@@ -16,6 +16,7 @@ class AccountAuditWriter
         'professor_account_created',
         'professor_account_updated',
         'professor_account_status_changed',
+        'professor_subjects_updated',
     ];
 
     /** @param array<string, mixed> $metadata */

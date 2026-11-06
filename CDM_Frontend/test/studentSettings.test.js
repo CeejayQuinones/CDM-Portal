@@ -5,11 +5,14 @@ import { compileStyle, parse } from '@vue/compiler-sfc'
 
 const view = () => readFile(new URL('../src/views/SettingsView.vue', import.meta.url), 'utf8')
 
-test('student settings keeps a left internal sidebar and mobile drawer', async () => {
+test('student settings uses website category navigation while preserving the non-web drawer', async () => {
   const source = await view()
-  assert.match(source, /<aside :class="\{ open \}">/)
-  assert.match(source, /\.settings-nav|aside\.open|transform:translateX/)
-  assert.doesNotMatch(source, /role="tablist"|<nav class="tabs"/)
+  assert.match(source, /'website-settings-workspace': isWebsitePresentation/)
+  assert.match(source, /:role="isWebsitePresentation \? 'navigation' : undefined"/)
+  assert.match(source, /\.website-settings-workspace aside \{[\s\S]*grid-template-columns: repeat\(5/)
+  assert.match(source, /max-width: 768px[\s\S]*overflow-x: auto/)
+  assert.match(source, /\.settings:not\(\.website-settings-workspace\) aside\.open \{ transform: translateX\(0\)/)
+  assert.doesNotMatch(source, /role="tablist"/)
 })
 
 test('main navigation exposes Settings only to students', async () => {
@@ -20,7 +23,7 @@ test('main navigation exposes Settings only to students', async () => {
 
 test('student settings contains every editable settings surface and loading/error states', async () => {
   const source = await view()
-  for (const label of ['Profile', 'Account', 'Student Status', 'Document Status', 'Contact Information', 'Notifications', 'Academic Preferences', 'Appearance', 'Security']) assert.match(source, new RegExp(label))
+  for (const label of ['Profile', 'Account', 'Student Status', 'Document Status', 'Contact Information', 'Notifications', 'Appearance', 'Security']) assert.match(source, new RegExp(label))
   assert.match(source, /Loading settings\.\.\./)
   assert.match(source, /Unable to load settings/)
   assert.match(source, /student\/settings\/avatar/)

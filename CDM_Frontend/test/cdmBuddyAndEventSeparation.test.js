@@ -4,7 +4,7 @@ import test from 'node:test'
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
-test('CDM Buddy is limited to Student and Guest dashboards with accessible states', async () => {
+test('CDM Buddy is limited to authorized Student and Guest modules with accessible states', async () => {
   const [buddy, layout, service] = await Promise.all([
     read('src/components/CDMBuddy.vue'),
     read('src/layouts/DashboardLayout.vue'),
@@ -13,15 +13,18 @@ test('CDM Buddy is limited to Student and Guest dashboards with accessible state
 
   assert.match(layout, /import CDMBuddy/)
   assert.match(layout, /<CDMBuddy \/>/)
-  assert.match(buddy, /\['student-dashboard', 'guest-dashboard'\]/)
+  assert.match(buddy, /\['Student', 'Guest'\]\.includes\(role\)/)
+  assert.match(buddy, /excludedRoutes\.has/)
+  assert.match(buddy, /isRoleAllowedOnClient\(role\)/)
   assert.match(buddy, /aria-expanded="expanded"/)
   assert.match(buddy, /role="dialog"/)
   assert.match(buddy, /event\.key === 'Escape'/)
-  assert.match(buddy, /Dismiss for this session/)
-  assert.match(buddy, /sessionStorage/)
-  assert.match(buddy, /Verified update/)
-  assert.match(buddy, /Informational guidance/)
-  assert.match(buddy, /@media \(max-width: 760px\)[\s\S]*position: static/)
+  assert.match(buddy, /buddyMuteStorageKey/)
+  assert.match(buddy, /localStorage\.setItem\(muteKey\.value/)
+  assert.doesNotMatch(buddy, /Dismiss this session/)
+  assert.match(buddy, /notice\.kind === 'official' \? 'Verified' : 'Info'/)
+  assert.match(buddy, /Ready with informational guidance/)
+  assert.match(buddy, /position: fixed/)
   assert.match(buddy, /prefers-reduced-motion/)
   assert.match(service, /get\('\/portal-notices'\)/)
 })

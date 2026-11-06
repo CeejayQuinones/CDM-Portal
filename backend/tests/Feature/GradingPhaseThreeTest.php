@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\Enrollment;
 use App\Models\EnrollmentSubject;
 use App\Models\GradeAssessment;
-use App\Models\GradeMessage;
 use App\Models\GradePeriodSchedule;
 use App\Models\GradeScore;
 use App\Models\GradeSheet;
@@ -15,8 +14,6 @@ use App\Models\Section;
 use App\Models\SectionSubject;
 use App\Models\Student;
 use App\Models\User;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\EnrollmentAcademicFixture;
 use Tests\TestCase;
@@ -124,49 +121,17 @@ class GradingPhaseThreeTest extends TestCase
             ->assertJsonPath('data.summary.gwa.message', 'Not available until grading scale is configured.');
     }
 
-    public function test_student_and_professor_can_message_with_server_read_state_and_ownership(): void
+    public function test_removed_grading_message_endpoints_are_not_registered(): void
     {
-        $this->publish();
-        $this->student();
-        $conversation = $this->postJson('/api/grading/student/grades/'.$this->sheet->id.'/conversation')->assertCreated()->json('data');
-        $message = $this->postJson('/api/grading/conversations/'.$conversation['id'].'/messages', ['body' => 'Please clarify my final grade.'])->assertCreated()->json('data');
-        Sanctum::actingAs($this->f['professorUser']);
-        $this->getJson('/api/grading/professor/conversations')->assertOk()->assertJsonPath('data.0.unread_count', 1);
-        $this->getJson('/api/grading/conversations/'.$conversation['id'])->assertOk()->assertJsonPath('data.messages.0.body', 'Please clarify my final grade.');
-        $this->assertNotNull(GradeMessage::find($message['id'])->read_at);
-        $reply = $this->postJson('/api/grading/conversations/'.$conversation['id'].'/messages', ['body' => 'I will review the published computation.'])->assertCreated()->json('data');
-        $this->deleteJson('/api/grading/messages/'.$message['id'])->assertForbidden();
-        $this->deleteJson('/api/grading/messages/'.$reply['id'])->assertOk()->assertJsonPath('data.unsent_at', fn ($value) => $value !== null);
-        $this->assertDatabaseHas('grade_audit_events', ['action' => 'grade_message.read']);
-        $this->assertDatabaseHas('grade_audit_events', ['action' => 'grade_message.unsent']);
-    }
-
-    public function test_non_published_and_foreign_professor_message_access_is_blocked(): void
-    {
-        $this->submit();
         $this->student();
         $this->postJson('/api/grading/student/grades/'.$this->sheet->id.'/conversation')->assertNotFound();
-        $this->sheet->update(['status' => 'published', 'published_at' => now()]);
-        $conversation = $this->postJson('/api/grading/student/grades/'.$this->sheet->id.'/conversation')->assertCreated()->json('data');
-        $foreign = User::factory()->create(['role_id' => Role::where('role_name', Role::PROFESSOR)->value('id')]);
-        Sanctum::actingAs($foreign);
-        $this->getJson('/api/grading/conversations/'.$conversation['id'])->assertNotFound();
-    }
+        $this->getJson('/api/grading/conversations/1')->assertNotFound();
+        $this->postJson('/api/grading/conversations/1/messages', ['body' => 'Unavailable'])->assertNotFound();
+        $this->deleteJson('/api/grading/messages/1')->assertNotFound();
+        $this->get('/api/grading/messages/1/attachment')->assertNotFound();
 
-    public function test_message_attachment_is_private_validated_and_removed_on_unsend(): void
-    {
-        Storage::fake('local');
-        $this->publish();
-        $this->student();
-        $conversation = $this->postJson('/api/grading/student/grades/'.$this->sheet->id.'/conversation')->assertCreated()->json('data');
-        $this->post('/api/grading/conversations/'.$conversation['id'].'/messages', ['attachment' => UploadedFile::fake()->create('unsafe.pdf', 20, 'application/pdf')], ['Accept' => 'application/json'])->assertUnprocessable();
-        $message = $this->post('/api/grading/conversations/'.$conversation['id'].'/messages', ['attachment' => UploadedFile::fake()->image('evidence.png', 20, 20)], ['Accept' => 'application/json'])->assertCreated()->json('data');
-        $row = GradeMessage::findOrFail($message['id']);
-        Storage::disk('local')->assertExists($row->attachment_path);
-        $this->get('/api/grading/messages/'.$row->id.'/attachment')->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
-        $path = $row->attachment_path;
-        $this->deleteJson('/api/grading/messages/'.$row->id)->assertOk();
-        Storage::disk('local')->assertMissing($path);
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->getJson('/api/grading/professor/conversations')->assertNotFound();
     }
 
     public function test_student_staff_and_admin_csv_exports_are_authorized_and_safe(): void

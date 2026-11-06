@@ -156,7 +156,9 @@ test('main sidebar follows Settings identity changes, retries, and restored Stud
       await input.props.onChange({ target: { files: [new File(['image'], name, { type: 'image/png' })], value: name } })
       await settle()
       expectAvatar(tree, name)
-      assert.equal(find(tree, target => target.props.class === 'avatar').children[0].props.src, sidebarImage(tree).props.src)
+      const settingsAvatar = find(tree, target => target.props.class === 'avatar').children[0].props.src
+      assert.equal(new URL(settingsAvatar).pathname, new URL(sidebarImage(tree).props.src).pathname)
+      assert.match(settingsAvatar, /\?cdm_avatar=\d+$/, 'website Settings should invalidate a cached replacement image')
     }
     await upload('uploaded.png')
     await upload('replacement.png')
@@ -226,13 +228,13 @@ test('main sidebar follows Settings identity changes, retries, and restored Stud
       if (role === 'Registrar Staff') {
         applyPortalAppearance('dark', role)
         assert.equal(document.documentElement.dataset.studentTheme, 'dark')
-        assert.equal(localStorage.getItem('cdm-registrar-appearance'), 'dark')
+        assert.equal(localStorage.getItem('cdm-registrar-appearance:7'), 'dark')
         app.unmount()
         ;({ tree } = await mount(role))
         assert.equal(document.documentElement.dataset.studentTheme, 'dark', 'Registrar appearance must restore after remount')
         applyPortalAppearance('light', role)
         assert.equal(document.documentElement.dataset.studentTheme, 'light')
-        assert.equal(localStorage.getItem('cdm-registrar-appearance'), 'light')
+        assert.equal(localStorage.getItem('cdm-registrar-appearance:7'), 'light')
       }
       app.unmount()
       app = null

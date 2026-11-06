@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Admission\AdmissionApplicationController;
 use App\Http\Controllers\Api\Admission\AdmissionIdentityController;
 use App\Http\Controllers\Api\AppointmentAvailabilityController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CampusNoticeController;
 use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentAcademicController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
@@ -14,7 +15,6 @@ use App\Http\Controllers\Api\GradingController;
 use App\Http\Controllers\Api\GradingExperienceController;
 use App\Http\Controllers\Api\GradingScaleController;
 use App\Http\Controllers\Api\HolidayController;
-use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\PortalNoticeController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
@@ -54,10 +54,20 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::post('/professors', [AccountProvisioningController::class, 'storeProfessor']);
         Route::put('/professors/{professor}', [AccountProvisioningController::class, 'updateProfessor']);
         Route::patch('/professors/{professor}/status', [AccountProvisioningController::class, 'professorStatus']);
+        Route::get('/professors/{professor}/subjects', [AccountProvisioningController::class, 'professorSubjects']);
+        Route::put('/professors/{professor}/subjects', [AccountProvisioningController::class, 'syncProfessorSubjects']);
     });
     Route::get('/student/dashboard', [DashboardSummaryController::class, 'student'])->middleware('role.student');
     Route::get('/professor/dashboard', [DashboardSummaryController::class, 'professor'])->middleware(['role.professor', 'professor.web']);
     Route::get('/portal-notices', PortalNoticeController::class)->middleware('throttle:60,1');
+    Route::post('/portal-notices/{campusNotice}/acknowledge', [PortalNoticeController::class, 'acknowledge'])->middleware('throttle:30,1');
+    Route::prefix('campus-notices')->middleware('role.registrar-or-admin')->group(function (): void {
+        Route::get('/', [CampusNoticeController::class, 'index']);
+        Route::post('/', [CampusNoticeController::class, 'store'])->middleware('throttle:30,1');
+        Route::put('/{campusNotice}', [CampusNoticeController::class, 'update'])->middleware('throttle:30,1');
+        Route::post('/{campusNotice}/publish', [CampusNoticeController::class, 'publish'])->middleware('throttle:30,1');
+        Route::post('/{campusNotice}/archive', [CampusNoticeController::class, 'archive'])->middleware('throttle:30,1');
+    });
     Route::prefix('grading')->middleware('professor.web')->group(function (): void {
         Route::middleware('role.registrar-or-admin')->group(function (): void {
             Route::get('/scales', [GradingScaleController::class, 'index']);
@@ -88,21 +98,18 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
             Route::put('/sheets/{gradeSheet}/assessments/{gradeAssessment}', [GradingController::class, 'updateAssessment']);
             Route::patch('/sheets/{gradeSheet}/assessments/{gradeAssessment}/status', [GradingController::class, 'assessmentStatus']);
             Route::put('/sheets/{gradeSheet}/scores', [GradingController::class, 'scores']);
+            Route::get('/sheets/{gradeSheet}/workbook', [GradingController::class, 'exportWorkbook'])->middleware('throttle:20,1');
+            Route::post('/sheets/{gradeSheet}/workbook/preview', [GradingController::class, 'previewWorkbook'])->middleware('throttle:20,1');
+            Route::post('/sheets/{gradeSheet}/workbook/apply', [GradingController::class, 'applyWorkbook'])->middleware('throttle:10,1');
             Route::put('/sheets/{gradeSheet}/weights/{period}', [GradingController::class, 'weights']);
             Route::put('/sheets/{gradeSheet}/final-weights', [GradingController::class, 'finalWeights']);
             Route::get('/sheets/{gradeSheet}/readiness', [GradingController::class, 'readiness']);
             Route::post('/sheets/{gradeSheet}/submit', [GradingController::class, 'submit']);
-            Route::get('/professor/conversations', [GradingExperienceController::class, 'professorConversations']);
         });
         Route::middleware('role.student')->group(function (): void {
             Route::get('/student/grades', [GradingExperienceController::class, 'studentGrades']);
             Route::get('/student/grades/export', [GradingExperienceController::class, 'studentExport'])->middleware('throttle:20,1');
-            Route::post('/student/grades/{gradeSheet}/conversation', [GradingExperienceController::class, 'createConversation'])->middleware('throttle:30,1');
         });
-        Route::get('/conversations/{gradeConversation}', [GradingExperienceController::class, 'conversation']);
-        Route::post('/conversations/{gradeConversation}/messages', [GradingExperienceController::class, 'sendMessage'])->middleware('throttle:30,1');
-        Route::delete('/messages/{gradeMessage}', [GradingExperienceController::class, 'unsendMessage'])->middleware('throttle:30,1');
-        Route::get('/messages/{gradeMessage}/attachment', [GradingExperienceController::class, 'attachment'])->middleware('throttle:60,1');
     });
     Route::get('/enrollment/status', EnrollmentStatusController::class)->middleware('professor.web');
     Route::get('/enrollment/eligibility', EnrollmentStatusController::class)->middleware('professor.web');
@@ -121,6 +128,7 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::get('/applications/{id}/documents/{document}', 'download')->whereNumber(['id', 'document']);
     });
     Route::prefix('enrollment/academic')->middleware([EnrollmentBoundary::class, 'professor.web'])->controller(EnrollmentAcademicController::class)->group(function (): void {
+        Route::get('/catalog', 'catalog')->middleware('role.student');
         Route::get('/options', 'options');
         Route::get('/sections', 'sections');
         Route::post('/sections', 'saveSection')->middleware('throttle:30,1');
@@ -128,14 +136,18 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::get('/subjects', 'subjects');
         Route::post('/subjects', 'saveSubject')->middleware('throttle:30,1');
         Route::put('/subjects/{id}', 'saveSubject')->whereNumber('id')->middleware('throttle:30,1');
+        Route::get('/subjects/{subject}/professors', 'subjectProfessors')->middleware('throttle:60,1');
+        Route::put('/subjects/{subject}/professors', 'syncSubjectProfessors')->middleware('throttle:30,1');
         Route::post('/subjects/{id}/{action}', 'subjectStatus')->whereNumber('id')->whereIn('action', ['archive', 'reactivate'])->middleware('throttle:30,1');
         Route::get('/schedules', 'schedules');
+        Route::post('/schedules/availability', 'scheduleAvailability')->middleware('throttle:120,1');
         Route::post('/schedules', 'saveSchedule')->middleware('throttle:30,1');
         Route::put('/schedules/{id}', 'saveSchedule')->whereNumber('id')->middleware('throttle:30,1');
         Route::delete('/schedules/{id}', 'deleteSchedule')->whereNumber('id')->middleware('throttle:30,1');
         Route::get('/applications/{id}', 'application')->whereNumber('id');
         Route::post('/applications/{id}/{action}', 'change')->whereNumber('id')->whereIn('action', ['subjects', 'assign', 'finalize'])->middleware('throttle:30,1');
         Route::get('/records', 'records');
+        Route::get('/records/{id}/ovrf', 'ovrf')->whereNumber('id')->middleware('throttle:20,1');
         Route::get('/records/{id}', 'record')->whereNumber('id');
         Route::get('/professor', 'professor');
         Route::get('/professor/sections/{section}', 'professor')->whereNumber('section');
@@ -150,21 +162,6 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
     Route::post('/change-password', [AuthController::class, 'changePassword']);
     Route::post('/step-up/verify', [StepUpAuthenticationController::class, 'verify'])
         ->middleware('throttle:5,1');
-
-    Route::middleware('role.monitoring')->group(function (): void {
-        Route::get('/monitoring/overview', [MonitoringController::class, 'earlyWarnings']);
-        Route::get('/monitoring/early-warnings', [MonitoringController::class, 'earlyWarnings']);
-        Route::get('/monitoring/my-risk', [MonitoringController::class, 'myRisk']);
-        Route::post('/monitoring/students/{student}/support-plan', [MonitoringController::class, 'supportPlan']);
-        Route::get('/monitoring/study-plans', [MonitoringController::class, 'studyPlans']);
-        Route::get('/monitoring/students/{student}/study-plan', [MonitoringController::class, 'studyPlan']);
-        Route::get('/monitoring/adviser-alerts', [MonitoringController::class, 'adviserAlerts']);
-        Route::get('/monitoring/ai-status', [MonitoringController::class, 'aiStatus']);
-        Route::post('/monitoring/students/{student}/ai-help', [MonitoringController::class, 'aiHelp'])->middleware('throttle:10,1');
-        Route::post('/monitoring/students/{student}/risk-notifications', [MonitoringController::class, 'sendRiskNotification'])->middleware('throttle:10,1');
-        Route::get('/monitoring/my-risk-notifications', [MonitoringController::class, 'myRiskNotifications']);
-        Route::patch('/monitoring/risk-notifications/{notification}/read', [MonitoringController::class, 'markRiskNotificationRead']);
-    });
 
     Route::middleware('role.registrar-or-admin')->group(function (): void {
         Route::get('/registrar/settings', [RegistrarSettingsController::class, 'show']);

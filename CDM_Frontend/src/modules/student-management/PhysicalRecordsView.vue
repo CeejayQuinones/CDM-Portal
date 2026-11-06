@@ -6,9 +6,12 @@ import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAut
 import { documentRequestReturnContext } from '../document-request/documentRequestNavigation'
 import { physicalRecordsService as api } from './physicalRecordsService'
 import { profilePhotoUrl } from '../../utils/profilePhoto'
+import { useAuthStore } from '../../stores/authStore'
+import { invalidateStudentRecordsCache, readStudentRecordsCache, studentRecordsCacheScope, writeStudentRecordsCache } from './studentRecordsCache'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const { isOpen: stepUpOpen, runWithStepUp } = useStepUpAuth()
 const cabinets = ref([])
 const selectedCabinet = ref(null)
@@ -62,6 +65,7 @@ const pagination = computed(() => ({
 }))
 const displayedSlot = computed(() => selectedSlot.value || slotPreview.value)
 const returnContext = computed(() => documentRequestReturnContext(route.query))
+const cacheScope = computed(() => studentRecordsCacheScope(auth.currentUser))
 const normalizedStorageSearch = computed(() => storageSearch.value.trim().toLowerCase())
 const filteredCabinets = computed(() => {
   if (!normalizedStorageSearch.value) return cabinets.value
@@ -74,6 +78,7 @@ const filteredCabinets = computed(() => {
 const filteredDrawers = computed(() => {
   if (!selectedCabinet.value) return []
   if (!normalizedStorageSearch.value) return selectedCabinet.value.slots || []
+  if (cabinetName(selectedCabinet.value).toLowerCase().includes(normalizedStorageSearch.value)) return selectedCabinet.value.slots || []
   return (selectedCabinet.value.slots || []).filter((slot) => String(slot.slot_code).toLowerCase().includes(normalizedStorageSearch.value))
 })
 const storageSummary = computed(() => cabinets.value.reduce((summary, cabinet) => {
@@ -118,13 +123,26 @@ const missingDocuments = (student) =>
   (student.documents || []).filter((document) => (document.availability_status || document.status) !== 'available')
 const documentName = (document) => document.name || document.document_type?.document_name || 'Unnamed document'
 
-async function loadCabinets() {
+function applyCabinets(data) {
+  cabinets.value = Array.isArray(data) ? data : []
+  selectedCabinet.value = selectedCabinet.value
+    ? cabinets.value.find((cabinet) => cabinet.id === selectedCabinet.value.id) || cabinets.value[0] || null
+    : cabinets.value[0] || null
+}
+
+async function loadCabinets(allowCached = false) {
+  const cached = allowCached ? readStudentRecordsCache(cacheScope.value, 'physical:cabinets') : undefined
+  if (cached) {
+    applyCabinets(cached)
+    loading.value = false
+    return
+  }
   loading.value = true
   error.value = ''
   try {
     const data = await api.cabinets()
-    cabinets.value = Array.isArray(data) ? data : []
-    if (selectedCabinet.value) selectedCabinet.value = cabinets.value.find((cabinet) => cabinet.id === selectedCabinet.value.id) || null
+    applyCabinets(data)
+    writeStudentRecordsCache(cacheScope.value, 'physical:cabinets', Array.isArray(data) ? data : [])
   } catch (requestError) {
     error.value = errorMessage(requestError, 'Unable to load physical record cabinets.')
   } finally {
@@ -133,8 +151,6 @@ async function loadCabinets() {
 }
 
 function openCabinet(cabinet) { selectedCabinet.value = cabinet }
-function closeCabinet() { selectedCabinet.value = null; storageSearch.value = '' }
-
 function resetForm() {
   Object.assign(form, {
     cabinet_code: '',
@@ -162,6 +178,7 @@ async function createCabinet() {
     success.value = `Cabinet ${form.cabinet_code.trim().toUpperCase()} was created with ${Number(form.rows) * Number(form.columns)} slots.`
     resetForm()
     showCreateForm.value = false
+    invalidateStudentRecordsCache(cacheScope.value, 'physical:')
     await loadCabinets()
   } catch (requestError) {
     formErrors.value = requestError.response?.data?.errors || {}
@@ -173,10 +190,12 @@ async function createCabinet() {
 
 async function openSlot(slotId, page = 1, updateUrl = true, trigger = null) {
   const requestId = ++slotRequestId
+  const slotCacheKey = `physical:slot:${slotId}:${page}`
   const containingCabinet = cabinets.value.find((cabinet) =>
     cabinet.slots?.some((slot) => Number(slot.id) === Number(slotId)),
   )
   const slot = containingCabinet?.slots?.find((item) => Number(item.id) === Number(slotId))
+  if (containingCabinet) selectedCabinet.value = containingCabinet
 
   if (trigger) slotTrigger = trigger
   if (Number(selectedSlot.value?.id) !== Number(slotId)) selectedSlot.value = null
@@ -188,8 +207,14 @@ async function openSlot(slotId, page = 1, updateUrl = true, trigger = null) {
       }
     : null
   slotModalOpen.value = true
-  detailLoading.value = true
+  const cachedSlot = readStudentRecordsCache(cacheScope.value, slotCacheKey)
+  if (cachedSlot) {
+    selectedSlot.value = cachedSlot
+    slotPreview.value = cachedSlot
+  }
+  detailLoading.value = !cachedSlot
   detailError.value = ''
+  const detailRequest = cachedSlot ? null : api.cabinetSlot(slotId, page)
   await nextTick()
   const focusTarget = slotCloseButton.value || slotDialog.value
   focusTarget?.focus()
@@ -205,12 +230,14 @@ async function openSlot(slotId, page = 1, updateUrl = true, trigger = null) {
     })
   }
   if (requestId !== slotRequestId) return
+  if (cachedSlot) return
 
   try {
-    const result = await api.cabinetSlot(slotId, page)
+    const result = await detailRequest
     if (requestId !== slotRequestId) return
     selectedSlot.value = result
     slotPreview.value = result
+    writeStudentRecordsCache(cacheScope.value, slotCacheKey, result)
   } catch (requestError) {
     if (requestId !== slotRequestId) return
     selectedSlot.value = null
@@ -322,6 +349,7 @@ async function updateSlot() {
     selectedSlot.value = { ...selectedSlot.value, ...updatedSlot }
     await finishSlotEdit()
     success.value = `Slot ${updatedSlot.slot_code} was updated successfully.`
+    invalidateStudentRecordsCache(cacheScope.value, 'physical:')
     await loadCabinets()
   } catch (requestError) {
     if (isStepUpCancelled(requestError)) return
@@ -346,7 +374,7 @@ watch(
 
 onMounted(async () => {
   window.addEventListener('keydown', handleEscape)
-  await loadCabinets()
+  await loadCabinets(true)
   if (route.query.slot) await openSlot(route.query.slot, 1, false)
 })
 
@@ -424,17 +452,33 @@ onBeforeUnmount(() => {
     </form>
   </section>
 
-  <section class="storage-toolbar" aria-label="Physical storage search"><input v-model="storageSearch" type="search" placeholder="Search cabinet or drawer..." aria-label="Search cabinet or drawer" /></section>
   <section v-if="loading" class="records-panel state">Loading cabinets…</section>
   <section v-else-if="!cabinets.length && !error" class="records-panel state">
     <h2>No cabinets yet</h2>
     <p>Create the first cabinet to begin assigning physical student records.</p>
   </section>
   <template v-else>
-    <nav class="storage-breadcrumbs" aria-label="Physical storage location"><button type="button" @click="closeCabinet">Physical Storage</button><span v-if="selectedCabinet">/ Cabinet {{ cabinetName(selectedCabinet) }}</span></nav>
-    <dl v-if="!selectedCabinet" class="storage-summary"><div><dt>Cabinets</dt><dd>{{ storageSummary.cabinets }}</dd></div><div><dt>Drawers</dt><dd>{{ storageSummary.drawers }}</dd></div><div><dt>Stored records</dt><dd>{{ storageSummary.records }}</dd></div><div><dt>Available spaces</dt><dd>{{ storageSummary.available }}</dd></div></dl>
-    <div v-if="!selectedCabinet" class="cabinet-list cabinet-overview-list"><button v-for="cabinet in filteredCabinets" :key="cabinet.id" class="cabinet-card cabinet-overview" type="button" :aria-label="`Open Cabinet ${cabinetName(cabinet)}`" @click="openCabinet(cabinet)"><span class="cabinet-handle" aria-hidden="true"></span><span class="eyebrow">Physical storage</span><strong>Cabinet {{ cabinetName(cabinet) }}</strong><span class="cabinet-occupancy">{{ cabinetRecordCount(cabinet) }} / {{ cabinetCapacity(cabinet) || 'unlimited' }} records</span><span>{{ cabinet.slots?.length || 0 }} drawers</span><span class="open-cabinet">Open cabinet</span></button></div>
-    <section v-else class="drawer-workspace"><header class="drawer-workspace-header"><div><button class="contextual-back" type="button" @click="closeCabinet">Back to Cabinets</button><p class="eyebrow">Cabinet</p><h2>Cabinet {{ cabinetName(selectedCabinet) }}</h2><p>{{ cabinetRecordCount(selectedCabinet) }} records · {{ selectedCabinet.slots?.length || 0 }} drawers</p></div></header><div v-if="!filteredDrawers.length" class="records-panel state">No drawers match this search.</div><div v-else class="cabinet-grid drawer-card-grid"><button v-for="slot in filteredDrawers" :key="slot.id" class="slot-drawer" :class="[drawerStatus(slot).toLowerCase().replaceAll(' ', '-'), { selected: displayedSlot?.id === slot.id, inactive: slot.status === 'inactive' }]" type="button" @click="openSlot(slot.id, 1, true, $event.currentTarget)"><span class="drawer-handle" aria-hidden="true"></span><strong>Drawer {{ slot.slot_code }}</strong><small v-if="slot.capacity">{{ slotCount(slot) }} of {{ slot.capacity }} records</small><small v-else>{{ slotCount(slot) }} records</small><span v-if="slot.capacity" class="drawer-progress"><i :style="{ width: `${drawerPercent(slot)}%` }"></i></span><span class="slot-status">{{ drawerStatus(slot) }}</span></button></div></section>
+    <dl class="storage-summary" aria-label="Physical storage overview"><div><dt>Cabinets</dt><dd>{{ storageSummary.cabinets }}</dd></div><div><dt>Drawers</dt><dd>{{ storageSummary.drawers }}</dd></div><div><dt>Stored records</dt><dd>{{ storageSummary.records }}</dd></div><div><dt>Available spaces</dt><dd>{{ storageSummary.available }}</dd></div></dl>
+    <div class="physical-storage-workspace">
+      <aside class="cabinet-browser" aria-label="Cabinets">
+        <div class="cabinet-browser-heading"><div><p class="eyebrow">Storage index</p><h2>Cabinets</h2></div><span>{{ filteredCabinets.length }}</span></div>
+        <label class="cabinet-search"><span class="sr-only">Search cabinet or drawer</span><input v-model="storageSearch" type="search" placeholder="Search cabinet or drawer…" /></label>
+        <div v-if="!filteredCabinets.length" class="state compact-state">No cabinets match this search.</div>
+        <div v-else class="cabinet-browser-list">
+          <button v-for="cabinet in filteredCabinets" :key="cabinet.id" type="button" :class="{ active: selectedCabinet?.id === cabinet.id }" :aria-current="selectedCabinet?.id === cabinet.id ? 'true' : undefined" @click="openCabinet(cabinet)">
+            <span class="cabinet-list-icon" aria-hidden="true">▣</span>
+            <span><strong>Cabinet {{ cabinetName(cabinet) }}</strong><small>{{ cabinet.slots?.length || 0 }} drawers · {{ cabinetRecordCount(cabinet) }} records</small></span>
+            <span class="cabinet-list-capacity">{{ cabinetCapacity(cabinet) ? `${Math.round((cabinetRecordCount(cabinet) / cabinetCapacity(cabinet)) * 100)}%` : 'Open' }}</span>
+          </button>
+        </div>
+      </aside>
+      <section class="drawer-workspace" aria-live="polite">
+        <header v-if="selectedCabinet" class="drawer-workspace-header"><div><p class="eyebrow">Selected cabinet</p><h2>Cabinet {{ cabinetName(selectedCabinet) }}</h2><p>{{ cabinetRecordCount(selectedCabinet) }} records · {{ selectedCabinet.slots?.length || 0 }} drawers<span v-if="cabinetCapacity(selectedCabinet)"> · {{ cabinetCapacity(selectedCabinet) }} total capacity</span></p></div></header>
+        <div v-if="!selectedCabinet" class="state cabinet-empty-state"><h2>Select a cabinet</h2><p>Choose a cabinet to inspect its drawers and stored records.</p></div>
+        <div v-else-if="!filteredDrawers.length" class="state cabinet-empty-state">No drawers match this search.</div>
+        <div v-else class="cabinet-grid drawer-card-grid"><button v-for="slot in filteredDrawers" :key="slot.id" class="slot-drawer" :class="[drawerStatus(slot).toLowerCase().replaceAll(' ', '-'), { selected: displayedSlot?.id === slot.id, inactive: slot.status === 'inactive' }]" type="button" @click="openSlot(slot.id, 1, true, $event.currentTarget)"><span class="drawer-handle" aria-hidden="true"></span><strong>Drawer {{ slot.slot_code }}</strong><small v-if="slot.capacity">{{ slotCount(slot) }} of {{ slot.capacity }} records</small><small v-else>{{ slotCount(slot) }} records</small><span v-if="slot.capacity" class="drawer-progress"><i :style="{ width: `${drawerPercent(slot)}%` }"></i></span><span class="slot-status">{{ drawerStatus(slot) }}</span></button></div>
+      </section>
+    </div>
   </template>
 
   <Teleport to="body">
@@ -660,11 +704,8 @@ onBeforeUnmount(() => {
 .contextual-back:hover {
   text-decoration: underline;
 }
-.storage-toolbar { display: flex; justify-content: flex-end; margin: -54px 0 22px; }
-.storage-toolbar input { border: 1px solid var(--color-border); border-radius: 7px; font: inherit; max-width: 280px; min-height: 38px; padding: 7px 10px; width: 100%; }
-.storage-breadcrumbs { color: var(--color-muted); font-size: .8rem; margin: 0 0 14px; }.storage-breadcrumbs button { background: transparent; border: 0; color: var(--color-dartmouth-green); cursor: pointer; font: inherit; font-weight: 800; padding: 0; }
-.storage-summary { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 20px; }.storage-summary div { background: #f4f8f5; border-left: 3px solid var(--color-naples-yellow); padding: 10px 12px; }.storage-summary dt { color: var(--color-muted); font-size: .68rem; font-weight: 800; text-transform: uppercase; }.storage-summary dd { color: var(--color-dartmouth-green); font-size: 1.05rem; font-weight: 900; margin: 4px 0 0; }
-.cabinet-overview-list { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }.cabinet-overview { align-items: flex-start; cursor: pointer; display: flex; flex-direction: column; min-height: 220px; text-align: left; transition: transform .18s ease, box-shadow .18s ease; }.cabinet-overview:hover,.cabinet-overview:focus-visible { border-color: var(--color-dark-spring-green); outline: none; transform: translateY(-2px); }.cabinet-overview strong { color: var(--color-dartmouth-green); font-size: 1.3rem; margin-top: 16px; }.cabinet-overview span:not(.eyebrow) { color: var(--color-muted); font-size: .82rem; margin-top: 5px; }.cabinet-handle { background: #718276; border-radius: 99px; height: 5px; margin: 5px auto 0; width: 54px; }.cabinet-overview .open-cabinet { color: var(--color-dartmouth-green); font-weight: 800; margin-top: auto; }.drawer-workspace { animation: storage-enter .2s ease; }.drawer-workspace-header h2 { color: var(--color-dartmouth-green); margin: 3px 0; }.drawer-workspace-header p:last-child { color: var(--color-muted); margin: 0 0 16px; }.drawer-card-grid { grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); }.drawer-progress { background: #dce7de; border-radius: 4px; height: 5px; margin-top: 10px; overflow: hidden; width: 100%; }.drawer-progress i { background: var(--color-dark-spring-green); display: block; height: 100%; }.slot-drawer.nearly-full .drawer-progress i,.slot-drawer.filling-up .drawer-progress i { background: #c49518; }.slot-drawer.full .drawer-progress i { background: #b6473b; }@keyframes storage-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.storage-summary { display:grid;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr));margin:0 0 14px }.storage-summary div{padding:12px 14px;border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface);box-shadow:var(--shadow-soft)}.storage-summary dt{color:var(--color-muted);font-size:.7rem;font-weight:800;letter-spacing:.035em;text-transform:uppercase}.storage-summary dd{color:var(--color-dartmouth-green);font-size:1.35rem;font-weight:900;margin:3px 0 0}.physical-storage-workspace{display:grid;grid-template-columns:minmax(210px,260px) minmax(0,1fr);gap:12px;min-height:470px}.cabinet-browser,.drawer-workspace{min-width:0;border:1px solid var(--color-border);border-radius:12px;background:var(--color-surface);box-shadow:var(--shadow-soft)}.cabinet-browser{padding:12px}.cabinet-browser-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.cabinet-browser-heading h2{margin:2px 0;font-size:1rem}.cabinet-browser-heading>span{display:grid;place-items:center;min-width:28px;height:24px;padding:0 7px;border-radius:999px;background:var(--color-green-tint);color:var(--color-dartmouth-green);font-size:.75rem;font-weight:800}.cabinet-search input{width:100%;height:38px;padding:0 10px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text);font:inherit}.cabinet-browser-list{display:grid;gap:6px;margin-top:10px}.cabinet-browser-list button{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:9px;width:100%;padding:10px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--color-text);text-align:left;cursor:pointer}.cabinet-browser-list button:hover,.cabinet-browser-list button:focus-visible{background:var(--color-green-tint);outline:2px solid transparent}.cabinet-browser-list button.active{border-color:color-mix(in srgb,var(--color-dark-spring-green) 40%,var(--color-border));background:color-mix(in srgb,var(--color-dark-spring-green) 9%,var(--color-surface))}.cabinet-list-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:7px;background:var(--color-green-tint);color:var(--color-dartmouth-green);font-size:1rem}.cabinet-browser-list strong,.cabinet-browser-list small{display:block;min-width:0}.cabinet-browser-list strong{font-size:.84rem}.cabinet-browser-list small{margin-top:2px;color:var(--color-muted);font-size:.69rem}.cabinet-list-capacity{color:var(--color-dartmouth-green);font-size:.7rem;font-weight:800}.compact-state{padding:20px 8px}.drawer-workspace{padding:15px;animation:storage-enter .2s ease}.drawer-workspace-header{display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid var(--color-border);margin-bottom:12px}.drawer-workspace-header h2{color:var(--color-dartmouth-green);font-size:1.05rem;margin:3px 0}.drawer-workspace-header p:last-child{color:var(--color-muted);font-size:.78rem;margin:0}.drawer-card-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.cabinet-empty-state{display:grid;place-content:center;min-height:340px}.drawer-progress{background:#dce7de;border-radius:4px;height:5px;margin-top:10px;overflow:hidden;width:100%}.drawer-progress i{background:var(--color-dark-spring-green);display:block;height:100%}.slot-drawer.nearly-full .drawer-progress i,.slot-drawer.filling-up .drawer-progress i{background:#c49518}.slot-drawer.full .drawer-progress i{background:#b6473b}@keyframes storage-enter{from{opacity:0}to{opacity:1}}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .primary-button,
 .secondary-button {
   border: 0;
@@ -985,6 +1026,7 @@ button:disabled {
   position: fixed;
   z-index: 1200;
 }
+:global(html.cdm-desktop-client) .modal-backdrop { backdrop-filter: none; }
 .slot-detail-backdrop {
   overflow: hidden;
 }
@@ -1200,6 +1242,7 @@ button:disabled {
   justify-content: flex-end;
 }
 @media (max-width: 900px) {
+  .physical-storage-workspace { grid-template-columns: minmax(190px, 220px) minmax(0, 1fr); }
   .slot-drawer.size-wide {
     grid-column: span 2;
   }
@@ -1215,7 +1258,9 @@ button:disabled {
   .student-summary .primary-button {
     width: 100%;
   }
-  .storage-toolbar { margin: 0 0 16px; }.storage-toolbar input { max-width: none; }.storage-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .storage-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .physical-storage-workspace { grid-template-columns: 1fr; }
+  .cabinet-browser-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .slot-detail-actions {
     flex: 0 0 auto;
   }
@@ -1265,5 +1310,5 @@ button:disabled {
     display: none;
   }
 }
-@media (prefers-reduced-motion: reduce) { .cabinet-overview,.drawer-workspace { animation: none; transition-duration: 1ms; } }
+@media (prefers-reduced-motion: reduce) { .drawer-workspace { animation: none; transition-duration: 1ms; } }
 </style>

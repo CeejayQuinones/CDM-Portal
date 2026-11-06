@@ -34,7 +34,7 @@ class EnrollmentEligibilityService
             $period = $open->count() === 1 ? $open->first() : ($open->isEmpty() ? $periods->first() : null);
             $periodState = $period?->state;
             $reason = ! $period ? 'enrollment_period_unavailable' : ($periodState === 'open' ? null : 'enrollment_period_closed');
-            $current = $period ? EnrollmentApplication::ownedBy($actor)->where('academic_year_id', $period->academic_year_id)
+            $current = $period ? EnrollmentApplication::ownedBy($actor)->whereNotNull('blocking_owner_user_id')->where('academic_year_id', $period->academic_year_id)
                 ->where('semester_id', $period->semester_id)->first(['id', 'period_id', 'status']) : null;
 
             return [
@@ -94,11 +94,11 @@ class EnrollmentEligibilityService
         }
         $state['period'] = ['id' => $window->periodId, 'academic_year_id' => $window->academicYearId,
             'semester_id' => $window->semesterId, 'academic_year' => AcademicYear::find($window->academicYearId)?->school_year, 'semester' => Semester::find($window->semesterId)?->semester_name, 'state' => ! $window->enabled || now()->gte($window->closesAt) ? 'closed' : (now()->lt($window->opensAt) ? 'upcoming' : 'open'), 'opens_at' => $window->opensAt->toISOString(), 'closes_at' => $window->closesAt->toISOString()];
-        $state['current_application'] = EnrollmentApplication::where('student_id', $student->id)->where('academic_year_id', $window->academicYearId)->where('semester_id', $window->semesterId)->first(['id', 'period_id', 'status']);
+        $state['current_application'] = EnrollmentApplication::where('student_id', $student->id)->whereNotNull('blocking_owner_user_id')->where('academic_year_id', $window->academicYearId)->where('semester_id', $window->semesterId)->first(['id', 'period_id', 'status']);
         if (! $window->enabled || now()->lt($window->opensAt) || now()->gte($window->closesAt)) {
             return array_replace($state, ['reason' => 'enrollment_period_closed']);
         }
-        // The database unique key includes every status. Cancelled rows cannot be bypassed.
+        // Existing academic enrollment still blocks a new application, even after draft cancellation.
         if ($student->enrollments()->where('academic_year_id', $window->academicYearId)->where('semester_id', $window->semesterId)->when($lock, fn ($q) => $q->lockForUpdate())->first(['id'])) {
             return array_replace($state, ['reason' => 'term_enrollment_exists']);
         }

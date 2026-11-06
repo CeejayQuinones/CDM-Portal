@@ -1,18 +1,23 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { getStudentDashboard } from './dashboardService'
+import { getStudentDashboard, getStudentEnrollmentStatus } from './dashboardService'
+import { getPortalNotices } from '../../services/portalNoticeService'
+import { clientPlatform } from '../../config/clientPlatform'
 import { formatDashboardStatus } from './dashboardPresentation'
 import './guideDashboard.css'
 
 const loading = ref(true)
+const StudentWebsiteDashboard = defineAsyncComponent(() => import('./StudentWebsiteDashboard.vue'))
 const error = ref('')
 const dashboard = ref({ identity: {}, summary: {}, has_finalized_enrollment: false })
+const notices = ref([])
+const enrollment = ref(null)
+const isWebsitePresentation = clientPlatform === 'web'
 const cards = computed(() => [
   { label: 'Enrollment', value: formatDashboardStatus(dashboard.value.summary.enrollment_status) },
   { label: 'Academic term', value: dashboard.value.summary.academic_term || 'No current term' },
   { label: 'Enrolled subjects', value: dashboard.value.summary.enrolled_subjects ?? 0 },
-  { label: 'Unread notices', value: dashboard.value.summary.unread_monitoring_notices ?? 0 },
 ])
 
 const guide = [
@@ -20,7 +25,6 @@ const guide = [
   { step: '2', title: 'My Subjects', text: 'Review the Subjects included in your finalized enrollment.', to: { name: 'enrollment-subjects' } },
   { step: '3', title: 'My Schedule', text: 'Check when and where your enrolled classes meet.', to: { name: 'enrollment-schedule' } },
   { step: '4', title: 'Grading', text: 'View grades after they are officially published.', to: { name: 'grading' } },
-  { step: '5', title: 'Academic Monitoring', text: 'Review academic signals, Study Plan, notices, and Academic Coach.', to: { name: 'monitoring' } },
   { step: '6', title: 'Document Requests', text: 'Request official documents and track their progress.', to: { name: 'student-document-requests' } },
 ]
 
@@ -28,7 +32,15 @@ async function loadDashboard() {
   loading.value = true
   error.value = ''
   try {
-    dashboard.value = await getStudentDashboard()
+    const values = await Promise.allSettled([
+      getStudentDashboard(),
+      isWebsitePresentation ? getPortalNotices() : Promise.resolve({ notices: [] }),
+      isWebsitePresentation ? getStudentEnrollmentStatus() : Promise.resolve(null),
+    ])
+    if (values[0].status === 'rejected') throw values[0].reason
+    dashboard.value = values[0].value
+    notices.value = values[1].status === 'fulfilled' && Array.isArray(values[1].value?.notices) ? values[1].value.notices : []
+    enrollment.value = values[2].status === 'fulfilled' ? values[2].value : null
   } catch (reason) {
     error.value = reason.response?.data?.message || 'Your dashboard could not be loaded. Please try again.'
   } finally {
@@ -40,8 +52,9 @@ onMounted(loadDashboard)
 </script>
 
 <template>
-  <main class="guide-dashboard">
-    <header class="guide-hero">
+  <StudentWebsiteDashboard v-if="isWebsitePresentation" :dashboard="dashboard" :enrollment="enrollment" :notices="notices" :loading="loading" :error="error" @retry="loadDashboard" />
+  <main v-else class="guide-dashboard">
+    <header class="guide-hero" data-buddy-obstacle="true">
       <div>
         <p class="guide-kicker">Student portal</p>
         <h1>{{ loading ? 'Welcome' : `Welcome, ${dashboard.identity.name || 'Student'}` }}</h1>

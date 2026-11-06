@@ -1,32 +1,71 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { apiClient } from '../services/apiClient'
-import { applyPortalAppearance, storedPortalAppearance } from '../composables/useStudentTheme'
+import { clientPlatform } from '../config/clientPlatform'
+import { ROLES } from '../config/accessControl'
+import { applyPortalAppearance, previewPortalAppearance, storedPortalAppearance } from '../composables/useStudentTheme'
 import { useStudentProfileStore } from '../stores/studentProfile'
 import { useAuthStore } from '../stores/authStore'
+import { getProfessorDashboard } from '../modules/dashboard/dashboardService'
+import AcademicPageHeader from '../components/AcademicPageHeader.vue'
+import WebsiteModuleHeader from '../components/website/WebsiteModuleHeader.vue'
+const isWebsitePresentation=clientPlatform==='web'
 
 const props = defineProps({ staffMode: { type: Boolean, default: false } })
 const authStore = useAuthStore()
 const studentProfile = useStudentProfileStore()
-const studentUserId = authStore.currentUser?.id
+const studentUserId = computed(() => authStore.currentUser?.id)
+const isProfessor = computed(() => !props.staffMode && authStore.currentRole === ROLES.PROFESSOR)
+const isStudent = computed(() => !props.staffMode && authStore.currentRole === ROLES.STUDENT)
+const accountId = computed(() => authStore.currentUser?.id || authStore.currentUser?.username)
 
-const sections = computed(() => props.staffMode
-  ? ['Profile', 'Account', 'Contact Information', 'Appearance', 'Security']
-  : ['Profile', 'Account', 'Student Status', 'Record Requirements', 'Document Status', 'Contact Information', 'Notifications', 'Academic Preferences', 'Appearance', 'Security'])
+const sections = computed(() => {
+  if (props.staffMode) return ['Profile', 'Account', 'Contact Information', 'Appearance', 'Security']
+  if (isProfessor.value) return ['Profile', 'Account', 'Appearance', 'Security']
+  return ['Profile', 'Account', 'Student Status', 'Record Requirements', 'Document Status', 'Contact Information', 'Notifications', 'Appearance', 'Security']
+})
 const active = ref('Profile'), open = ref(false), data = ref(null), error = ref(''), success = ref(''), loading = ref(true), saving = ref(false), saved = ref('')
-const form = ref({ first_name: '', middle_name: '', last_name: '', suffix: '', preferred_display_name: '', bio: '', email: '', contact_number: '', address: '', notification_preferences: {}, academic_preferences: {}, appearance: 'system', current_password: '', password: '', password_confirmation: '' })
-const dirty = computed(() => ['Profile', 'Contact Information', 'Appearance', ...(!props.staffMode ? ['Notifications', 'Academic Preferences'] : [])].includes(active.value) && saved.value !== JSON.stringify(form.value))
+const form = ref({ first_name: '', middle_name: '', last_name: '', suffix: '', preferred_display_name: '', bio: '', email: '', contact_number: '', address: '', notification_preferences: {}, appearance: 'system', current_password: '', password: '', password_confirmation: '' })
+const editableSections = computed(() => isProfessor.value ? ['Appearance'] : ['Profile', 'Contact Information', 'Appearance', ...(!props.staffMode ? ['Notifications'] : [])])
+const dirty = computed(() => editableSections.value.includes(active.value) && saved.value !== JSON.stringify(form.value))
 const status = computed(() => data.value?.student_status || {})
 const avatarInput = ref(null), avatarFailed = ref(false)
 const requirementSaving = ref(null)
-const avatarUrl = computed(() => props.staffMode ? data.value?.profile?.avatar_url : studentProfile.avatarUrl)
-watch(() => data.value?.profile, profile => { if (!props.staffMode) studentProfile.setProfile(profile, studentUserId) }, { deep: true, flush: 'sync' })
+const avatarUrl = computed(() => isStudent.value || isProfessor.value ? studentProfile.websiteAvatarUrl : data.value?.profile?.avatar_url)
+watch(() => data.value?.profile, profile => { if (isStudent.value) studentProfile.setProfile(profile, studentUserId.value) }, { deep: true, flush: 'sync' })
 const initials = computed(() => {
   const preferredName = form.value.preferred_display_name
   const staffName = [form.value.first_name, form.value.last_name].filter(Boolean).join(' ')
-  const name = (props.staffMode ? staffName : (typeof preferredName === 'string' ? preferredName.trim() : '')) || data.value?.official?.legal_name || 'User'
+  const name = ((props.staffMode || isProfessor.value) ? staffName : (typeof preferredName === 'string' ? preferredName.trim() : '')) || data.value?.official?.legal_name || 'User'
   const parts = name.trim().split(/\s+/)
   return [parts[0], ...(parts.length > 1 ? [parts.at(-1)] : [])].map(part => Array.from(part)[0]).join('').toUpperCase()
+})
+const displayName = computed(() => {
+  const preferred = typeof form.value.preferred_display_name === 'string' ? form.value.preferred_display_name.trim() : ''
+  const profileName = [form.value.first_name, form.value.middle_name, form.value.last_name, form.value.suffix].filter(Boolean).join(' ')
+  return preferred || profileName || data.value?.official?.legal_name || data.value?.official?.full_name || authStore.currentUser?.username || 'Portal user'
+})
+const settingsRole = computed(() => isProfessor.value ? 'Professor' : props.staffMode ? authStore.currentRole : 'Student')
+const sectionMeta = Object.freeze({
+  Profile: { group: 'Personal', description: 'Photo, display name, biography, and official identity.', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0' },
+  Account: { group: 'Personal', description: 'Username, role, status, and account activity.', icon: 'M5 4h14v16H5zM8 8h8M8 12h5' },
+  'Student Status': { group: 'Academic', description: 'Current official academic standing and program details.', icon: 'm4 7 8-4 8 4-8 4-8-4Zm3 3v6c3 2 7 2 10 0v-6' },
+  'Record Requirements': { group: 'Academic', description: 'Digital and physical Student Record requirements.', icon: 'M6 3h9l3 3v15H6zM9 11h6M9 15h6' },
+  'Document Status': { group: 'Academic', description: 'Verification progress for submitted documents.', icon: 'M5 4h14v16H5zM8 9h8M8 13h5m-5 4h3' },
+  'Contact Information': { group: 'Personal', description: 'Email, mobile number, and current address.', icon: 'M4 5h16v14H4zM4 7l8 6 8-6' },
+  Notifications: { group: 'Preferences', description: 'Choose the updates you want CDM Portal to send.', icon: 'M18 9a6 6 0 0 0-12 0c0 6-3 6-3 8h18c0-2-3-2-3-8M10 21h4' },
+  Appearance: { group: 'Preferences', description: 'Choose Light, Dark, or your device appearance.', icon: 'M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z' },
+  Security: { group: 'Account', description: 'Update your password using the existing secure workflow.', icon: 'M6 10h12v11H6zM9 10V7a3 3 0 0 1 6 0v3' },
+})
+const sectionOptions = computed(() => sections.value.map(label => ({ label, ...sectionMeta[label] })))
+const activeMeta = computed(() => sectionMeta[active.value] || { group: 'Settings', description: 'Manage this account setting.' })
+const meaningfulEntries = source => Object.entries(source || {}).filter(([, value]) => value !== null && value !== undefined && value !== '')
+const officialEntries = computed(() => meaningfulEntries(data.value?.official))
+const accountEntries = computed(() => meaningfulEntries(data.value?.account))
+const statusEntries = computed(() => meaningfulEntries(status.value))
+const contactEntries = computed(() => meaningfulEntries(data.value?.contact))
+const preferenceDescriptions = Object.freeze({
+  document_updates: 'Changes to document-request progress and verification.', appointment_reminders: 'Reminders for scheduled Registrar appointments.', email: 'Deliver supported notices to your account email.', in_app: 'Show supported notices inside CDM Portal.',
 })
 const appearances = [
   { value: 'light', label: 'Light', description: 'A bright appearance' },
@@ -62,13 +101,29 @@ const messageFor = (err, fallback) => {
   const fields = Object.values(response?.errors || {}).flat().filter(message => typeof message === 'string').join(' ')
   return fields || response?.message || fallback
 }
-const applyAppearance = () => applyPortalAppearance(form.value.appearance, authStore.currentRole)
+const applyAppearance = () => previewPortalAppearance(form.value.appearance)
 const load = async () => {
   loading.value = true
   error.value = ''
   try {
-    data.value = (await apiClient.get(props.staffMode ? '/registrar/settings' : '/student/settings')).data.data
-    const settings = data.value
+    let settings
+    if (isProfessor.value) {
+      const [user, dashboard] = await Promise.all([authStore.fetchCurrentUser(), getProfessorDashboard()])
+      const profile = user?.profile || {}
+      settings = {
+        profile: { ...profile, avatar_url: profile.profile_photo_url },
+        official: {
+          faculty_id: dashboard?.identity?.faculty_id,
+          department: dashboard?.identity?.department,
+          full_name: dashboard?.identity?.name || [profile.first_name, profile.middle_name, profile.last_name, profile.suffix].filter(Boolean).join(' '),
+        },
+        account: { username: user?.username, role: ROLES.PROFESSOR, account_status: user?.status, last_login: user?.last_login },
+        contact: { personal_email: profile.email, mobile: profile.contact_number, address: profile.address },
+      }
+    } else {
+      settings = (await apiClient.get(props.staffMode ? '/registrar/settings' : '/student/settings')).data.data
+    }
+    data.value = settings
     const name = settings?.profile?.preferred_display_name
     Object.assign(form.value, {
       preferred_display_name: typeof name === 'string' ? name : '',
@@ -81,8 +136,7 @@ const load = async () => {
       contact_number: settings?.contact?.mobile || '',
       address: settings?.contact?.address || '',
       notification_preferences: settings?.preferences?.notification_preferences || {},
-      academic_preferences: settings?.preferences?.academic_preferences || {},
-      appearance: props.staffMode ? storedPortalAppearance(authStore.currentRole) : (settings?.appearance || 'system'),
+      appearance: (props.staffMode || isProfessor.value) ? storedPortalAppearance(authStore.currentRole, accountId.value) : (settings?.appearance || 'system'),
     })
     saved.value = JSON.stringify(form.value)
     applyAppearance()
@@ -98,17 +152,28 @@ const saveProfile = () => save(props.staffMode ? '/registrar/settings/profile' :
   ? { first_name: form.value.first_name, middle_name: form.value.middle_name, last_name: form.value.last_name, suffix: form.value.suffix }
   : { preferred_display_name: form.value.preferred_display_name, bio: form.value.bio }, 'Profile saved.')
 const saveContact = () => save(props.staffMode ? '/registrar/settings/contact' : '/student/settings/contact', { email: form.value.email, contact_number: form.value.contact_number, address: form.value.address }, 'Contact information saved.')
-const savePreferences = () => {
-  applyAppearance()
-  if (props.staffMode) {
+const savePreferences = async () => {
+  if (props.staffMode || isProfessor.value) {
+    applyPortalAppearance(form.value.appearance, authStore.currentRole, accountId.value)
     saved.value = JSON.stringify(form.value)
     error.value = ''
     success.value = 'Appearance saved.'
     return
   }
-  return save('/student/settings/preferences', { notification_preferences: form.value.notification_preferences, academic_preferences: form.value.academic_preferences, appearance: form.value.appearance }, 'Preferences saved.')
+  saving.value = true
+  error.value = success.value = ''
+  try {
+    data.value = (await apiClient.patch('/student/settings/preferences', { notification_preferences: form.value.notification_preferences, appearance: form.value.appearance })).data.data
+    applyPortalAppearance(form.value.appearance, authStore.currentRole, accountId.value)
+    saved.value = JSON.stringify(form.value)
+    success.value = 'Preferences saved.'
+  } catch (err) {
+    error.value = messageFor(err, 'Unable to save settings.')
+  } finally {
+    saving.value = false
+  }
 }
-const saveActive = () => ({ Profile: saveProfile, 'Contact Information': saveContact, Notifications: savePreferences, 'Academic Preferences': savePreferences, Appearance: savePreferences }[active.value]?.())
+const saveActive = () => ({ Profile: saveProfile, 'Contact Information': saveContact, Notifications: savePreferences, Appearance: savePreferences }[active.value]?.())
 const changePassword = async () => { saving.value = true; error.value = success.value = ''; try { await apiClient.post('/change-password', { current_password: form.value.current_password, password: form.value.password, password_confirmation: form.value.password_confirmation }); success.value = 'Password changed.'; form.value.current_password = form.value.password = form.value.password_confirmation = '' } catch (err) { error.value = messageFor(err, 'Unable to change password.') } finally { saving.value = false } }
 const upload = async (event) => {
   const file = event.target.files?.[0]
@@ -181,20 +246,73 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="settings"><header><button class="menu" type="button" @click="open = true">Settings menu</button><div><p>{{ staffMode ? 'Registrar Settings' : 'Student Settings' }}</p><h1>Your account and preferences</h1></div></header>
-    <div class="layout"><aside :class="{ open }"><strong>Settings</strong><button v-for="section in sections" :key="section" :class="{ active: active === section }" @click="active = section; open = false">{{ section }}</button></aside><div v-if="open" class="backdrop" @click="open = false" />
-      <section class="content"><p v-if="loading" class="muted">Loading settings...</p><p v-if="error" class="error" role="alert">{{ error }}</p><article v-if="!loading && data"><p v-if="success" class="toast" role="status">{{ success }}</p><div v-if="dirty" class="save-bar" role="status"><span>You have unsaved changes</span><div><button type="button" :disabled="saving" @click="reset">Reset</button><button type="button" :disabled="saving" @click="saveActive">{{ saving ? 'Saving...' : 'Save Changes' }}</button></div></div><h2>{{ active }}</h2>
+  <main class="settings" :class="{ 'website-settings-workspace': isWebsitePresentation }">
+    <WebsiteModuleHeader v-if="isWebsitePresentation" :eyebrow="isProfessor ? 'Professor Settings' : 'Student Settings'" title="Settings workspace" :description="isProfessor ? 'Review your faculty identity, secure your account, and choose your website appearance.' : 'Manage your profile, academic preferences, records, notifications, and account security.'" compact />
+    <AcademicPageHeader v-else :eyebrow="staffMode ? 'Registrar Settings' : 'Student Settings'" title="Your account and preferences" variant="settings"><template #leading><button class="menu" type="button" @click="open = true">Settings menu</button></template></AcademicPageHeader>
+
+    <section v-if="isWebsitePresentation" class="settings-profile-banner" aria-label="Current account">
+      <div class="avatar">
+        <img v-if="avatarUrl && !avatarFailed" :key="avatarUrl" :src="avatarUrl" alt="Profile picture" @error="avatarFailed = true" />
+        <span v-else class="avatar-initials" role="img" aria-label="Profile picture initials">{{ initials }}</span>
+      </div>
+      <div class="settings-banner-copy">
+        <span>{{ settingsRole }} account</span>
+        <h2>{{ displayName }}</h2>
+        <p>Keep your CDM Portal identity, preferences, records, and security details organized in one place.</p>
+      </div>
+      <div v-if="active === 'Profile'" class="settings-banner-photo-actions">
+        <template v-if="!isProfessor">
+          <p id="website-avatar-help">JPG, PNG or WebP · Maximum 2 MB</p>
+          <input ref="avatarInput" type="file" hidden aria-label="Choose profile picture" aria-describedby="website-avatar-help" accept="image/png,image/jpeg,image/webp" :disabled="saving" @change="upload" />
+          <div class="photo-actions">
+            <button class="photo-change" type="button" :disabled="saving" @click="avatarInput?.click()">Change Photo</button>
+            <button v-if="avatarUrl" class="photo-remove" type="button" :disabled="saving" @click="removeAvatar">Remove</button>
+          </div>
+        </template>
+        <p v-else>Faculty profile photos are managed by an authorized administrator.</p>
+      </div>
+    </section>
+
+    <div class="layout">
+      <aside :class="{ open }" :role="isWebsitePresentation ? 'navigation' : undefined" aria-label="Settings categories">
+        <div v-if="isWebsitePresentation" class="settings-category-intro"><strong>Categories</strong><span>Choose an area to review or update.</span></div>
+        <strong v-else>Settings</strong>
+        <button
+          v-for="option in sectionOptions"
+          :key="option.label"
+          type="button"
+          :class="{ active: active === option.label }"
+          :aria-current="isWebsitePresentation && active === option.label ? 'page' : undefined"
+          @click="active = option.label; open = false"
+        >
+          <svg v-if="isWebsitePresentation" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="option.icon" /></svg>
+          <span><strong>{{ option.label }}</strong><small v-if="isWebsitePresentation">{{ option.group }}</small></span>
+        </button>
+      </aside>
+      <div v-if="open && !isWebsitePresentation" class="backdrop" @click="open = false" />
+
+      <section class="content" :aria-busy="loading">
+        <div v-if="loading" class="settings-loading" role="status"><span aria-hidden="true"></span><p>Loading settings...</p></div>
+        <p v-if="error" class="error" role="alert">{{ error }}</p>
+        <article v-if="!loading && data" id="settings-category-panel">
+          <p v-if="success" class="toast" role="status">{{ success }}</p>
+          <div v-if="dirty" class="save-bar" role="status"><span>You have unsaved changes</span><div><button type="button" :disabled="saving" @click="reset">Reset</button><button type="button" :disabled="saving" @click="saveActive">{{ saving ? 'Saving...' : 'Save Changes' }}</button></div></div>
+          <header class="settings-content-heading">
+            <div><span>{{ activeMeta.group }}</span><h2>{{ active }}</h2><p>{{ activeMeta.description }}</p></div>
+            <span v-if="['Account', 'Student Status'].includes(active) || (isProfessor && active === 'Profile')" class="readonly-badge">Official · Read only</span>
+          </header>
+
         <template v-if="active === 'Profile'">
-          <div class="profile-photo">
+          <div v-if="!isWebsitePresentation" class="profile-photo">
             <div class="avatar">
               <img v-if="avatarUrl && !avatarFailed" :key="avatarUrl" :src="avatarUrl" alt="Profile picture" @error="avatarFailed = true" />
               <span v-else class="avatar-initials" role="img" aria-label="Profile picture initials">{{ initials }}</span>
             </div>
             <div class="photo-controls">
               <strong>Profile picture</strong>
-              <p id="avatar-help" class="muted">JPG, PNG or WebP, up to 2 MB.</p>
-              <input ref="avatarInput" type="file" hidden aria-label="Choose profile picture" aria-describedby="avatar-help" accept="image/png,image/jpeg,image/webp" :disabled="saving" @change="upload" />
-              <div class="photo-actions">
+              <p id="avatar-help" class="muted">{{ isProfessor ? 'Faculty profile photos are managed by an authorized administrator.' : 'JPG, PNG or WebP, up to 2 MB.' }}</p>
+              <input v-if="!isProfessor" ref="avatarInput" type="file" hidden aria-label="Choose profile picture" aria-describedby="avatar-help" accept="image/png,image/jpeg,image/webp" :disabled="saving" @change="upload" />
+              <div v-if="!isProfessor" class="photo-actions">
                 <button class="photo-change" type="button" :disabled="saving" @click="avatarInput?.click()">Change Photo</button>
                 <button v-if="avatarUrl" class="photo-remove" type="button" :disabled="saving" @click="removeAvatar">Remove</button>
               </div>
@@ -207,18 +325,26 @@ onMounted(load)
               <label>Last name<input v-model="form.last_name" maxlength="100" autocomplete="family-name" required /></label>
               <label>Suffix<input v-model="form.suffix" maxlength="20" /></label>
             </template>
+            <template v-else-if="isProfessor">
+              <dl v-if="contactEntries.length" class="official-info professor-profile-summary"><div v-for="([key, value]) in contactEntries" :key="key"><dt>{{ key.replaceAll('_', ' ') }}</dt><dd>{{ value }}</dd></div></dl>
+              <p class="muted professor-readonly-note">Professor profile details are read-only here because no self-service faculty profile endpoint is available.</p>
+            </template>
             <template v-else>
-              <label>Preferred display name<input v-model="form.preferred_display_name" maxlength="120" autocomplete="nickname" /></label>
-              <label>Bio<textarea v-model="form.bio" maxlength="1000" /></label>
+              <label><span class="field-label">Preferred display name <small>Optional</small></span><input v-model="form.preferred_display_name" maxlength="120" autocomplete="nickname" placeholder="How your name appears around CDM Portal" /></label>
+              <label><span class="field-label">Bio <small>Optional</small></span><textarea v-model="form.bio" maxlength="1000" placeholder="Add a short introduction for your profile" /></label>
             </template>
           </div>
           <div class="official-profile">
-            <h3>Official information</h3>
-            <dl class="official-info"><div v-for="(value, key) in data.official" :key="key"><dt>{{ key.replaceAll('_', ' ') }}</dt><dd>{{ value || 'Not available' }}</dd></div></dl>
+            <div class="subsection-heading"><div><h3>Official information</h3><p>Verified institutional details cannot be edited here.</p></div><span aria-hidden="true">Read only</span></div>
+            <dl class="official-info"><div v-for="([key, value]) in isWebsitePresentation ? officialEntries : Object.entries(data.official || {})" :key="key"><dt>{{ key.replaceAll('_', ' ') }}</dt><dd>{{ value || 'Not available' }}</dd></div></dl>
           </div>
         </template>
-        <template v-else-if="active === 'Contact Information'"><label>Personal email<input v-model="form.email" type="email" /></label><label>Mobile<input v-model="form.contact_number" /></label><label>Address<textarea v-model="form.address" /></label></template>
-        <template v-else-if="active === 'Notifications' || active === 'Academic Preferences'"><label v-for="key in active === 'Notifications' ? ['document_updates','appointment_reminders','academic_warnings','adviser_alerts','email','in_app'] : ['warning_notifications','study_plan_reminders','adviser_alerts','ai_suggestions']" :key="key" class="toggle"><input v-model="(active === 'Notifications' ? form.notification_preferences : form.academic_preferences)[key]" type="checkbox" /> {{ key.replaceAll('_', ' ') }}</label></template>
+        <template v-else-if="active === 'Contact Information'">
+          <div class="settings-form-grid"><label><span class="field-label">Personal email <small>Optional</small></span><input v-model="form.email" type="email" autocomplete="email" placeholder="name@example.com" /></label><label><span class="field-label">Mobile <small>Optional</small></span><input v-model="form.contact_number" inputmode="tel" autocomplete="tel" placeholder="Your current mobile number" /></label><label class="full-field"><span class="field-label">Address <small>Optional</small></span><textarea v-model="form.address" autocomplete="street-address" placeholder="Your current mailing address" /></label></div>
+        </template>
+        <template v-else-if="active === 'Notifications'">
+          <div class="preference-grid"><label v-for="key in ['document_updates','appointment_reminders','email','in_app']" :key="key" class="toggle"><span><strong>{{ key.replaceAll('_', ' ') }}</strong><small>{{ preferenceDescriptions[key] }}</small></span><input v-model="form.notification_preferences[key]" type="checkbox" /></label></div>
+        </template>
         <template v-else-if="active === 'Appearance'">
           <fieldset class="appearance-options">
             <legend>Choose a theme</legend>
@@ -251,9 +377,12 @@ onMounted(load)
           </div>
         </template>
         <template v-else-if="active === 'Document Status'"><progress :value="data.document_status.complete" :max="data.document_status.total || 1" /><p>{{ data.document_status.complete }} of {{ data.document_status.total }} documents verified</p><ul><li v-for="item in data.document_status.items" :key="item.name">{{ item.name }}: {{ item.status }}</li></ul><RouterLink to="/student-management">View documents</RouterLink></template>
-        <template v-else-if="active === 'Security'"><label>Current password<input v-model="form.current_password" type="password" /></label><label>New password<input v-model="form.password" type="password" /></label><label>Confirm password<input v-model="form.password_confirmation" type="password" /></label><button :disabled="saving" @click="changePassword">{{ saving ? 'Saving...' : 'Change password' }}</button></template>
-        <dl v-else><template v-for="(value, key) in active === 'Account' ? data.account : status" :key="key"><dt>{{ key.replaceAll('_', ' ') }}</dt><dd>{{ value || 'Not available' }}</dd></template></dl>
-      </article></section>
+        <template v-else-if="active === 'Security'">
+          <div class="security-panel"><div class="security-guidance"><strong>Choose a strong password</strong><p>Use a password unique to CDM Portal. Existing authentication policies and validation still apply.</p></div><div class="security-fields"><label>Current password<input v-model="form.current_password" type="password" autocomplete="current-password" /></label><label>New password<input v-model="form.password" type="password" autocomplete="new-password" /></label><label>Confirm new password<input v-model="form.password_confirmation" type="password" autocomplete="new-password" /></label></div><button type="button" :disabled="saving" @click="changePassword">{{ saving ? 'Saving...' : 'Change password' }}</button></div>
+        </template>
+        <dl v-else class="summary-info"><div v-for="([key, value]) in active === 'Account' ? accountEntries : statusEntries" :key="key"><dt>{{ key.replaceAll('_', ' ') }}</dt><dd>{{ value }}</dd></div></dl>
+        </article>
+      </section>
     </div>
   </main>
 </template>
@@ -389,26 +518,225 @@ dd { margin: 3px 0; font-weight: 700; overflow-wrap: anywhere; }
 .save-bar button:first-child { background: var(--settings-field); color: var(--settings-accent); border-color: var(--settings-border); }
 article > button { justify-self: start; padding: 7px 10px; font-size: .85rem; }
 .menu { display: none; }
+
+/* Website-only premium Settings workspace. The base rules above remain the
+ * Android/Electron presentation and are overridden only by this web class. */
+.settings.website-settings-workspace {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: clamp(20px, 3vw, 38px);
+  border-radius: 0;
+  background: transparent;
+}
+.website-settings-workspace :deep(.website-module-header) { margin-bottom: 18px; }
+.settings-profile-banner {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(18px, 3vw, 30px);
+  min-height: 154px;
+  overflow: hidden;
+  padding: clamp(22px, 3vw, 32px);
+  border: 1px solid color-mix(in srgb, var(--website-emerald-bright) 24%, transparent);
+  border-radius: 22px;
+  background: linear-gradient(135deg, #064e3b 0%, #043728 54%, #042017 100%);
+  color: #fff;
+  box-shadow: 0 20px 45px rgb(4 32 23 / 16%);
+}
+.settings-profile-banner::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 260px;
+  height: 260px;
+  right: -70px;
+  top: -125px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(16 185 129 / 26%), transparent 68%);
+  pointer-events: none;
+}
+.website-settings-workspace .settings-profile-banner .avatar {
+  flex-basis: 96px;
+  width: 96px;
+  height: 96px;
+  border: 3px solid rgb(255 255 255 / 84%);
+  background: #0f7650;
+  color: #fff;
+  box-shadow: 0 0 0 5px rgb(52 211 153 / 20%), 0 12px 28px rgb(0 0 0 / 24%);
+}
+.settings-banner-copy { min-width: 0; }
+.settings-banner-copy > span { color: #a7f3d0; font-size: .76rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.settings-banner-copy h2 { margin: 5px 0 7px; overflow-wrap: anywhere; color: #fff; font-size: clamp(1.4rem, 3vw, 2rem); letter-spacing: -.025em; }
+.settings-banner-copy p { max-width: 620px; margin: 0; color: rgb(236 253 245 / 76%); font-size: .9rem; line-height: 1.55; }
+.settings-banner-photo-actions { display: grid; max-width: 270px; justify-items: end; gap: 10px; text-align: right; }
+.settings-banner-photo-actions > p { margin: 0; color: rgb(236 253 245 / 72%); font-size: .76rem; line-height: 1.45; }
+.settings-banner-photo-actions .photo-actions { justify-content: flex-end; }
+.settings-banner-photo-actions .photo-change { border-color: rgb(255 255 255 / 28%); background: rgb(255 255 255 / 10%); color: #fff; }
+.settings-banner-photo-actions .photo-remove { border-color: rgb(254 202 202 / 38%); background: rgb(127 29 29 / 24%); color: #fecaca; }
+.website-settings-workspace .layout { display: block; margin-top: 18px; }
+.website-settings-workspace aside {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border-radius: 18px;
+  background: var(--website-surface-elevated);
+  box-shadow: 0 10px 30px rgb(15 23 42 / 6%);
+}
+.settings-category-intro { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 18px; padding: 4px 5px 7px; }
+.settings-category-intro strong { color: var(--website-ink); font-size: .9rem; }
+.settings-category-intro span { color: var(--website-muted); font-size: .78rem; }
+.website-settings-workspace aside button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 60px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--website-muted);
+  transition: color 160ms ease, background 180ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.website-settings-workspace aside button svg { width: 20px; height: 20px; justify-self: center; }
+.website-settings-workspace aside button > span { display: grid; min-width: 0; gap: 2px; }
+.website-settings-workspace aside button strong { overflow: hidden; color: inherit; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.website-settings-workspace aside button small { color: var(--website-muted); font-size: .66rem; font-weight: 650; }
+.website-settings-workspace aside button:hover { border-color: color-mix(in srgb, var(--website-emerald) 24%, var(--website-border)); background: var(--website-hover); color: var(--website-deep-green); }
+.website-settings-workspace aside button.active {
+  border-color: color-mix(in srgb, var(--website-emerald) 38%, var(--website-border));
+  background: color-mix(in srgb, var(--website-hover) 82%, var(--website-surface-elevated));
+  color: var(--website-deep-green);
+  box-shadow: inset 0 -3px var(--website-gold);
+}
+.website-settings-workspace .content { margin-top: 18px; }
+.website-settings-workspace article {
+  min-height: 410px;
+  gap: 22px;
+  padding: clamp(22px, 3.2vw, 38px);
+  border-radius: 20px;
+  background: var(--website-surface-elevated);
+  box-shadow: 0 16px 42px rgb(15 23 42 / 7%);
+}
+.settings-content-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--settings-border); }
+.settings-content-heading > div { min-width: 0; }
+.settings-content-heading > div > span { color: var(--website-emerald); font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.settings-content-heading h2 { margin: 4px 0 7px; color: var(--website-ink); font-size: clamp(1.45rem, 2.5vw, 1.9rem); letter-spacing: -.025em; }
+.settings-content-heading p { max-width: 680px; margin: 0; color: var(--website-muted); font-size: .88rem; line-height: 1.55; }
+.readonly-badge { flex: 0 0 auto; padding: 6px 9px; border: 1px solid var(--website-border); border-radius: 999px; background: var(--website-surface-soft); color: var(--website-muted); font-size: .68rem; font-weight: 760; }
+.website-settings-workspace .profile-fields,.settings-form-grid,.security-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.website-settings-workspace .profile-fields > label:last-child,.settings-form-grid .full-field { grid-column: 1 / -1; }
+.field-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.field-label small { color: var(--website-muted); font-size: .7rem; font-weight: 550; }
+.website-settings-workspace .content label { color: var(--website-ink); font-size: .82rem; }
+.website-settings-workspace .content input:not([type='checkbox']):not([type='radio']):not([type='file']),.website-settings-workspace .content textarea {
+  min-height: 46px;
+  border-radius: 11px;
+  padding: 11px 13px;
+  line-height: 1.45;
+}
+.website-settings-workspace .content textarea { min-height: 116px; }
+.subsection-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.subsection-heading h3 { color: var(--website-ink); }
+.subsection-heading p { margin: 4px 0 0; color: var(--website-muted); font-size: .8rem; }
+.subsection-heading > span { color: var(--website-muted); font-size: .72rem; }
+.website-settings-workspace .official-info,.summary-info { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.website-settings-workspace .official-info > div,.summary-info > div {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--website-border);
+  border-radius: 13px;
+  background: var(--website-surface-soft);
+}
+.website-settings-workspace .official-info dt,.summary-info dt { margin: 0 0 6px; color: var(--website-muted); font-size: .7rem; font-weight: 760; letter-spacing: .04em; text-transform: uppercase; }
+.website-settings-workspace .official-info dd,.summary-info dd { margin: 0; color: var(--website-ink); font-size: .9rem; line-height: 1.45; overflow-wrap: break-word; }
+.preference-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.website-settings-workspace .toggle { min-height: 76px; padding: 14px; border-radius: 13px; transition: border-color 160ms ease, background 160ms ease; }
+.website-settings-workspace .toggle:hover { border-color: color-mix(in srgb, var(--website-emerald) 35%, var(--website-border)); background: var(--website-hover); }
+.website-settings-workspace .toggle > span { display: grid; gap: 4px; font-weight: 400; text-transform: none; }
+.website-settings-workspace .toggle > span strong { color: var(--website-ink); font-size: .82rem; text-transform: capitalize; }
+.website-settings-workspace .toggle > span small { color: var(--website-muted); font-size: .72rem; line-height: 1.4; }
+.website-settings-workspace .appearance-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.website-settings-workspace .appearance-card { padding: 16px; border-radius: 14px; transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease; }
+.website-settings-workspace .theme-preview { height: 92px; border-radius: 9px; }
+.security-panel { display: grid; gap: 20px; }
+.security-guidance { padding: 16px; border: 1px solid color-mix(in srgb, var(--website-gold) 42%, var(--website-border)); border-radius: 13px; background: color-mix(in srgb, var(--website-warning-bg) 72%, var(--website-surface-elevated)); }
+.security-guidance strong { color: var(--website-ink); }
+.security-guidance p { margin: 5px 0 0; color: var(--website-muted); font-size: .8rem; line-height: 1.5; }
+.security-panel > button { justify-self: start; min-height: 44px; padding: 10px 16px; border: 0; border-radius: 10px; background: var(--settings-primary); color: var(--settings-on-primary); font-weight: 800; }
+.settings-loading { display: grid; min-height: 310px; place-items: center; align-content: center; gap: 14px; border: 1px solid var(--website-border); border-radius: 20px; background: var(--website-surface-elevated); color: var(--website-muted); }
+.settings-loading span { width: 38px; height: 38px; border: 3px solid var(--website-border); border-top-color: var(--website-emerald); border-radius: 50%; animation: settings-loading-spin .8s linear infinite; }
+.settings-loading p { margin: 0; }
+.website-settings-workspace .toast,.website-settings-workspace .error { animation: settings-feedback-in 180ms ease both; }
+.website-settings-workspace progress { width: 100%; height: 10px; accent-color: var(--website-emerald); }
+.website-settings-workspace article > ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.website-settings-workspace article > ul li { padding: 11px 13px; border: 1px solid var(--website-border); border-radius: 10px; background: var(--website-surface-soft); }
+.website-settings-workspace article > a { width: fit-content; color: var(--website-deep-green); font-weight: 780; }
+@keyframes settings-loading-spin { to { transform: rotate(360deg); } }
+@keyframes settings-feedback-in { from { opacity: 0; } to { opacity: 1; } }
+
 @media (max-width: 720px) {
-  .settings { padding: 0; border-radius: 0; }
-  .layout { display: block; }
-  .menu { display: block; min-height: 44px; }
-  article { gap: 13px; padding: 15px; }
-  .settings > header { padding-left: max(0px,env(safe-area-inset-left)); padding-right: max(0px,env(safe-area-inset-right)); }
-  aside { position: fixed; inset: 0 auto 0 0; width: min(290px, 84vw); padding-top:calc(12px + env(safe-area-inset-top)); padding-bottom:calc(12px + env(safe-area-inset-bottom)); z-index: 50; transform: translateX(-105%); transition: transform 180ms ease; }
-  aside.open { transform: translateX(0); }
-  .backdrop { position: fixed; inset: 0; background: #10261a66; z-index: 40; }
-  .save-bar { align-items: stretch; bottom:calc(8px + env(safe-area-inset-bottom)); flex-direction: column; padding:10px; }
-  .save-bar div { display: grid; grid-template-columns: 1fr 1fr; }
-  .requirement-statuses { grid-template-columns: 1fr; }
+  .settings:not(.website-settings-workspace) { padding: 0; border-radius: 0; }
+  .settings:not(.website-settings-workspace) .layout { display: block; }
+  .settings:not(.website-settings-workspace) .menu { display: block; min-height: 44px; }
+  .settings:not(.website-settings-workspace) article { gap: 13px; padding: 15px; }
+  .settings:not(.website-settings-workspace) > header { padding-left: max(0px,env(safe-area-inset-left)); padding-right: max(0px,env(safe-area-inset-right)); }
+  .settings:not(.website-settings-workspace) aside { position: fixed; inset: 0 auto 0 0; width: min(290px, 84vw); padding-top:calc(12px + env(safe-area-inset-top)); padding-bottom:calc(12px + env(safe-area-inset-bottom)); z-index: 50; transform: translateX(-105%); transition: transform 180ms ease; }
+  .settings:not(.website-settings-workspace) aside.open { transform: translateX(0); }
+  .settings:not(.website-settings-workspace) .backdrop { position: fixed; inset: 0; background: #10261a66; z-index: 40; }
+  .settings:not(.website-settings-workspace) .save-bar { align-items: stretch; bottom:calc(8px + env(safe-area-inset-bottom)); flex-direction: column; padding:10px; }
+  .settings:not(.website-settings-workspace) .save-bar div { display: grid; grid-template-columns: 1fr 1fr; }
+  .settings:not(.website-settings-workspace) .requirement-statuses { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {
-  .settings > header h1 { font-size:1.5rem; }
-  .profile-photo { gap:12px; }
-  .avatar { flex-basis:72px; width:72px; height:72px; }
-  .appearance-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .save-bar div { grid-template-columns:minmax(0,1fr); }
+  .settings:not(.website-settings-workspace) > header h1 { font-size:1.5rem; }
+  .settings:not(.website-settings-workspace) .profile-photo { gap:12px; }
+  .settings:not(.website-settings-workspace) .avatar { flex-basis:72px; width:72px; height:72px; }
+  .settings:not(.website-settings-workspace) .appearance-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .settings:not(.website-settings-workspace) .save-bar div { grid-template-columns:minmax(0,1fr); }
+}
+@media (max-width: 1100px) {
+  .website-settings-workspace aside { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .settings-profile-banner { grid-template-columns: auto minmax(0,1fr); }
+  .settings-banner-photo-actions { grid-column: 2; max-width: none; justify-items: start; text-align: left; }
+  .settings-banner-photo-actions .photo-actions { justify-content: flex-start; }
+}
+@media (max-width: 768px) {
+  .website-settings-workspace { padding: 18px max(14px, env(safe-area-inset-right)) 34px max(14px, env(safe-area-inset-left)); }
+  .settings-profile-banner { min-height: 0; padding: 20px; border-radius: 18px; }
+  .website-settings-workspace .settings-profile-banner .avatar { width: 82px; height: 82px; flex-basis: 82px; }
+  .website-settings-workspace aside { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: inline proximity; padding: 10px; scrollbar-width: thin; }
+  .settings-category-intro { display: none; }
+  .website-settings-workspace aside button { flex: 0 0 min(205px, 68vw); scroll-snap-align: start; }
+  .website-settings-workspace article { min-height: 360px; padding: 22px; }
+  .settings-content-heading { flex-direction: column; gap: 12px; }
+  .website-settings-workspace .profile-fields,.settings-form-grid,.security-fields,.preference-grid { grid-template-columns: minmax(0, 1fr); }
+  .website-settings-workspace .profile-fields > label:last-child,.settings-form-grid .full-field { grid-column: auto; }
+  .website-settings-workspace .save-bar { align-items: stretch; bottom: calc(8px + env(safe-area-inset-bottom)); flex-direction: column; }
+  .website-settings-workspace .save-bar div { display: grid; grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .settings-profile-banner { grid-template-columns: auto minmax(0, 1fr); gap: 14px; }
+  .website-settings-workspace .settings-profile-banner .avatar { width: 68px; height: 68px; flex-basis: 68px; }
+  .settings-banner-copy p { display: none; }
+  .settings-banner-copy h2 { font-size: 1.2rem; }
+  .settings-banner-photo-actions { grid-column: 1 / -1; }
+  .website-settings-workspace .content { margin-top: 12px; }
+  .website-settings-workspace article { gap: 18px; padding: 17px; border-radius: 16px; }
+  .website-settings-workspace .official-info,.summary-info,.website-settings-workspace .appearance-grid { grid-template-columns: minmax(0, 1fr); }
+  .subsection-heading { flex-direction: column; gap: 5px; }
+  .website-settings-workspace .save-bar div { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 340px) {
+  .website-settings-workspace { padding-inline: 10px; }
+  .settings-profile-banner { padding: 16px; }
+  .website-settings-workspace aside button { flex-basis: min(190px, 78vw); }
+  .settings-banner-photo-actions .photo-actions { display: grid; width: 100%; grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }

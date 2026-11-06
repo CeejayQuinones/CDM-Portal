@@ -1268,3 +1268,10 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.website-public-page :is(.brand-link, .card-brand, .seal-lockup, .cta-seal, .footer-brand) img {
+  aspect-ratio: 1;
+  height: auto;
+  object-fit: contain;
+  object-position: center;
+}

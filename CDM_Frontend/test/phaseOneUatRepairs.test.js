@@ -6,17 +6,18 @@ import { formatDashboardStatus } from '../src/modules/dashboard/dashboardPresent
 
 const source = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
-test('Section status badges preserve Open and Closed as intact labels', async () => {
+test('Section cards preserve complete status labels in the approved directory', async () => {
   const [view, css] = await Promise.all([
     source('src/modules/enrollment/EnrollmentAcademicStaff.vue'),
-    source('src/modules/enrollment/enrollment.css'),
+    source('src/modules/enrollment/registrarEnrollmentComplete.css'),
   ])
 
-  assert.match(view, /'open','closed'/)
-  assert.match(view, /class="en-badge" :data-status="r\.status"/)
-  assert.match(view, /'en-sections-table': mode === 'sections'/)
-  assert.match(css, /\.en-badge \{[^}]*word-break:keep-all;[^}]*white-space:nowrap;/)
-  assert.match(css, /\.en-sections-table th:nth-child\(4\)[^}]*min-width:7rem;[^}]*white-space:nowrap;/)
+  assert.match(view, /class="en-badge" :data-status="section\.status"/)
+  assert.match(view, /\{\{ label\(section\.status\) \}\}/)
+  assert.match(view, /class="en-section-directory"/)
+  assert.match(view, /class="en-section-card-grid"/)
+  assert.match(css, /\.en-badge \{[^}]*white-space: nowrap;/)
+  assert.match(css, /\.en-section-card-grid \{ display: grid;/)
 })
 
 test('Add Professor has independent accessible password controls and modal validation', async () => {
@@ -34,22 +35,21 @@ test('Add Professor has independent accessible password controls and modal valid
   assert.match(view, /The password confirmation does not match\./)
   assert.match(view, /formErrors\.value = err\.response\?\.data\?\.errors/)
   assert.match(view, /account-dialog-error[^>]*role="alert"/)
-  assert.match(css, /\.account-password-control\{[^}]*position:relative/)
+  assert.match(css, /\.account-password-control\s*\{[^}]*position:\s*relative/)
 })
 
-test('Subjects table protects compact columns and scrolls instead of crushing content', async () => {
+test('Subject catalog protects compact records with responsive directory rows', async () => {
   const [view, css] = await Promise.all([
     source('src/modules/enrollment/EnrollmentSubjectManagement.vue'),
-    source('src/modules/enrollment/enrollment.css'),
+    source('src/modules/enrollment/registrarEnrollmentComplete.css'),
   ])
 
-  assert.match(view, /table class="subject-management-table"/)
-  assert.match(css, /\.en-table \{ overflow-x:auto; \}/)
-  assert.match(css, /\.subject-management-table \{ min-width:1080px; \}/)
-  assert.match(css, /nth-child\(1\)[^}]*white-space:nowrap/)
-  assert.match(css, /nth-child\(3\)[^}]*white-space:nowrap/)
-  assert.match(css, /nth-child\(6\)[^}]*white-space:nowrap/)
-  assert.match(css, /subject-management-table \.en-actions button[^}]*white-space:nowrap/)
+  assert.match(view, /class="en-catalog-directory"/)
+  assert.match(view, /class="en-subject-row"/)
+  assert.match(view, /class="en-row-menu"/)
+  assert.match(css, /\.en-subject-row \{ grid-template-columns:/)
+  assert.match(css, /@media \(max-width: 900px\)/)
+  assert.match(css, /\.en-subject-name,[\s\S]*grid-column: 1 \/ -1;/)
 })
 
 test('Student enrollment statuses are title-cased only for presentation', () => {

@@ -143,6 +143,10 @@ class EnrollmentWorkflowController extends Controller
     public function show(Request $r, int $id)
     {
         $a = $this->authorized($r, $id)->load(['student.userProfile', 'owner.profile', 'admissionApplicant', 'course', 'curriculum', 'period.academicYear', 'period.semester', 'documents']);
+        if ($a->status === 'draft' && ! $a->personal_details) {
+            // Pre-migration drafts receive an authorized, non-persisted starting value.
+            $a->setAttribute('personal_details', $this->workflow->personalDetailsFor($a));
+        }
 
         return $this->ok(['application' => $a, 'requirements' => $this->workflow->requirements($a)]);
     }
@@ -154,6 +158,17 @@ class EnrollmentWorkflowController extends Controller
         $rules = ['version' => 'required|integer|min:1'];
         if ($action === 'save') {
             $rules['classification'] = $this->classification();
+            $rules += [
+                'personal_details' => 'required|array:first_name,middle_name,last_name,birth_date,gender,contact_number,email,address',
+                'personal_details.first_name' => 'required|string|max:100',
+                'personal_details.middle_name' => 'nullable|string|max:100',
+                'personal_details.last_name' => 'required|string|max:100',
+                'personal_details.birth_date' => 'required|date|before_or_equal:today',
+                'personal_details.gender' => ['required', Rule::in(['Male', 'Female', 'Prefer not to say'])],
+                'personal_details.contact_number' => 'required|string|max:20',
+                'personal_details.email' => 'required|email|max:255',
+                'personal_details.address' => 'required|string|max:1000',
+            ];
         }
         if ($staff) {
             $rules['notes'] = ($action === 'reject' ? 'required' : 'nullable').'|string|max:3000';
@@ -181,9 +196,15 @@ class EnrollmentWorkflowController extends Controller
     {
         $a = $this->authorized($r, $id);
         $doc = $a->documents()->findOrFail($document);
-        $path = $this->workflow->documentPath($a, $doc);
+        $presentation = $this->workflow->documentPresentation($a, $doc);
+        $path = $presentation['path'];
         abort_unless($path && Storage::disk('local')->exists($path), 404, 'Document unavailable.');
 
-        return Storage::disk('local')->download($path, 'enrollment-document.'.pathinfo($path, PATHINFO_EXTENSION), ['X-Content-Type-Options' => 'nosniff']);
+        $filename = $presentation['filename'];
+        $headers = ['X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'private, no-store', 'Content-Type' => $presentation['mime_type']];
+
+        return $r->boolean('preview')
+            ? Storage::disk('local')->response($path, $filename, $headers, 'inline')
+            : Storage::disk('local')->download($path, $filename, $headers);
     }
 }

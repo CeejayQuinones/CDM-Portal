@@ -1,0 +1,3 @@
+<script setup>defineProps({label:{type:String,default:'Loading…'}})</script>
+<template><div class="cdm-loading" role="status"><span aria-hidden="true"></span>{{label}}</div></template>
+<style scoped>.cdm-loading{display:flex;align-items:center;gap:9px;padding:18px;color:var(--cdm-text-muted);font-size:13px}.cdm-loading span{width:16px;height:16px;border:2px solid var(--cdm-border-strong);border-top-color:var(--cdm-primary);border-radius:50%;animation:cdm-load .75s linear infinite}@keyframes cdm-load{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.cdm-loading span{animation:none}}</style>

@@ -45,8 +45,11 @@ class StudentSettingsTest extends TestCase
         $student = $this->studentFixture();
         $this->actingAs($student->user)->patchJson('/api/student/settings/profile', ['preferred_display_name' => 'Kai', 'bio' => 'Focused learner', 'student_number' => 'HACKED'])->assertOk();
         $this->actingAs($student->user)->patchJson('/api/student/settings/contact', ['email' => 'kai@example.test', 'contact_number' => '09170000000', 'address' => 'Montalban'])->assertOk();
-        $this->actingAs($student->user)->patchJson('/api/student/settings/preferences', ['notification_preferences' => ['email' => true], 'academic_preferences' => ['ai_suggestions' => true], 'appearance' => 'dark'])->assertOk();
+        $this->actingAs($student->user)->patchJson('/api/student/settings/preferences', ['notification_preferences' => ['email' => true], 'academic_preferences' => ['ai_suggestions' => true], 'appearance' => 'dark'])
+            ->assertOk()
+            ->assertJsonMissingPath('data.preferences.academic_preferences');
         $this->assertDatabaseHas('student_settings', ['student_id' => $student->id, 'preferred_display_name' => 'Kai', 'appearance' => 'dark']);
+        $this->assertDatabaseHas('student_settings', ['student_id' => $student->id, 'academic_preferences' => null]);
         $this->assertDatabaseHas('students', ['id' => $student->id, 'student_number' => '2026-0001']);
         $this->assertDatabaseHas('user_profiles', ['user_id' => $student->user_id, 'email' => 'kai@example.test']);
     }

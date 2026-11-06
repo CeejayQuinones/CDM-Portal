@@ -16,13 +16,22 @@ use App\Models\Semester;
 use App\Models\Subject;
 use App\Services\Grading\GradingService;
 use App\Services\Grading\GradingWorkflowService;
+use App\Services\Grading\ProfessorGradesheetImportService;
+use App\Services\Grading\ProfessorGradesheetWorkbookService;
+use App\Support\ClientPlatform;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class GradingController extends Controller
 {
-    public function __construct(private GradingService $grading, private GradingWorkflowService $workflow) {}
+    public function __construct(
+        private GradingService $grading,
+        private GradingWorkflowService $workflow,
+        private ProfessorGradesheetWorkbookService $workbooks,
+        private ProfessorGradesheetImportService $workbookImports,
+    ) {}
 
     private function ok(mixed $data, int $status = 200)
     {
@@ -166,6 +175,46 @@ class GradingController extends Controller
         $input = $request->validate(['assessment_id' => 'required|integer|exists:grade_assessments,id', 'scores' => 'required|array|min:1|max:500', 'scores.*.enrollment_subject_id' => 'required|integer|distinct', 'scores.*.score' => 'required|numeric|min:0', 'scores.*.version' => 'nullable|integer|min:1']);
 
         return $this->ok($this->grading->saveScores($request->user(), $gradeSheet, $input));
+    }
+
+    public function exportWorkbook(Request $request, GradeSheet $gradeSheet)
+    {
+        abort_unless($request->header(ClientPlatform::HEADER) === ClientPlatform::WEB, 403, 'Professor Excel gradesheets are available on the Website only.');
+        $input = $request->validate(['period' => ['required', Rule::in(['midterm', 'finals'])]]);
+        $export = $this->workbooks->export($request->user(), $gradeSheet, $input['period']);
+
+        return response()->streamDownload(function () use ($export): void {
+            $writer = new Xlsx($export['workbook']);
+            $writer->save('php://output');
+            $export['workbook']->disconnectWorksheets();
+        }, $export['filename'], [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    public function previewWorkbook(Request $request, GradeSheet $gradeSheet)
+    {
+        abort_unless($request->header(ClientPlatform::HEADER) === ClientPlatform::WEB, 403, 'Professor Excel gradesheets are available on the Website only.');
+        $input = $request->validate([
+            'period' => ['required', Rule::in(['midterm', 'finals'])],
+            'file' => ['required', 'file', 'mimes:xlsx', 'max:5120'],
+        ]);
+
+        return $this->ok($this->workbooks->preview($request->user(), $gradeSheet, $input['period'], $input['file']));
+    }
+
+    public function applyWorkbook(Request $request, GradeSheet $gradeSheet)
+    {
+        abort_unless($request->header(ClientPlatform::HEADER) === ClientPlatform::WEB, 403, 'Professor Excel gradesheets are available on the Website only.');
+        $input = $request->validate([
+            'period' => ['required', Rule::in(['midterm', 'finals'])],
+            'proposal_token' => ['required', 'string', 'max:200'],
+            'confirmed' => ['required', 'accepted'],
+        ]);
+
+        return $this->ok($this->workbookImports->apply($request->user(), $gradeSheet, $input['period'], $input['proposal_token']));
     }
 
     public function weights(Request $request, GradeSheet $gradeSheet, string $period)

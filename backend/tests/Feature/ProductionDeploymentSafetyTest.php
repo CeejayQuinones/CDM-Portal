@@ -120,7 +120,7 @@ class ProductionDeploymentSafetyTest extends TestCase
 
     public function test_production_audit_is_read_only_and_redacts_configuration_secrets(): void
     {
-        config()->set('services.monitoring_ai.api_key', 'must-not-appear');
+        config()->set('services.google.client_secret', 'must-not-appear');
         $before = DB::table('users')->count();
 
         $this->artisan('portal:production-audit', ['--json' => true])

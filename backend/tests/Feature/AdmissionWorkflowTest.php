@@ -77,7 +77,7 @@ class AdmissionWorkflowTest extends TestCase
         $this->artisan('admission:dev-setup', ['--dummy-bank' => true])->assertExitCode(1);
         Sanctum::actingAs($this->guest);
         $this->getJson('/api/admission/exam')->assertOk()->assertJsonPath('data.reason', 'bank_incomplete');
-        $this->postJson('/api/admission/exam/start')->assertStatus(409);
+        $this->postJson('/api/admission/exam/start', ['rules_acknowledged' => true])->assertStatus(409);
         $this->assertDatabaseCount('admission_exam_sessions', 0);
     }
 
@@ -114,7 +114,7 @@ class AdmissionWorkflowTest extends TestCase
     {
         Sanctum::actingAs($this->guest);
 
-        return $this->postJson('/api/admission/exam/start')->assertOk()->json('data');
+        return $this->postJson('/api/admission/exam/start', ['rules_acknowledged' => true])->assertOk()->json('data');
     }
 
     private function answers(array $session, string $answer = 'A'): array
@@ -178,6 +178,43 @@ class AdmissionWorkflowTest extends TestCase
         $this->assertDatabaseCount('admission_exam_results', 1);
     }
 
+    public function test_rules_acknowledgment_and_website_client_are_required_for_exam_writes(): void
+    {
+        $this->bank();
+        Sanctum::actingAs($this->guest);
+
+        $this->postJson('/api/admission/exam/start')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('rules_acknowledged');
+        $this->assertDatabaseCount('admission_exam_sessions', 0);
+
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->getJson('/api/admission/exam')
+            ->assertOk()
+            ->assertJsonPath('data.eligible', false)
+            ->assertJsonPath('data.reason', 'unsupported_client')
+            ->assertJsonPath('data.session', null);
+
+        $this->withHeader('X-CDM-Client', 'web');
+        $session = $this->start();
+        $this->assertSame(2, $session['max_attempts']);
+
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->getJson('/api/admission/exam')
+            ->assertOk()
+            ->assertJsonPath('data.reason', 'unsupported_client')
+            ->assertJsonPath('data.session', null);
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->putJson('/api/admission/exam/'.$session['session_id'].'/answers', $this->answers($session))
+            ->assertForbidden();
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->postJson('/api/admission/exam/'.$session['session_id'].'/submit', $this->answers($session))
+            ->assertForbidden();
+
+        $this->assertSame('active', AdmissionExamSession::findOrFail($session['session_id'])->status);
+        $this->assertDatabaseCount('admission_exam_results', 0);
+    }
+
     public function test_expiry_ignores_late_answers_and_scheduler_is_idempotent(): void
     {
         $this->bank();
@@ -208,7 +245,7 @@ class AdmissionWorkflowTest extends TestCase
         $result = $this->submit($first, 'B');
         $this->getJson('/api/admission/result')->assertOk()->assertJsonPath('data.result', null);
         $this->getJson('/api/admission/recommendation')->assertForbidden();
-        $this->postJson('/api/admission/exam/start')->assertStatus(409);
+        $this->postJson('/api/admission/exam/start', ['rules_acknowledged' => true])->assertStatus(409);
         $this->act($result, 'approve');
         Sanctum::actingAs($this->guest);
         $this->getJson('/api/admission/result')->assertJsonPath('data.published', false);
@@ -223,7 +260,7 @@ class AdmissionWorkflowTest extends TestCase
         $this->act($result2, 'publish');
         Sanctum::actingAs($this->guest);
         $this->getJson('/api/admission/result')->assertJsonPath('data.result.outcome', 'FAILED');
-        $this->postJson('/api/admission/exam/start')->assertStatus(409);
+        $this->postJson('/api/admission/exam/start', ['rules_acknowledged' => true])->assertStatus(409);
         $this->assertDatabaseCount('admission_exam_sessions', 2);
     }
 
@@ -289,10 +326,10 @@ class AdmissionWorkflowTest extends TestCase
     {
         Sanctum::actingAs($this->guest);
         $this->getJson('/api/admission/exam')->assertJsonPath('data.reason', 'bank_incomplete');
-        $this->postJson('/api/admission/exam/start')->assertStatus(409);
+        $this->postJson('/api/admission/exam/start', ['rules_acknowledged' => true])->assertStatus(409);
         $this->bank();
         $this->mock(AdmissionAuditWriter::class, fn ($m) => $m->shouldReceive('workflow')->andThrow(new \RuntimeException('private database error')));
-        $this->postJson('/api/admission/exam/start')->assertStatus(503)->assertJsonMissing(['message' => 'private database error']);
+        $this->postJson('/api/admission/exam/start', ['rules_acknowledged' => true])->assertStatus(503)->assertJsonMissing(['message' => 'private database error']);
         $this->assertDatabaseCount('admission_exam_sessions', 0);
         $this->assertDatabaseCount('admission_exam_answers', 0);
     }
@@ -384,7 +421,7 @@ class AdmissionWorkflowTest extends TestCase
         $this->getJson('/api/admission/admin/exams')->assertJsonCount(1, 'data.exams')->assertJsonPath('data.exams.0.readiness.ready', true);
         $this->putJson($url, $this->examPolicy(['status' => 'inactive']))->assertOk();
         Sanctum::actingAs($this->guest);
-        $this->postJson('/api/admission/exam/start')->assertConflict();
+        $this->postJson('/api/admission/exam/start', ['rules_acknowledged' => true])->assertConflict();
         $this->assertDatabaseCount('admission_cycles', 1);
         $this->assertDatabaseHas('admission_workflow_events', ['action' => 'admission.exam_configured']);
     }
@@ -423,7 +460,7 @@ class AdmissionWorkflowTest extends TestCase
         $this->act($second, 'approve');
         $this->act($second, 'publish');
         Sanctum::actingAs($this->guest);
-        $this->postJson('/api/admission/exam/start')->assertConflict();
+        $this->postJson('/api/admission/exam/start', ['rules_acknowledged' => true])->assertConflict();
     }
 
     public function test_legacy_snapshot_keeps_original_outcome_and_one_attempt_policy_is_final(): void
@@ -445,7 +482,7 @@ class AdmissionWorkflowTest extends TestCase
         $this->act($newResult, 'publish');
         $this->assertSame('FAILED', $newResult->fresh()->outcome());
         Sanctum::actingAs($newGuest);
-        $this->postJson('/api/admission/exam/start')->assertConflict();
+        $this->postJson('/api/admission/exam/start', ['rules_acknowledged' => true])->assertConflict();
     }
 
     public function test_question_filters_status_and_production_readiness_use_same_bank(): void

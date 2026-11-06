@@ -70,7 +70,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
               };`,
           }))
           builder.onLoad({ filter: /\.vue$/ }, async ({ path: filename }) => {
-            if (!filename.includes('/modules/admission/')) return { contents: 'export default { render() { return null } }' }
+            if (!filename.includes('/modules/admission/') && !filename.includes('/components/website/') && !filename.includes('/design-system/')) return { contents: 'export default { render() { return null } }' }
             const { descriptor } = parse(await readFile(filename, 'utf8'), { filename })
             return { contents: compileScript(descriptor, { id: filename, inlineTemplate: true }).content, resolveDir: path.dirname(filename) }
           })
@@ -105,10 +105,9 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
             assert.ok(html.includes(router.currentRoute.value.meta.title))
             if ([ROLES.ADMIN, ROLES.REGISTRAR_STAFF].includes(role) && target !== '/admission') {
               assert.match(html, /aria-label="Admission workspace"/)
-              for (const label of ['Applicants','Programs','Exams','Exam Questions','Results','Admission History']) assert.ok(html.includes(label))
               assert.equal((html.match(/aria-disabled="true"/g) || []).length, 0)
               assert.doesNotMatch(html, /Admin access|Registrar access/)
-              for (const item of visible.children) assert.ok(html.includes('href="' + router.resolve(item.path).href + '"'), 'Every staff page must be an enabled link')
+              assert.doesNotMatch(html, /admission-context-nav/, 'The global collapsible sidebar owns staff navigation')
             }
             if (target === '/admission' && [ROLES.GUEST, ROLES.STUDENT].includes(role)) {
               assert.match(html, /Loading admission information/)
@@ -385,7 +384,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
       await router.push('/registrar/admissions/results')
       const route = router.currentRoute.value.matched.at(-1), root = {children:[]}
       const app = renderer.createApp(route.components.default,route.props.default); app.use(router); app.mount(root)
-      const findForm = node => node.tag === 'form' ? node : (node.children || []).map(findForm).find(Boolean)
+      const findForm = node => allNodes(node, child => child.tag === 'form' && /Confirm/.test(textOf(child)))[0]
       const exactButton = (node, label) => node.tag === 'button' && textOf(node).trim() === label ? node : (node.children || []).map(child => exactButton(child, label)).find(Boolean)
       try {
         await settle()
@@ -435,7 +434,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
       assert.equal(writes[1].url,'/admission/admin/exams/1')
       assert.equal(writes[1].data.version,1)
     })
-    await t.test('History renders a timeline and Applicant inspection opens the selected record in a dialog', async () => {
+    await t.test('History renders a timeline and Applicant inspection opens the selected inline record workspace', async () => {
       auth.currentRole = ROLES.REGISTRAR_STAFF
       const applicant = {id:1,name:'Example Applicant',applicant_number:'APP-1',cycle:'Intake',status:'draft',exam_status:'finalized',latest_result:'RETAKE',acceptance_status:'not_completed',student_identity_status:'not_created',attempts:[{attempt_number:1,status:'finalized',outcome:'RETAKE'}]}
       const secondApplicant = {...applicant,id:2,name:'Second Applicant',applicant_number:'APP-2',attempts:[]}
@@ -455,18 +454,14 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
           await settle()
           if (target.endsWith('/history')) { assert.match(textOf(root),/Application created/); assert.match(textOf(root),/Example Applicant/); findButtonByText(root,'View').props.onClick(); await nextTick(); assert.match(textOf(allNodes(root,node => node.props?.role === 'dialog')[0]),/Application created recorded for APP-1/) }
           else {
-            const inspectButtons = allNodes(root,node => node.tag === 'button' && textOf(node).trim() === 'Inspect')
+            const inspectButtons = allNodes(root,node => node.tag === 'button' && textOf(node).trim() === 'Open record')
             inspectButtons[0].props.onClick(); await settle()
-            let dialogs = allNodes(root,node => node.props?.role === 'dialog')
-            assert.equal(dialogs.length,1); assert.equal(dialogs[0].props['aria-modal'],'true')
-            assert.match(textOf(dialogs[0]),/Example Applicant/); assert.match(textOf(dialogs[0]),/Exam attempts/); assert.match(textOf(dialogs[0]),/RETAKE/)
+            assert.match(textOf(root),/Example Applicant/); assert.match(textOf(root),/Exam attempts/); assert.match(textOf(root),/RETAKE/)
             assert.equal(findButtonByText(root,'Approve for Enrollment'),undefined)
-            findButtonByText(root,'Close').props.onClick(); await nextTick()
-            assert.equal(allNodes(root,node => node.props?.role === 'dialog').length,0)
+            allNodes(root,node => node.tag === 'button' && node.props?.['aria-label'] === 'Close applicant record')[0].props.onClick(); await nextTick()
             assert.doesNotMatch(textOf(root),/Exam attempts/)
             inspectButtons[1].props.onClick(); await settle()
-            dialogs = allNodes(root,node => node.props?.role === 'dialog')
-            assert.match(textOf(dialogs[0]),/Second Applicant/); assert.match(textOf(dialogs[0]),/No exam started/)
+            assert.match(textOf(root),/Second Applicant/); assert.match(textOf(root),/No exam started/)
           }
         } finally { app.unmount() }
       }
@@ -477,7 +472,7 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
       const previousWindow = globalThis.window
       globalThis.window = { addEventListener() {}, removeEventListener() {} }
       const questions = Array.from({length:100}, (_,i) => ({ id:i+1, topic:'Science', question_text:'Assigned question '+(i+1), options:{ A:'Answer A', B:'Answer B' } }))
-      const saved = { session_id:'session', revision:0, position:0, attempt_number:1, deadline:new Date(Date.now()+7200000).toISOString(), server_now:new Date().toISOString(), questions, answers:Object.fromEntries(questions.map(q=>[q.id,null])), exam_completed:false }
+      const saved = { session_id:'session', revision:0, position:0, attempt_number:1, max_attempts:2, deadline:new Date(Date.now()+7200000).toISOString(), server_now:new Date().toISOString(), questions, answers:Object.fromEntries(questions.map(q=>[q.id,null])), exam_completed:false }
       const writes=[]
       apiState.workflow=async config => {
         if(config.url.endsWith('/exam')) return {eligible:true,attempts_submitted:0,session:null}
@@ -490,6 +485,8 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
       const root={children:[]}; const app=renderer.createApp(route.components.default,route.props.default); app.use(router); app.mount(root)
       try {
         await settle()
+        const acknowledgment = allNodes(root,node => node.tag === 'input' && node.props?.type === 'checkbox')[0]
+        acknowledgment.props.onChange({ target: { checked: true } }); await nextTick()
         findButtonByText(root,'Start Exam').props.onClick(); await settle()
         assert.match(textOf(root),/Assigned question 1/)
         assert.match(textOf(root),/Question 1 \/ 100/)
@@ -646,30 +643,47 @@ test('Admission uses the portal guard, navigation store, and rendered placeholde
   }
 })
 
-test('Admission staff pages use compact searches, hidden filters, summaries, and dialog editors', async () => {
-  const [admin, registrar, exams, styles] = await Promise.all([
+test('Admission staff pages use the compact desktop workspace, responsive lists, and dialog editors', async () => {
+  const [admin, registrar, exams, workspace, styles] = await Promise.all([
     readFile(path.join(frontend, 'src/modules/admission/AdmissionAdminView.vue'), 'utf8'),
     readFile(path.join(frontend, 'src/modules/admission/AdmissionRegistrarView.vue'), 'utf8'),
     readFile(path.join(frontend, 'src/modules/admission/AdmissionExamsView.vue'), 'utf8'),
-    readFile(path.join(frontend, 'src/modules/admission/admission.css'), 'utf8'),
+    readFile(path.join(frontend, 'src/modules/admission/components/AdmissionStaffWorkspace.vue'), 'utf8'),
+    readFile(path.join(frontend, 'src/modules/admission/admissionStaffModern.css'), 'utf8'),
   ])
 
   for (const source of [admin, registrar]) {
     assert.match(source, /filtersOpen = ref\(false\)/)
     assert.match(source, /aria-controls="admission-[^"]+-filters"/)
     assert.match(source, /:aria-expanded="filtersOpen"/)
-    assert.match(source, /class="admission-search-row"/)
   }
+  assert.match(admin, /class="admission-management-toolbar"/)
+  assert.match(admin, /class="admission-program-workspace"/)
+  assert.match(admin, /class="admission-program-catalog"/)
+  assert.match(admin, /class="admission-question-readiness"/)
+  assert.match(admin, /class="admission-topic-strip"/)
+  assert.match(admin, /class="admission-question-bank"/)
   assert.match(admin, /<AdmissionDialog v-if="form"/)
   assert.match(admin, /PortalSelect v-model="form\.topic"/)
-  assert.match(registrar, /<AdmissionDialog v-if="inspecting"/)
+  assert.match(registrar, /class="admission-directory"/)
+  assert.match(registrar, /class="admission-applicant-list"/)
+  assert.match(registrar, /class="admission-results-workspace"/)
+  assert.match(registrar, /class="admission-history-archive"/)
+  assert.match(registrar, /class="admission-record-detail"/)
   assert.match(registrar, /<AdmissionDialog v-if="resultInspection"/)
   assert.match(registrar, /<AdmissionDialog v-if="historyInspection"/)
-  assert.match(exams, /class="placeholder-panel panel exam-summary"/)
+  assert.match(exams, /class="admission-exam-cyclebar"/)
+  assert.match(exams, /class="admission-exam-workspace"/)
+  assert.match(exams, /class="admission-exam-configuration(?:\s[^"]*)?"/)
+  assert.match(exams, /class="admission-exam-readiness"/)
   assert.match(exams, /Edit Exam Settings/)
   assert.match(exams, /<AdmissionDialog v-if="form"/)
-  assert.match(styles, /admission-search-row/)
+  assert.match(workspace, /admission-modern-header/)
+  assert.match(workspace, /admissionStaffModern\.css/)
+  assert.match(styles, /admission-program-workspace/)
+  assert.match(styles, /admission-question-bank/)
+  assert.match(styles, /admission-exam-workspace/)
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/)
-  assert.match(styles, /var\(--color-surface\)/)
-  assert.match(styles, /@media \(max-width: 600px\)/)
+  assert.match(styles, /var\(--cdm-surface/)
+  assert.match(styles, /@media \(max-width: 850px\)/)
 })

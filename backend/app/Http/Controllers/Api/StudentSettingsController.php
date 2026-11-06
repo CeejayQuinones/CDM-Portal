@@ -40,7 +40,7 @@ class StudentSettingsController extends Controller
     public function updatePreferences(Request $request): JsonResponse
     {
         $student = $this->student($request);
-        $data = $request->validate(['notification_preferences' => ['nullable', 'array'], 'academic_preferences' => ['nullable', 'array'], 'appearance' => ['nullable', 'in:light,dark,system']]);
+        $data = $request->validate(['notification_preferences' => ['nullable', 'array'], 'appearance' => ['nullable', 'in:light,dark,system']]);
         $student->settings()->updateOrCreate([], $data);
 
         return response()->json(['success' => true, 'data' => $this->payload($student->fresh())]);
@@ -111,7 +111,7 @@ class StudentSettingsController extends Controller
                 'complete' => $requirements->isNotEmpty() && $requirements->where('unresolved', true)->isEmpty(),
                 'items' => $requirements->values(),
             ],
-            'preferences' => ['notification_preferences' => $student->settings?->notification_preferences ?? [], 'academic_preferences' => $student->settings?->academic_preferences ?? []],
+            'preferences' => ['notification_preferences' => $student->settings?->notification_preferences ?? []],
             'appearance' => $appearance,
         ];
     }

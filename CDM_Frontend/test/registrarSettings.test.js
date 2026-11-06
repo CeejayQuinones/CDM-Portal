@@ -35,9 +35,9 @@ test('registrar settings exposes safe profile fields and existing password flow'
 test('student-only preferences stay out of the staff section list', async () => {
   const view = await read('../src/views/SettingsView.vue')
 
-  assert.match(view, /props\.staffMode\s*\? \['Profile', 'Account', 'Contact Information', 'Appearance', 'Security'\]/)
-  assert.match(view, /!props\.staffMode \? \['Notifications', 'Academic Preferences'\]/)
-  assert.match(view, /storedPortalAppearance\(authStore\.currentRole\)/)
-  assert.match(view, /applyPortalAppearance\(form\.value\.appearance, authStore\.currentRole\)/)
+  assert.match(view, /if \(props\.staffMode\) return \['Profile', 'Account', 'Contact Information', 'Appearance', 'Security'\]/)
+  assert.match(view, /!props\.staffMode \? \['Notifications'\]/)
+  assert.match(view, /storedPortalAppearance\(authStore\.currentRole, accountId\.value\)/)
+  assert.match(view, /applyPortalAppearance\(form\.value\.appearance, authStore\.currentRole, accountId\.value\)/)
   assert.match(view, /success\.value = 'Appearance saved\.'/)
 })

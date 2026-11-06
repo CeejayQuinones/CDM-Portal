@@ -1,0 +1,723 @@
+/*
+ * Emerald Academic — website-only module layer.
+ * DashboardLayout adds .website-academic-shell only for VITE_CDM_CLIENT=web,
+ * keeping the Capacitor and Electron presentations on their existing styles.
+ */
+.website-academic-shell {
+  --academic-emerald-950: #073b2a;
+  --academic-emerald-900: #0a4b35;
+  --academic-emerald-800: #0c6042;
+  --academic-emerald-700: #0f7650;
+  --academic-emerald-100: #dff2e8;
+  --academic-emerald-50: #f0f8f4;
+  --academic-gold: #d9ad36;
+  --academic-gold-soft: #fff6d8;
+  --academic-ink: #173128;
+  --academic-muted: #607269;
+  --academic-line: #d6e3db;
+  --academic-line-strong: #b7cbbf;
+  --academic-canvas: #f4f7f3;
+  --academic-paper: #ffffff;
+  --academic-paper-soft: #f7faf8;
+  --academic-shadow: 0 12px 32px rgb(7 59 42 / 8%);
+  --academic-shadow-raised: 0 20px 52px rgb(7 59 42 / 16%);
+
+  --accent: var(--academic-emerald-700);
+  --accent-hover: var(--academic-emerald-800);
+  --bg-page: var(--academic-canvas);
+  --bg-surface: var(--academic-paper);
+  --bg-surface-alt: var(--academic-paper-soft);
+  --bg-surface-raised: var(--academic-paper);
+  --bg-input: var(--academic-paper);
+  --bg-hover: rgb(15 118 80 / 9%);
+  --text-primary: var(--academic-ink);
+  --text-secondary: #40574d;
+  --text-muted: var(--academic-muted);
+  --border-color: var(--academic-line);
+  --border-strong: var(--academic-line-strong);
+  --color-dartmouth-green: var(--academic-emerald-800);
+  --color-dark-spring-green: var(--academic-emerald-700);
+  --color-naples-yellow: var(--academic-gold);
+  --color-eerie-black: var(--academic-ink);
+  --color-anti-flash-white: var(--academic-canvas);
+  --color-surface: var(--academic-paper);
+  --color-muted: var(--academic-muted);
+  --color-border: var(--academic-line);
+  --surface-1: var(--academic-paper);
+  --surface-2: var(--academic-paper-soft);
+  --surface-3: var(--academic-paper);
+  --shadow-soft: var(--academic-shadow);
+  --shadow-raised: var(--academic-shadow-raised);
+  --text-on-accent: var(--website-on-primary);
+  --success: var(--website-success);
+  --success-bg: var(--website-success-bg);
+  --warning: var(--website-warning);
+  --warning-bg: var(--website-warning-bg);
+  --danger: var(--website-danger);
+  --danger-bg: var(--website-danger-bg);
+
+  background: var(--academic-canvas);
+  color: var(--academic-ink);
+}
+
+.website-academic-shell :is(.shell-content, .website-shell-content) {
+  background:
+    linear-gradient(rgb(10 96 66 / 2.4%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(10 96 66 / 2.4%) 1px, transparent 1px),
+    radial-gradient(circle at 92% 4%, rgb(217 173 54 / 9%), transparent 24rem),
+    var(--academic-canvas);
+  background-size: 48px 48px, 48px 48px, auto, auto;
+}
+
+.website-academic-shell .main-content {
+  max-width: 1440px;
+  padding: clamp(24px, 3vw, 42px);
+}
+
+.website-academic-shell .portal-route-view {
+  margin-inline: auto;
+  max-width: 1360px;
+}
+
+.website-academic-shell .portal-route-enter-active,
+.website-academic-shell .portal-route-leave-active {
+  transition-duration: 220ms;
+}
+
+/* Shared page hierarchy */
+.website-academic-shell .main-content :is(.page-header, .grading-hero, .settings > header) {
+  position: relative;
+}
+
+.website-academic-shell .main-content .page-header {
+  border-bottom: 1px solid var(--academic-line);
+  margin-bottom: 24px;
+  padding: 0 0 20px 18px;
+}
+
+.website-academic-shell .main-content .page-header::before {
+  background: linear-gradient(var(--academic-gold), #efd77d);
+  border-radius: 999px;
+  content: '';
+  inset: 2px auto 20px 0;
+  position: absolute;
+  width: 4px;
+}
+
+.website-academic-shell .main-content :is(.page-kicker, .grading-eyebrow, .eyebrow, .ai-eyebrow, .kicker, .plan-kicker) {
+  color: var(--academic-emerald-700) !important;
+  font-size: .72rem;
+  font-weight: 850;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.website-academic-shell .main-content :is(.page-title, .grading-hero h1, .settings h1) {
+  color: var(--academic-emerald-950);
+  font-weight: 850;
+  letter-spacing: -.025em;
+}
+
+/* Shared academic surfaces */
+.website-academic-shell .main-content :is(
+  .en-card,
+  .placeholder-panel.panel,
+  .grading-hero,
+  .grading-toolbar,
+  .grading-window,
+  .grading-table-wrap,
+  .grading-class-card,
+  .grading-state,
+  .grading-readiness,
+  .grading-release-form,
+  .grading-review-filters,
+  .dr-panel,
+  .dr-summary-card,
+  .dr-table-panel,
+  .settings aside,
+  .settings article
+) {
+  border-color: var(--academic-line);
+  box-shadow: var(--academic-shadow);
+}
+
+.website-academic-shell .main-content :is(.en-card, .placeholder-panel.panel, .settings article) {
+  background: var(--academic-paper);
+}
+
+.website-academic-shell .main-content :is(.en-card, .placeholder-panel.panel, .grading-class-card, .requirement-card) {
+  border-radius: 14px;
+}
+
+.website-academic-shell .main-content :is(.en-card, .grading-class-card, .requirement-card) {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .website-academic-shell .main-content :is(.grading-class-card, .requirement-card):hover {
+    border-color: color-mix(in srgb, var(--academic-emerald-700) 55%, var(--academic-line));
+    box-shadow: var(--academic-shadow-raised);
+    transform: translateY(-2px);
+  }
+}
+
+/* Forms and controls */
+.website-academic-shell .main-content label {
+  color: var(--academic-ink);
+  font-weight: 700;
+}
+
+.website-academic-shell .main-content :is(input, select, textarea) {
+  border-color: var(--academic-line-strong);
+  border-radius: 9px;
+  color: var(--academic-ink);
+}
+
+.website-academic-shell .main-content :is(input, select, textarea):hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--academic-emerald-700) 55%, var(--academic-line));
+}
+
+.website-academic-shell .main-content :is(input, select, textarea):focus-visible {
+  border-color: var(--academic-emerald-700);
+  box-shadow: 0 0 0 3px rgb(15 118 80 / 15%);
+  outline: 0;
+}
+
+.website-academic-shell .main-content :is(input, select, textarea)[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.website-academic-shell .main-content :is(button, .en-link, .link-button, .dr-button) {
+  min-height: 42px;
+}
+
+.website-academic-shell .main-content :is(.primary, .grading-button.primary, .dr-button--primary, button[type='submit']):not(:disabled) {
+  background: var(--academic-emerald-700);
+  border-color: var(--academic-emerald-700);
+  color: var(--website-on-primary, #fff);
+}
+
+.website-academic-shell .main-content :is(.primary, .grading-button.primary, .dr-button--primary, button[type='submit']):hover:not(:disabled) {
+  background: var(--academic-emerald-800);
+  border-color: var(--academic-emerald-800);
+}
+
+.website-academic-shell .main-content :is(.en-secondary, .grading-button.secondary, .button.secondary, .dr-button--secondary) {
+  background: var(--academic-paper);
+  border-color: var(--academic-line-strong);
+  color: var(--academic-emerald-800);
+}
+
+.website-academic-shell .main-content :is(.field-error, .grading-field-error, .panel-error, .error-text) {
+  color: var(--danger);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+/* Progress, tabs, and status */
+.website-academic-shell .main-content :is(.en-progress, .progress-steps) {
+  counter-reset: academic-step;
+}
+
+.website-academic-shell .main-content :is(.en-progress li, .progress-steps li) {
+  background: var(--academic-paper-soft);
+  border-color: var(--academic-line);
+  color: var(--academic-muted);
+}
+
+.website-academic-shell .main-content :is(.en-progress [aria-current='step'], .progress-steps .current) {
+  border-color: var(--academic-gold);
+  color: var(--academic-emerald-900);
+}
+
+.website-academic-shell .main-content :is(.grading-tabs) {
+  border-bottom: 1px solid var(--academic-line);
+  gap: 4px;
+  overflow-x: auto;
+  padding: 0 0 1px;
+  scrollbar-width: thin;
+}
+
+.website-academic-shell .main-content :is(.grading-tabs) button {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 8px 8px 0 0;
+  color: var(--academic-muted);
+  white-space: nowrap;
+}
+
+.website-academic-shell .main-content :is(.grading-tabs) button.active {
+  background: var(--academic-emerald-50) !important;
+  border-bottom-color: var(--academic-gold) !important;
+  color: var(--academic-emerald-900) !important;
+}
+
+.website-academic-shell .main-content :is(.en-badge, .badge, .risk-pill, .status-badge, .grading-status) {
+  font-weight: 750;
+  letter-spacing: .01em;
+}
+
+.website-academic-shell .main-content :is(.grading-alert, .state-message, .notice, .panel-state, .monitor-state, .toast, .error) {
+  border-left-width: 4px;
+  border-radius: 10px;
+}
+
+/* Academic tables */
+.website-academic-shell .main-content :is(.en-table, .grading-table-wrap, .table-scroll, .dr-table-scroll, .table-wrap) {
+  max-width: 100%;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: var(--academic-line-strong) transparent;
+}
+
+.website-academic-shell .main-content :is(.en-table, .grading-table-wrap, .table-scroll, .dr-table-scroll) table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.website-academic-shell .main-content :is(.en-table, .grading-table-wrap, .table-scroll, .dr-table-scroll) thead th {
+  background: var(--academic-emerald-50);
+  border-bottom: 1px solid var(--academic-line-strong);
+  color: var(--academic-emerald-950);
+  font-size: .73rem;
+  font-weight: 850;
+  letter-spacing: .045em;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 3;
+}
+
+.website-academic-shell .main-content :is(.en-table, .grading-table-wrap, .table-scroll, .dr-table-scroll) tbody tr {
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.website-academic-shell .main-content :is(.en-table, .grading-table-wrap, .table-scroll, .dr-table-scroll) tbody tr:hover > * {
+  background: color-mix(in srgb, var(--academic-emerald-50) 78%, var(--academic-paper));
+}
+
+.website-academic-shell .main-content :is(.en-table, .grading-table-wrap, .table-scroll, .dr-table-scroll) tbody tr:focus-within > * {
+  background: var(--academic-gold-soft);
+  box-shadow: inset 0 1px var(--academic-gold), inset 0 -1px var(--academic-gold);
+}
+
+.website-academic-shell .grading-table-wrap td input {
+  min-width: 5.75rem;
+  text-align: right;
+}
+
+.website-academic-shell .grading-table-wrap td input:not(:disabled) {
+  background: var(--website-input, #fffef8);
+  border-color: color-mix(in srgb, var(--academic-gold) 55%, var(--academic-line));
+}
+
+.website-academic-shell .grading-table-wrap td input:disabled {
+  background: var(--academic-paper-soft);
+  border-style: dashed;
+}
+
+.website-academic-shell .grading-table-wrap .sticky {
+  box-shadow: 1px 0 var(--academic-line);
+}
+
+/* Enrollment and class schedule */
+.website-academic-shell .enrollment-workspace {
+  max-width: 1320px;
+}
+
+.website-academic-shell .enrollment-workspace .en-card {
+  margin-block: 16px;
+  padding: clamp(18px, 2.4vw, 28px);
+}
+
+.website-academic-shell .enrollment-workspace .en-card > h2:first-child {
+  color: var(--academic-emerald-950);
+  font-size: 1.15rem;
+}
+
+.website-academic-shell .enrollment-workspace .en-timetable {
+  gap: 12px;
+  padding-bottom: 10px;
+}
+
+.website-academic-shell .enrollment-workspace .en-timetable > section {
+  background: var(--academic-paper-soft);
+  border: 1px solid var(--academic-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.website-academic-shell .enrollment-workspace .en-timetable h3 {
+  background: var(--academic-emerald-50);
+  color: var(--academic-emerald-900);
+  margin: 0;
+}
+
+.website-academic-shell .enrollment-workspace .en-time-class {
+  border-left-color: var(--academic-gold);
+  border-radius: 7px;
+  margin: 10px;
+}
+
+/* Admission and entrance examination */
+.website-academic-shell .admission-workflow {
+  max-width: 1180px;
+  margin-inline: auto;
+}
+
+.website-academic-shell .admission-applicant .panel {
+  overflow: clip;
+}
+
+.website-academic-shell .admission-applicant .identity-card,
+.website-academic-shell .admission-applicant .next-step,
+.website-academic-shell .admission-applicant .result-card {
+  border-top: 3px solid var(--academic-emerald-700);
+}
+
+.website-academic-shell .admission-applicant .progress-steps {
+  gap: 8px;
+}
+
+.website-academic-shell .admission-applicant .step-number {
+  background: var(--academic-emerald-700);
+  color: var(--website-on-primary, #fff);
+}
+
+.website-academic-shell .admission-applicant .current .step-number {
+  box-shadow: 0 0 0 4px rgb(217 173 54 / 26%);
+}
+
+.website-academic-shell .exam-layout {
+  align-items: start;
+}
+
+.website-academic-shell .exam-sidebar {
+  position: sticky;
+  top: 88px;
+}
+
+.website-academic-shell .question-card {
+  border-top: 3px solid var(--academic-gold) !important;
+}
+
+.website-academic-shell .answer {
+  border-color: var(--academic-line-strong);
+  border-radius: 10px;
+}
+
+.website-academic-shell .answer:has(input:checked) {
+  background: var(--academic-emerald-50);
+  border-color: var(--academic-emerald-700);
+  box-shadow: 0 0 0 2px rgb(15 118 80 / 12%);
+}
+
+/* Document requests */
+.website-academic-shell .student-requests-panel,
+.website-academic-shell .student-request-appointments {
+  border-top: 3px solid var(--academic-emerald-700);
+}
+
+.website-academic-shell .student-request-guidance {
+  background: var(--academic-gold-soft);
+  border-left: 4px solid var(--academic-gold);
+}
+
+.website-academic-shell .calendar-day.selected,
+.website-academic-shell .appointment-time-option.selected {
+  background: var(--academic-emerald-700);
+  border-color: var(--academic-emerald-700);
+  color: var(--website-on-primary, #fff);
+}
+
+.website-academic-shell .student-timeline-marker {
+  background: var(--academic-emerald-700);
+  box-shadow: 0 0 0 4px var(--academic-emerald-100);
+}
+
+/* Profile and Settings */
+.website-academic-shell .settings {
+  --settings-page: transparent;
+  --settings-surface: var(--academic-paper);
+  --settings-field: var(--academic-paper);
+  --settings-text: var(--academic-ink);
+  --settings-muted: var(--academic-muted);
+  --settings-border: var(--academic-line);
+  --settings-accent: var(--academic-emerald-700);
+  --settings-selected: var(--academic-emerald-50);
+  --settings-primary: var(--academic-emerald-700);
+  --settings-on-primary: var(--website-on-primary);
+  --settings-focus: rgb(15 118 80 / 22%);
+  --settings-toggle: var(--website-border-strong);
+  --settings-save: var(--academic-gold-soft);
+  --settings-success: var(--website-success-bg);
+  --settings-danger: var(--website-danger);
+  --settings-danger-bg: var(--website-danger-bg);
+  --settings-danger-border: var(--website-danger-border);
+  --settings-shadow: var(--academic-shadow);
+  --settings-color-scheme: inherit;
+  max-width: 1180px;
+}
+
+.website-academic-shell .settings > header {
+  border-bottom: 1px solid var(--academic-line);
+  padding-bottom: 18px;
+}
+
+.website-academic-shell .settings aside {
+  position: sticky;
+  top: 88px;
+}
+
+.website-academic-shell .settings aside button.active {
+  box-shadow: inset 3px 0 var(--academic-gold);
+}
+
+.website-academic-shell .settings .save-bar {
+  border-color: color-mix(in srgb, var(--academic-gold) 55%, var(--academic-line));
+  box-shadow: var(--academic-shadow-raised);
+}
+
+/* Dashboard proportions */
+.website-academic-shell .guide-dashboard {
+  gap: clamp(24px, 3vw, 34px);
+  max-width: 1180px;
+}
+
+.website-academic-shell .guide-hero {
+  gap: clamp(18px, 3vw, 32px);
+  padding: clamp(24px, 3vw, 36px);
+}
+
+.website-academic-shell .guide-summary-grid {
+  grid-template-columns: repeat(4, minmax(170px, 240px));
+  justify-content: start;
+}
+
+.website-academic-shell .guide-summary-card {
+  min-height: 104px;
+}
+
+.website-academic-shell .workflow-grid {
+  max-width: 1080px;
+}
+
+/* Dialogs */
+.website-academic-shell :is(.en-overlay, .admission-overlay, .grading-modal-backdrop),
+.website-academic-client .dr-dialog-overlay {
+  backdrop-filter: blur(4px);
+  background: rgb(5 38 27 / 72%);
+}
+
+.website-academic-shell :is(.en-dialog, .admission-dialog, .grading-modal),
+.website-academic-client .dr-dialog {
+  border-color: var(--academic-line-strong);
+  border-radius: 16px;
+  box-shadow: var(--academic-shadow-raised);
+}
+
+.website-academic-shell :is(.en-dialog-header, .admission-dialog-header, .grading-modal > header),
+.website-academic-client .dr-dialog-header {
+  border-bottom-color: var(--academic-line);
+}
+
+.website-academic-shell :is(.grading-modal footer, .appointment-details-footer),
+.website-academic-client .dr-dialog-footer {
+  border-top-color: var(--academic-line);
+}
+
+/* Complete website dark palette. The selectors remain rooted in the website
+ * shell so Capacitor and Electron retain their existing presentation. */
+html[data-student-theme='dark'].website-ui-2-client .website-academic-shell {
+  --academic-emerald-950: #d7f7e7;
+  --academic-emerald-900: #a7f3d0;
+  --academic-emerald-800: #6ee7b7;
+  --academic-emerald-700: #34d399;
+  --academic-emerald-100: #244c3b;
+  --academic-emerald-50: #183328;
+  --academic-gold: #f4d35e;
+  --academic-gold-soft: #3b341d;
+  --academic-ink: #e5ece8;
+  --academic-muted: #a7b8ad;
+  --academic-line: #294133;
+  --academic-line-strong: #3c5b49;
+  --academic-canvas: #0b1613;
+  --academic-paper: #13241d;
+  --academic-paper-soft: #172b22;
+  --academic-shadow: 0 12px 32px rgb(0 0 0 / 24%);
+  --academic-shadow-raised: 0 20px 52px rgb(0 0 0 / 34%);
+  --text-secondary: #c5d2ca;
+  --bg-hover: rgb(52 211 153 / 12%);
+  color-scheme: dark;
+}
+
+html[data-student-theme='dark'].website-ui-2-client .website-academic-shell :is(.shell-content, .website-shell-content) {
+  background:
+    linear-gradient(rgb(110 231 183 / 3.5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(110 231 183 / 3.5%) 1px, transparent 1px),
+    radial-gradient(circle at 92% 4%, rgb(244 211 94 / 7%), transparent 24rem),
+    var(--academic-canvas);
+  background-size: 48px 48px, 48px 48px, auto, auto;
+}
+
+
+html[data-student-theme='dark'].website-ui-2-client .website-academic-shell :is(
+  table,
+  tbody,
+  tr,
+  td,
+  .question-card,
+  .answer,
+  .exam-sidebar,
+  .student-request-detail,
+  .student-request-appointments,
+  .appointment-details,
+  .calendar-grid,
+  .conversation .message.assistant
+) {
+  border-color: var(--academic-line);
+  color: var(--academic-ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-student-theme='system'].website-ui-2-client .website-academic-shell {
+    --academic-emerald-950: #d7f7e7;
+    --academic-emerald-900: #a7f3d0;
+    --academic-emerald-800: #6ee7b7;
+    --academic-emerald-700: #34d399;
+    --academic-emerald-100: #244c3b;
+    --academic-emerald-50: #183328;
+    --academic-gold: #f4d35e;
+    --academic-gold-soft: #3b341d;
+    --academic-ink: #e5ece8;
+    --academic-muted: #a7b8ad;
+    --academic-line: #294133;
+    --academic-line-strong: #3c5b49;
+    --academic-canvas: #0b1613;
+    --academic-paper: #13241d;
+    --academic-paper-soft: #172b22;
+    --academic-shadow: 0 12px 32px rgb(0 0 0 / 24%);
+    --academic-shadow-raised: 0 20px 52px rgb(0 0 0 / 34%);
+    --text-secondary: #c5d2ca;
+    --bg-hover: rgb(52 211 153 / 12%);
+    color-scheme: dark;
+  }
+
+  html[data-student-theme='system'].website-ui-2-client .website-academic-shell :is(.shell-content, .website-shell-content) {
+    background:
+      linear-gradient(rgb(110 231 183 / 3.5%) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(110 231 183 / 3.5%) 1px, transparent 1px),
+      radial-gradient(circle at 92% 4%, rgb(244 211 94 / 7%), transparent 24rem),
+      var(--academic-canvas);
+    background-size: 48px 48px, 48px 48px, auto, auto;
+  }
+
+}
+
+@media print {
+  html.website-ui-2-client,
+  html.website-ui-2-client body,
+  html.website-ui-2-client .website-academic-shell {
+    background: #fff !important;
+    color: #000 !important;
+    color-scheme: light !important;
+  }
+}
+
+/* Website breakpoints */
+@media (max-width: 900px) {
+  .website-academic-shell .main-content {
+    padding: 22px;
+  }
+
+  .website-academic-shell .exam-sidebar,
+  .website-academic-shell .settings aside {
+    position: static;
+  }
+
+  .website-academic-shell .grading-table-wrap .sticky {
+    position: static;
+  }
+
+  .website-academic-shell .guide-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .website-academic-shell .main-content {
+    padding: 14px;
+  }
+
+  .website-academic-shell .main-content .page-header {
+    margin-bottom: 18px;
+    padding: 0 0 15px 13px;
+  }
+
+  .website-academic-shell .main-content .page-header::before {
+    bottom: 15px;
+  }
+
+  .website-academic-shell .main-content :is(.en-card, .placeholder-panel.panel, .grading-hero) {
+    border-radius: 11px;
+  }
+
+  .website-academic-shell .main-content :is(button, .en-link, .link-button, .dr-button) {
+    min-height: 44px;
+  }
+
+  .website-academic-shell .enrollment-workspace .en-card {
+    padding: 15px;
+  }
+
+
+  .website-academic-shell .guide-dashboard {
+    gap: 18px;
+  }
+
+  .website-academic-shell .guide-hero {
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .website-academic-shell .guide-hero h1 {
+    font-size: clamp(1.45rem, 7.5vw, 1.9rem);
+    line-height: 1.12;
+    text-wrap: balance;
+  }
+
+  .website-academic-shell .guide-hero p {
+    line-height: 1.45;
+    margin-top: 8px;
+  }
+
+  .website-academic-shell .identity-list {
+    padding: 12px;
+  }
+
+  .website-academic-shell .guide-summary-card {
+    min-height: 88px;
+    padding: 12px;
+  }
+}
+
+@media (max-width: 370px) {
+  .website-academic-shell .guide-hero {
+    padding: 15px;
+  }
+
+  .website-academic-shell .guide-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .website-academic-shell .main-content *,
+  .website-academic-shell .main-content *::before,
+  .website-academic-shell .main-content *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}

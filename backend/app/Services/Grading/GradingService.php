@@ -94,6 +94,17 @@ class GradingService
         return $this->workspaceData($assignment->fresh(), $sheet->fresh());
     }
 
+    /**
+     * Return an existing Professor-owned gradesheet without creating or changing it.
+     * This is used by read-only export and import-preview operations.
+     */
+    public function readWorkspace(User $user, GradeSheet $sheet): array
+    {
+        $this->assertOwnedSheetAccess($user, $sheet);
+
+        return $this->workspaceData($sheet->sectionSubject()->firstOrFail(), $sheet);
+    }
+
     public function saveAssessment(User $user, GradeSheet $sheet, array $input, ?GradeAssessment $assessment = null): GradeAssessment
     {
         $this->ownedSheet($user, $sheet);
@@ -181,6 +192,10 @@ class GradingService
         $this->assertOpen($sheet, $assessment->period);
 
         return DB::transaction(function () use ($user, $sheet, $assessment, $input) {
+            $sheet = GradeSheet::query()->lockForUpdate()->findOrFail($sheet->id);
+            $this->ownedSheet($user, $sheet);
+            $assessment = GradeAssessment::query()->lockForUpdate()->where('grade_sheet_id', $sheet->id)->where('status', 'active')->findOrFail($assessment->id);
+            $this->assertOpen($sheet, $assessment->period);
             $saved = [];
             foreach ($input['scores'] as $entry) {
                 abort_unless((float) $entry['score'] <= (float) $assessment->max_score, 422, 'A score exceeds the assessment maximum.');
@@ -247,9 +262,36 @@ class GradingService
 
     private function ownedSheet(User $user, GradeSheet $sheet): void
     {
+        $this->assertOwnedSheetAccess($user, $sheet);
+        abort_unless(in_array($sheet->status, ['draft', 'returned'], true), 409, 'This grade sheet is locked for review or publication.');
+    }
+
+    public function assertOwnedSheetAccess(User $user, GradeSheet $sheet): Professor
+    {
         $professor = $this->professor($user);
         abort_unless($sheet->professor_id === $professor->id && $sheet->sectionSubject()->where('professor_id', $professor->id)->exists(), 404, 'Grade sheet not found.');
+
+        return $professor;
+    }
+
+    public function assertEditableSheet(User $user, GradeSheet $sheet, string $period): Professor
+    {
+        $professor = $this->assertOwnedSheetAccess($user, $sheet);
         abort_unless(in_array($sheet->status, ['draft', 'returned'], true), 409, 'This grade sheet is locked for review or publication.');
+        $this->assertOpen($sheet, $period);
+
+        return $professor;
+    }
+
+    /** @return array<int, int> */
+    public function rosterIds(GradeSheet $sheet, bool $lockForUpdate = false): array
+    {
+        $query = $this->rosterQuery($sheet)->select('es.id');
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return $query->pluck('es.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
     }
 
     private function assertOpen(GradeSheet $sheet, ?string $period): void

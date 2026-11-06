@@ -6,6 +6,8 @@ import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAut
 import { apiClient } from '../../services/apiClient'
 import { useAuthStore } from '../../stores/authStore'
 import { profilePhotoUrl } from '../../utils/profilePhoto'
+import StudentDocumentRequirementsMatrix from './StudentDocumentRequirementsMatrix.vue'
+import { invalidateStudentRecordsCache, readStudentRecordsCache, studentRecordsCacheScope, writeStudentRecordsCache } from './studentRecordsCache'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -28,30 +30,21 @@ const pagination = reactive({ current_page: 1, last_page: 1, total: 0, from: 0, 
 const filters = reactive({ search: '', course: '', year_level: '', section: '', student_status: '', attention: '', physical_record_status: '', sort: 'student_number', direction: 'asc' })
 const failedPhotos = ref(new Set())
 const quickSearchInput = ref(null)
-const quickQuery = ref('')
-const quickResults = ref([])
-const quickLoading = ref(false)
-const quickError = ref('')
-const quickOpen = ref(false)
 const productivityLoading = ref(true)
 const productivityError = ref('')
-const attentionCategories = [
-  { value: 'all', label: 'All' }, { value: 'digital_missing', label: 'Digital Missing' },
-  { value: 'awaiting_review', label: 'Awaiting Review' }, { value: 'needs_resubmission', label: 'Needs Resubmission' },
-  { value: 'hard_copy_required', label: 'Hard Copy Required' }, { value: 'physical_records', label: 'Physical Records' },
-]
-const productivity = reactive({ recent_students: [], saved_filters: [], visible_columns: [], attention: { total: 0, students: [], items: [], categories: attentionCategories }, today: {} })
-const attentionCategory = ref('all')
+const productivity = reactive({ recent_students: [], saved_filters: [], visible_columns: [], attention: { total: 0, students: [], items: [], document_types: [], matrix_students: [], categories: [] }, today: {} })
 const documentRequirementsOpen = ref(false)
 const documentRequirementsDialog = ref(null)
 const documentRequirementsClose = ref(null)
 const filtersOpen = ref(false)
 const documentRequirementCount = computed(() => productivity.attention.requirements_total || 0)
-const attentionItems = computed(() => attentionCategory.value === 'all'
-  ? (productivity.attention.items || [])
-  : (productivity.attention.items || []).filter(item => item.attention_reasons?.includes(attentionCategory.value)))
-const physicalAttentionStudents = computed(() => (productivity.attention.students || []).filter(student =>
-  student.completeness?.issues?.some(issue => issue.area === 'physical_record')))
+const hasTodayActivity = computed(() => Object.values(productivity.today || {}).some((value) => Number(value) > 0))
+const studentMetrics = computed(() => [
+  { label: 'Students in results', value: pagination.total, icon: 'ST' },
+  { label: 'Enrolled on this page', value: students.value.filter((student) => ['enrolled', 'approved'].includes(student.current_enrollment?.status || student.enrollment_status)).length, icon: 'EN' },
+  { label: 'Physical files on this page', value: students.value.filter((student) => student.physical_record_status === 'available').length, icon: 'PF' },
+  { label: 'Pending requirements', value: documentRequirementCount.value, icon: '!' },
+])
 const nonDocumentAttentionStudents = computed(() => (productivity.attention.students || []).map(student => ({
   ...student,
   completeness: {
@@ -77,10 +70,12 @@ const columnOptions = [
 ]
 const visibleColumns = ref(columnOptions.map(([key]) => key))
 const sessionKey = computed(() => `student-records-session:${auth.currentUser?.id || 'unknown'}`)
+const cacheScope = computed(() => studentRecordsCacheScope(auth.currentUser))
 let bulkOptionsLoaded = false
 let bulkOptionsRequest = null
 let documentRequirementsTrigger = null
 let previousBodyOverflow = ''
+let persistSessionTimer = null
 
 const statuses = ['regular', 'irregular', 'graduated', 'transferred', 'dropped', 'leave_of_absence']
 const showColumn = (column) => ['student_number', 'name'].includes(column) || visibleColumns.value.includes(column)
@@ -139,7 +134,19 @@ const confirmationMessage = computed(
     `You are about to apply “${selectedAction.value?.label || 'Bulk Action'}” (${selectedValueLabel.value}) to ${selectedCount.value} selected student record${selectedCount.value === 1 ? '' : 's'}.`,
 )
 
-async function fetchStudents(page = 1) {
+function studentListCacheKey(page) {
+  return `directory:${JSON.stringify({ ...filters, page })}`
+}
+
+async function fetchStudents(page = 1, allowCached = false) {
+  const cacheKey = studentListCacheKey(page)
+  const cached = allowCached ? readStudentRecordsCache(cacheScope.value, cacheKey) : undefined
+  if (cached) {
+    students.value = cached.data
+    Object.assign(pagination, cached.meta)
+    loading.value = false
+    return
+  }
   loading.value = true
   error.value = ''
   try {
@@ -147,6 +154,7 @@ async function fetchStudents(page = 1) {
     students.value = data.data
     failedPhotos.value = new Set()
     Object.assign(pagination, data.meta)
+    writeStudentRecordsCache(cacheScope.value, cacheKey, { data: data.data, meta: data.meta })
   } catch (requestError) {
     students.value = []
     error.value = requestError.response?.data?.message || 'Unable to load student records. Please try again.'
@@ -155,33 +163,21 @@ async function fetchStudents(page = 1) {
   }
 }
 
-async function runQuickSearch() {
-  if (quickQuery.value.trim().length < 2) {
-    quickError.value = 'Enter at least two characters.'
+async function fetchProductivity(allowCached = false) {
+  const cached = allowCached ? readStudentRecordsCache(cacheScope.value, 'productivity') : undefined
+  if (cached) {
+    Object.assign(productivity, cached)
+    visibleColumns.value = [...(cached.visible_columns || columnOptions.map(([key]) => key))]
+    productivityLoading.value = false
     return
   }
-  quickLoading.value = true
-  quickError.value = ''
-  quickOpen.value = true
-  try {
-    const { data } = await apiClient.get('/students/quick-search', { params: { q: quickQuery.value.trim() } })
-    quickResults.value = data.data.results
-    if (data.data.exact && quickResults.value.length === 1) viewStudent(quickResults.value[0].id)
-  } catch (requestError) {
-    quickResults.value = []
-    quickError.value = requestError.response?.data?.message || 'Unable to search Student records.'
-  } finally {
-    quickLoading.value = false
-  }
-}
-
-async function fetchProductivity() {
   productivityLoading.value = true
   productivityError.value = ''
   try {
     const { data } = await apiClient.get('/student-records/productivity')
     Object.assign(productivity, data.data)
     visibleColumns.value = [...(data.data.visible_columns || columnOptions.map(([key]) => key))]
+    writeStudentRecordsCache(cacheScope.value, 'productivity', data.data)
   } catch (requestError) {
     productivityError.value = requestError.response?.data?.message || 'Unable to load Registrar productivity tools.'
   } finally {
@@ -224,12 +220,6 @@ function viewStudent(id) {
   persistSession()
   router.push({ name: 'student-details', params: { id } })
 }
-function reviewRequirement(item) {
-  closeDocumentRequirements(false)
-  persistSession()
-  router.push({ name: 'student-documents', params: { id: item.student_id }, query: { document: item.document_type_id } })
-}
-
 async function openDocumentRequirements(event) {
   documentRequirementsTrigger = event?.currentTarget || null
   previousBodyOverflow = document.body.style.overflow
@@ -312,6 +302,7 @@ async function updateColumns(column, checked) {
   visibleColumns.value = checked ? [...new Set([...visibleColumns.value, column])] : visibleColumns.value.filter((item) => item !== column)
   try {
     await apiClient.put('/student-records/preferences', { visible_columns: [...new Set(['student_number', 'name', ...visibleColumns.value])] })
+    invalidateStudentRecordsCache(cacheScope.value, 'productivity')
   } catch (requestError) {
     visibleColumns.value = previous
     error.value = requestError.response?.data?.message || 'Unable to save column preferences.'
@@ -320,6 +311,14 @@ async function updateColumns(column, checked) {
 
 function persistSession() {
   sessionStorage.setItem(sessionKey.value, JSON.stringify({ filters: { ...filters }, page: pagination.current_page, saved_filter_id: savedFilterId.value }))
+}
+
+function queueSessionPersistence() {
+  if (persistSessionTimer) clearTimeout(persistSessionTimer)
+  persistSessionTimer = setTimeout(() => {
+    persistSessionTimer = null
+    persistSession()
+  }, 120)
 }
 
 function restoreSession() {
@@ -340,7 +339,6 @@ function handleKeyboard(event) {
     quickSearchInput.value?.focus()
   }
   if (event.key === 'Escape') {
-    quickOpen.value = false
     closeDocumentRequirements()
     closeConfirmation()
   }
@@ -421,42 +419,35 @@ async function applyBulkUpdate() {
 watch(selectedCount, (count) => {
   if (count > 0) fetchBulkOptions()
 })
-watch([filters, () => pagination.current_page, savedFilterId], persistSession, { deep: true })
+watch([filters, () => pagination.current_page, savedFilterId], queueSessionPersistence, { deep: true })
 
 onMounted(() => {
   const page = restoreSession()
   window.addEventListener('keydown', handleKeyboard)
-  Promise.all([fetchStudents(page), fetchProductivity()])
+  Promise.all([fetchStudents(page, true), fetchProductivity(true)])
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyboard)
+  if (persistSessionTimer) clearTimeout(persistSessionTimer)
+  persistSession()
   if (documentRequirementsOpen.value) document.body.style.overflow = previousBodyOverflow
 })
 </script>
 
 <template>
+  <div class="student-records-workspace">
   <section class="page-header">
-    <p class="page-kicker">Registrar</p>
-    <h1 class="page-title">Student Records</h1>
-    <p class="page-description">Search, review, and manage official student records.</p>
+    <p class="page-kicker">Registrar / Student Records</p>
+    <h1 class="page-title">Student Management</h1>
+    <p class="page-description">Search, review, and manage official student information.</p>
   </section>
 
-  <section class="quick-search-panel" aria-label="Quick Student search">
-    <div><p class="page-kicker">Quick access</p><h2>Find a Student</h2><p>Search an exact or partial Student number, or any part of a name.</p></div>
-    <form class="quick-search" role="search" @submit.prevent="runQuickSearch">
-      <label for="student-quick-search">Student number or name</label>
-      <div><input id="student-quick-search" ref="quickSearchInput" v-model.trim="quickQuery" type="search" autocomplete="off" placeholder="Press Ctrl/Cmd + K" @keydown.esc="quickOpen = false" /><button type="submit" :disabled="quickLoading">{{ quickLoading ? 'Searching…' : 'Search' }}</button></div>
-    </form>
-    <div v-if="quickOpen" class="quick-results" aria-live="polite">
-      <p v-if="quickError" role="alert">{{ quickError }}</p>
-      <p v-else-if="quickLoading">Searching Student records…</p>
-      <p v-else-if="!quickResults.length">No matching Students found.</p>
-      <template v-else>
-        <button v-for="student in quickResults" :key="student.id" type="button" @click="viewStudent(student.id)"><strong>{{ student.student_number }} · {{ student.name }}</strong><span>{{ student.program || 'Program unavailable' }} · {{ student.section || 'Section unavailable' }}</span></button>
-      </template>
-    </div>
+  <section class="student-metrics" aria-label="Student record summary">
+    <article v-for="metric in studentMetrics" :key="metric.label"><span aria-hidden="true">{{ metric.icon }}</span><div><small>{{ metric.label }}</small><strong>{{ Number(metric.value || 0).toLocaleString() }}</strong></div></article>
   </section>
 
+  <div class="student-directory-layout">
+  <aside class="student-records-insights" aria-label="Student Records workspace shortcuts">
   <p v-if="productivityError" class="notice notice-error" role="alert">{{ productivityError }} <button type="button" @click="fetchProductivity">Retry</button></p>
   <section v-else class="productivity-grid" :class="{ 'has-attention': nonDocumentAttentionStudents.length }" aria-label="Registrar Student Records productivity">
     <article class="productivity-card recent-card"><div class="card-heading"><div><p class="page-kicker">Your workspace</p><h2>Recently Viewed</h2></div><span>{{ productivityLoading ? 'Loading…' : `${productivity.recent_students.length} records` }}</span></div><p v-if="!productivityLoading && !productivity.recent_students.length" class="empty-state">No recently viewed Students.</p><div class="compact-records"><button v-for="student in productivity.recent_students" :key="student.id" type="button" @click="viewStudent(student.id)"><strong>{{ student.student_number }} · {{ student.name }}</strong><span>{{ student.program || 'No program' }} · {{ student.section || 'No Section' }} · {{ new Date(student.viewed_at).toLocaleString() }}</span></button></div></article>
@@ -467,18 +458,20 @@ onBeforeUnmount(() => {
         <span class="attention-toggle-label">Open</span>
       </button>
     </article>
-    <article class="productivity-card today-card"><div class="card-heading"><div><p class="page-kicker">Today</p><h2>Activity</h2></div></div><div class="activity-stats"><span><strong>{{ productivity.today.students_viewed || 0 }}</strong> viewed</span><span><strong>{{ productivity.today.records_updated || 0 }}</strong> updated</span><span><strong>{{ productivity.today.physical_records_moved || 0 }}</strong> moved</span><span><strong>{{ productivity.today.documents_updated || 0 }}</strong> documents</span></div></article>
+    <article v-if="hasTodayActivity" class="productivity-card today-card"><div class="card-heading"><div><p class="page-kicker">Today</p><h2>Activity</h2></div></div><div class="activity-stats"><span><strong>{{ productivity.today.students_viewed || 0 }}</strong> viewed</span><span><strong>{{ productivity.today.records_updated || 0 }}</strong> updated</span><span><strong>{{ productivity.today.physical_records_moved || 0 }}</strong> moved</span><span><strong>{{ productivity.today.documents_updated || 0 }}</strong> documents</span></div></article>
     <article v-if="nonDocumentAttentionStudents.length" class="productivity-card attention-card">
       <div class="card-heading"><div><p class="page-kicker">Operational queue</p><h2>Needs Attention</h2></div><span>{{ nonDocumentAttentionStudents.length }} records</span></div>
       <div class="compact-records"><button v-for="student in nonDocumentAttentionStudents" :key="student.id" type="button" @click="viewStudent(student.id)"><strong>{{ student.student_number }} · {{ student.name }}</strong><span>{{ student.completeness.issues.map(issue => issue.label).join(' · ') }}</span></button></div>
     </article>
   </section>
+  </aside>
+  <section class="student-directory-main">
 
   <section class="student-records-panel" aria-label="Student record filters">
     <form class="listing-search" role="search" @submit.prevent="applyFilters">
       <label class="search-field">
         <span>Search</span>
-        <input v-model.trim="filters.search" type="search" placeholder="Search student number or name" />
+        <input ref="quickSearchInput" v-model.trim="filters.search" type="search" placeholder="Search student number or name" />
       </label>
       <button class="button button-primary" type="submit" :disabled="loading">Search</button>
       <button class="button button-secondary filters-toggle" type="button" aria-controls="advanced-student-filters" :aria-expanded="filtersOpen" @click="filtersOpen = !filtersOpen">Filters<span v-if="activeAdvancedFilterCount" class="filter-count">{{ activeAdvancedFilterCount }}</span></button>
@@ -529,8 +522,8 @@ onBeforeUnmount(() => {
   <p v-if="success" class="notice notice-success" role="status">{{ success }}</p>
 
   <section class="student-records-panel records-panel" aria-live="polite">
+    <div class="directory-title"><div><p class="page-kicker">Official records</p><h2>Student Directory</h2></div><span>{{ displayedRange }}</span></div>
     <div class="records-heading">
-      <p>{{ loading ? 'Loading records…' : displayedRange }}</p>
       <div class="selection-controls">
         <button
           class="selection-button"
@@ -679,6 +672,8 @@ onBeforeUnmount(() => {
       @page-change="fetchStudents"
     />
   </section>
+  </section>
+  </div>
 
   <Teleport to="body">
     <Transition name="modal-fade">
@@ -693,19 +688,16 @@ onBeforeUnmount(() => {
           @keydown="trapDocumentRequirementsFocus"
         >
           <header class="document-requirements-header">
-            <div><p class="modal-kicker">Records checklist</p><h2 id="document-requirements-title">Document Requirements</h2><p>{{ documentRequirementCount }} unresolved requirement{{ documentRequirementCount === 1 ? '' : 's' }}</p></div>
+            <div>
+              <p class="modal-kicker">Student Management</p>
+              <h2 id="document-requirements-title">Document Requirements</h2>
+              <p>Review each student's digital and physical document status in one matrix.</p>
+            </div>
+            <span class="requirements-total">{{ documentRequirementCount }} unresolved</span>
             <button ref="documentRequirementsClose" class="modal-close" type="button" aria-label="Close Document Requirements" @click="closeDocumentRequirements">×</button>
           </header>
           <div class="document-requirements-body">
-            <div class="attention-filters" aria-label="Document requirement categories"><button v-for="category in productivity.attention.categories" :key="category.value" type="button" :class="{ active: attentionCategory === category.value }" @click="attentionCategory = category.value">{{ category.label }}</button></div>
-            <p v-if="!attentionItems.length && attentionCategory !== 'physical_records'" class="empty-state">No document requirements match this filter.</p>
-            <div v-if="attentionItems.length" class="attention-table-wrap">
-              <table class="attention-table">
-                <thead><tr><th>Student</th><th>Document</th><th>Digital Status</th><th>Physical Status</th><th>Attention Reason</th><th>Action</th></tr></thead>
-                <tbody><tr v-for="item in attentionItems" :key="item.key"><td data-label="Student"><strong>{{ item.student_number }}</strong><span>{{ item.student_name }}</span></td><td data-label="Document">{{ item.document_type }}</td><td data-label="Digital Status"><span class="attention-status" :data-status="item.digital_status">{{ displayStatus(item.digital_status) }}</span></td><td data-label="Physical Status"><span class="attention-status" :data-status="item.physical_status">{{ item.physical_status === 'submitted' ? 'Received' : displayStatus(item.physical_status) }}</span></td><td data-label="Attention Reason">{{ item.attention_reason }}</td><td data-label="Action"><button type="button" @click="reviewRequirement(item)">Review</button></td></tr></tbody>
-              </table>
-            </div>
-            <div v-if="attentionCategory === 'physical_records'" class="compact-records"><button v-for="student in physicalAttentionStudents" :key="student.id" type="button" @click="viewStudent(student.id)"><strong>{{ student.student_number }} · {{ student.name }}</strong><span>Physical Record Issue · {{ student.completeness.issues.filter(issue => issue.area === 'physical_record').map(issue => issue.label).join(' ') }}</span></button><p v-if="!physicalAttentionStudents.length" class="empty-state">No physical Student Records need attention.</p></div>
+            <StudentDocumentRequirementsMatrix :attention="productivity.attention" @refresh="fetchProductivity" />
           </div>
         </section>
       </div>
@@ -736,9 +728,11 @@ onBeforeUnmount(() => {
       </div>
     </section>
   </div>
+  </div>
 </template>
 
 <style scoped>
+.student-records-workspace{display:grid;gap:14px;min-width:0}.student-records-workspace>.page-header{margin-bottom:0}.student-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.student-metrics article{display:flex;align-items:center;gap:10px;min-width:0;padding:12px 14px;border:1px solid var(--color-border);border-radius:11px;background:var(--color-surface);box-shadow:var(--shadow-soft)}.student-metrics article>span{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:9px;background:var(--color-green-tint);color:var(--color-dartmouth-green);font-size:.72rem;font-weight:900}.student-metrics article:last-child>span{background:color-mix(in srgb,var(--color-warning,#c58a15) 16%,var(--color-surface));color:var(--color-warning,#946200)}.student-metrics div{display:grid;gap:1px;min-width:0}.student-metrics small{overflow:hidden;color:var(--color-muted);font-size:.7rem;text-overflow:ellipsis;white-space:nowrap}.student-metrics strong{color:var(--color-eerie-black);font-size:1.25rem}.student-directory-layout{display:grid;grid-template-columns:minmax(220px,255px) minmax(0,1fr);align-items:start;gap:12px;min-width:0}.student-records-insights,.student-directory-main{min-width:0}.student-records-insights{position:sticky;top:14px}.student-directory-main{display:grid;gap:12px}.student-directory-main .student-records-panel{margin:0}.directory-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px;padding-bottom:10px;border-bottom:1px solid var(--color-border)}.directory-title h2{margin:2px 0 0;color:var(--color-eerie-black);font-size:1rem}.directory-title>span{color:var(--color-muted);font-size:.76rem;font-weight:700}.student-records-insights .productivity-grid{display:grid;grid-template-areas:none!important;grid-template-columns:1fr;gap:9px;margin:0}.student-records-insights .productivity-card{grid-area:auto!important;padding:12px;border-radius:10px}.student-records-insights .document-requirements-card{padding:0}.student-records-insights .document-requirements-button{min-height:72px;padding:10px}.student-records-insights .productivity-card h2{font-size:.92rem}.student-records-insights .card-heading{align-items:center}.student-records-insights .card-heading>span{color:var(--color-muted);font-size:.69rem}.student-records-insights .compact-records{max-height:210px;margin-top:7px}.student-records-insights .compact-records button{padding:8px}.student-records-insights .compact-records strong{font-size:.75rem}.student-records-insights .compact-records span{font-size:.69rem;line-height:1.35}.student-records-insights .activity-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.student-records-insights .empty-state{padding:15px 6px;font-size:.78rem}
 .quick-search-panel,
 .productivity-card {
   background: var(--color-surface);
@@ -767,20 +761,6 @@ onBeforeUnmount(() => {
 .attention-alert-copy small { color: var(--color-text-muted); }
 .attention-alert-count { color: var(--color-warning, #9a6500); font-size: .82rem; font-weight: 800; white-space: nowrap; }
 .attention-toggle-label { color: var(--color-primary); font-weight: 800; }
-.attention-filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
-.attention-filters button { border: 1px solid var(--color-border); border-radius: 999px; padding: 6px 10px; background: var(--color-surface); color: var(--color-text); }
-.attention-filters button.active { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-white); }
-.attention-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 9px; }
-.attention-table { width: 100%; min-width: 820px; border-collapse: collapse; color: var(--color-text); }
-.attention-table th, .attention-table td { padding: 9px 10px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: middle; }
-.attention-table th { background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface)); color: var(--color-text-muted); font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; }
-.attention-table tbody tr:last-child td { border-bottom: 0; }
-.attention-table td:first-child { display: grid; gap: 2px; }
-.attention-table td:first-child span { color: var(--color-text-muted); font-size: .82rem; }
-.attention-table td:last-child button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--color-primary); border-radius: 6px; background: transparent; color: var(--color-primary); font-weight: 800; }
-.attention-status { display: inline-flex; align-items: center; padding: 3px 7px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); font-size: .76rem; font-weight: 800; white-space: nowrap; }
-.attention-status[data-status="missing"], .attention-status[data-status="needs_resubmission"], .attention-status[data-status="required"] { border-color: color-mix(in srgb, var(--color-warning, #c58a15) 45%, var(--color-border)); color: var(--color-warning, #9a6500); }
-.attention-status[data-status="verified"], .attention-status[data-status="submitted"] { border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border)); color: var(--color-primary); }
 .quick-search-panel p { color: var(--color-muted); margin: 5px 0 0; }
 .quick-search div { display: flex; gap: 8px; }
 .quick-search button,
@@ -1050,6 +1030,7 @@ td {
   position: fixed;
   z-index: 1200;
 }
+:global(html.cdm-desktop-client) .modal-backdrop { backdrop-filter: none; }
 .modal-fade-enter-active,
 .modal-fade-leave-active { transition: opacity 180ms ease; }
 .modal-fade-enter-active .document-requirements-modal,
@@ -1076,15 +1057,18 @@ td {
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
+  height: min(820px, calc(100vh - 40px));
   max-height: calc(100vh - 40px);
-  max-width: 1080px;
+  max-width: 1480px;
   overflow: hidden;
   width: 100%;
 }
-.document-requirements-header { align-items: start; border-bottom: 1px solid var(--border-color); display: flex; gap: 20px; justify-content: space-between; padding: 22px 24px 18px; }
+.document-requirements-header { align-items: center; border-bottom: 1px solid var(--border-color); display: flex; gap: 16px; justify-content: space-between; padding: 16px 20px 14px; }
+.document-requirements-header>div{flex:1;min-width:0}
 .document-requirements-header h2 { color: var(--color-eerie-black); margin: 0; }
 .document-requirements-header p:last-child { color: var(--color-muted); margin: 5px 0 0; }
-.document-requirements-body { overflow: auto; padding: 10px 24px 24px; }
+.requirements-total{padding:6px 10px;border-radius:999px;background:var(--color-green-tint);color:var(--color-primary);font-size:.75rem;font-weight:800;white-space:nowrap}
+.document-requirements-body { flex:1;min-height:0;overflow:hidden;padding:0; }
 .modal-close { align-items: center; background: var(--color-green-tint); border: 0; border-radius: 50%; color: var(--color-dartmouth-green); cursor: pointer; display: inline-flex; flex: 0 0 38px; font-size: 1.35rem; height: 38px; justify-content: center; }
 .modal-close:focus-visible { outline: 3px solid var(--focus-ring, color-mix(in srgb, var(--color-primary) 35%, transparent)); outline-offset: 2px; }
 .modal-kicker {
@@ -1116,6 +1100,7 @@ td {
 }
 
 @media (max-width: 1000px) {
+  .student-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.student-directory-layout{grid-template-columns:1fr}.student-records-insights{position:static}.student-records-insights .productivity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.student-records-insights .attention-card{grid-column:1/-1}
   .quick-search-panel { grid-template-columns: 1fr; }
   .quick-results { grid-column: 1; left: 20px; }
   .activity-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1135,6 +1120,7 @@ td {
 }
 
 @media (max-width: 620px) {
+  .student-metrics,.student-records-insights .productivity-grid{grid-template-columns:1fr}.directory-title{align-items:flex-start;flex-direction:column}.student-records-workspace{gap:10px}
   .quick-search-panel { align-items: stretch; padding: 14px; }
   .quick-search div { display: grid; }
   .quick-results { left: 14px; right: 14px; }
@@ -1144,10 +1130,6 @@ td {
   .document-requirements-button { grid-template-columns: auto minmax(0, 1fr) auto; }
   .attention-alert-count { grid-column: 2; }
   .attention-toggle-label { grid-column: 3; grid-row: 1 / span 2; }
-  .attention-table-wrap { overflow: visible; border: 0; }
-  .attention-table { min-width: 0; }
-  .attention-table tr { padding: 10px; border: 1px solid var(--color-border); border-radius: 8px; margin-bottom: 8px; }
-  .attention-table td { grid-template-columns: minmax(100px, 38%) minmax(0, 62%); }
   .preset-toolbar { align-items: stretch; display: grid; }
   .listing-search { grid-template-columns: minmax(0, 1fr) auto; }
   .listing-search .search-field { grid-column: 1 / -1; }
@@ -1210,7 +1192,6 @@ td {
   .modal-backdrop { padding: 10px; }
   .document-requirements-modal { max-height: calc(100vh - 20px); }
   .document-requirements-header { padding: 18px 16px 14px; }
-  .document-requirements-body { padding: 8px 16px 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

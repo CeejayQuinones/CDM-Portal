@@ -5,6 +5,7 @@ import DocumentRequestStatusBadge from './DocumentRequestStatusBadge.vue'
 import DocumentRequestTableSkeleton from './DocumentRequestTableSkeleton.vue'
 import { formatExactDate, formatExactDateTime, requestReference, studentName } from './documentRequestPresentation'
 import { requestDocumentName, requestStudentNumber } from './documentRequestRow'
+import { documentRequestPurpose } from './documentRequestPurpose'
 
 defineProps({
   title: { type: String, required: true },
@@ -53,7 +54,7 @@ const requestStudentName = (item) => studentName(item?.student) || 'Student name
           >
             <td><strong class="history-request-reference">{{ referenceFor(item) }}</strong></td>
             <td><strong>{{ requestStudentName(item) }}</strong><small>{{ requestStudentNumber(item) }}</small></td>
-            <td><strong>{{ requestDocumentName(item) }}</strong><small v-if="item.purpose">{{ item.purpose }}</small></td>
+            <td><strong>{{ requestDocumentName(item) }}</strong><small v-if="documentRequestPurpose(item)">{{ documentRequestPurpose(item) }}</small></td>
             <td>{{ formatExactDate(requestedTimestamp(item)) }}</td>
             <td><DocumentRequestStatusBadge :status="item.status" /></td>
             <td><time v-if="updatedTimestamp(item)" :datetime="updatedTimestamp(item)">{{ formatExactDateTime(updatedTimestamp(item)) }}</time><span v-else>—</span></td>

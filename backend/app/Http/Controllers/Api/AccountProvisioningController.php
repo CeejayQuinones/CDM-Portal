@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\Professor;
 use App\Models\RegistrarStaff;
+use App\Models\Subject;
 use App\Models\User;
 use App\Services\AccountProvisioningService;
 use Illuminate\Database\Eloquent\Builder;
@@ -99,6 +100,49 @@ class AccountProvisioningController extends Controller
         $professor = $this->provisioning->setProfessorStatus($this->actor($request), $professor, $data['status']);
 
         return $this->ok(['account' => $this->account($professor)], 200, 'Professor account status updated.');
+    }
+
+    public function professorSubjects(Professor $professor): JsonResponse
+    {
+        $professor->loadMissing('user.profile');
+        $assignedIds = $professor->subjects()->pluck('subjects.id')->map(fn (int $id): int => $id)->sort()->values()->all();
+        $subjects = Subject::query()
+            ->with('curriculum.course.department')
+            ->where(function (Builder $query) use ($assignedIds): void {
+                $query->where('status', 'active');
+                if ($assignedIds !== []) {
+                    $query->orWhereIn('id', $assignedIds);
+                }
+            })
+            ->orderBy('subject_code')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Subject $subject): array => $this->subjectAssociation($subject));
+
+        return $this->ok([
+            'professor' => $this->account($professor),
+            'assigned_subject_ids' => $assignedIds,
+            'subjects' => $subjects,
+        ], message: 'Professor subject associations retrieved.');
+    }
+
+    public function syncProfessorSubjects(Request $request, Professor $professor): JsonResponse
+    {
+        $data = $request->validate([
+            'subject_ids' => ['present', 'array', 'max:500'],
+            'subject_ids.*' => ['required', 'integer', 'distinct', 'exists:subjects,id'],
+            'confirmed' => ['required', 'accepted'],
+        ]);
+        $professor = $this->provisioning->syncProfessorSubjects(
+            $this->actor($request),
+            $professor,
+            array_map('intval', $data['subject_ids']),
+        );
+
+        return $this->ok([
+            'professor' => $this->account($professor),
+            'assigned_subject_ids' => $professor->subjects->pluck('id')->sort()->values()->all(),
+        ], message: 'Professor subject associations updated.');
     }
 
     /** @return array<string, mixed> */
@@ -224,6 +268,23 @@ class AccountProvisioningController extends Controller
                 'department_id' => $record->department_id,
                 'specialization' => $record->specialization,
             ] : []),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function subjectAssociation(Subject $subject): array
+    {
+        $course = $subject->curriculum?->course;
+
+        return [
+            'id' => $subject->id,
+            'subject_code' => $subject->subject_code,
+            'subject_name' => $subject->subject_name,
+            'status' => $subject->status,
+            'program_code' => $course?->course_code,
+            'program_name' => $course?->course_name,
+            'department_code' => $course?->department?->department_code,
+            'department_name' => $course?->department?->department_name,
         ];
     }
 

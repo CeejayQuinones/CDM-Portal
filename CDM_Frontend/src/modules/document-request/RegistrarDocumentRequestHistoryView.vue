@@ -16,6 +16,7 @@ import {
   TIME_FILTERS,
 } from './documentRequestPresentation'
 import { documentRequestService as api } from './documentRequestService'
+import { documentRequestPurpose } from './documentRequestPurpose'
 
 const route = useRoute()
 const requests = ref([])
@@ -366,7 +367,7 @@ watch(
             </td>
             <td>
               <strong>{{ item.document_type?.document_name || 'Document type unavailable' }}</strong>
-              <small v-if="item.purpose">{{ item.purpose }}</small>
+              <small v-if="documentRequestPurpose(item)">{{ documentRequestPurpose(item) }}</small>
             </td>
             <td>
               <time v-if="requestTimestamp(item)" :datetime="requestTimestamp(item)">
@@ -438,7 +439,7 @@ watch(
               <div><dt>Document type</dt><dd>{{ selectedRequest.document_type?.document_name || 'Not available' }}</dd></div>
               <div><dt>Requested copies</dt><dd>{{ selectedRequest.quantity || 1 }}</dd></div>
               <div><dt>Request date</dt><dd>{{ formatExactDate(requestTimestamp(selectedRequest)) }}</dd></div>
-              <div class="history-detail-wide"><dt>Purpose</dt><dd>{{ selectedRequest.purpose || 'No purpose provided.' }}</dd></div>
+              <div class="history-detail-wide"><dt>Purpose</dt><dd>{{ documentRequestPurpose(selectedRequest) || 'No purpose provided.' }}</dd></div>
               <div v-if="selectedRequest.remarks" class="history-detail-wide"><dt>Registrar remarks</dt><dd>{{ selectedRequest.remarks }}</dd></div>
               <div v-if="selectedRequest.cancellation_reason" class="history-detail-wide">
                 <dt>Cancellation reason</dt><dd>{{ selectedRequest.cancellation_reason }}</dd>

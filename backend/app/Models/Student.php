@@ -85,11 +85,6 @@ class Student extends Model
         return $this->hasMany(Appointment::class);
     }
 
-    public function riskNotifications(): HasMany
-    {
-        return $this->hasMany(RiskNotification::class);
-    }
-
     public function physicalRecordLocation(): HasOne
     {
         return $this->hasOne(StudentRecordLocation::class);

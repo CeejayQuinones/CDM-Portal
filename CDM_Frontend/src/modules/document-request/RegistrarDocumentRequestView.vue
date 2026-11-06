@@ -18,6 +18,7 @@ import {
   withoutDocumentRequestFocus,
 } from './documentRequestNavigation'
 import { consumeDocumentRequestFocus } from './documentRequestFocus'
+import { documentRequestPurpose } from './documentRequestPurpose'
 import { mergeDocumentRequestRow, requestDocumentName, requestStudentNumber } from './documentRequestRow'
 import { documentRequestService as api } from './documentRequestService'
 import { profilePhotoUrl } from '../../utils/profilePhoto'
@@ -709,7 +710,7 @@ watch(
 
           <section class="request-detail-section" aria-labelledby="request-notes-heading">
             <div class="request-section-heading"><span>02</span><h3 id="request-notes-heading">Request Notes / Purpose</h3></div>
-            <p class="request-purpose">{{ selected.purpose || selected.remarks || 'No notes or purpose provided.' }}</p>
+            <p class="request-purpose">{{ documentRequestPurpose(selected) || selected.remarks || 'No notes or purpose provided.' }}</p>
           </section>
 
           <section class="request-detail-section" aria-labelledby="request-audit-heading">

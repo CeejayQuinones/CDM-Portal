@@ -287,7 +287,7 @@ textarea {
     -webkit-overflow-scrolling: touch;
   }
 
-  :is(.grading-tabs, .monitoring-tabs, .history-tabs, .group-tabs, .admission-context-nav) {
+  :is(.grading-tabs, .history-tabs, .group-tabs, .admission-context-nav) {
     max-width: 100%;
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -295,11 +295,11 @@ textarea {
     scrollbar-width: none;
   }
 
-  :is(.grading-tabs, .monitoring-tabs, .history-tabs, .group-tabs, .admission-context-nav)::-webkit-scrollbar {
+  :is(.grading-tabs, .history-tabs, .group-tabs, .admission-context-nav)::-webkit-scrollbar {
     display: none;
   }
 
-  :is(.grading-tabs, .monitoring-tabs, .history-tabs, .group-tabs, .admission-context-nav) > * {
+  :is(.grading-tabs, .history-tabs, .group-tabs, .admission-context-nav) > * {
     flex: 0 0 auto;
     white-space: nowrap;
   }

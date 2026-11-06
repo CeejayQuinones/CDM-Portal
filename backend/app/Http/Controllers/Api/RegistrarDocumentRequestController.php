@@ -50,7 +50,7 @@ class RegistrarDocumentRequestController extends Controller
         ]);
         $query = $this->summaryQuery()
             ->select([
-                'id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'status',
+                'id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'purpose_details', 'status',
                 'request_date', 'release_date', 'remarks', 'approved_at', 'completed_at',
                 'rejected_at', 'cancelled_at', 'code_verified_at', 'created_at', 'updated_at',
             ])
@@ -99,7 +99,7 @@ class RegistrarDocumentRequestController extends Controller
 
         $query = $this->summaryQuery()
             ->select([
-                'id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'status',
+                'id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'purpose_details', 'status',
                 'request_date', 'release_date', 'remarks', 'approved_at', 'completed_at',
                 'rejected_at', 'cancelled_at', 'code_verified_at', 'created_at', 'updated_at',
             ])
@@ -135,7 +135,7 @@ class RegistrarDocumentRequestController extends Controller
                 'student:id,user_id,student_number',
                 'student.user:id',
                 'student.user.profile:id,user_id,first_name,last_name',
-                'documentRequest:id,document_type_id,status,request_date,remarks,created_at,updated_at,released_at,rejected_at',
+                'documentRequest:id,document_type_id,status,purpose,purpose_details,request_date,remarks,created_at,updated_at,released_at,rejected_at',
                 'documentRequest.documentType:id,document_name',
             ])
             ->latest('updated_at')

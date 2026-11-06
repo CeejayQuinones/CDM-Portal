@@ -18,14 +18,13 @@ test('Student Settings exposes the complete Record Requirements workflow', async
   assert.match(settings, /var\(--settings-surface/)
 })
 
-test('Registrar Needs Attention links exact document context and keeps review actions separate', async () => {
-  const [records, documents] = await Promise.all([
+test('Registrar Document Requirements uses one student matrix with integrated authorized review', async () => {
+  const [records, matrix, documents] = await Promise.all([
     read('../src/modules/student-management/StudentRecordsView.vue'),
+    read('../src/modules/student-management/StudentDocumentRequirementsMatrix.vue'),
     read('../src/modules/student-management/StudentDocumentsView.vue'),
   ])
 
-  for (const category of ['Digital Missing', 'Awaiting Review', 'Needs Resubmission', 'Hard Copy Required', 'Physical Records']) assert.match(records, new RegExp(category))
-  assert.match(records, /query: \{ document: item\.document_type_id \}/)
   assert.match(records, /documentRequirementsOpen = ref\(false\)/)
   assert.match(records, /class="productivity-card document-requirements-card"/)
   assert.match(records, /aria-haspopup="dialog"/)
@@ -38,23 +37,34 @@ test('Registrar Needs Attention links exact document context and keeps review ac
   assert.match(records, /documentRequirementsOpen\.value = true/)
   assert.match(records, /documentRequirementsOpen\.value = false/)
   assert.match(records, /documentRequirementCount.*unresolved/)
-  assert.match(records, /class="attention-table"/)
-  assert.match(records, /Digital Status/)
-  assert.match(records, /Physical Status/)
+  assert.match(records, /StudentDocumentRequirementsMatrix/)
+  assert.match(records, /:attention="productivity\.attention"/)
+  assert.match(records, /@refresh="fetchProductivity"/)
+  assert.doesNotMatch(records, /class="attention-table"/)
+  assert.doesNotMatch(records, /query: \{ document: item\.document_type_id \}/)
   assert.match(records, /nonDocumentAttentionStudents/)
   assert.match(records, /filter\(issue => issue\.area !== 'documents'\)/)
   assert.match(records, /<article v-if="nonDocumentAttentionStudents\.length" class="productivity-card attention-card">/)
   assert.doesNotMatch(records, /No other Student Records currently need attention\./)
   assert.match(records, /:class="\{ 'has-attention': nonDocumentAttentionStudents\.length \}"/)
-  assert.match(records, /productivity-grid \{[^}]*grid-template-areas: "recent documents" "recent activity"/)
-  assert.match(records, /productivity-grid\.has-attention \{ grid-template-areas: "recent documents" "recent activity" "attention attention"/)
-  assert.match(records, /document-requirements-card \{[^}]*grid-area: documents/)
-  assert.doesNotMatch(records, /document-requirements-card \{[^}]*grid-column: 1 \/ -1/)
-  assert.doesNotMatch(records, /class="attention-items"/)
-  assert.doesNotMatch(records, /document-attention-details/)
-  assert.doesNotMatch(records, /grid-template-columns: repeat\(auto-fit, minmax\(230px, 1fr\)\)/)
+  assert.match(records, /student-records-insights \.productivity-grid\{[^}]*grid-template-columns:1fr/)
+  assert.match(records, /student-directory-layout\{[^}]*grid-template-columns:minmax\(220px,255px\) minmax\(0,1fr\)/)
+  assert.match(records, /student-records-insights \.document-requirements-card\{padding:0/)
   assert.match(records, /prefers-reduced-motion: reduce/)
   assert.match(records, /var\(--color-surface\)/)
+
+  for (const label of ['Students needing attention', 'Missing documents', 'Awaiting review', 'Other unresolved']) assert.match(matrix, new RegExp(label))
+  for (const status of ['missing', 'awaiting_review', 'needs_resubmission', 'hard_copy_required', 'accepted', 'not_required']) assert.match(matrix, new RegExp(status))
+  assert.match(matrix, /class="requirements-matrix"/)
+  assert.match(matrix, /class="student-column"/)
+  assert.match(matrix, /class="requirement-review-panel"/)
+  assert.match(matrix, /apiClient\.get\(`\/students\/\$\{student\.student_id\}\/documents`\)/)
+  assert.match(matrix, /registrar\/student-documents\/\$\{document\.id\}\/view/)
+  assert.match(matrix, /version: document\.version/)
+  assert.match(matrix, /record-requirements\/\$\{document\.document_type_id\}\/\$\{action\}/)
+  assert.match(matrix, /@media\(max-width:820px\)/)
+  assert.match(matrix, /overflow:auto/)
+  assert.match(matrix, /position:sticky;left:0/)
   for (const action of ['Verify', 'Needs Resubmission', 'Require Hard Copy', 'Mark Hard Copy Received', 'Require Again']) assert.match(documents, new RegExp(action))
   assert.match(documents, /role="dialog"/)
   assert.match(documents, /aria-modal="true"/)

@@ -1,0 +1,265 @@
+html.cdm-desktop-client {
+  --desk-canvas: #f4f6f4;
+  --desk-surface: #fff;
+  --desk-surface-muted: #f8faf8;
+  --desk-line: #dce5df;
+  --desk-line-strong: #bdcec3;
+  --desk-ink: #182c21;
+  --desk-ink-secondary: #42564a;
+  --desk-muted: #6a796f;
+  --desk-green-950: #042f24;
+  --desk-green-900: #064e3b;
+  --desk-green-700: #08714d;
+  --desk-green-100: #e4f2e9;
+  --desk-gold: #d2aa3c;
+  --desk-danger: #a13939;
+  --desk-danger-soft: #fff0ef;
+  --desk-warning: #76560b;
+  --desk-warning-soft: #fff7dc;
+  --desk-radius: 8px;
+  --desk-header-height: 64px;
+  --desk-rail-width: 72px;
+  --desk-panel-width: 224px;
+  background: var(--desk-canvas);
+  color: var(--desk-ink);
+}
+
+html.cdm-desktop-client[data-student-theme='dark'] {
+  --desk-canvas: #0f1512;
+  --desk-surface: #171f1a;
+  --desk-surface-muted: #1c2720;
+  --desk-line: #2c3b32;
+  --desk-line-strong: #405549;
+  --desk-ink: #eef4f0;
+  --desk-ink-secondary: #c5d1c9;
+  --desk-muted: #9caca1;
+  --desk-green-100: #20382b;
+  --desk-green-700: #65c18f;
+  --desk-gold: #e1c260;
+  --desk-danger: #ffaaa5;
+  --desk-danger-soft: #3b2422;
+  --desk-warning: #ecd078;
+  --desk-warning-soft: #3a321c;
+}
+
+@media (prefers-color-scheme: dark) {
+  html.cdm-desktop-client[data-student-theme='system'] {
+    --desk-canvas: #0f1512;
+    --desk-surface: #171f1a;
+    --desk-surface-muted: #1c2720;
+    --desk-line: #2c3b32;
+    --desk-line-strong: #405549;
+    --desk-ink: #eef4f0;
+    --desk-ink-secondary: #c5d1c9;
+    --desk-muted: #9caca1;
+    --desk-green-100: #20382b;
+    --desk-green-700: #65c18f;
+    --desk-gold: #e1c260;
+  }
+}
+
+html.cdm-desktop-client body { background: var(--desk-canvas); color: var(--desk-ink); overflow: hidden; }
+
+.desktop-workspace-shell {
+  background: var(--desk-canvas);
+  display: grid;
+  grid-template-columns: var(--desk-rail-width) minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  min-width: 720px;
+  overflow: hidden;
+}
+
+.desktop-primary-rail {
+  align-items: center;
+  background: var(--desk-green-950);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  grid-column: 1;
+  height: 100vh;
+  height: 100dvh;
+  padding: 10px 8px;
+  position: relative;
+  z-index: 50;
+}
+
+.desktop-rail-brand {
+  align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,.14);
+  display: flex;
+  height: 58px;
+  justify-content: center;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.desktop-rail-brand img { height: 46px; object-fit: contain; width: 46px; }
+.desktop-rail-modules { display: grid; gap: 4px; overflow-y: auto; scrollbar-width: none; width: 100%; }
+.desktop-rail-modules::-webkit-scrollbar { display: none; }
+.desktop-rail-utilities { border-top: 1px solid rgba(255,255,255,.14); margin-top: auto; padding-top: 8px; width: 100%; }
+
+.desktop-rail-action {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: rgba(255,255,255,.76);
+  display: flex;
+  height: 48px;
+  justify-content: center;
+  padding: 0;
+  position: relative;
+  width: 100%;
+}
+
+.desktop-rail-action svg { height: 21px; width: 21px; }
+.desktop-rail-action:hover { background: rgba(255,255,255,.09); color: #fff; }
+.desktop-rail-action.active { background: rgba(255,255,255,.14); color: #fff; }
+.desktop-rail-action.active::before { background: var(--desk-gold); border-radius: 0 3px 3px 0; content: ''; height: 26px; left: -8px; position: absolute; width: 3px; }
+.desktop-rail-action:focus-visible { outline: 2px solid var(--desk-gold); outline-offset: -2px; }
+
+.desktop-rail-tooltip {
+  background: #10251b;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 5px;
+  box-shadow: 0 5px 14px rgba(0,0,0,.2);
+  font-size: .72rem;
+  font-weight: 700;
+  left: calc(100% + 10px);
+  opacity: 0;
+  padding: 7px 9px;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  visibility: hidden;
+  white-space: nowrap;
+  z-index: 80;
+}
+
+.desktop-rail-action:is(:hover, :focus-visible) .desktop-rail-tooltip { opacity: 1; transform: none; visibility: visible; }
+
+.desktop-context-panel {
+  background: var(--desk-surface);
+  border-right: 1px solid var(--desk-line);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  min-width: 0;
+  padding: 18px 12px;
+}
+
+.desktop-context-panel header { align-items: center; display: flex; justify-content: space-between; min-height: 52px; padding: 0 8px 15px; }
+.desktop-context-panel header small { color: var(--desk-muted); font-size: .63rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.desktop-context-panel header h2 { color: var(--desk-ink); font-size: .96rem; margin: 4px 0 0; }
+.desktop-context-panel header button { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--desk-muted); display: inline-flex; height: 32px; justify-content: center; padding: 0; width: 32px; }
+.desktop-context-panel header button svg { height: 17px; width: 17px; }
+.desktop-context-panel header button:hover { background: var(--desk-surface-muted); border-color: var(--desk-line); color: var(--desk-ink); }
+.desktop-context-panel header button:focus-visible { border-color: var(--desk-green-700); outline: 2px solid color-mix(in srgb, var(--desk-green-700) 28%, transparent); outline-offset: 1px; }
+.desktop-context-panel nav { display: grid; gap: 3px; overflow-y: auto; }
+.desktop-context-panel nav a { align-items: center; border-radius: 6px; color: var(--desk-ink-secondary); display: flex; font-size: .78rem; font-weight: 650; justify-content: space-between; min-height: 38px; padding: 8px 9px; }
+.desktop-context-panel nav a:hover { background: var(--desk-surface-muted); color: var(--desk-ink); }
+.desktop-context-panel nav a.active { background: var(--desk-green-100); color: var(--desk-green-700); }
+.desktop-context-panel nav a.active > span:last-child { color: var(--desk-gold); }
+.desktop-context-panel nav a:focus-visible { outline: 2px solid var(--desk-green-700); outline-offset: -2px; }
+
+.desktop-workspace-stage { display: grid; grid-column: 2; grid-template-rows: var(--desk-header-height) minmax(0, 1fr); min-width: 0; overflow: hidden; }
+.desktop-context-header { align-items: center; background: var(--desk-surface); border-bottom: 1px solid var(--desk-line); display: flex; gap: 12px; min-width: 0; padding: 8px 22px; }
+.desktop-header-context { min-width: 0; }
+.desktop-header-context p { color: var(--desk-muted); font-size: .64rem; margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-header-context p span { color: var(--desk-gold); padding: 0 4px; }
+.desktop-header-context h1 { color: var(--desk-ink); font-size: 1.05rem; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-header-account { align-items: center; display: flex; gap: 9px; margin-left: auto; min-width: 0; }
+.desktop-header-avatar { align-items: center; background: var(--desk-green-100); border: 1px solid var(--desk-line-strong); border-radius: 7px; color: var(--desk-green-700); display: flex; font-size: .68rem; font-weight: 800; height: 34px; justify-content: center; width: 34px; }
+.desktop-header-identity strong, .desktop-header-identity small { display: block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-header-identity strong { color: var(--desk-ink); font-size: .75rem; }
+.desktop-header-identity small { color: var(--desk-muted); font-size: .6rem; margin-top: 2px; }
+.desktop-header-account button { background: transparent; border: 1px solid var(--desk-line); border-radius: 6px; color: var(--desk-ink-secondary); font-size: .69rem; min-height: 32px; padding: 0 9px; }
+.desktop-module-button { align-items: center; background: var(--desk-surface-muted); border: 1px solid var(--desk-line); border-radius: 6px; color: var(--desk-ink); display: flex; height: 36px; justify-content: center; width: 36px; }
+.desktop-module-button svg { height: 18px; width: 18px; }
+.desktop-module-button:hover { background: var(--desk-green-100); border-color: var(--desk-green-700); color: var(--desk-green-700); }
+.desktop-module-button:focus-visible { outline: 2px solid var(--desk-green-700); outline-offset: 2px; }
+
+.desktop-workspace-content { min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; padding: 20px clamp(18px, 2vw, 30px) 28px; }
+.desktop-workspace-route { margin: 0 auto; max-width: 1500px; min-width: 0; }
+.desktop-workspace-route-enter-active, .desktop-workspace-route-leave-active { transition: opacity 140ms ease; }
+.desktop-workspace-route-enter-from, .desktop-workspace-route-leave-to { opacity: 0; }
+
+/* Content headings are represented by the contextual header on desktop. */
+.desktop-workspace-shell .desktop-workspace-route > :is(section, div) > :is(.page-header, .dashboard-header):first-child { margin-bottom: 14px; }
+.desktop-workspace-shell .page-header > :is(.page-kicker, .page-title) { display: none; }
+.desktop-workspace-shell .page-title { font-size: 1.35rem; }
+.desktop-workspace-shell .page-kicker { color: var(--desk-green-700); font-size: .65rem; letter-spacing: .06em; }
+.desktop-workspace-shell :is(.page-description, .helper-text) { color: var(--desk-muted); }
+
+/* Dense, stable administrative primitives. */
+.desktop-workspace-shell :is(input, select, textarea) { background: var(--desk-surface); border-color: var(--desk-line-strong); border-radius: 6px; color: var(--desk-ink); min-height: 38px; }
+.desktop-workspace-shell :is(input, select, textarea):focus { border-color: var(--desk-green-700); box-shadow: 0 0 0 3px color-mix(in srgb, var(--desk-green-700) 18%, transparent); }
+.desktop-workspace-shell :is(.button-primary, .dr-button--primary, button.primary) { background: var(--desk-green-700); border-color: var(--desk-green-700); color: #fff; }
+.desktop-workspace-shell :is(.button-secondary, .dr-button--secondary) { background: var(--desk-surface); border-color: var(--desk-line-strong); color: var(--desk-ink-secondary); }
+.desktop-workspace-shell :is(.student-records-panel, .productivity-card, .quick-search-panel, .en-card, .dr-card, .dr-filter-bar, .settings-card, .card, .panel) { background: var(--desk-surface); border-color: var(--desk-line); box-shadow: none; color: var(--desk-ink); }
+.desktop-workspace-shell :is(.table-wrap, .en-table, .attention-table-wrap) { border: 1px solid var(--desk-line); border-radius: 6px; max-width: 100%; overflow: auto; }
+.desktop-workspace-shell table { border-collapse: separate; border-spacing: 0; color: var(--desk-ink-secondary); width: 100%; }
+.desktop-workspace-shell thead th { background: var(--desk-surface-muted); border-bottom: 1px solid var(--desk-line-strong); color: var(--desk-ink-secondary); font-size: .66rem; letter-spacing: .025em; position: sticky; text-transform: none; top: 0; z-index: 2; }
+.desktop-workspace-shell tbody tr:hover td { background: color-mix(in srgb, var(--desk-green-100) 50%, var(--desk-surface)); }
+.desktop-workspace-shell :is(.notice-success, .success) { background: var(--desk-green-100); color: var(--desk-green-700); }
+.desktop-workspace-shell :is(.notice-error, .error) { background: var(--desk-danger-soft); color: var(--desk-danger); }
+
+/* Student Records becomes a continuous data workspace instead of a stack of
+   decorative cards. Its existing dedicated detail route remains the safe
+   full-record experience for sensitive and complex data. */
+.desktop-workspace-shell .student-records-workspace > .page-header { align-items: end; display: flex; justify-content: space-between; margin-bottom: 10px; }
+.desktop-workspace-shell .student-records-workspace > .page-header .page-title { display: none; }
+.desktop-workspace-shell .student-records-workspace > .quick-search-panel { align-items: center; background: transparent; border: 0; box-shadow: none; grid-template-columns: minmax(220px,.65fr) minmax(400px,1.35fr); margin-bottom: 10px; padding: 0; }
+.desktop-workspace-shell .student-records-workspace > .quick-search-panel > div:first-child p:last-child { display: none; }
+.desktop-workspace-shell .student-records-workspace > .quick-search-panel h2 { font-size: .88rem; margin-bottom: 2px; }
+.desktop-workspace-shell .student-records-workspace .productivity-grid { gap: 8px; grid-template-columns: minmax(0,1.3fr) minmax(180px,.7fr) minmax(220px,.8fr); margin-bottom: 10px; }
+.desktop-workspace-shell .student-records-workspace .productivity-card { border-radius: 6px; box-shadow: none; min-height: 0; padding: 10px 12px; }
+.desktop-workspace-shell .student-records-workspace .student-records-panel { border-radius: 6px; box-shadow: none; }
+.desktop-workspace-shell .student-records-workspace .records-panel { min-height: 360px; }
+.desktop-workspace-shell .student-records-workspace .listing-search { align-items: end; }
+.desktop-workspace-shell .student-records-workspace .table-wrap { max-height: calc(100vh - 410px); min-height: 260px; }
+.desktop-workspace-shell .student-records-workspace tbody td { padding-block: 8px; }
+
+/* Enrollment Records uses a toolbar + result grid hierarchy. Existing forms,
+   service calls, dialogs, COR and pagination are unchanged. */
+.desktop-workspace-shell .enrollment-workspace > .page-header { margin-bottom: 10px; }
+.desktop-workspace-shell .enrollment-workspace > .page-header .page-title { display: none; }
+.desktop-workspace-shell .enrollment-workspace > form.en-card.en-grid:first-of-type { align-items: end; border-radius: 6px; box-shadow: none; gap: 9px; grid-template-columns: repeat(4,minmax(130px,1fr)); margin-bottom: 10px; padding: 12px; }
+.desktop-workspace-shell .enrollment-workspace > .en-table { border-radius: 6px; box-shadow: none; max-height: calc(100vh - 270px); }
+.desktop-workspace-shell .enrollment-workspace > .en-table table { min-width: 780px; }
+.desktop-workspace-shell .enrollment-workspace > .en-table td { padding-block: 9px; }
+
+.desktop-context-overlay { background: transparent; inset: 0 0 0 var(--desk-rail-width); position: fixed; z-index: 45; }
+.desktop-context-panel.is-overlay { box-shadow: 12px 0 28px rgba(0,0,0,.18); max-width: 240px; width: min(var(--desk-panel-width), calc(100vw - var(--desk-rail-width))); }
+.desktop-context-float-enter-active, .desktop-context-float-leave-active { transition: opacity 220ms ease-out; }
+.desktop-context-float-enter-active .desktop-context-panel, .desktop-context-float-leave-active .desktop-context-panel { transition: transform 220ms ease-out; }
+.desktop-context-float-enter-from, .desktop-context-float-leave-to { opacity: 0; }
+.desktop-context-float-enter-from .desktop-context-panel, .desktop-context-float-leave-to .desktop-context-panel { transform: translateX(-100%); }
+
+html.cdm-desktop-client :is(.modal-backdrop, .dialog-backdrop, .en-dialog-backdrop) { backdrop-filter: blur(2px); background: rgba(3,22,13,.54); }
+html.cdm-desktop-client :is(.modal, [role='dialog'], .en-dialog, .request-detail-dialog) { --bg-surface: var(--desk-surface); --bg-input: var(--desk-surface); --text-primary: var(--desk-ink); --text-secondary: var(--desk-ink-secondary); --text-muted: var(--desk-muted); --border-color: var(--desk-line); color: var(--desk-ink); }
+
+@media (max-width: 1040px) {
+  .desktop-workspace-shell { grid-template-columns: var(--desk-rail-width) minmax(0, 1fr); }
+  .desktop-workspace-stage { grid-column: 2; }
+  .desktop-context-panel.is-overlay { max-width: 240px; width: min(82vw, var(--desk-panel-width)); }
+  .desktop-workspace-content { padding: 16px 18px 24px; }
+  .desktop-header-identity { display: none; }
+  .desktop-workspace-shell .student-records-workspace .productivity-grid { grid-template-columns: minmax(0,1fr); }
+  .desktop-workspace-shell .enrollment-workspace > form.en-card.en-grid:first-of-type { grid-template-columns: repeat(2,minmax(150px,1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-workspace-shell *, .desktop-workspace-shell *::before, .desktop-workspace-shell *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+@media print {
+  html.cdm-desktop-client { --desk-canvas:#fff; --desk-surface:#fff; --desk-surface-muted:#fff; --desk-ink:#111; --desk-ink-secondary:#222; --desk-muted:#444; color-scheme:light; }
+  html.cdm-desktop-client body { overflow: visible; }
+  .desktop-primary-rail, .desktop-context-panel, .desktop-context-header { display: none !important; }
+  .desktop-workspace-shell { display: block; height: auto; min-width: 0; overflow: visible; }
+  .desktop-workspace-content { overflow: visible; padding: 0; }
+}

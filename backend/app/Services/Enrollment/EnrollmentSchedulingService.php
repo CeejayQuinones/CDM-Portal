@@ -11,6 +11,7 @@ use App\Models\Professor;
 use App\Models\Role;
 use App\Models\Section;
 use App\Models\SectionSubject;
+use App\Models\SectionSubjectMeeting;
 use App\Models\Semester;
 use App\Models\Subject;
 use App\Models\User;
@@ -86,13 +87,149 @@ class EnrollmentSchedulingService
         return $a->id !== $b->id && $a->day === $b->day && $a->start_time < $b->end_time && $a->end_time > $b->start_time && ($a->section_id === $b->section_id || ($a->professor_id && $a->professor_id === $b->professor_id) || ($a->room && mb_strtolower(trim($a->room)) === mb_strtolower(trim($b->room))));
     }
 
+    private function meetingConflictTypes(array $a, array $b, int $sectionId, int $professorId, ?int $otherSectionId, ?int $otherProfessorId): array
+    {
+        if ($a['day'] !== $b['day'] || ! ($a['start_time'] < $b['end_time'] && $a['end_time'] > $b['start_time'])) {
+            return [];
+        }
+        $types = [];
+        if ($sectionId === $otherSectionId) {
+            $types[] = 'section';
+        }
+        if ($professorId === $otherProfessorId) {
+            $types[] = 'professor';
+        }
+        if ($a['room'] !== '' && mb_strtolower($a['room']) === mb_strtolower($b['room'])) {
+            $types[] = 'room';
+        }
+
+        return $types;
+    }
+
+    private function meetingData(SectionSubjectMeeting $meeting): array
+    {
+        return [
+            'day' => $meeting->day,
+            'start_time' => substr((string) $meeting->start_time, 0, 8),
+            'end_time' => substr((string) $meeting->end_time, 0, 8),
+            'room' => mb_strtoupper(trim((string) $meeting->room)),
+        ];
+    }
+
+    private function proposedMeetings(array $input): Collection
+    {
+        $room = mb_strtoupper(trim((string) preg_replace('/\s+/u', ' ', $input['room'])));
+
+        return collect($input['meetings'] ?? [[
+            'day' => $input['day'], 'start_time' => $input['start_time'], 'end_time' => $input['end_time'],
+        ]])->map(fn (array $meeting): array => [
+            'day' => $meeting['day'],
+            'start_time' => substr($meeting['start_time'], 0, 8),
+            'end_time' => substr($meeting['end_time'], 0, 8),
+            'room' => $room,
+        ])->sortBy(fn (array $meeting): int => array_search($meeting['day'], self::DAYS, true))->values();
+    }
+
+    private function conflictDetails(Collection $meetings, Collection $others, int $sectionId, int $professorId): array
+    {
+        $results = $meetings->map(fn (array $meeting): array => [
+            'day' => $meeting['day'],
+            'start_time' => substr($meeting['start_time'], 0, 5),
+            'end_time' => substr($meeting['end_time'], 0, 5),
+            'conflicts' => [],
+        ])->all();
+
+        foreach ($meetings as $index => $meeting) {
+            foreach ($meetings as $otherIndex => $otherMeeting) {
+                if ($otherIndex <= $index || $meeting['day'] !== $otherMeeting['day'] || ! ($meeting['start_time'] < $otherMeeting['end_time'] && $meeting['end_time'] > $otherMeeting['start_time'])) {
+                    continue;
+                }
+                $conflict = [
+                    'type' => 'batch',
+                    'message' => 'This meeting overlaps another proposed meeting in the current schedule.',
+                    'existing' => [
+                        'day' => $otherMeeting['day'],
+                        'start_time' => substr($otherMeeting['start_time'], 0, 5),
+                        'end_time' => substr($otherMeeting['end_time'], 0, 5),
+                        'room' => $otherMeeting['room'],
+                    ],
+                ];
+                $results[$index]['conflicts'][] = $conflict;
+                $results[$otherIndex]['conflicts'][] = array_replace_recursive($conflict, ['existing' => [
+                    'day' => $meeting['day'],
+                    'start_time' => substr($meeting['start_time'], 0, 5),
+                    'end_time' => substr($meeting['end_time'], 0, 5),
+                    'room' => $meeting['room'],
+                ]]);
+            }
+
+            foreach ($others as $other) {
+                foreach ($other->meetings as $otherMeeting) {
+                    $otherData = $this->meetingData($otherMeeting);
+                    foreach ($this->meetingConflictTypes($meeting, $otherData, $sectionId, $professorId, $other->section_id, $other->professor_id) as $type) {
+                        $profile = $other->professor?->user?->profile;
+                        $results[$index]['conflicts'][] = [
+                            'type' => $type,
+                            'message' => ucfirst($type).' is already assigned during this time.',
+                            'existing' => [
+                                'schedule_id' => $other->id,
+                                'day' => $otherData['day'],
+                                'start_time' => substr($otherData['start_time'], 0, 5),
+                                'end_time' => substr($otherData['end_time'], 0, 5),
+                                'room' => $otherData['room'],
+                                'section' => $other->section ? ['id' => $other->section->id, 'name' => $other->section->section_name] : null,
+                                'subject' => $other->subject ? ['id' => $other->subject->id, 'code' => $other->subject->subject_code, 'name' => $other->subject->subject_name] : null,
+                                'professor' => $other->professor ? [
+                                    'id' => $other->professor->id,
+                                    'name' => trim(($profile?->first_name ?? '').' '.($profile?->last_name ?? '')) ?: $other->professor->employee_number,
+                                ] : null,
+                            ],
+                        ];
+                    }
+                }
+            }
+        }
+
+        return array_map(fn (array $result): array => $result + ['available' => $result['conflicts'] === []], $results);
+    }
+
+    public function availability(User $user, array $input, ?int $ignoreId = null): array
+    {
+        EnrollmentAccess::require($user, true);
+        $section = Section::findOrFail($input['section_id']);
+        if ($ignoreId) {
+            $ignored = SectionSubject::findOrFail($ignoreId);
+            abort_unless($ignored->section_id === $section->id && $ignored->subject_id === $input['subject_id'], 422, 'The schedule being edited does not match the selected section and subject.');
+        }
+        $meetings = $this->proposedMeetings($input);
+        $others = SectionSubject::with(['meetings', 'section', 'subject', 'professor.user.profile'])
+            ->whereHas('section', fn ($query) => $query->where('academic_year_id', $section->academic_year_id)->where('semester_id', $section->semester_id))
+            ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->orderBy('id')->get();
+        $results = $this->conflictDetails($meetings, $others, $section->id, $input['professor_id']);
+
+        return [
+            'available' => collect($results)->every(fn (array $meeting): bool => $meeting['available']),
+            'meetings' => $results,
+        ];
+    }
+
     public function assertFinalSchedules(Collection $selected, int $year, int $semester): void
     {
-        $all = SectionSubject::whereHas('section', fn ($q) => $q->where('academic_year_id', $year)->where('semester_id', $semester))->whereIn('day', $selected->pluck('day')->unique())->lockForUpdate()->get();
+        $selected->loadMissing('meetings');
+        $all = SectionSubject::with(['meetings', 'section', 'subject'])->whereHas('section', fn ($q) => $q->where('academic_year_id', $year)->where('semester_id', $semester))->lockForUpdate()->get();
         foreach ($selected as $a) {
-            abort_unless(in_array($a->day, self::DAYS, true), 422, 'A schedule has an invalid day.');
-            foreach ($all as $b) {
-                abort_if($this->conflicts($a, $b), 409, 'Resolve section, Professor or room conflicts before finalization.');
+            abort_if($a->meetings->isEmpty(), 422, 'Every selected subject needs at least one schedule meeting.');
+            foreach ($a->meetings as $meeting) {
+                abort_unless(in_array($meeting->day, self::DAYS, true), 422, 'A schedule has an invalid day.');
+                foreach ($all as $b) {
+                    foreach ($b->meetings as $other) {
+                        if ($meeting->id === $other->id) {
+                            continue;
+                        }
+                        abort_if($this->meetingConflictTypes($this->meetingData($meeting), $this->meetingData($other), $a->section_id, $a->professor_id, $b->section_id, $b->professor_id) !== [], 409, 'Resolve section, Professor or room conflicts before finalization.');
+                    }
+                }
             }
         }
     }
@@ -115,7 +252,7 @@ class EnrollmentSchedulingService
             }
             if ($assignmentId) {
                 abort_unless($s->section_id === $input['section_id'] && $s->subject_id === $input['subject_id'], 422, 'The teaching assignment cannot change section or subject.');
-                abort_if($s->day || $s->start_time || $s->end_time || $s->room, 409, 'This subject already has a schedule. Reload before continuing.');
+                abort_if($s->meetings()->exists() || $s->day || $s->start_time || $s->end_time || $s->room, 409, 'This subject already has a schedule. Reload before continuing.');
             }
             $used = $recordId ? EnrollmentSubject::where('subject_id', $s->subject_id)->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id))->lockForUpdate()->first() : null;
             if ($delete) {
@@ -125,7 +262,7 @@ class EnrollmentSchedulingService
 
                 return null;
             }
-            abort_unless($section->status === 'open' && $year->status === 'active' && $semester->status === 'active', 422, 'Choose an open section in an active academic term.');
+            abort_unless($year->status === 'active' && $semester->status === 'active', 422, 'Choose a Section in an active academic term.');
             if ($recordId) {
                 abort_unless($input['section_id'] === $section->id && (! $used || $input['subject_id'] === $s->subject_id), 422, 'Referenced schedules cannot change section or subject.');
             }
@@ -133,17 +270,31 @@ class EnrollmentSchedulingService
             $subject = Subject::with('curriculum')->whereKey($input['subject_id'])->lockForUpdate()->firstOrFail();
             abort_unless($subject->status === 'active' && $subject->curriculum_id === $curriculum->id && $subject->semester_id === $section->semester_id && (int) $subject->year_level === (int) $section->year_level && $subject->curriculum?->status === 'active', 422, 'Choose an active subject from this Section curriculum, year level and semester.');
             $this->professor($input['professor_id']);
+            $used ??= EnrollmentSubject::where('subject_id', $subject->id)
+                ->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id))
+                ->lockForUpdate()
+                ->first();
             abort_if(SectionSubject::where('section_id', $section->id)->where('subject_id', $subject->id)->when($recordId, fn ($q) => $q->where('id', '!=', $recordId))->lockForUpdate()->first(), 409, 'This subject already has a meeting in the section.');
-            $s->fill(collect($input)->only(['section_id', 'subject_id', 'professor_id', 'day', 'start_time', 'end_time', 'room'])->all());
-            $s->room = mb_strtoupper(trim(preg_replace('/\s+/u', ' ', $input['room'])));
-            // All schedule writers hold the academic-year parent lock, including when no meeting exists yet.
-            $others = SectionSubject::whereHas('section', fn ($q) => $q->where('academic_year_id', $year->id)->where('semester_id', $semester->id))->where('day', $s->day)->where('start_time', '<', $s->end_time)->where('end_time', '>', $s->start_time)->lockForUpdate()->get();
-            foreach ($others as $other) {
-                abort_if($this->conflicts($s, $other), 409, 'Schedule overlaps an existing section, Professor or room meeting.');
+            $meetings = $this->proposedMeetings($input);
+            $others = SectionSubject::with(['meetings', 'section', 'subject', 'professor.user.profile'])
+                ->whereHas('section', fn ($query) => $query->where('academic_year_id', $year->id)->where('semester_id', $semester->id))
+                ->when($recordId, fn ($query) => $query->where('id', '!=', $recordId))->orderBy('id')->lockForUpdate()->get();
+            $conflict = collect($this->conflictDetails($meetings, $others, $section->id, $input['professor_id']))
+                ->first(fn (array $meeting): bool => ! $meeting['available']);
+            if ($conflict) {
+                $detail = $conflict['conflicts'][0];
+                $context = $detail['type'] === 'batch'
+                    ? 'current unsaved schedule'
+                    : ($detail['existing']['section']['name'] ?? 'Section').' / '.($detail['existing']['subject']['code'] ?? 'Subject');
+                abort(409, "{$conflict['day']}, {$conflict['start_time']}–{$conflict['end_time']} conflicts with an existing schedule for this {$detail['type']} ({$context}).");
             }
+            $primary = $meetings->first();
+            $s->fill(collect($input)->only(['section_id', 'subject_id', 'professor_id'])->all() + $primary);
             if ($recordId) {
                 $s->version++;
             }$s->save();
+            $s->meetings()->delete();
+            $s->meetings()->createMany($meetings->all());
             if ($recordId && (int) $previousProfessorId !== (int) $s->professor_id) {
                 $sheet = GradeSheet::where('section_subject_id', $s->id)->lockForUpdate()->first();
                 if ($sheet) {
@@ -151,9 +302,9 @@ class EnrollmentSchedulingService
                     $sheet->forceFill(['professor_id' => $s->professor_id, 'version' => $sheet->version + 1])->save();
                 }
             }
-            if ($used) {
-                EnrollmentSubject::where('subject_id', $s->subject_id)->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id)->where('status', 'enrolled'))->update(['professor_id' => $s->professor_id]);
-            }
+            EnrollmentSubject::where('subject_id', $s->subject_id)
+                ->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id)->where('status', 'enrolled'))
+                ->update(['professor_id' => $s->professor_id]);
             $metadata = ['version' => $s->version];
             if ($recordId && (int) $previousProfessorId !== (int) $s->professor_id) {
                 $metadata += ['previous_professor_id' => $previousProfessorId, 'professor_id' => $s->professor_id];
@@ -162,7 +313,7 @@ class EnrollmentSchedulingService
             $recipients = User::whereHas('student', fn ($q) => $q->whereHas('enrollments', fn ($e) => $e->where('section_id', $section->id)->where('status', 'enrolled')))->get();
             Notification::send($recipients, new EnrollmentNotice('schedule_changed', 'Your section schedule has changed. Review My Schedule.', $section->id));
 
-            return $s;
+            return $s->fresh(['meetings', 'section', 'subject', 'professor.user.profile']);
         }, 3);
     }
 }

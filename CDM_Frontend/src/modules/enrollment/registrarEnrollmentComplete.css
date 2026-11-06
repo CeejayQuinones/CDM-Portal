@@ -1,0 +1,716 @@
+/* Registrar Enrollment workspace. Every rule is deliberately Electron-scoped. */
+html.cdm-desktop-client .en-staff-modern {
+  --en-green: var(--desk-primary, #14532d);
+  --en-green-soft: color-mix(in srgb, var(--en-green) 9%, var(--desk-surface, #fff));
+  --en-line: var(--desk-border, #d8e0dc);
+  --en-muted: var(--desk-text-muted, #647067);
+  color: var(--desk-text, #17211b);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+html.cdm-desktop-client .en-staff-modern [hidden] { display: none !important; }
+
+html.cdm-desktop-client .en-modern-header,
+html.cdm-desktop-client .en-section-directory > header,
+html.cdm-desktop-client .en-record-directory > header,
+html.cdm-desktop-client .en-catalog-directory > header,
+html.cdm-desktop-client .en-schedule-workspace > header {
+  align-items: end;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+}
+
+html.cdm-desktop-client .en-modern-header p,
+html.cdm-desktop-client .en-schedule-workspace > header small,
+html.cdm-desktop-client .en-modern-dialog > header p {
+  color: var(--en-green);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+html.cdm-desktop-client .en-modern-header h1,
+html.cdm-desktop-client .en-schedule-workspace h2,
+html.cdm-desktop-client .en-modern-dialog h2 { margin: 0; }
+html.cdm-desktop-client .en-modern-header h1 { font-size: clamp(22px, 2vw, 27px); letter-spacing: -.025em; }
+html.cdm-desktop-client .en-modern-header span,
+html.cdm-desktop-client .en-modern-header + p,
+html.cdm-desktop-client .en-schedule-workspace > header p { color: var(--en-muted); margin: 5px 0 0; }
+
+html.cdm-desktop-client .en-modern-primary,
+html.cdm-desktop-client .en-modern-outline,
+html.cdm-desktop-client .en-modern-ghost,
+html.cdm-desktop-client .en-modern-danger,
+html.cdm-desktop-client .en-schedule-search button[type="submit"],
+html.cdm-desktop-client .en-compact-pagination button,
+html.cdm-desktop-client .en-actions button,
+html.cdm-desktop-client .en-row-menu button {
+  align-items: center;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+html.cdm-desktop-client .en-modern-primary,
+html.cdm-desktop-client .en-schedule-search button[type="submit"] { background: var(--en-green); border: 1px solid var(--en-green); color: #fff; }
+html.cdm-desktop-client .en-modern-outline,
+html.cdm-desktop-client .en-compact-pagination button,
+html.cdm-desktop-client .en-actions button { background: color-mix(in srgb, var(--desk-surface, #fff) 96%, var(--en-line)); border: 1px solid color-mix(in srgb, var(--en-line) 78%, transparent); color: var(--desk-text, #17211b); }
+html.cdm-desktop-client .en-modern-ghost { background: transparent; border: 1px solid transparent; color: var(--en-muted); }
+html.cdm-desktop-client .en-modern-danger { background: #b42318; border: 1px solid #b42318; color: #fff; }
+html.cdm-desktop-client .en-danger-link { color: #b42318 !important; }
+html.cdm-desktop-client button:disabled { cursor: not-allowed; opacity: .55; }
+html.cdm-desktop-client .en-modern-primary:not(:disabled):hover,
+html.cdm-desktop-client .en-schedule-search button[type="submit"]:not(:disabled):hover { box-shadow: 0 3px 9px color-mix(in srgb, var(--en-green) 22%, transparent); }
+html.cdm-desktop-client .en-modern-outline:not(:disabled):hover,
+html.cdm-desktop-client .en-modern-ghost:not(:disabled):hover { background: var(--en-green-soft); border-color: color-mix(in srgb, var(--en-green) 20%, var(--en-line)); color: var(--en-green); }
+
+html.cdm-desktop-client .en-modern-toolbar,
+html.cdm-desktop-client .en-modern-filters,
+html.cdm-desktop-client .en-scheduling-controls {
+  align-items: end;
+  background: color-mix(in srgb, var(--desk-surface, #fff) 97%, var(--en-line));
+  border: 1px solid color-mix(in srgb, var(--en-line) 76%, transparent);
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+}
+
+html.cdm-desktop-client .en-modern-filters { background: transparent; border-style: dashed; padding: 9px 10px; }
+
+html.cdm-desktop-client .en-modern-toolbar label,
+html.cdm-desktop-client .en-modern-filters label,
+html.cdm-desktop-client .en-scheduling-controls label,
+html.cdm-desktop-client .en-modern-form-grid label {
+  color: var(--en-muted);
+  display: grid;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 5px;
+  letter-spacing: .02em;
+}
+
+html.cdm-desktop-client .en-modern-toolbar input,
+html.cdm-desktop-client .en-modern-toolbar select,
+html.cdm-desktop-client .en-modern-filters input,
+html.cdm-desktop-client .en-modern-filters select,
+html.cdm-desktop-client .en-scheduling-controls input,
+html.cdm-desktop-client .en-scheduling-controls select,
+html.cdm-desktop-client .en-modern-form-grid input,
+html.cdm-desktop-client .en-modern-form-grid select {
+  background: var(--desk-surface, #fff);
+  border: 1px solid var(--en-line);
+  border-radius: 8px;
+  color: var(--desk-text, #17211b);
+  font: inherit;
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+html.cdm-desktop-client .en-modern-search { flex: 1 1 340px; }
+html.cdm-desktop-client .en-modern-search input { border-color: color-mix(in srgb, var(--en-green) 20%, var(--en-line)); }
+html.cdm-desktop-client .en-modern-toolbar label:not(.en-modern-search),
+html.cdm-desktop-client .en-modern-filters label { min-width: 170px; }
+html.cdm-desktop-client .en-more-filters { color: var(--en-muted); }
+html.cdm-desktop-client .en-search-toolbar {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(300px, 1fr) auto;
+  width: 100%;
+}
+html.cdm-desktop-client .en-search-toolbar-with-context { grid-template-columns: minmax(300px, 1fr) minmax(170px, 220px) auto; }
+html.cdm-desktop-client .en-search-toolbar input,
+html.cdm-desktop-client .en-search-toolbar select,
+html.cdm-desktop-client .en-search-toolbar .en-toolbar-actions > button { box-sizing: border-box; height: 40px; min-height: 40px; }
+html.cdm-desktop-client .en-toolbar-actions { align-items: end; display: flex; flex-wrap: nowrap; gap: 8px; justify-content: flex-end; }
+html.cdm-desktop-client .en-toolbar-actions > button { flex: 0 0 auto; white-space: nowrap; }
+html.cdm-desktop-client .en-toolbar-actions > .en-modern-primary,
+html.cdm-desktop-client .en-schedule-search .en-toolbar-actions > button[type="submit"] { min-width: 78px; }
+html.cdm-desktop-client .en-modern-feedback { align-items: center; border-radius: 9px; display: flex; justify-content: space-between; margin: 0; padding: 10px 13px; }
+html.cdm-desktop-client .en-modern-feedback.error { background: #fef3f2; color: #912018; }
+html.cdm-desktop-client .en-modern-feedback.success { background: #ecfdf3; color: #176b3a; }
+html.cdm-desktop-client .en-modern-loading { color: var(--en-muted); margin: 0; }
+
+html.cdm-desktop-client .en-section-directory,
+html.cdm-desktop-client .en-record-directory,
+html.cdm-desktop-client .en-catalog-directory,
+html.cdm-desktop-client .en-schedule-workspace {
+  background: var(--desk-surface, #fff);
+  border: 1px solid color-mix(in srgb, var(--en-line) 82%, transparent);
+  border-radius: 11px;
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 4%, transparent);
+  min-width: 0;
+  overflow: hidden;
+}
+
+html.cdm-desktop-client .en-section-directory > header,
+html.cdm-desktop-client .en-record-directory > header,
+html.cdm-desktop-client .en-catalog-directory > header,
+html.cdm-desktop-client .en-schedule-workspace > header { border-bottom: 1px solid var(--en-line); padding: 14px 16px; }
+html.cdm-desktop-client .en-section-directory h2,
+html.cdm-desktop-client .en-record-directory h2,
+html.cdm-desktop-client .en-catalog-directory h2 { font-size: 17px; margin: 0; }
+html.cdm-desktop-client .en-section-directory header p,
+html.cdm-desktop-client .en-record-directory header p,
+html.cdm-desktop-client .en-catalog-directory header p { color: var(--en-muted); margin: 3px 0 0; }
+html.cdm-desktop-client .en-section-directory > header > span,
+html.cdm-desktop-client .en-record-directory > header > span,
+html.cdm-desktop-client .en-catalog-directory > header > span,
+html.cdm-desktop-client .en-schedule-workspace > header > span { color: var(--en-muted); font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+html.cdm-desktop-client .en-section-list,
+html.cdm-desktop-client .en-record-list { display: grid; }
+html.cdm-desktop-client .en-section-row,
+html.cdm-desktop-client .en-record-row,
+html.cdm-desktop-client .en-subject-row {
+  align-items: center;
+  border-bottom: 1px solid var(--en-line);
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 11px 16px;
+  transition: background-color 140ms ease;
+}
+html.cdm-desktop-client .en-section-row { grid-template-columns: minmax(200px, 1.5fr) minmax(210px, 1fr) auto; }
+html.cdm-desktop-client .en-record-row { grid-template-columns: minmax(190px, .9fr) minmax(250px, 1.45fr) minmax(220px, auto) auto; }
+html.cdm-desktop-client .en-section-row:hover,
+html.cdm-desktop-client .en-record-row:hover,
+html.cdm-desktop-client .en-subject-row:hover { background: color-mix(in srgb, var(--en-green-soft) 42%, transparent); }
+html.cdm-desktop-client .en-section-row:last-child,
+html.cdm-desktop-client .en-record-row:last-child,
+html.cdm-desktop-client .en-subject-row:last-child { border-bottom: 0; }
+html.cdm-desktop-client .en-section-identity,
+html.cdm-desktop-client .en-record-student { display: grid; gap: 3px; min-width: 0; }
+html.cdm-desktop-client .en-section-identity span,
+html.cdm-desktop-client .en-record-student span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-section-identity small,
+html.cdm-desktop-client .en-record-student small { color: var(--en-muted); }
+html.cdm-desktop-client .en-section-identity > strong,
+html.cdm-desktop-client .en-record-student > strong { font-size: 14px; }
+html.cdm-desktop-client .en-capacity { display: grid; gap: 5px; }
+html.cdm-desktop-client .en-capacity > div { display: flex; font-size: 11px; gap: 12px; justify-content: space-between; }
+html.cdm-desktop-client .en-capacity progress { accent-color: var(--en-green); height: 5px; width: 100%; }
+html.cdm-desktop-client .en-capacity small { color: var(--en-muted); }
+html.cdm-desktop-client .en-badge { background: var(--en-green-soft); border: 1px solid color-mix(in srgb, var(--en-green) 10%, transparent); border-radius: 999px; color: var(--en-green); font-size: 10px; font-weight: 800; padding: 4px 8px; text-transform: capitalize; white-space: nowrap; }
+html.cdm-desktop-client .en-badge[data-status="closed"],
+html.cdm-desktop-client .en-badge[data-status="cancelled"],
+html.cdm-desktop-client .en-badge[data-status="inactive"] { background: color-mix(in srgb, var(--en-muted) 12%, transparent); color: var(--en-muted); }
+html.cdm-desktop-client .en-row-end { align-items: center; display: flex; gap: 8px; justify-content: flex-end; }
+html.cdm-desktop-client .en-row-action { min-height: 32px; padding-inline: 10px; }
+html.cdm-desktop-client .en-record-academic { display: grid; gap: 3px; min-width: 0; }
+html.cdm-desktop-client .en-record-academic small,
+html.cdm-desktop-client .en-record-badges small { color: var(--en-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+html.cdm-desktop-client .en-record-academic strong,
+html.cdm-desktop-client .en-record-academic span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-record-badges { align-items: center; display: flex; gap: 14px; }
+html.cdm-desktop-client .en-record-badges > span { align-items: start; display: grid; gap: 4px; }
+html.cdm-desktop-client .en-record-unavailable { color: var(--en-muted); font-size: 11px; white-space: nowrap; }
+
+html.cdm-desktop-client .en-compact-pagination { align-items: center; display: flex; gap: 10px; justify-content: flex-end; padding: 13px 18px; }
+html.cdm-desktop-client .en-compact-pagination span { color: var(--en-muted); font-size: 12px; }
+html.cdm-desktop-client .en-modern-empty { color: var(--en-muted); padding: clamp(28px, 6vh, 52px) 20px; text-align: center; }
+html.cdm-desktop-client .en-modern-empty h2 { color: var(--desk-text, #17211b); font-size: 18px; margin: 0 0 5px; }
+html.cdm-desktop-client .en-modern-empty p { margin: 0 0 13px; }
+
+html.cdm-desktop-client .en-scheduling-controls { align-items: center; }
+html.cdm-desktop-client .en-section-selector { align-items: end; display: flex; flex: 1 1 390px; gap: 12px; }
+html.cdm-desktop-client .en-section-selector > label { min-width: 215px; }
+html.cdm-desktop-client .en-selected-section { border-left: 2px solid var(--en-green); display: grid; gap: 2px; padding: 4px 0 4px 10px; }
+html.cdm-desktop-client .en-selected-section span { color: var(--en-muted); font-size: 11px; }
+html.cdm-desktop-client .en-schedule-search { flex: 1 1 520px; grid-template-columns: minmax(260px, 1fr) auto; }
+html.cdm-desktop-client .en-schedule-search label { min-width: 0; }
+html.cdm-desktop-client .en-scheduling-controls .en-modern-filters { border: 0; border-top: 1px solid var(--en-line); border-radius: 0; flex-basis: 100%; padding: 12px 0 0; }
+html.cdm-desktop-client .en-schedule-summary { background: color-mix(in srgb, var(--en-green-soft) 42%, transparent); border-bottom: 1px solid var(--en-line); display: flex; gap: 0; padding: 0 16px; }
+html.cdm-desktop-client .en-schedule-summary > div { display: grid; gap: 2px; min-width: 130px; padding: 9px 16px 9px 0; }
+html.cdm-desktop-client .en-schedule-summary > div + div { border-left: 1px solid var(--en-line); padding-left: 16px; }
+html.cdm-desktop-client .en-schedule-summary small { color: var(--en-muted); font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+html.cdm-desktop-client .en-schedule-summary strong { font-size: 12px; }
+html.cdm-desktop-client .en-schedule-workspace .en-desktop-schedule { padding: 12px 16px 16px; }
+
+html.cdm-desktop-client .schedule-view-switcher { background: color-mix(in srgb, var(--en-line) 30%, transparent); border-radius: 8px; display: inline-flex; gap: 3px; margin-bottom: 4px; padding: 3px; }
+html.cdm-desktop-client .schedule-view-switcher button { background: transparent; border: 0; border-radius: 6px; color: var(--en-muted); font: inherit; font-size: 12px; font-weight: 700; padding: 7px 11px; }
+html.cdm-desktop-client .schedule-view-switcher button.active { background: var(--desk-surface, #fff); color: var(--en-green); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+html.cdm-desktop-client .en-view-hint { color: var(--en-muted); font-size: 10px; margin: 0 0 10px; }
+html.cdm-desktop-client .schedule-card-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); }
+html.cdm-desktop-client .en-desktop-class-card { border: 1px solid var(--en-line); border-left: 3px solid var(--en-green); border-radius: 9px; display: grid; gap: 7px; padding: 13px; }
+html.cdm-desktop-client .en-desktop-class-card header { align-items: start; display: flex; gap: 12px; justify-content: space-between; }
+html.cdm-desktop-client .en-desktop-class-card h3 { font-size: 14px; margin: 0; }
+html.cdm-desktop-client .en-desktop-class-card p { color: var(--en-muted); margin: 0; }
+
+html.cdm-desktop-client .en-weekly-timetable { border: 1px solid var(--en-line); border-radius: 10px; min-width: 760px; overflow: hidden; }
+html.cdm-desktop-client .en-weekly-head,
+html.cdm-desktop-client .en-weekly-body { display: grid; grid-template-columns: 64px repeat(var(--schedule-days, 5), minmax(130px, 1fr)); }
+html.cdm-desktop-client .en-weekly-head { background: var(--en-green-soft); }
+html.cdm-desktop-client .en-weekly-head > * { border-right: 1px solid var(--en-line); font-size: 11px; font-weight: 800; padding: 9px; text-align: center; }
+html.cdm-desktop-client .en-weekly-body { position: relative; }
+html.cdm-desktop-client .en-time-axis { background: color-mix(in srgb, var(--en-line) 18%, transparent); position: relative; }
+html.cdm-desktop-client .en-time-axis span { color: var(--en-muted); font-size: 10px; position: absolute; right: 8px; transform: translateY(-50%); }
+html.cdm-desktop-client .en-day-column { border-left: 1px solid var(--en-line); position: relative; }
+html.cdm-desktop-client .en-day-column::before { background: repeating-linear-gradient(to bottom, transparent 0, transparent 59px, var(--en-line) 60px); content: ""; inset: 0; pointer-events: none; position: absolute; }
+html.cdm-desktop-client .en-timetable-block { background: var(--en-green-soft); border: 1px solid color-mix(in srgb, var(--en-green) 30%, var(--en-line)); border-left: 3px solid var(--en-green); border-radius: 7px; display: grid; font-size: 10px; gap: 2px; left: 5px; overflow: hidden; padding: 6px; position: absolute; right: 5px; z-index: 1; }
+html.cdm-desktop-client .en-timetable-block.has-overlap { border-color: #b54708; box-shadow: inset 3px 0 #f79009; }
+html.cdm-desktop-client .en-timetable-block strong { font-size: 11px; }
+html.cdm-desktop-client .en-timetable-block span { color: var(--en-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-timetable-block .en-schedule-row-actions { display: none; }
+html.cdm-desktop-client .en-unscheduled-list { border-top: 1px solid var(--en-line); display: grid; gap: 8px; margin-top: 14px; padding-top: 13px; }
+html.cdm-desktop-client .en-schedule-list { border: 1px solid var(--en-line); border-radius: 9px; overflow-x: auto; }
+html.cdm-desktop-client .en-schedule-list .en-table { border-collapse: collapse; min-width: 760px; width: 100%; }
+html.cdm-desktop-client .en-schedule-list th,
+html.cdm-desktop-client .en-schedule-list td { border-bottom: 1px solid var(--en-line); padding: 10px; text-align: left; }
+html.cdm-desktop-client .en-schedule-row-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+
+html.cdm-desktop-client .en-catalog-directory { display: grid; }
+html.cdm-desktop-client .en-catalog-group > header { align-items: center; background: color-mix(in srgb, var(--en-line) 16%, transparent); border-bottom: 1px solid var(--en-line); border-top: 1px solid var(--en-line); display: flex; justify-content: space-between; padding: 9px 16px; }
+html.cdm-desktop-client .en-catalog-group:first-of-type > header { border-top: 0; }
+html.cdm-desktop-client .en-catalog-group h3 { font-size: 14px; margin: 2px 0 0; }
+html.cdm-desktop-client .en-catalog-group header small,
+html.cdm-desktop-client .en-catalog-group header span { color: var(--en-muted); font-size: 11px; }
+html.cdm-desktop-client .en-subject-row { grid-template-columns: 115px minmax(220px, 1.5fr) minmax(190px, 1fr) auto; }
+html.cdm-desktop-client .en-subject-code { align-items: start; display: grid; gap: 5px; justify-items: start; }
+html.cdm-desktop-client .en-subject-name h4 { font-size: 14px; margin: 0; }
+html.cdm-desktop-client .en-subject-name p { color: var(--en-muted); font-size: 11px; margin: 3px 0 0; }
+html.cdm-desktop-client .en-subject-context { display: grid; gap: 2px; }
+html.cdm-desktop-client .en-subject-context small { color: var(--en-muted); }
+html.cdm-desktop-client .en-subject-actions { align-items: center; display: flex; gap: 4px; justify-content: flex-end; }
+html.cdm-desktop-client .en-row-menu { position: relative; }
+html.cdm-desktop-client .en-row-menu-trigger { background: transparent; border: 1px solid color-mix(in srgb, var(--en-line) 76%, transparent); border-radius: 8px; color: inherit; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; padding: 7px 10px; }
+html.cdm-desktop-client .en-row-menu-trigger:focus-visible { outline: 2px solid var(--en-green); outline-offset: 2px; }
+html.cdm-desktop-client .en-row-menu-popover { background: var(--desk-surface, #fff); border: 1px solid var(--en-line); border-radius: 9px; box-shadow: 0 10px 28px rgba(0,0,0,.14); display: grid; min-width: 170px; padding: 4px; position: absolute; right: 0; top: calc(100% + 5px); z-index: 5; }
+html.cdm-desktop-client .en-row-menu-popover button { background: transparent; border: 0; border-radius: 6px; color: inherit; justify-content: start; min-height: 34px; padding: 7px 9px; text-align: left; white-space: nowrap; }
+html.cdm-desktop-client .en-row-menu-popover button:hover,
+html.cdm-desktop-client .en-row-menu-popover button:focus-visible { background: var(--en-green-soft); outline: none; }
+
+html.cdm-desktop-client .en-modern-dialog { background: var(--desk-surface, #fff); color: var(--desk-text, #17211b); }
+html.cdm-desktop-client .en-modern-dialog > header,
+html.cdm-desktop-client .en-dialog-header { align-items: start; border-bottom: 1px solid var(--en-line); display: flex; justify-content: space-between; padding: 18px 20px; }
+html.cdm-desktop-client .en-modern-dialog > header > button { background: transparent; border: 0; color: var(--en-muted); font-size: 24px; }
+html.cdm-desktop-client .en-modern-dialog-body,
+html.cdm-desktop-client .en-dialog-body,
+html.cdm-desktop-client .en-modern-confirm { padding: 20px; }
+html.cdm-desktop-client .en-modern-form-grid { display: grid; gap: 13px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html.cdm-desktop-client .en-modern-dialog > footer,
+html.cdm-desktop-client .en-modern-confirm footer { border-top: 1px solid var(--en-line); display: flex; gap: 9px; justify-content: flex-end; padding: 14px 20px; }
+html.cdm-desktop-client .en-modern-confirm h2 { margin-top: 0; }
+html.cdm-desktop-client .en-modern-details { display: grid; gap: 11px; }
+html.cdm-desktop-client .en-modern-details div { border-bottom: 1px solid var(--en-line); display: grid; gap: 3px; padding-bottom: 9px; }
+html.cdm-desktop-client .en-modern-details dt { color: var(--en-muted); font-size: 11px; font-weight: 800; }
+html.cdm-desktop-client .en-modern-details dd { margin: 0; }
+html.cdm-desktop-client .en-form-note { background: var(--en-green-soft); border-radius: 8px; color: var(--en-muted); margin: 14px 0 0; padding: 10px; }
+html.cdm-desktop-client .en-form-validation-summary { background: color-mix(in srgb, #b42318 8%, var(--desk-surface, #fff)); border: 1px solid color-mix(in srgb, #b42318 30%, var(--en-line)); border-radius: 8px; color: #b42318; font-size: 12px; margin: 0 0 12px; padding: 9px 11px; }
+html.cdm-desktop-client .en-field-error { color: #b42318; font-size: 11px; font-weight: 700; line-height: 1.35; }
+html.cdm-desktop-client .en-professor-assignment-dialog .en-modern-dialog-body { display: grid; gap: 12px; max-height: min(62vh, 580px); overflow: hidden; }
+html.cdm-desktop-client .en-professor-search { color: var(--en-muted); display: grid; font-size: 11px; font-weight: 800; gap: 5px; }
+html.cdm-desktop-client .en-professor-search input { background: var(--desk-surface, #fff); border: 1px solid var(--en-line); border-radius: 8px; color: inherit; min-height: 38px; padding: 7px 10px; }
+html.cdm-desktop-client .en-professor-assignment-list { border: 1px solid var(--en-line); border-radius: 10px; display: grid; max-height: 400px; overflow-y: auto; }
+html.cdm-desktop-client .en-professor-assignment-list > label { align-items: center; border-bottom: 1px solid var(--en-line); cursor: pointer; display: grid; gap: 10px; grid-template-columns: auto minmax(0, 1fr) auto; padding: 10px 12px; }
+html.cdm-desktop-client .en-professor-assignment-list > label:last-of-type { border-bottom: 0; }
+html.cdm-desktop-client .en-professor-assignment-list > label.selected { background: var(--en-green-soft); }
+html.cdm-desktop-client .en-professor-assignment-list input { accent-color: var(--en-green); height: 17px; width: 17px; }
+html.cdm-desktop-client .en-professor-assignment-list span { display: grid; min-width: 0; }
+html.cdm-desktop-client .en-professor-assignment-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-professor-assignment-list small { color: var(--en-muted); }
+html.cdm-desktop-client .en-professor-assignment-list em { color: #a33; font-size: 10px; font-style: normal; font-weight: 800; }
+html.cdm-desktop-client .en-professor-assignment-list > p { color: var(--en-muted); margin: 0; padding: 28px; text-align: center; }
+html.cdm-desktop-client .en-day-picker { border: 0; display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; margin: 0; padding: 0; }
+html.cdm-desktop-client .en-day-picker legend { color: var(--en-muted); font-size: 11px; font-weight: 800; margin-bottom: 6px; width: 100%; }
+html.cdm-desktop-client .en-day-picker button { background: var(--desk-surface, #fff); border: 1px solid var(--en-line); border-radius: 999px; color: inherit; min-height: 34px; padding: 5px 12px; }
+html.cdm-desktop-client .en-day-picker button.selected { background: var(--en-green); border-color: var(--en-green); color: #fff; }
+html.cdm-desktop-client .en-schedule-editor-overlay .en-dialog { display: block; max-height: min(90dvh, 760px); overflow: hidden; padding: 0; width: min(900px, 100%); }
+html.cdm-desktop-client .en-schedule-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: min(90dvh, 760px); min-height: 0; overflow: hidden; width: 100%; }
+html.cdm-desktop-client .en-schedule-dialog > header,
+html.cdm-desktop-client .en-schedule-dialog > footer { background: var(--desk-surface, #fff); position: relative; z-index: 2; }
+html.cdm-desktop-client .en-schedule-dialog .en-modern-dialog-body { max-height: none; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+html.cdm-desktop-client .en-meeting-editor { display: grid; gap: 8px; grid-column: 1 / -1; }
+html.cdm-desktop-client .en-meeting-row { align-items: end; background: color-mix(in srgb, var(--en-green-soft) 50%, var(--desk-surface, #fff)); border: 1px solid var(--en-line); border-radius: 10px; display: grid; gap: 9px; grid-template-columns: minmax(86px, .6fr) minmax(128px, 1fr) minmax(128px, 1fr) minmax(76px, auto) auto; padding: 10px; transition: border-color 160ms ease, box-shadow 160ms ease; }
+html.cdm-desktop-client .en-meeting-row.invalid { border-color: color-mix(in srgb, #b42318 48%, var(--en-line)); }
+html.cdm-desktop-client .en-meeting-row > strong { align-self: center; }
+html.cdm-desktop-client .en-meeting-row > button { background: transparent; border: 0; color: #a33; min-height: 36px; }
+html.cdm-desktop-client .en-meeting-row > button:disabled { color: var(--en-muted); opacity: .5; }
+html.cdm-desktop-client .en-time-spinner { display: grid; gap: 4px; margin: 0; min-width: 0; }
+html.cdm-desktop-client .en-time-spinner-label,
+html.cdm-desktop-client .en-meeting-duration > span { color: var(--en-muted); font-size: 10px; font-weight: 800; letter-spacing: .02em; }
+html.cdm-desktop-client .en-time-spinner-control { align-items: center; background: var(--desk-surface, #fff); border: 1px solid var(--en-line); border-radius: 9px; display: flex; justify-content: center; min-height: 48px; overflow: hidden; padding: 3px 5px; transition: border-color 160ms ease, box-shadow 160ms ease; width: 100%; }
+html.cdm-desktop-client .en-time-spinner[aria-invalid="true"] .en-time-spinner-control { border-color: color-mix(in srgb, #b42318 48%, var(--en-line)); }
+html.cdm-desktop-client .en-time-spinner-control:focus-within { border-color: var(--en-green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--en-green) 18%, transparent); }
+html.cdm-desktop-client .en-time-spinner-part { align-items: center; display: grid; flex: 0 1 43px; grid-template-rows: 12px 22px 12px; justify-items: center; min-width: 0; }
+html.cdm-desktop-client .en-time-spinner-part > button:not(.en-time-period-value) { align-items: center; background: transparent; border: 0; color: var(--en-muted); display: flex; font-size: 12px; height: 12px; justify-content: center; line-height: 1; padding: 0; transition: color 150ms ease; width: 100%; }
+html.cdm-desktop-client .en-time-spinner-part > button:not(.en-time-period-value):hover { color: var(--en-green); }
+html.cdm-desktop-client .en-time-spinner-part input { appearance: none; background: transparent; border: 0; color: inherit; font: inherit; font-size: 13px; font-weight: 800; height: 22px; min-width: 0; padding: 0; text-align: center; width: 34px; }
+html.cdm-desktop-client .en-time-spinner-part input:focus-visible,
+html.cdm-desktop-client .en-time-spinner-part button:focus-visible { border-radius: 4px; outline: 2px solid color-mix(in srgb, var(--en-green) 58%, transparent); outline-offset: 1px; }
+html.cdm-desktop-client .en-time-colon { color: var(--en-muted); font-size: 14px; font-weight: 900; margin: 0 1px; }
+html.cdm-desktop-client .en-time-period { border-left: 1px solid var(--en-line); flex-basis: 50px; margin-left: 4px; padding-left: 4px; }
+html.cdm-desktop-client .en-time-period-value { background: var(--en-green-soft); border: 0; border-radius: 5px; color: var(--en-green); font-size: 11px; font-weight: 900; height: 22px; padding: 0 6px; transition: background-color 150ms ease, color 150ms ease; }
+html.cdm-desktop-client .en-time-period-value:hover { background: color-mix(in srgb, var(--en-green-soft) 72%, var(--en-green)); }
+html.cdm-desktop-client .en-time-spinner button:disabled,
+html.cdm-desktop-client .en-time-spinner input:disabled { cursor: not-allowed; opacity: .55; }
+html.cdm-desktop-client .en-meeting-duration { align-self: center; display: grid; gap: 4px; min-width: 76px; }
+html.cdm-desktop-client .en-meeting-duration strong { font-size: 12px; white-space: nowrap; }
+html.cdm-desktop-client .en-meeting-error { color: #b42318; font-size: 11px; grid-column: 2 / -1; margin: 0; }
+html.cdm-desktop-client .en-meeting-availability { align-items: start; border-radius: 8px; display: grid; font-size: 11px; gap: 4px; grid-column: 1 / -1; line-height: 1.4; min-width: 0; padding: 7px 9px; }
+html.cdm-desktop-client .en-meeting-availability[data-status="checking"] { background: color-mix(in srgb, #d7a317 10%, var(--desk-surface, #fff)); color: color-mix(in srgb, #805d00 88%, var(--desk-text, #17211b)); }
+html.cdm-desktop-client .en-meeting-availability[data-status="available"] { background: color-mix(in srgb, var(--en-green) 9%, var(--desk-surface, #fff)); color: var(--en-green); font-weight: 800; }
+html.cdm-desktop-client .en-meeting-availability[data-status="conflict"],
+html.cdm-desktop-client .en-meeting-availability[data-status="error"] { background: color-mix(in srgb, #b42318 8%, var(--desk-surface, #fff)); color: #b42318; }
+html.cdm-desktop-client .en-meeting-availability ul { display: grid; gap: 2px; margin: 0; padding-left: 18px; }
+html.cdm-desktop-client .en-meeting-availability li { overflow-wrap: anywhere; }
+html.cdm-desktop-client .en-weekly-hours { align-items: center; background: linear-gradient(135deg, var(--en-green), color-mix(in srgb, var(--en-green) 76%, #021)); border-radius: 11px; color: #fff; display: grid; gap: 2px; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; padding: 12px 14px; }
+html.cdm-desktop-client .en-weekly-hours > span { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+html.cdm-desktop-client .en-weekly-hours > strong { font-size: 20px; grid-row: 1 / span 2; }
+html.cdm-desktop-client .en-weekly-hours > small { color: color-mix(in srgb, #fff 82%, transparent); }
+html.cdm-desktop-client .en-weekly-hours.invalid { background: color-mix(in srgb, #8a3b32 74%, var(--desk-surface, #fff)); }
+html.cdm-desktop-client .en-meeting-summary { display: grid; gap: 3px; }
+
+@media (max-width: 1180px) {
+  html.cdm-desktop-client .en-section-row { grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto; }
+  html.cdm-desktop-client .en-record-row { grid-template-columns: minmax(170px, .8fr) minmax(220px, 1.2fr) minmax(190px, auto) auto; }
+  html.cdm-desktop-client .en-subject-row { grid-template-columns: 105px minmax(180px, 1fr) minmax(160px, 1fr) auto; }
+  html.cdm-desktop-client .en-search-toolbar-with-context { grid-template-columns: minmax(260px, 1fr) minmax(160px, 200px); }
+  html.cdm-desktop-client .en-search-toolbar-with-context .en-toolbar-actions { grid-column: 1 / -1; }
+}
+
+@media (max-width: 900px) {
+  html.cdm-desktop-client .en-modern-header { align-items: start; }
+  html.cdm-desktop-client .en-modern-toolbar { align-items: stretch; }
+  html.cdm-desktop-client .en-modern-toolbar label { flex: 1 1 220px; }
+  html.cdm-desktop-client .en-section-row,
+  html.cdm-desktop-client .en-record-row,
+  html.cdm-desktop-client .en-subject-row { grid-template-columns: 1fr auto; }
+  html.cdm-desktop-client .en-capacity,
+  html.cdm-desktop-client .en-record-academic,
+  html.cdm-desktop-client .en-record-badges,
+  html.cdm-desktop-client .en-subject-name,
+  html.cdm-desktop-client .en-subject-context { grid-column: 1 / -1; }
+  html.cdm-desktop-client .en-row-end,
+  html.cdm-desktop-client .en-subject-actions { justify-self: end; }
+  html.cdm-desktop-client .en-section-selector { align-items: stretch; flex-direction: column; }
+  html.cdm-desktop-client .en-schedule-search { flex: 1 1 100%; }
+}
+
+@media (max-width: 700px) {
+  html.cdm-desktop-client .en-modern-header { display: grid; }
+  html.cdm-desktop-client .en-modern-header > button { justify-self: start; }
+  html.cdm-desktop-client .en-modern-form-grid { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .en-section-directory > header,
+  html.cdm-desktop-client .en-record-directory > header,
+  html.cdm-desktop-client .en-catalog-directory > header,
+  html.cdm-desktop-client .en-schedule-workspace > header { align-items: start; display: grid; }
+  html.cdm-desktop-client .en-schedule-summary { overflow-x: auto; }
+  html.cdm-desktop-client .en-schedule-workspace .en-desktop-schedule { overflow-x: auto; }
+  html.cdm-desktop-client .en-search-toolbar,
+  html.cdm-desktop-client .en-search-toolbar-with-context,
+  html.cdm-desktop-client .en-schedule-search { grid-template-columns: minmax(0, 1fr); }
+  html.cdm-desktop-client .en-search-toolbar .en-toolbar-actions { grid-column: 1; justify-content: flex-start; }
+  html.cdm-desktop-client .en-toolbar-actions { flex-wrap: wrap; }
+  html.cdm-desktop-client .en-meeting-row { grid-template-columns: 1fr 1fr; }
+  html.cdm-desktop-client .en-meeting-row > strong { grid-column: 1 / -1; }
+  html.cdm-desktop-client .en-time-spinner-control { max-width: 180px; }
+  html.cdm-desktop-client .en-meeting-duration { align-self: end; }
+  html.cdm-desktop-client .en-meeting-error { grid-column: 1 / -1; }
+  html.cdm-desktop-client .en-weekly-hours { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .en-weekly-hours > strong { grid-row: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.cdm-desktop-client .en-staff-modern *,
+  html.cdm-desktop-client .en-staff-modern *::before,
+  html.cdm-desktop-client .en-staff-modern *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+@media print {
+  html.cdm-desktop-client .en-no-print { display: none !important; }
+  html.cdm-desktop-client .en-section-directory,
+  html.cdm-desktop-client .en-record-directory,
+  html.cdm-desktop-client .en-schedule-workspace { border: 0; }
+}
+
+/* Approved four-screen Registrar Enrollment reference architecture. */
+html.cdm-desktop-client .en-schedule-context-strip {
+  align-items: stretch;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: .75fr 1.6fr .9fr .9fr auto;
+}
+html.cdm-desktop-client .en-schedule-context-strip > div {
+  background: var(--desk-surface, #fff);
+  border: 1px solid color-mix(in srgb, var(--en-line) 76%, transparent);
+  border-radius: 9px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+html.cdm-desktop-client .en-schedule-context-strip small,
+html.cdm-desktop-client .en-schedule-context-strip strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-schedule-context-strip small { color: var(--en-muted); font-size: 9px; font-weight: 750; text-transform: uppercase; }
+html.cdm-desktop-client .en-schedule-context-strip strong { font-size: 12px; }
+html.cdm-desktop-client .en-schedule-context-strip > .en-badge { align-self: center; justify-self: end; }
+
+html.cdm-desktop-client .en-scheduling-layout {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(190px, 220px) minmax(460px, 1fr) minmax(220px, 260px);
+  min-width: 0;
+}
+html.cdm-desktop-client .en-section-browser,
+html.cdm-desktop-client .en-timetable-workspace,
+html.cdm-desktop-client .en-scheduled-subjects {
+  background: var(--desk-surface, #fff);
+  border: 1px solid color-mix(in srgb, var(--en-line) 80%, transparent);
+  border-radius: 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+html.cdm-desktop-client .en-section-browser > header,
+html.cdm-desktop-client .en-timetable-workspace > header,
+html.cdm-desktop-client .en-scheduled-subjects > header {
+  align-items: center;
+  border-bottom: 1px solid var(--en-line);
+  display: flex;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 9px 11px;
+}
+html.cdm-desktop-client .en-section-browser > header > div,
+html.cdm-desktop-client .en-scheduled-subjects > header > div { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; width: 100%; }
+html.cdm-desktop-client .en-section-browser h2,
+html.cdm-desktop-client .en-timetable-workspace h2,
+html.cdm-desktop-client .en-scheduled-subjects h2 { font-size: 14px; margin: 0; }
+html.cdm-desktop-client .en-section-browser header span,
+html.cdm-desktop-client .en-scheduled-subjects header span,
+html.cdm-desktop-client .en-timetable-workspace header p { color: var(--en-muted); font-size: 10px; margin: 0; }
+html.cdm-desktop-client .en-browser-search,
+html.cdm-desktop-client .en-subject-search label { color: var(--en-muted); display: grid; font-size: 0; padding: 9px; }
+html.cdm-desktop-client .en-browser-search input,
+html.cdm-desktop-client .en-subject-search input {
+  background: var(--desk-surface, #fff);
+  border: 1px solid var(--en-line);
+  border-radius: 7px;
+  color: var(--desk-text, #17211b);
+  font: inherit;
+  font-size: 11px;
+  height: 34px;
+  padding: 7px 9px;
+  width: 100%;
+}
+html.cdm-desktop-client .en-section-native-select {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+html.cdm-desktop-client .en-section-browser-list { display: grid; max-height: 340px; overflow-y: auto; padding: 0 7px 7px; }
+html.cdm-desktop-client .en-section-browser-list > button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 7px;
+  color: var(--desk-text, #17211b);
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 7px;
+  text-align: left;
+  width: 100%;
+}
+html.cdm-desktop-client .en-section-browser-list > button:hover { background: color-mix(in srgb, var(--en-green-soft) 55%, transparent); }
+html.cdm-desktop-client .en-section-browser-list > button.active { background: var(--en-green-soft); border-left-color: var(--en-green); color: var(--en-green); }
+html.cdm-desktop-client .en-section-browser-list > button > span:first-child { display: grid; gap: 2px; min-width: 0; }
+html.cdm-desktop-client .en-section-browser-list strong,
+html.cdm-desktop-client .en-section-browser-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-section-browser-list strong { font-size: 11px; }
+html.cdm-desktop-client .en-section-browser-list small { color: var(--en-muted); font-size: 9px; }
+html.cdm-desktop-client .en-browser-empty,
+html.cdm-desktop-client .en-panel-empty { color: var(--en-muted); font-size: 11px; margin: 0; padding: 18px 12px; text-align: center; }
+html.cdm-desktop-client .en-browser-pagination { align-items: center; border-top: 1px solid var(--en-line); display: flex; gap: 5px; justify-content: space-between; padding: 7px; }
+html.cdm-desktop-client .en-browser-pagination button { background: transparent; border: 0; color: var(--en-green); font: inherit; font-size: 10px; font-weight: 700; }
+html.cdm-desktop-client .en-browser-pagination span { color: var(--en-muted); font-size: 9px; }
+html.cdm-desktop-client .en-section-overview { border-top: 1px solid var(--en-line); display: grid; gap: 8px; padding: 10px; }
+html.cdm-desktop-client .en-section-overview h3 { font-size: 11px; margin: 0; }
+html.cdm-desktop-client .en-section-overview > div { display: grid; grid-template-columns: repeat(3, 1fr); }
+html.cdm-desktop-client .en-section-overview > div span { display: grid; gap: 2px; text-align: center; }
+html.cdm-desktop-client .en-section-overview small { color: var(--en-muted); font-size: 8px; }
+html.cdm-desktop-client .en-section-overview progress { accent-color: var(--en-green); height: 5px; width: 100%; }
+html.cdm-desktop-client .en-section-overview > small { color: var(--en-green); text-align: right; }
+
+html.cdm-desktop-client .en-timetable-workspace { min-height: 520px; }
+html.cdm-desktop-client .en-timetable-workspace .en-desktop-schedule { overflow-x: auto; padding: 9px; }
+html.cdm-desktop-client .en-timetable-workspace .schedule-view-switcher { position: sticky; left: 0; }
+html.cdm-desktop-client .en-timetable-workspace .en-weekly-timetable { min-width: 720px; }
+
+html.cdm-desktop-client .en-subject-search { align-items: end; border-bottom: 1px solid var(--en-line); display: grid; grid-template-columns: 1fr auto; }
+html.cdm-desktop-client .en-subject-search label { padding-right: 4px; }
+html.cdm-desktop-client .en-subject-search button { background: transparent; border: 0; color: var(--en-green); font-size: 0; height: 34px; margin: 9px 8px 9px 0; width: 28px; }
+html.cdm-desktop-client .en-subject-search button::before { content: "⌕"; font-size: 18px; }
+html.cdm-desktop-client .en-scheduled-subject-list { display: grid; max-height: 535px; overflow-y: auto; }
+html.cdm-desktop-client .en-scheduled-subject { border-bottom: 1px solid var(--en-line); display: grid; gap: 7px; padding: 11px; }
+html.cdm-desktop-client .en-scheduled-subject:last-child { border-bottom: 0; }
+html.cdm-desktop-client .en-scheduled-subject > header { align-items: start; display: flex; gap: 8px; justify-content: space-between; }
+html.cdm-desktop-client .en-scheduled-subject > header > div { display: grid; gap: 2px; min-width: 0; }
+html.cdm-desktop-client .en-scheduled-subject > header strong { font-size: 12px; }
+html.cdm-desktop-client .en-scheduled-subject > header span { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-scheduled-subject > header small { background: var(--en-green-soft); border-radius: 999px; color: var(--en-green); font-size: 8px; padding: 3px 6px; white-space: nowrap; }
+html.cdm-desktop-client .en-scheduled-subject dl { display: grid; gap: 4px; margin: 0; }
+html.cdm-desktop-client .en-scheduled-subject dl div { display: grid; grid-template-columns: 54px 1fr; }
+html.cdm-desktop-client .en-scheduled-subject dt { color: var(--en-muted); font-size: 8px; }
+html.cdm-desktop-client .en-scheduled-subject dd { font-size: 9px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-scheduled-subject .en-schedule-row-actions { gap: 3px; }
+html.cdm-desktop-client .en-scheduled-subject .en-schedule-row-actions button { font-size: 9px; min-height: 27px; padding: 4px 7px; }
+
+html.cdm-desktop-client .en-section-catalog-toolbar,
+html.cdm-desktop-client .en-subject-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(140px, 180px)) auto; }
+html.cdm-desktop-client .en-subject-toolbar { grid-template-columns: minmax(220px, 1fr) minmax(150px, 200px) minmax(170px, 220px) auto; }
+html.cdm-desktop-client .en-section-card-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 10px; }
+html.cdm-desktop-client .en-section-card {
+  background: var(--desk-surface, #fff);
+  border: 1px solid color-mix(in srgb, var(--en-line) 82%, transparent);
+  border-radius: 9px;
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  padding: 11px;
+}
+html.cdm-desktop-client .en-section-card:hover { border-color: color-mix(in srgb, var(--en-green) 38%, var(--en-line)); box-shadow: 0 4px 12px color-mix(in srgb, #000 5%, transparent); }
+html.cdm-desktop-client .en-section-card > header { align-items: start; display: grid; gap: 8px; grid-template-columns: 38px 1fr auto; }
+html.cdm-desktop-client .en-section-monogram,
+html.cdm-desktop-client .en-record-avatar { align-items: center; background: var(--en-green-soft); border-radius: 8px; color: var(--en-green); display: flex; flex: 0 0 auto; font-size: 10px; font-weight: 850; height: 38px; justify-content: center; text-transform: uppercase; width: 38px; }
+html.cdm-desktop-client .en-section-card h3 { font-size: 13px; margin: 0; }
+html.cdm-desktop-client .en-section-card header p,
+html.cdm-desktop-client .en-section-card header small { color: var(--en-muted); display: block; font-size: 9px; margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-section-card-counts { display: grid; grid-template-columns: repeat(3, 1fr); }
+html.cdm-desktop-client .en-section-card-counts span { display: grid; gap: 3px; text-align: center; }
+html.cdm-desktop-client .en-section-card-counts small { color: var(--en-muted); font-size: 8px; }
+html.cdm-desktop-client .en-section-card-counts strong { font-size: 13px; }
+html.cdm-desktop-client .en-section-card-capacity { display: grid; gap: 4px; grid-template-columns: 1fr auto; }
+html.cdm-desktop-client .en-section-card-capacity progress { accent-color: var(--en-green); height: 5px; width: 100%; }
+html.cdm-desktop-client .en-section-card-capacity small { color: var(--en-green); font-size: 8px; }
+html.cdm-desktop-client .en-section-card footer { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; }
+html.cdm-desktop-client .en-section-card footer button { width: 100%; }
+
+html.cdm-desktop-client .en-catalog-period > header { align-items: center; background: color-mix(in srgb, var(--en-line) 9%, transparent); border-bottom: 1px solid var(--en-line); display: flex; justify-content: space-between; padding: 8px 16px; }
+html.cdm-desktop-client .en-catalog-period > header span { color: var(--desk-text, #17211b); font-size: 10px; font-weight: 700; }
+html.cdm-desktop-client .en-catalog-period > header small { color: var(--en-muted); font-size: 9px; }
+html.cdm-desktop-client .en-catalog-period .en-subject-row { grid-template-columns: 66px minmax(200px, 1.4fr) auto minmax(170px, .8fr) auto; margin: 8px; padding: 9px; border: 1px solid color-mix(in srgb, var(--en-line) 76%, transparent); border-left: 2px solid var(--en-green); border-radius: 8px; }
+html.cdm-desktop-client .en-catalog-period .en-subject-code { align-items: center; background: var(--en-green-soft); border-radius: 7px; justify-items: center; min-height: 38px; padding: 7px; }
+
+html.cdm-desktop-client .en-records-workspace {
+  align-items: stretch;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 215px) minmax(430px, 1fr) minmax(250px, 290px);
+  min-height: 570px;
+}
+html.cdm-desktop-client .en-record-filters,
+html.cdm-desktop-client .en-record-results,
+html.cdm-desktop-client .en-record-inspector { background: var(--desk-surface, #fff); border: 1px solid color-mix(in srgb, var(--en-line) 80%, transparent); border-radius: 10px; min-width: 0; overflow: hidden; }
+html.cdm-desktop-client .en-record-filters > header,
+html.cdm-desktop-client .en-record-results > header { align-items: center; border-bottom: 1px solid var(--en-line); display: flex; justify-content: space-between; min-height: 45px; padding: 9px 11px; }
+html.cdm-desktop-client .en-record-filters h2,
+html.cdm-desktop-client .en-record-results h2 { font-size: 14px; margin: 0; }
+html.cdm-desktop-client .en-record-results header p { color: var(--en-muted); font-size: 9px; margin: 2px 0 0; }
+html.cdm-desktop-client .en-record-filters form { display: grid; gap: 8px; padding: 10px; }
+html.cdm-desktop-client .en-record-filters label { color: var(--en-muted); display: grid; font-size: 9px; font-weight: 700; gap: 4px; }
+html.cdm-desktop-client .en-record-filters input,
+html.cdm-desktop-client .en-record-filters select { background: var(--desk-surface, #fff); border: 1px solid var(--en-line); border-radius: 7px; color: var(--desk-text, #17211b); font: inherit; font-size: 10px; height: 34px; min-width: 0; padding: 6px 8px; width: 100%; }
+html.cdm-desktop-client .en-record-more-filters { display: grid; gap: 8px; }
+html.cdm-desktop-client .en-record-master-list { display: grid; }
+html.cdm-desktop-client .en-record-master-row { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--en-line); border-left: 2px solid transparent; color: var(--desk-text, #17211b); display: grid; font: inherit; gap: 8px; grid-template-columns: 34px minmax(105px, .8fr) minmax(145px, 1.25fr) auto auto 10px; min-height: 62px; padding: 8px 9px; text-align: left; width: 100%; }
+html.cdm-desktop-client .en-record-master-row:hover { background: color-mix(in srgb, var(--en-green-soft) 45%, transparent); }
+html.cdm-desktop-client .en-record-master-row.active { background: var(--en-green-soft); border-left-color: var(--en-green); }
+html.cdm-desktop-client .en-record-master-row .en-record-avatar { height: 34px; width: 34px; }
+html.cdm-desktop-client .en-record-primary,
+html.cdm-desktop-client .en-record-context { display: grid; gap: 2px; min-width: 0; }
+html.cdm-desktop-client .en-record-primary strong,
+html.cdm-desktop-client .en-record-context strong,
+html.cdm-desktop-client .en-record-primary small,
+html.cdm-desktop-client .en-record-context small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-record-primary strong,
+html.cdm-desktop-client .en-record-context strong { font-size: 10px; }
+html.cdm-desktop-client .en-record-primary small,
+html.cdm-desktop-client .en-record-context small { color: var(--en-muted); font-size: 8px; }
+html.cdm-desktop-client .en-record-inspector { display: flex; flex-direction: column; }
+html.cdm-desktop-client .en-record-inspector > header { align-items: center; border-bottom: 1px solid var(--en-line); display: grid; gap: 9px; grid-template-columns: 38px 1fr auto; padding: 11px; }
+html.cdm-desktop-client .en-record-inspector h2 { font-size: 13px; margin: 0; }
+html.cdm-desktop-client .en-record-inspector header p { color: var(--en-muted); font-size: 9px; margin: 2px 0 0; }
+html.cdm-desktop-client .en-inspector-close { background: transparent; border: 0; color: var(--en-muted); display: none; font-size: 20px; }
+html.cdm-desktop-client .en-record-inspector-tabs { border-bottom: 1px solid var(--en-line); display: flex; gap: 16px; padding: 0 11px; }
+html.cdm-desktop-client .en-record-inspector-tabs span { color: var(--en-muted); font-size: 9px; padding: 10px 0 8px; }
+html.cdm-desktop-client .en-record-inspector-tabs span.active { border-bottom: 2px solid var(--en-green); color: var(--desk-text, #17211b); font-weight: 800; }
+html.cdm-desktop-client .en-record-inspector dl { display: grid; gap: 10px; margin: 0; padding: 13px; }
+html.cdm-desktop-client .en-record-inspector dl div { display: grid; gap: 2px; }
+html.cdm-desktop-client .en-record-inspector dt { color: var(--en-muted); font-size: 8px; }
+html.cdm-desktop-client .en-record-inspector dd { font-size: 10px; margin: 0; overflow-wrap: anywhere; }
+html.cdm-desktop-client .en-record-inspector > footer { border-top: 1px solid var(--en-line); margin-top: auto; padding: 11px; }
+html.cdm-desktop-client .en-record-inspector > footer button { width: 100%; }
+html.cdm-desktop-client .en-record-inspector-empty { align-items: center; color: var(--en-muted); justify-content: center; padding: 24px; text-align: center; }
+html.cdm-desktop-client .en-record-inspector-empty h2 { color: var(--desk-text, #17211b); }
+
+@media (max-width: 1280px) {
+  html.cdm-desktop-client .en-scheduling-layout { grid-template-columns: minmax(180px, 210px) minmax(440px, 1fr); }
+  html.cdm-desktop-client .en-scheduled-subjects { grid-column: 2; }
+  html.cdm-desktop-client .en-scheduled-subject-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html.cdm-desktop-client .en-records-workspace { grid-template-columns: minmax(175px, 205px) minmax(400px, 1fr); }
+  html.cdm-desktop-client .en-record-inspector { grid-column: 2; }
+  html.cdm-desktop-client .en-section-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html.cdm-desktop-client .en-section-catalog-toolbar { grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(125px, 160px)); }
+  html.cdm-desktop-client .en-section-catalog-toolbar .en-toolbar-actions { grid-column: 1 / -1; }
+}
+
+@media (max-width: 980px) {
+  html.cdm-desktop-client .en-schedule-context-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html.cdm-desktop-client .en-schedule-context-strip > .en-badge { justify-self: start; }
+  html.cdm-desktop-client .en-scheduling-layout { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .en-scheduled-subjects { grid-column: 1; }
+  html.cdm-desktop-client .en-section-browser-list { max-height: 220px; }
+  html.cdm-desktop-client .en-records-workspace { grid-template-columns: minmax(170px, 200px) minmax(0, 1fr); }
+  html.cdm-desktop-client .en-record-inspector {
+    border-radius: 10px 0 0 10px;
+    bottom: 0;
+    box-shadow: -12px 0 35px color-mix(in srgb, #000 18%, transparent);
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: min(360px, 88vw);
+    z-index: 80;
+  }
+  html.cdm-desktop-client .en-record-inspector-empty { display: none; }
+  html.cdm-desktop-client .en-inspector-close { display: block; }
+  html.cdm-desktop-client .en-subject-toolbar { grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(150px, 190px)); }
+  html.cdm-desktop-client .en-subject-toolbar .en-toolbar-actions { grid-column: 1 / -1; }
+  html.cdm-desktop-client .en-catalog-period .en-subject-row { grid-template-columns: 60px minmax(180px, 1fr) auto auto; }
+  html.cdm-desktop-client .en-catalog-period .en-subject-context { grid-column: 2 / -1; }
+}
+
+@media (max-width: 700px) {
+  html.cdm-desktop-client .en-section-card-grid { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .en-section-catalog-toolbar,
+  html.cdm-desktop-client .en-subject-toolbar { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .en-section-catalog-toolbar .en-toolbar-actions,
+  html.cdm-desktop-client .en-subject-toolbar .en-toolbar-actions { grid-column: 1; }
+  html.cdm-desktop-client .en-records-workspace { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .en-record-filters { max-height: 250px; overflow-y: auto; }
+  html.cdm-desktop-client .en-record-master-row { grid-template-columns: 34px minmax(100px, 1fr) auto auto 10px; }
+  html.cdm-desktop-client .en-record-master-row .en-record-context { grid-column: 2 / -1; }
+  html.cdm-desktop-client .en-scheduled-subject-list { grid-template-columns: 1fr; }
+}

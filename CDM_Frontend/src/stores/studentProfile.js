@@ -10,6 +10,17 @@ export const useStudentProfileStore = defineStore('studentProfile', () => {
   const preferredDisplayName = ref('')
   const revision = ref(0)
   const avatarUrl = computed(() => auth.currentRole === 'Student' ? apiAssetUrl(avatarPath.value) : '')
+  const websiteAvatarPath = computed(() => {
+    if (auth.currentRole === 'Student') return avatarPath.value
+    if (auth.currentRole === 'Professor') return auth.currentUser?.profile?.profile_photo_url || null
+    return null
+  })
+  const websiteAvatarRevision = computed(() => auth.currentRole === 'Student' ? revision.value : 0)
+  const websiteAvatarUrl = computed(() => {
+    const url = apiAssetUrl(websiteAvatarPath.value)
+    if (!url || !websiteAvatarRevision.value || /^(blob:|data:)/i.test(url)) return url
+    return `${url}${url.includes('?') ? '&' : '?'}cdm_avatar=${websiteAvatarRevision.value}`
+  })
 
   watch([() => auth.currentRole, () => auth.currentUser?.id], () => {
     avatarPath.value = null
@@ -25,7 +36,15 @@ export const useStudentProfileStore = defineStore('studentProfile', () => {
     revision.value += 1
   }
 
-  return { avatarPath, avatarUrl, preferredDisplayName, revision, setProfile }
+  return {
+    avatarPath,
+    avatarUrl,
+    preferredDisplayName,
+    revision,
+    websiteAvatarUrl,
+    websiteAvatarRevision,
+    setProfile,
+  }
 })
 
 if (import.meta.hot) {

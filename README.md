@@ -9,7 +9,6 @@ Campus Management System for Colegio de Montalban.
 - Admission
 - Enrollment
 - Grading
-- Academic Monitoring
 - Student Management
 - Registrar Appointment
 - Document Requests

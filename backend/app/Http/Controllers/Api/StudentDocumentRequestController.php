@@ -31,7 +31,7 @@ class StudentDocumentRequestController extends Controller
     {
         $student = $this->studentFor($request);
         $items = $student->documentRequests()
-            ->select(['id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'status', 'request_date', 'release_date', 'remarks', 'cancellation_reason', 'cancelled_at', 'approved_at', 'completed_at', 'rejected_at', 'created_at'])
+            ->select(['id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'purpose_details', 'status', 'request_date', 'release_date', 'remarks', 'cancellation_reason', 'cancelled_at', 'approved_at', 'completed_at', 'rejected_at', 'created_at'])
             ->with([
                 'documentType:id,document_name,requires_appointment',
                 'appointments:id,document_request_id,appointment_date,appointment_time,status,remarks',
@@ -52,7 +52,8 @@ class StudentDocumentRequestController extends Controller
             'document_type_id' => $documentType->id,
             'quantity' => $quantity,
             'total_fee' => $documentType->processing_fee * $quantity,
-            'purpose' => $request->input('purpose'),
+            'purpose' => $request->string('purpose_category')->toString(),
+            'purpose_details' => $request->input('purpose_details'),
             'status' => 'pending',
             'request_date' => today(),
         ]);

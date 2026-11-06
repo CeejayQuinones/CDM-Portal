@@ -4,7 +4,6 @@ use App\Exceptions\AdmissionConflictException;
 use App\Exceptions\ClientPlatformException;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureClientPlatformAccess;
-use App\Http\Middleware\EnsureMonitoringAccess;
 use App\Http\Middleware\EnsureProfessorRole;
 use App\Http\Middleware\EnsureProfessorWebAccess;
 use App\Http\Middleware\EnsureRegistrarOrAdminRole;
@@ -42,7 +41,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'professor.web' => EnsureProfessorWebAccess::class,
             'role.student' => EnsureStudentRole::class,
             'role.registrar-or-admin' => EnsureRegistrarOrAdminRole::class,
-            'role.monitoring' => EnsureMonitoringAccess::class,
             'step-up' => RequireStepUpAuthentication::class,
         ]);
     })

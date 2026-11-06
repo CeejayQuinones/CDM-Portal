@@ -59,7 +59,12 @@ class PortalDevelopmentSeedTest extends TestCase
         $this->assertSame(1, DB::table('admission_recommendations')->count());
         $this->assertSame(7, DB::table('enrollment_applications')->count());
         $this->assertGreaterThan(0, DB::table('enrollments')->count());
+        $trackedSchedules = DB::table('generated_data_records')->where('record_type', 'schedule')->pluck('record_id');
+        $this->assertSame($trackedSchedules->count(), DB::table('section_subject_meetings')
+            ->whereIn('section_subject_id', $trackedSchedules)->distinct()->count('section_subject_id'));
+        DB::table('generated_data_records')->where('record_type', 'schedule_meeting')->delete();
         $this->artisan('portal:dev-seed')->assertExitCode(0);
+        $this->assertSame($trackedSchedules->count(), DB::table('generated_data_records')->where('record_type', 'schedule_meeting')->count());
         $this->assertSame(7, DB::table('students')->count());
         $this->artisan('portal:dev-seed', ['--cleanup' => true])->assertExitCode(0);
         $this->assertSame(0, DB::table('students')->count());

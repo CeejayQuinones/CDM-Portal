@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AcademicYear;
+use App\Models\Course;
 use App\Models\DocumentType;
 use App\Models\Enrollment;
 use App\Models\Enrollment\EnrollmentApplication;
@@ -19,7 +20,6 @@ use App\Models\StudentDocument;
 use App\Models\StudentRecordAuditEvent;
 use App\Models\User;
 use App\Services\Admission\AdmissionCompletionService;
-use App\Services\EarlyWarningService;
 use App\Services\Enrollment\EnrollmentEligibilityService;
 use App\Services\Enrollment\EnrollmentWorkflowService;
 use App\Services\Enrollment\StudentNumberAllocator;
@@ -105,6 +105,51 @@ class EnrollmentAcademicTest extends TestCase
         $this->postJson($this->base().'/applications/'.$application->id.'/assign', [
             'version' => $application->version, 'section_id' => $this->f['section']->id,
         ])->assertOk();
+    }
+
+    public function test_student_catalog_exposes_only_verified_active_academic_data(): void
+    {
+        Course::create([
+            'department_id' => $this->f['department']->id,
+            'course_code' => 'EMPTY-CATALOG',
+            'course_name' => 'Active Program Without Curriculum',
+            'years' => 3,
+            'status' => 'active',
+        ]);
+        Course::create([
+            'department_id' => $this->f['department']->id,
+            'course_code' => 'INACTIVE-CATALOG',
+            'course_name' => 'Inactive Program',
+            'years' => 4,
+            'status' => 'inactive',
+        ]);
+
+        Sanctum::actingAs($this->f['user']);
+        $response = $this->getJson($this->base().'/catalog')
+            ->assertOk()
+            ->assertJsonPath('data.academic_year.school_year', $this->f['year']->school_year)
+            ->assertJsonPath('data.metadata.descriptions_available', false)
+            ->assertJsonPath('data.metadata.capacity_available', false)
+            ->assertJsonPath('data.metadata.study_mode_available', false);
+
+        $programs = collect($response->json('data.programs'));
+        $configured = $programs->firstWhere('id', $this->f['course']->id);
+        $withoutCurriculum = $programs->firstWhere('code', 'EMPTY-CATALOG');
+
+        $this->assertNotNull($configured);
+        $this->assertSame($this->f['course']->course_name, $configured['title']);
+        $this->assertSame($this->f['course']->years, $configured['duration_years']);
+        $this->assertSame($this->f['curriculum']->curriculum_name, $configured['curricula'][0]['name']);
+        $this->assertSame('Academic subject 1', $configured['curricula'][0]['subjects'][0]['name']);
+        $this->assertSame([], $withoutCurriculum['curricula']);
+        $this->assertFalse($programs->contains('code', 'INACTIVE-CATALOG'));
+        $this->assertArrayNotHasKey('slots', $configured);
+        $this->assertArrayNotHasKey('description', $configured);
+
+        Sanctum::actingAs($this->f['registrar']);
+        $this->getJson($this->base().'/catalog')->assertForbidden();
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->getJson($this->base().'/catalog')->assertForbidden();
     }
 
     public function test_first_time_finalization_creates_identity_number_role_and_academic_records_atomically(): void
@@ -426,6 +471,147 @@ class EnrollmentAcademicTest extends TestCase
         $this->getJson($this->base().'/notifications')->assertOk()->assertJsonPath('data.total', 3);
     }
 
+    public function test_enrollment_finalizes_without_teaching_assignments_or_schedule_meetings(): void
+    {
+        $this->assertDatabaseCount('section_subjects', 0);
+        $this->action('subjects', ['subject_ids' => []])->assertOk();
+        $this->action('assign', ['section_id' => $this->f['section']->id])->assertOk();
+
+        $this->getJson($this->base().'/applications/'.$this->f['application']->id)
+            ->assertOk()
+            ->assertJsonPath('data.load.candidates.0.schedule_status', 'pending')
+            ->assertJsonPath('data.load.candidates.1.schedule_status', 'pending');
+
+        $enrollmentId = $this->action('finalize')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'enrolled')
+            ->json('data.enrollment_id');
+
+        $this->assertDatabaseCount('section_subjects', 0);
+        $this->assertDatabaseCount('enrollment_subjects', 2);
+        $this->assertSame(2, EnrollmentSubject::where('enrollment_id', $enrollmentId)->whereNull('professor_id')->count());
+
+        Sanctum::actingAs($this->f['user']);
+        $this->getJson($this->base().'/records/'.$enrollmentId)
+            ->assertOk()
+            ->assertJsonPath('data.subjects.0.schedule_status', 'pending')
+            ->assertJsonPath('data.subjects.0.schedule', null)
+            ->assertJsonPath('data.subjects.1.schedule_status', 'pending')
+            ->assertJsonPath('data.total_units', 6);
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/classes')
+            ->assertOk()
+            ->assertJsonPath('data.total', 0);
+    }
+
+    public function test_ovrf_is_shared_authoritative_owned_and_available_without_schedules(): void
+    {
+        $this->assertDatabaseCount('section_subjects', 0);
+        $this->action('subjects', ['subject_ids' => []])->assertOk();
+        $this->action('assign', ['section_id' => $this->f['section']->id])->assertOk();
+        $enrollmentId = $this->action('finalize')->assertOk()->json('data.enrollment_id');
+        $enrollmentCount = Enrollment::count();
+        $subjectCount = EnrollmentSubject::count();
+
+        Sanctum::actingAs($this->f['user']);
+        $studentResponse = $this->withHeader('X-CDM-Client', 'web')
+            ->get($this->base().'/records/'.$enrollmentId.'/ovrf?disposition=inline')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf')
+            ->assertHeader('X-OVRF-Validation-Status', 'physical-verification-required');
+        $this->assertStringStartsWith('%PDF-', $studentResponse->getContent());
+        $this->withHeader('X-CDM-Client', 'mobile')
+            ->get($this->base().'/records/'.$enrollmentId.'/ovrf?disposition=attachment')
+            ->assertOk()
+            ->assertHeader('Content-Disposition', 'attachment; filename="OVRF-'.$this->f['student']->student_number.'-'.$this->f['year']->school_year.'.pdf"');
+        $this->getJson($this->base().'/records/'.$enrollmentId)
+            ->assertOk()
+            ->assertJsonPath('data.subjects.0.schedule_status', 'pending');
+
+        $unrelated = User::factory()->create(['role_id' => Role::where('role_name', Role::STUDENT)->value('id')]);
+        Sanctum::actingAs($unrelated);
+        $this->get($this->base().'/records/'.$enrollmentId.'/ovrf')->assertNotFound();
+
+        Sanctum::actingAs($this->f['cases'][1]['user']);
+        $this->get($this->base().'/records/'.$enrollmentId.'/ovrf')->assertForbidden();
+
+        Sanctum::actingAs($this->f['registrar']);
+        $this->withHeader('X-CDM-Client', 'desktop')
+            ->get($this->base().'/records/'.$enrollmentId.'/ovrf')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf');
+
+        $enrollment = Enrollment::findOrFail($enrollmentId);
+        $enrollment->update(['status' => 'pending']);
+        Sanctum::actingAs($this->f['user']);
+        $this->withHeader('X-CDM-Client', 'web')
+            ->get($this->base().'/records/'.$enrollmentId.'/ovrf')
+            ->assertConflict();
+        $enrollment->update(['status' => 'enrolled']);
+
+        $this->assertDatabaseCount('enrollments', $enrollmentCount);
+        $this->assertDatabaseCount('enrollment_subjects', $subjectCount);
+        $template = file_get_contents(resource_path('views/enrollment/ovrf.blade.php'));
+        $this->assertStringContainsString('Student signature over printed name', $template);
+        $this->assertStringContainsString('Registrar signature over printed name', $template);
+        $this->assertStringContainsString('Official school stamp / seal', $template);
+        $this->assertStringContainsString('Generating, downloading, or printing this form does not constitute Registrar approval', $template);
+        $this->assertStringContainsString('no verified fee assessment or payment record', file_get_contents(app_path('Services/Enrollment/EnrollmentOvrfService.php')));
+    }
+
+    public function test_scheduling_after_enrollment_closes_updates_students_without_reenrollment(): void
+    {
+        $this->action('subjects', ['subject_ids' => []])->assertOk();
+        $this->action('assign', ['section_id' => $this->f['section']->id])->assertOk();
+        $enrollmentId = $this->action('finalize')->assertOk()->json('data.enrollment_id');
+        $enrollmentSubjectIds = EnrollmentSubject::where('enrollment_id', $enrollmentId)->orderBy('id')->pluck('id')->all();
+
+        $this->f['period']->update(['opens_at' => now()->subDays(2), 'closes_at' => now()->subDay(), 'enabled' => false]);
+        $this->f['section']->update(['status' => 'closed']);
+
+        $assignmentId = $this->schedule()
+            ->assertCreated()
+            ->assertJsonPath('data.meetings.0.day', 'Monday')
+            ->json('data.id');
+
+        $this->assertSame($enrollmentSubjectIds, EnrollmentSubject::where('enrollment_id', $enrollmentId)->orderBy('id')->pluck('id')->all());
+        $this->assertDatabaseHas('enrollment_subjects', [
+            'enrollment_id' => $enrollmentId,
+            'subject_id' => $this->f['subjects'][0]->id,
+            'professor_id' => $this->f['professor']->id,
+        ]);
+
+        Sanctum::actingAs($this->f['user']);
+        $this->getJson($this->base().'/records/'.$enrollmentId)
+            ->assertOk()
+            ->assertJsonPath('data.subjects.0.schedule_status', 'scheduled')
+            ->assertJsonPath('data.subjects.0.schedule.id', $assignmentId)
+            ->assertJsonPath('data.subjects.0.schedule.meetings.0.room', 'AC ROOM')
+            ->assertJsonPath('data.subjects.1.schedule_status', 'pending');
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/classes')
+            ->assertOk()
+            ->assertJsonPath('data.total', 1);
+    }
+
+    public function test_scheduling_is_independent_of_the_enrollment_period_window(): void
+    {
+        $this->f['period']->update(['opens_at' => now()->addDay(), 'closes_at' => now()->addDays(2), 'enabled' => true]);
+        $this->schedule()->assertCreated();
+
+        $this->f['period']->update(['opens_at' => now()->subDays(2), 'closes_at' => now()->subDay(), 'enabled' => false]);
+        $this->schedule([
+            'subject_id' => $this->f['subjects'][1]->id,
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+        ])->assertCreated();
+
+        $this->assertDatabaseCount('section_subjects', 2);
+        $this->assertDatabaseCount('section_subject_meetings', 2);
+    }
+
     public function test_student_records_use_term_ranked_enrollment_and_reflect_section_changes(): void
     {
         $this->schedule()->assertCreated();
@@ -601,6 +787,83 @@ class EnrollmentAcademicTest extends TestCase
         $this->schedule(['day' => 'Invalid'])->assertUnprocessable();
     }
 
+    public function test_schedule_availability_is_read_only_structured_and_uses_the_save_conflict_rules(): void
+    {
+        $this->assertDatabaseMissing('enrollments', ['section_id' => $this->f['section']->id]);
+        $this->schedule()->assertCreated();
+        $existing = SectionSubject::with('meetings')->firstOrFail();
+        $assignmentCount = SectionSubject::count();
+        $meetingCount = DB::table('section_subject_meetings')->count();
+
+        $otherSection = $this->f['section']->replicate();
+        $otherSection->section_name = 'LIVE-CHECK';
+        $otherSection->save();
+        $otherUser = User::factory()->create(['role_id' => Role::where('role_name', Role::PROFESSOR)->value('id')]);
+        $otherProfile = $otherUser->profile()->create(['first_name' => 'Available', 'last_name' => 'Professor', 'gender' => 'Prefer not to say']);
+        $otherProfessor = Professor::create(['user_id' => $otherUser->id, 'user_profile_id' => $otherProfile->id, 'department_id' => $this->f['department']->id, 'employee_number' => 'LIVE-P', 'status' => 'active']);
+        $base = [
+            'section_id' => $this->f['section']->id,
+            'subject_id' => $this->f['subjects'][1]->id,
+            'professor_id' => $otherProfessor->id,
+            'room' => 'Different Room',
+            'meetings' => [
+                ['day' => 'Monday', 'start_time' => '09:30', 'end_time' => '10:30'],
+                ['day' => 'Tuesday', 'start_time' => '09:30', 'end_time' => '10:30'],
+            ],
+        ];
+
+        $this->postJson($this->base().'/schedules/availability', $base)
+            ->assertOk()
+            ->assertJsonPath('data.available', false)
+            ->assertJsonPath('data.meetings.0.available', false)
+            ->assertJsonPath('data.meetings.0.conflicts.0.type', 'section')
+            ->assertJsonPath('data.meetings.0.conflicts.0.existing.subject.code', $this->f['subjects'][0]->subject_code)
+            ->assertJsonPath('data.meetings.1.available', true);
+
+        $this->postJson($this->base().'/schedules/availability', array_replace($base, [
+            'section_id' => $otherSection->id,
+            'professor_id' => $this->f['professor']->id,
+            'room' => ' ac room ',
+            'meetings' => [['day' => 'Monday', 'start_time' => '09:30', 'end_time' => '10:30']],
+        ]))->assertOk()
+            ->assertJsonPath('data.meetings.0.conflicts.0.type', 'professor')
+            ->assertJsonPath('data.meetings.0.conflicts.1.type', 'room')
+            ->assertJsonPath('data.meetings.0.conflicts.0.existing.section.name', $this->f['section']->section_name);
+
+        $this->postJson($this->base().'/schedules/availability', array_replace($base, [
+            'meetings' => [['day' => 'Monday', 'start_time' => '10:00', 'end_time' => '11:00']],
+        ]))->assertOk()->assertJsonPath('data.available', true);
+
+        $this->postJson($this->base().'/schedules/availability', array_replace($base, [
+            'meetings' => [
+                ['day' => 'Wednesday', 'start_time' => '11:00', 'end_time' => '12:00'],
+                ['day' => 'Wednesday', 'start_time' => '11:30', 'end_time' => '12:30'],
+            ],
+        ]))->assertOk()
+            ->assertJsonPath('data.available', false)
+            ->assertJsonPath('data.meetings.0.conflicts.0.type', 'batch')
+            ->assertJsonPath('data.meetings.1.conflicts.0.type', 'batch');
+
+        $this->postJson($this->base().'/schedules/availability', [
+            'schedule_id' => $existing->id,
+            'section_id' => $existing->section_id,
+            'subject_id' => $existing->subject_id,
+            'professor_id' => $existing->professor_id,
+            'room' => $existing->room,
+            'meetings' => $existing->meetings->map(fn ($meeting) => [
+                'day' => $meeting->day,
+                'start_time' => substr($meeting->start_time, 0, 5),
+                'end_time' => substr($meeting->end_time, 0, 5),
+            ])->all(),
+        ])->assertOk()->assertJsonPath('data.available', true);
+
+        $this->assertSame($assignmentCount, SectionSubject::count());
+        $this->assertSame($meetingCount, DB::table('section_subject_meetings')->count());
+
+        Sanctum::actingAs($this->f['user']);
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson($this->base().'/schedules/availability', $base)->assertForbidden();
+    }
+
     public function test_post_completes_an_existing_unscheduled_teaching_assignment(): void
     {
         $assignment = SectionSubject::create([
@@ -699,8 +962,6 @@ class EnrollmentAcademicTest extends TestCase
             'room' => $secondAssignment->room,
             'version' => $secondAssignment->version,
         ])->assertOk()->assertJsonPath('data.professor_id', $other->id);
-        $this->assertFalse(app(EarlyWarningService::class)->professorCanAccessStudent($this->f['professorUser']->id, $this->f['student']->id));
-        $this->assertTrue(app(EarlyWarningService::class)->professorCanAccessStudent($otherUser->id, $this->f['student']->id));
 
         $this->f['section']->update(['adviser_id' => $this->f['professor']->id]);
         Sanctum::actingAs($this->f['professorUser']);

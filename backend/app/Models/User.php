@@ -103,11 +103,6 @@ class User extends Authenticatable
         return $this->hasOne(RegistrarStaff::class);
     }
 
-    public function sentRiskNotifications(): HasMany
-    {
-        return $this->hasMany(RiskNotification::class, 'sender_user_id');
-    }
-
     public function routeNotificationForMail(): ?string
     {
         return $this->profile?->email;

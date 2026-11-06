@@ -2,6 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { getAdminDashboard } from './dashboardService'
+import CdmButton from '../../design-system/CdmButton.vue'
+import CdmCard from '../../design-system/CdmCard.vue'
+import CdmLoadingState from '../../design-system/CdmLoadingState.vue'
+import CdmPageHeader from '../../design-system/CdmPageHeader.vue'
 import './adminDashboard.css'
 
 const loading = ref(true)
@@ -27,7 +31,6 @@ const quickLinks = [
   { label: 'Account Management', detail: 'Registrar account provisioning', to: { name: 'registrar-management' } },
   { label: 'Admissions', detail: 'Applicants, decisions, and results', to: { name: 'registrar-admissions' } },
   { label: 'Enrollment', detail: 'Applications and academic terms', to: { name: 'enrollment-applications' } },
-  { label: 'Academic Monitoring', detail: 'Risk signals and interventions', to: { name: 'monitoring' } },
   { label: 'Student Management', detail: 'Academic identities and records', to: { name: 'student-management' } },
 ]
 
@@ -63,17 +66,10 @@ onMounted(loadDashboard)
 
 <template>
   <main class="admin-dashboard">
-    <header class="admin-dashboard__header">
-      <div>
-        <p class="admin-dashboard__kicker">System administration</p>
-        <h1>Admin Dashboard</h1>
-        <p>A live overview of accounts, academic workflows, and work awaiting review.</p>
-      </div>
-      <button v-if="error" type="button" :disabled="loading" @click="loadDashboard">Try again</button>
-    </header>
+    <CdmPageHeader eyebrow="System administration" title="Admin Dashboard" description="A live overview of accounts, academic workflows, and work awaiting review."><template v-if="error" #actions><CdmButton variant="outline" :disabled="loading" @click="loadDashboard">Try again</CdmButton></template></CdmPageHeader>
 
     <p v-if="error" class="admin-dashboard__error" role="alert">{{ error }}</p>
-    <p v-if="loading" class="admin-dashboard__loading" role="status">Loading current administrative data…</p>
+    <CdmLoadingState v-if="loading" label="Loading current administrative data…" />
 
     <section aria-labelledby="admin-overview-title">
       <div class="admin-dashboard__heading">
@@ -81,10 +77,10 @@ onMounted(loadDashboard)
         <small v-if="!loading">Updated {{ formatDateTime(dashboard.generated_at) }}</small>
       </div>
       <div class="admin-summary" :aria-busy="loading">
-        <article v-for="card in summaryCards" :key="card.key" class="admin-summary__card">
+        <CdmCard v-for="card in summaryCards" :key="card.key" class="admin-summary__card">
           <strong>{{ loading ? '—' : Number(card.value).toLocaleString() }}</strong>
           <span>{{ card.label }}</span>
-        </article>
+        </CdmCard>
       </div>
     </section>
 

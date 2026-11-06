@@ -24,7 +24,7 @@ class PortalNoticeTest extends TestCase
         $this->getJson('/api/portal-notices')
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
-            ->assertJsonCount(1, 'data.notices')
+            ->assertJsonCount(2, 'data.notices')
             ->assertJsonPath('data.notices.0.kind', 'official')
             ->assertJsonPath('data.notices.0.source', 'enrollment')
             ->assertJsonPath('data.notices.0.message', 'Your section is ready.')

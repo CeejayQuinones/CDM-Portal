@@ -70,13 +70,6 @@ class ProductionReadinessAudit extends Command
             'queue_driver' => config('queue.default'),
             'mail_driver' => config('mail.default'),
             'cache_driver' => config('cache.default'),
-            'monitoring_ai' => [
-                'enabled' => (bool) config('services.monitoring_ai.enabled'),
-                'provider' => config('services.monitoring_ai.provider'),
-                'model_configured' => filled(config('services.monitoring_ai.model')),
-                'base_url_configured' => filled(config('services.monitoring_ai.base_url')),
-                'api_key_configured' => filled(config('services.monitoring_ai.api_key')),
-            ],
         ];
     }
 
@@ -86,8 +79,6 @@ class ProductionReadinessAudit extends Command
         $appUrl = (string) config('app.url');
         $frontendUrl = (string) config('app.frontend_url');
         $cors = config('cors.allowed_origins', []);
-        $aiEnabled = (bool) config('services.monitoring_ai.enabled');
-        $aiBaseUrl = (string) config('services.monitoring_ai.base_url');
 
         return [
             $this->check('production_environment', app()->environment('production'), 'APP_ENV must be production.'),
@@ -101,7 +92,6 @@ class ProductionReadinessAudit extends Command
             $this->check('explicit_cors', is_array($cors) && $cors !== [] && ! in_array('*', $cors, true), 'Set explicit allowed frontend origins.'),
             $this->check('storage_writable', is_writable(storage_path()) && is_writable(storage_path('framework')) && is_writable(storage_path('logs')), 'Laravel storage paths must be writable.'),
             $this->check('public_storage_link', is_link(public_path('storage')), 'Create the public storage link when public uploads are enabled.'),
-            $this->check('monitoring_ai_https', ! $aiEnabled || str_starts_with($aiBaseUrl, 'https://'), 'Enabled Monitoring AI must use an HTTPS provider endpoint.'),
         ];
     }
 

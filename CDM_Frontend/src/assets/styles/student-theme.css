@@ -229,7 +229,7 @@ html[data-student-theme] :is(.student-workflow-backdrop, .step-up-backdrop) {
 }
 
 /* Shared authenticated dark presentation. Module CSS continues to consume the same tokens. */
-html[data-student-theme='dark'] .app-shell :is(.page-title, .monitoring-header h1, .grading-hero h1) {
+html[data-student-theme='dark'] .app-shell :is(.page-title, .grading-hero h1) {
   color: var(--text-primary);
 }
 
@@ -237,7 +237,7 @@ html[data-student-theme='dark'] .app-shell :is(.page-kicker, .eyebrow, .grading-
   color: var(--accent) !important;
 }
 
-html[data-student-theme='dark'] .app-shell :is(.page-description, .monitoring-header > div > p:last-child, .section-heading p, .empty-state p) {
+html[data-student-theme='dark'] .app-shell :is(.page-description, .section-heading p, .empty-state p) {
   color: var(--text-secondary);
 }
 
@@ -286,7 +286,7 @@ html[data-student-theme='dark'] .app-shell :is(
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-student-theme='system'] .app-shell :is(.page-title, .monitoring-header h1, .grading-hero h1) {
+  html[data-student-theme='system'] .app-shell :is(.page-title, .grading-hero h1) {
     color: var(--text-primary);
   }
 
@@ -294,7 +294,7 @@ html[data-student-theme='dark'] .app-shell :is(
     color: var(--accent) !important;
   }
 
-  html[data-student-theme='system'] .app-shell :is(.page-description, .monitoring-header > div > p:last-child, .section-heading p, .empty-state p) {
+  html[data-student-theme='system'] .app-shell :is(.page-description, .section-heading p, .empty-state p) {
     color: var(--text-secondary);
   }
 

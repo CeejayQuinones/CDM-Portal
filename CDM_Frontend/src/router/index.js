@@ -3,7 +3,7 @@ import { admissionRoutes } from '../modules/admission/routes.js'
 import { useAuthStore } from '../stores/authStore'
 import { ROLES, ROUTE_ROLES, canAccess, dashboardForRole } from '../config/accessControl'
 import { performanceMonitor } from '../services/performance/performanceMonitor'
-import { isRoleAllowedOnClient } from '../config/clientPlatform'
+import { clientPlatform, isRoleAllowedOnClient } from '../config/clientPlatform'
 
 const AuthLayout = () => import('../layouts/AuthLayout.vue')
 const DashboardLayout = () => import('../layouts/DashboardLayout.vue')
@@ -20,11 +20,12 @@ const SettingsView = () => import('../views/SettingsView.vue')
 const EnrollmentAcademicView = () => import('../modules/enrollment/EnrollmentAcademicView.vue')
 const EnrollmentSubjectManagement = () => import('../modules/enrollment/EnrollmentSubjectManagement.vue')
 const EnrollmentView = () => import('../modules/enrollment/EnrollmentView.vue')
+const EnrollmentCourses = () => import('../modules/enrollment/EnrollmentCourses.vue')
+const EnrollmentCurriculum = () => import('../modules/enrollment/EnrollmentCurriculum.vue')
+const EnrollmentSteps = () => import('../modules/enrollment/EnrollmentSteps.vue')
 const GradingView = () => import('../modules/grading/GradingView.vue')
+const ProfessorGradeSubmissionView = () => import('../modules/grading/ProfessorGradeSubmissionView.vue')
 const StudentGradeHistoryView = () => import('../modules/grading/StudentGradeHistoryView.vue')
-const MonitoringView = () => import('../modules/monitoring/MonitoringView.vue')
-const AdviserAlertsView = () => import('../modules/monitoring/AdviserAlertsView.vue')
-const StudyPlansView = () => import('../modules/monitoring/StudyPlansView.vue')
 const DocumentTypesManagementView = () => import('../modules/document-request/DocumentTypesManagementView.vue')
 const StudentDocumentRequestView = () => import('../modules/document-request/StudentDocumentRequestView.vue')
 const RegistrarDocumentRequestView = () => import('../modules/document-request/RegistrarDocumentRequestView.vue')
@@ -38,6 +39,7 @@ const PhysicalRecordsView = () => import('../modules/student-management/Physical
 const StudentRecordReportsView = () => import('../modules/student-management/StudentRecordReportsView.vue')
 const RegistrarDashboardView = () => import('../modules/registrar-dashboard/RegistrarDashboardView.vue')
 const AccountProvisioningView = () => import('../modules/account-management/AccountProvisioningView.vue')
+const CampusNoticesView = () => import('../modules/campus-notices/CampusNoticesView.vue')
 
 const protectedRoute = (route) => ({
   ...route,
@@ -96,6 +98,12 @@ const routes = [
         meta: { title: 'Settings', roles: [ROLES.STUDENT] },
       }),
       protectedRoute({
+        path: 'professor/settings',
+        name: 'professor-settings',
+        component: SettingsView,
+        meta: { title: 'Professor Settings', roles: ROUTE_ROLES['professor-settings'], platforms: ['web'] },
+      }),
+      protectedRoute({
         path: 'registrar/settings',
         name: 'registrar-settings',
         component: SettingsView,
@@ -149,6 +157,7 @@ const routes = [
       }),
       protectedRoute({ path: 'admin/registrars', name: 'registrar-management', component: AccountProvisioningView, meta: { title: 'Registrar Management', roles: ROUTE_ROLES['registrar-management'] } }),
       protectedRoute({ path: 'registrar/professors', name: 'professor-management', component: AccountProvisioningView, meta: { title: 'Professor Management', roles: ROUTE_ROLES['professor-management'] } }),
+      protectedRoute({ path: 'campus-notices', name: 'campus-notices', component: CampusNoticesView, meta: { title: 'Campus Notices', roles: ROUTE_ROLES['campus-notices'] } }),
       ...admissionRoutes.map(protectedRoute),
       protectedRoute({ path: 'enrollment/sections', name: 'enrollment-sections', component: EnrollmentAcademicView, meta: { title: 'Sections', roles: ROUTE_ROLES['enrollment-sections'] } }),
       protectedRoute({ path: 'enrollment/subject-management', name: 'enrollment-subject-management', component: EnrollmentSubjectManagement, meta: { title: 'Subjects', roles: ROUTE_ROLES['enrollment-subject-management'] } }),
@@ -158,6 +167,9 @@ const routes = [
       protectedRoute({ path: 'enrollment/schedule', name: 'enrollment-schedule', component: EnrollmentAcademicView, meta: { title: 'My Schedule', roles: ROUTE_ROLES['enrollment-schedule'] } }),
       protectedRoute({ path: 'enrollment/cor', name: 'enrollment-cor', component: EnrollmentAcademicView, meta: { title: 'COR', roles: ROUTE_ROLES['enrollment-cor'] } }),
       protectedRoute({ path: 'enrollment/teaching', name: 'enrollment-teaching', component: EnrollmentAcademicView, meta: { title: 'My Teaching Assignments', roles: ROUTE_ROLES['enrollment-teaching'] } }),
+      protectedRoute({ path: 'enrollment/courses', name: 'enrollment-courses', component: EnrollmentCourses, meta: { title: 'Courses Offered', roles: ROUTE_ROLES['enrollment-courses'], platforms: ['web'] } }),
+      protectedRoute({ path: 'enrollment/courses/:courseId/curriculum', name: 'enrollment-curriculum', component: EnrollmentCurriculum, meta: { title: 'Program Curriculum', roles: ROUTE_ROLES['enrollment-curriculum'], platforms: ['web'] } }),
+      protectedRoute({ path: 'enrollment/steps', name: 'enrollment-steps', component: EnrollmentSteps, meta: { title: 'Enrollment Guide', roles: ROUTE_ROLES['enrollment-steps'], platforms: ['web'] } }),
       protectedRoute({
         path: 'enrollment/applications',
         name: 'enrollment-applications',
@@ -189,16 +201,16 @@ const routes = [
         meta: { title: 'Grading', roles: ROUTE_ROLES.grading },
       }),
       protectedRoute({
+        path: 'grading/submission',
+        name: 'grading-submission',
+        component: ProfessorGradeSubmissionView,
+        meta: { title: 'Grade Submission', roles: ROUTE_ROLES['grading-submission'], platforms: ['web'] },
+      }),
+      protectedRoute({
         path: 'grading/student-history',
         name: 'grading-student-history',
         component: StudentGradeHistoryView,
         meta: { title: 'Student Grade History', roles: ROUTE_ROLES['grading-student-history'] },
-      }),
-      protectedRoute({
-        path: 'monitoring',
-        name: 'monitoring',
-        component: MonitoringView,
-        meta: { title: 'Academic Monitoring', roles: ROUTE_ROLES.monitoring },
       }),
       protectedRoute({
         path: 'document-requests',
@@ -220,18 +232,6 @@ const routes = [
           title: 'Document Requests',
           roles: ROUTE_ROLES['student-document-appointments'],
         },
-      }),
-      protectedRoute({
-        path: 'monitoring/adviser-alerts',
-        name: 'monitoring-adviser-alerts',
-        component: AdviserAlertsView,
-        meta: { title: 'Adviser Alerts', roles: [ROLES.PROFESSOR, ROLES.REGISTRAR_STAFF, ROLES.ADMIN] },
-      }),
-      protectedRoute({
-        path: 'monitoring/study-plans',
-        name: 'monitoring-study-plans',
-        component: StudyPlansView,
-        meta: { title: 'Study Plans', roles: ROUTE_ROLES.monitoring },
       }),
       protectedRoute({
         path: 'registrar/document-types',
@@ -340,6 +340,7 @@ router.beforeEach(async (to) => {
     authStore.clearAuth()
     return { name: 'login', query: { platformDenied: '1' } }
   }
+  if (to.meta.platforms && !to.meta.platforms.includes(clientPlatform)) return { name: 'unauthorized' }
   if (to.name === 'home') return landingForRole(authStore.currentRole)
   if (!canAccess(authStore.currentRole, to.meta.roles || ALL_ROLES)) return { name: 'unauthorized' }
   const admission = authStore.currentUser?.admission || {}

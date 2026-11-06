@@ -9,7 +9,6 @@ use App\Models\GradeSheet;
 use App\Models\Role;
 use App\Models\SectionSubject;
 use App\Models\Student;
-use App\Services\EarlyWarningService;
 use App\Services\Grading\GradingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,13 +51,12 @@ class DashboardSummaryController extends Controller
                 'enrollment_status' => $enrollment?->status,
                 'academic_term' => $enrollment ? trim(($enrollment->academicYear?->school_year ?? '').' · '.($enrollment->semester?->semester_name ?? ''), ' ·') : null,
                 'enrolled_subjects' => $enrollment?->enrollmentSubjects()->whereIn('subject_status', ['enrolled', 'completed'])->count() ?? 0,
-                'unread_monitoring_notices' => $student?->riskNotifications()->whereNull('read_at')->count() ?? 0,
             ],
             'has_finalized_enrollment' => $enrollment !== null,
         ]);
     }
 
-    public function professor(Request $request, GradingService $grading, EarlyWarningService $warnings): JsonResponse
+    public function professor(Request $request, GradingService $grading): JsonResponse
     {
         $actor = $request->user()->loadMissing(['role', 'profile']);
         $professor = $grading->professor($actor);
@@ -85,7 +83,6 @@ class DashboardSummaryController extends Controller
         $ownedSheets = GradeSheet::query()
             ->where('professor_id', $professor->id)
             ->whereIn('section_subject_id', $assignmentIds);
-        $alerts = $warnings->adviserAlerts($actor->id)['summary'];
         $profile = $actor->profile;
 
         return $this->ok([
@@ -99,9 +96,6 @@ class DashboardSummaryController extends Controller
                 'students' => $studentCount,
                 'grade_sheets_needing_work' => (clone $ownedSheets)->whereIn('status', ['draft', 'returned'])->count(),
                 'submitted_grade_sheets' => (clone $ownedSheets)->where('status', 'submitted')->count(),
-                'monitoring_alerts' => (int) ($alerts['total'] ?? 0),
-                'high_risk_alerts' => (int) ($alerts['urgent'] ?? 0),
-                'attention_alerts' => (int) ($alerts['attention'] ?? 0),
             ],
             'has_assignments' => $assignmentIds->isNotEmpty(),
         ]);

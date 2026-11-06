@@ -1,19 +1,21 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { getProfessorDashboard } from './dashboardService'
+import { clientPlatform } from '../../config/clientPlatform'
 import './guideDashboard.css'
 
 const loading = ref(true)
+const ProfessorWebsiteDashboard = defineAsyncComponent(() => import('./ProfessorWebsiteDashboard.vue'))
 const error = ref('')
 const dashboard = ref({ identity: {}, summary: {}, has_assignments: false })
+const isWebsitePresentation = clientPlatform === 'web'
 
 const cards = computed(() => [
   { label: 'Assigned classes', value: dashboard.value.summary.assigned_classes ?? 0 },
   { label: 'Students', value: dashboard.value.summary.students ?? 0 },
   { label: 'Grade sheets needing work', value: dashboard.value.summary.grade_sheets_needing_work ?? 0 },
   { label: 'Submitted grade sheets', value: dashboard.value.summary.submitted_grade_sheets ?? 0 },
-  { label: 'Monitoring alerts', value: dashboard.value.summary.monitoring_alerts ?? 0 },
 ])
 
 const workflow = [
@@ -21,16 +23,12 @@ const workflow = [
   { step: '2', title: 'Class Rosters', text: 'View enrolled Students for your assigned Subjects.', to: { name: 'enrollment-teaching' } },
   { step: '3', title: 'Grading', text: 'Create assessments, enter scores, and review Midterm and Finals results.', to: { name: 'grading' } },
   { step: '4', title: 'Submit Grades', text: 'Submit completed grade sheets after grading windows close.', to: { name: 'grading' } },
-  { step: '5', title: 'Academic Monitoring', text: 'Review signals only for Students within your teaching scope.', to: { name: 'monitoring' } },
-  { step: '6', title: 'Grade Messages', text: 'Use the Grade Messages tab after eligible grades are published.', to: { name: 'grading' } },
 ]
 
 const links = [
   { label: 'My Classes', text: 'Assigned Sections and Subjects', to: { name: 'enrollment-teaching' } },
   { label: 'Enrollment / Rosters', text: 'Students in your assigned classes', to: { name: 'enrollment-teaching' } },
   { label: 'Grading', text: 'Assessments, scores, and submissions', to: { name: 'grading' } },
-  { label: 'Grade Messages', text: 'Open the Grade Messages tab in Grading', to: { name: 'grading' } },
-  { label: 'Academic Monitoring', text: 'Scoped academic signals and alerts', to: { name: 'monitoring' } },
 ]
 
 async function loadDashboard() {
@@ -49,7 +47,8 @@ onMounted(loadDashboard)
 </script>
 
 <template>
-  <main class="guide-dashboard">
+  <ProfessorWebsiteDashboard v-if="isWebsitePresentation" :dashboard="dashboard" :loading="loading" :error="error" @retry="loadDashboard" />
+  <main v-else class="guide-dashboard">
     <header class="guide-hero">
       <div>
         <p class="guide-kicker">Professor portal</p>

@@ -24,7 +24,7 @@ test('Admin dashboard presents real academic workflow summaries and operational 
   for (const field of ['active_students', 'active_professors', 'registrar_staff_accounts', 'guest_accounts', 'pending_admission_applications', 'current_term_enrollments', 'pending_administrative_actions']) {
     assert.match(view, new RegExp(field))
   }
-  for (const route of ['registrar-management', 'registrar-admissions', 'enrollment-applications', 'monitoring', 'student-management']) {
+  for (const route of ['registrar-management', 'registrar-admissions', 'enrollment-applications', 'student-management']) {
     assert.match(view, new RegExp(`name: '${route}'`))
   }
   assert.match(view, /timeZone: 'Asia\/Manila'/)
@@ -42,14 +42,33 @@ test('student dashboard presents live identity, summary, empty state, and real p
   const view = await source('src/modules/dashboard/StudentDashboardView.vue')
   const service = await source('src/modules/dashboard/dashboardService.js')
 
-  for (const field of ['student_number', 'program_code', 'year_level', 'section', 'enrollment_status', 'academic_term', 'enrolled_subjects', 'unread_monitoring_notices']) {
+  for (const field of ['student_number', 'program_code', 'year_level', 'section', 'enrollment_status', 'academic_term', 'enrolled_subjects']) {
     assert.match(view, new RegExp(field))
   }
-  for (const route of ['enrollment-status', 'enrollment-subjects', 'enrollment-schedule', 'grading', 'monitoring', 'student-document-requests']) {
+  for (const route of ['enrollment-status', 'enrollment-subjects', 'enrollment-schedule', 'grading', 'student-document-requests']) {
     assert.match(view, new RegExp(`name: '${route}'`))
   }
   assert.match(view, /No finalized enrollment is available yet/)
   assert.match(service, /getDashboard\('\/student\/dashboard'\)/)
+})
+
+test('Guest website dashboard uses authenticated Admission eligibility without changing non-web presentation', async () => {
+  const [view, dashboard] = await Promise.all([
+    source('src/views/GuestDashboardView.vue'),
+    source('src/modules/dashboard/GuestWebsiteDashboard.vue'),
+  ])
+
+  assert.match(view, /const isWebsitePresentation = clientPlatform === 'web'/)
+  assert.match(view, /authStore\.currentUser\?\.admission/)
+  assert.match(view, /admitted_guest/)
+  assert.match(view, /fetchAdmissionIdentity/)
+  assert.match(view, /admissionApi\('get', 'exam'\)/)
+  assert.match(view, /getPortalNotices/)
+  assert.match(dashboard, /name: 'admission'/)
+  assert.match(dashboard, /name: 'enrollment-status'/)
+  assert.match(dashboard, /kind === 'official' && notice\.verified/)
+  assert.match(view, /<EmptyPage v-else \/>/)
+  assert.doesNotMatch(`${view}\n${dashboard}`, /fake|sample statistic/i)
 })
 
 test('student sidebar follows the academic journey and retains Admission history access below services', async () => {
@@ -58,7 +77,6 @@ test('student sidebar follows the academic journey and retains Admission history
     "'student-dashboard'",
     "'enrollment'",
     "'grading'",
-    "'monitoring'",
     "'document-requests-menu'",
     "'admission-menu'",
     "'settings'",
@@ -86,10 +104,10 @@ test('professor dashboard guides the existing teaching workflow and shows scoped
   const view = await source('src/modules/dashboard/ProfessorDashboardView.vue')
   const service = await source('src/modules/dashboard/dashboardService.js')
 
-  for (const field of ['faculty_id', 'department', 'assigned_classes', 'students', 'grade_sheets_needing_work', 'submitted_grade_sheets', 'monitoring_alerts']) {
+  for (const field of ['faculty_id', 'department', 'assigned_classes', 'students', 'grade_sheets_needing_work', 'submitted_grade_sheets']) {
     assert.match(view, new RegExp(field))
   }
-  for (const route of ['enrollment-teaching', 'grading', 'monitoring']) {
+  for (const route of ['enrollment-teaching', 'grading']) {
     assert.match(view, new RegExp(`name: '${route}'`))
   }
   assert.match(view, /No classes have been assigned yet/)

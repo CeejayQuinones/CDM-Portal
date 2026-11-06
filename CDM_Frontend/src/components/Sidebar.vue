@@ -1,19 +1,39 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import logoUrl from '../assets/styles/images/cdm_logo.png'
 import { useAuthStore } from '../stores/authStore'
 import { useStudentProfileStore } from '../stores/studentProfile'
 import { useNavigationStore } from '../stores/navigation'
 
-defineProps({
+const props = defineProps({
   isOpen: {
+    type: Boolean,
+    default: false,
+  },
+  collapsed: {
+    type: Boolean,
+    default: false,
+  },
+  collapsible: {
+    type: Boolean,
+    default: false,
+  },
+  mobileDrawer: {
+    type: Boolean,
+    default: false,
+  },
+  websitePresentation: {
+    type: Boolean,
+    default: false,
+  },
+  desktopPresentation: {
     type: Boolean,
     default: false,
   },
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'toggle-collapse'])
 const navigationStore = useNavigationStore()
 const authStore = useAuthStore()
 const studentProfile = useStudentProfileStore()
@@ -23,6 +43,7 @@ const route = useRoute()
 const router = useRouter()
 const expandedItems = ref([])
 const signingOut = ref(false)
+const sidebarRoot = ref(null)
 
 const displayName = computed(() => {
   if (authStore.currentRole === 'Student' && studentProfile.preferredDisplayName) {
@@ -53,6 +74,33 @@ const toggleItem = (name) => {
     ? expandedItems.value.filter((item) => item !== name)
     : [...expandedItems.value, name]
 }
+const handleParentClick = (name) => {
+  if (props.collapsible && props.collapsed) emit('toggle-collapse')
+  toggleItem(name)
+}
+
+const drawerFocusables = () => Array.from(sidebarRoot.value?.querySelectorAll(
+  'a[href], button:not(:disabled), [tabindex]:not([tabindex="-1"])',
+) || []).filter(element => !element.hasAttribute('disabled') && element.getClientRects().length > 0)
+
+const focusFirst = () => nextTick(() => drawerFocusables()[0]?.focus())
+
+const handleDrawerKeydown = event => {
+  if (!props.mobileDrawer || event.key !== 'Tab') return
+  const focusables = drawerFocusables()
+  if (!focusables.length) return
+  const first = focusables[0]
+  const last = focusables.at(-1)
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+defineExpose({ focusFirst })
 
 watch(
   [() => route.path, () => authStore.currentRole],
@@ -77,7 +125,6 @@ const iconPath = (name) =>
     admission: 'M12 3v18M3 12h18',
     enrollment: 'M4 5h16v14H4zM8 9h8M8 13h5',
     grading: 'M4 19V5l8-3 8 3v14l-8 3zM9 12l2 2 4-4',
-    monitoring: 'M4 19V5M8 15v4M12 9v10M16 12v7M20 5v14',
     settings: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-3v-.08a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.06 15 1.7 1.7 0 0 0 5.5 13.97H5v-3h.5A1.7 1.7 0 0 0 7.06 9.4a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 11.73 4.2V4h3v.2a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.5v3h-.5A1.7 1.7 0 0 0 19.4 15z',
     'document-requests-menu': 'M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5',
     appointments: 'M12 8v4l3 2M4 5h16v16H4z',
@@ -98,10 +145,44 @@ const logout = async () => {
 </script>
 
 <template>
-  <aside class="sidebar" :class="{ 'is-open': isOpen }">
+  <aside
+    ref="sidebarRoot"
+    class="sidebar"
+    :class="{ 'is-open': isOpen, 'is-collapsed': collapsible && collapsed, 'is-web-sidebar': websitePresentation, 'is-desktop-sidebar': desktopPresentation }"
+    :role="mobileDrawer ? 'dialog' : undefined"
+    :aria-modal="mobileDrawer ? 'true' : undefined"
+    :aria-label="mobileDrawer ? 'Portal navigation' : undefined"
+    @keydown="handleDrawerKeydown"
+  >
     <header class="brand">
-      <img class="brand-mark" :src="logoUrl" alt="Colegio de Montalban seal" />
-      <strong>COLEGIO DE MONTALBAN</strong>
+      <div class="brand-identity">
+        <img class="brand-mark" :src="logoUrl" alt="Colegio de Montalban seal" />
+        <strong>COLEGIO DE MONTALBAN</strong>
+      </div>
+      <button
+        v-if="collapsible"
+        class="sidebar-collapse-button"
+        type="button"
+        :aria-label="collapsed ? 'Expand navigation sidebar' : 'Collapse navigation sidebar'"
+        :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+        @click="emit('toggle-collapse')"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path :d="collapsed ? 'm9 6 6 6-6 6' : 'm15 6-6 6 6 6'" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <button
+        v-if="mobileDrawer"
+        class="sidebar-drawer-close"
+        type="button"
+        aria-label="Close navigation menu"
+        title="Close navigation"
+        @click="emit('close', true)"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" stroke-linecap="round" />
+        </svg>
+      </button>
     </header>
 
     <nav class="sidebar-nav" aria-label="Main navigation">
@@ -114,7 +195,9 @@ const logout = async () => {
               'is-active': isChildActive(item) || isExpanded(item.name),
             }"
             :aria-expanded="isExpanded(item.name)"
-            @click="toggleItem(item.name)"
+            :aria-label="collapsed ? item.label : undefined"
+            :title="collapsed ? item.label : undefined"
+            @click="handleParentClick(item.name)"
           >
             <svg
               class="nav-icon"
@@ -126,7 +209,7 @@ const logout = async () => {
             >
               <path :d="iconPath(item.name)" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
-            <span>{{ item.label }}</span>
+            <span class="nav-label">{{ item.label }}</span>
             <svg
               class="nav-chevron"
               :class="{ expanded: isExpanded(item.name) }"
@@ -143,7 +226,7 @@ const logout = async () => {
             <div v-if="isExpanded(item.name)" class="nav-children">
               <template v-for="child in item.children" :key="child.name">
               <span v-if="child.comingSoon" class="nav-link nav-child is-disabled" aria-disabled="true">
-                {{ child.label }} <small>{{ child.phaseLabel || 'Coming soon' }}</small>
+                <span class="nav-label">{{ child.label }}</span> <small>{{ child.phaseLabel || 'Coming soon' }}</small>
               </span>
               <RouterLink
                 v-else
@@ -154,14 +237,22 @@ const logout = async () => {
                 exact-active-class="router-link-active"
                 @click="emit('close')"
               >
-                {{ child.label }}
+                <span class="nav-label">{{ child.label }}</span>
               </RouterLink>
               </template>
             </div>
           </Transition>
         </div>
 
-        <RouterLink v-else :to="item.path" class="nav-link" :class="{ 'router-link-active': isItemActive(item) }" @click="emit('close')">
+        <RouterLink
+          v-else
+          :to="item.path"
+          class="nav-link"
+          :class="{ 'router-link-active': isItemActive(item) }"
+          :aria-label="collapsed ? item.label : undefined"
+          :title="collapsed ? item.label : undefined"
+          @click="emit('close')"
+        >
           <svg
             class="nav-icon"
             viewBox="0 0 24 24"
@@ -172,13 +263,13 @@ const logout = async () => {
           >
             <path :d="iconPath(item.name)" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
-          <span>{{ item.label }}</span>
+          <span class="nav-label">{{ item.label }}</span>
         </RouterLink>
       </template>
     </nav>
 
     <footer class="sidebar-footer">
-      <div class="sidebar-user" aria-label="Signed in user">
+      <div class="sidebar-user" :aria-label="`Signed in as ${displayName}, ${authStore.currentRole}`" :title="collapsed ? `${displayName} · ${authStore.currentRole}` : undefined">
         <span class="sidebar-avatar">
           <img v-if="studentProfile.avatarUrl && !avatarFailed" :key="studentProfile.revision" :src="studentProfile.avatarUrl" alt="Profile picture" @error="avatarFailed = true" />
           <template v-else>{{ initials }}</template>
@@ -189,7 +280,7 @@ const logout = async () => {
         </div>
       </div>
 
-      <button class="sign-out-button" type="button" :disabled="signingOut" @click="logout">
+      <button class="sign-out-button" type="button" :disabled="signingOut" :aria-label="collapsed ? 'Sign out' : undefined" :title="collapsed ? 'Sign out' : undefined" @click="logout">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
           <path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
@@ -211,7 +302,7 @@ const logout = async () => {
   padding: 22px 13px 18px;
   position: fixed;
   transform: translateX(0);
-  transition: transform 180ms ease;
+  transition: transform 180ms ease, width 220ms cubic-bezier(0.22, 1, 0.36, 1), padding 220ms ease;
   width: var(--sidebar-width, 232px);
   z-index: 30;
 }
@@ -221,9 +312,17 @@ const logout = async () => {
   border-bottom: 1px solid rgba(255, 255, 255, 0.22);
   display: flex;
   flex: 0 0 auto;
-  gap: 10px;
+  gap: 8px;
+  justify-content: space-between;
   margin: 0 4px 22px;
   padding: 0 2px 20px;
+}
+
+.brand-identity {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
 }
 
 .brand-mark {
@@ -243,6 +342,39 @@ const logout = async () => {
   letter-spacing: 0.045em;
   line-height: 1.32;
   text-wrap: balance;
+}
+
+.sidebar-collapse-button,
+.sidebar-drawer-close {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 9px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 36px;
+  justify-content: center;
+  padding: 0;
+  width: 36px;
+}
+
+.sidebar-collapse-button:hover,
+.sidebar-drawer-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sidebar-collapse-button:focus-visible,
+.sidebar-drawer-close:focus-visible {
+  outline: 2px solid #fff05a;
+  outline-offset: 2px;
+}
+
+.sidebar-collapse-button svg,
+.sidebar-drawer-close svg {
+  height: 18px;
+  width: 18px;
 }
 
 .sidebar-nav {
@@ -310,6 +442,15 @@ const logout = async () => {
   background: linear-gradient(90deg, #c9df45, #a8cf38);
   box-shadow: 0 7px 18px rgba(2, 45, 24, 0.22);
   color: #174520;
+}
+
+.is-web-sidebar .nav-parent.is-active,
+.is-web-sidebar .nav-parent.is-active:hover,
+.is-web-sidebar .nav-link.router-link-active,
+.is-web-sidebar .nav-link.router-link-active:hover {
+  background: rgba(0, 69, 45, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(244, 211, 94, 0.3), 0 8px 18px rgba(2, 34, 20, 0.2);
+  color: #fff;
 }
 
 .nav-parent.is-active::before,
@@ -477,6 +618,70 @@ const logout = async () => {
   width: 18px;
 }
 
+.sidebar.is-collapsed {
+  padding-right: 12px;
+  padding-left: 12px;
+}
+
+.sidebar.is-collapsed .brand {
+  align-items: center;
+  flex-direction: column;
+  margin-right: 0;
+  margin-left: 0;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.sidebar.is-collapsed .brand-identity {
+  justify-content: center;
+}
+
+.sidebar.is-collapsed .brand-mark {
+  height: 46px;
+  width: 46px;
+}
+
+.sidebar.is-collapsed .brand strong,
+.sidebar.is-collapsed .nav-label,
+.sidebar.is-collapsed .nav-chevron,
+.sidebar.is-collapsed .user-copy,
+.sidebar.is-collapsed .sign-out-button span,
+.sidebar.is-collapsed .nav-children {
+  display: none;
+}
+
+.sidebar.is-collapsed .nav-link,
+.sidebar.is-collapsed .sidebar-user,
+.sidebar.is-collapsed .sign-out-button {
+  justify-content: center;
+}
+
+.sidebar.is-collapsed .nav-link {
+  gap: 0;
+  min-height: 48px;
+  padding: 10px;
+}
+
+.sidebar.is-collapsed .nav-parent.is-active::before,
+.sidebar.is-collapsed .nav-link.router-link-active::before {
+  height: 28px;
+  left: -5px;
+}
+
+.sidebar.is-collapsed .nav-icon {
+  height: 22px;
+  width: 22px;
+}
+
+.sidebar.is-collapsed .sidebar-footer {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.sidebar.is-collapsed .sign-out-button {
+  padding: 7px;
+}
+
 @media (max-width: 860px) {
   .sidebar {
     width: min(86vw, 320px);
@@ -490,6 +695,22 @@ const logout = async () => {
     transform: translateX(-100%);
   }
 
+  .sidebar.is-collapsed {
+    padding:
+      calc(18px + env(safe-area-inset-top))
+      13px
+      calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .sidebar.is-web-sidebar {
+    max-width: 100%;
+    padding:
+      calc(18px + env(safe-area-inset-top))
+      max(13px, env(safe-area-inset-right))
+      calc(14px + env(safe-area-inset-bottom))
+      max(13px, env(safe-area-inset-left));
+  }
+
   .sidebar.is-open {
     transform: translateX(0);
   }
@@ -498,6 +719,8 @@ const logout = async () => {
 @media (prefers-reduced-motion: reduce) {
   .sidebar,
   .nav-link,
+  .sidebar-collapse-button,
+  .sidebar-drawer-close,
   .nav-chevron,
   .nav-children-enter-active,
   .nav-children-leave-active {

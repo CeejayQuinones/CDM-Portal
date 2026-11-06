@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, reactive, ref } from 'vue'
+import { defineAsyncComponent, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import RegistrationWizard from '../components/RegistrationWizard.vue'
 import { useAuthStore } from '../stores/authStore'
@@ -7,7 +7,13 @@ import { dashboardForRole } from '../utils/roleDashboard'
 import { runLoginRequest } from '../utils/loginFlow'
 import { apiClient } from '../services/apiClient'
 import { clientPlatform } from '../config/clientPlatform'
-import logoUrl from '../assets/styles/images/cdm_logo.png'
+import { portalSealUrl as logoUrl } from '../config/portalSeal'
+import desktopSealUrl from '../assets/styles/images/cdm_logo.png'
+import desktopBuildingUrl from '../assets/styles/images/CDM-bdng.png'
+
+const WebsitePublicHome = import.meta.env.VITE_CDM_CLIENT === 'web'
+  ? defineAsyncComponent(() => import('../components/public/WebsitePublicHome.vue'))
+  : null
 
 const router = useRouter()
 const route = useRoute()
@@ -22,6 +28,19 @@ const showPassword = ref(false)
 const showRegistration = ref(route.query.signup === '1')
 const registrationSuccess = ref(Boolean(route.query.registered))
 const mobileMenuOpen = ref(false)
+let viewActive = true
+let googleMessageHandler = null
+let googlePopup = null
+
+const setLoginLoading = (loading) => {
+  if (viewActive) isLoading.value = loading
+}
+
+onBeforeUnmount(() => {
+  viewActive = false
+  if (googleMessageHandler) window.removeEventListener('message', googleMessageHandler)
+  googlePopup?.close()
+})
 
 const services = [
   { tag: 'Admissions', poster: 'Application access', title: 'Admissions', description: 'Create and follow your application through the approved admissions workflow.' },
@@ -47,12 +66,13 @@ const submit = async () => {
   await runLoginRequest({
     credentials: { username: form.username.trim(), password: form.password },
     login: authStore.login,
-    setLoading: (loading) => { isLoading.value = loading },
+    setLoading: setLoginLoading,
     redirect: async () => {
       const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
       await router.replace(destination)
     },
     onError: (error, message) => {
+      if (!viewActive) return
       const backendErrors = error.response?.data?.errors
       errors.value = Object.fromEntries(Object.entries(backendErrors || {}).map(([field, messages]) => [field, messages[0]]))
       formError.value = message
@@ -61,34 +81,38 @@ const submit = async () => {
 }
 
 const googleSignIn = () => {
+  if (isLoading.value || googlePopup) return
   formError.value = ''
   const base = new URL(apiClient.defaults.baseURL || '/api', window.location.origin)
   const backendOrigin = base.pathname.replace(/\/api\/?$/, '')
-  const popup = window.open(`${base.origin}${backendOrigin}/auth/google/redirect?client=${encodeURIComponent(clientPlatform)}`, 'cdm-google-auth', 'popup,width=520,height=700')
-  if (!popup) {
+  googlePopup = window.open(`${base.origin}${backendOrigin}/auth/google/redirect?client=${encodeURIComponent(clientPlatform)}`, 'cdm-google-auth', 'popup,width=520,height=700')
+  if (!googlePopup) {
     formError.value = 'Allow pop-ups to continue with Google.'
     return
   }
-  const receive = async (event) => {
+  googleMessageHandler = async (event) => {
     if (event.origin !== base.origin || event.data?.type !== 'cdm-google-auth') return
-    window.removeEventListener('message', receive)
-    popup.close()
+    window.removeEventListener('message', googleMessageHandler)
+    googleMessageHandler = null
+    googlePopup.close()
+    googlePopup = null
+    if (!viewActive) return
     if (event.data.error) {
       formError.value = event.data.error
       return
     }
-    isLoading.value = true
+    setLoginLoading(true)
     try {
       await authStore.exchangeGoogleCode(event.data.code)
       const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
       await router.replace(destination)
     } catch (error) {
-      formError.value = error.response?.data?.message || 'Google sign-in could not be completed. Please try again.'
+      if (viewActive) formError.value = error.response?.data?.message || 'Google sign-in could not be completed. Please try again.'
     } finally {
-      isLoading.value = false
+      setLoginLoading(false)
     }
   }
-  window.addEventListener('message', receive)
+  window.addEventListener('message', googleMessageHandler)
 }
 
 const registrationComplete = () => {
@@ -99,11 +123,111 @@ const registrationComplete = () => {
 </script>
 
 <template>
-  <div class="public-page">
+  <WebsitePublicHome v-if="clientPlatform === 'web'" :logo-url="logoUrl" :authenticating="isLoading" @start-admission="showRegistration = true">
+    <template #login>
+      <aside id="login" class="login-card" aria-labelledby="website-login-title">
+        <div class="card-brand"><img :src="logoUrl" alt="" width="1254" height="1254" /><span>CDM <strong>PORTAL</strong></span></div>
+        <p class="card-kicker">Account access</p>
+        <h2 id="website-login-title">Welcome back</h2>
+        <p class="login-intro">Sign in with your campus credentials.</p>
+        <p v-if="registrationSuccess" class="registration-success" role="status">Account created successfully. You can now sign in.</p>
+        <form novalidate @submit.prevent="submit">
+          <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
+          <label for="website-username">Username</label>
+          <div class="input-with-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" /></svg><input id="website-username" v-model="form.username" autocomplete="username" placeholder="Enter your username" :aria-invalid="Boolean(errors.username)" /></div>
+          <p v-if="errors.username" class="field-error">{{ errors.username }}</p>
+          <label for="website-password">Password</label>
+          <div class="input-with-icon password-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="website-password" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Enter your password" :aria-invalid="Boolean(errors.password)" /><button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Hide' : 'Show' }}</button></div>
+          <p v-if="errors.password" class="field-error">{{ errors.password }}</p>
+          <button class="sign-in-button" type="submit" :disabled="isLoading">{{ isLoading ? 'Signing in…' : 'Sign in to portal' }} <span>→</span></button>
+          <div class="google-auth-option">
+            <div class="divider google-divider"><span>Professor or Student?</span></div>
+            <button class="google-sign-in-button" type="button" :disabled="isLoading" @click="googleSignIn">
+              <svg class="google-sign-in-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.24-.2-1.79H12v3.4h5.52a4.71 4.71 0 0 1-2.05 3.09l-.02.11 2.98 2.31.21.02c1.94-1.79 2.96-4.43 2.96-7.14Z" />
+                <path fill="#34A853" d="M12 22c2.7 0 4.97-.89 6.63-2.43l-3.17-2.45c-.85.58-2 1-3.46 1a6.01 6.01 0 0 1-5.68-4.15l-.11.01-3.1 2.4-.04.11A10 10 0 0 0 12 22Z" />
+                <path fill="#FBBC05" d="M6.32 13.97A6.16 6.16 0 0 1 6 12c0-.69.12-1.36.31-1.97v-.12L3.18 7.47l-.1.05A10 10 0 0 0 2 12c0 1.61.38 3.14 1.07 4.49l3.25-2.52Z" />
+                <path fill="#EA4335" d="M12 5.88c1.88 0 3.15.81 3.88 1.49l2.82-2.76A9.57 9.57 0 0 0 12 2a10 10 0 0 0-8.93 5.52l3.24 2.51A6.03 6.03 0 0 1 12 5.88Z" />
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+            <p class="google-account-note">Professor and Student accounts must already exist in CDM Portal. Google does not create an account.</p>
+          </div>
+          <div class="divider guest-divider"><span>New to CDM Portal?</span></div>
+          <button class="sign-up-button" type="button" @click="showRegistration = true">Create a Guest account</button>
+        </form>
+        <p class="legal-links"><RouterLink to="/terms">Terms & Conditions</RouterLink><span>·</span><RouterLink to="/privacy">Privacy Policy</RouterLink></p>
+      </aside>
+    </template>
+  </WebsitePublicHome>
+
+  <div v-else-if="clientPlatform === 'desktop'" class="desktop-login-page">
+    <div class="desktop-login-atmosphere" aria-hidden="true">
+      <span class="desktop-login-curve desktop-login-curve--top"></span>
+      <span class="desktop-login-curve desktop-login-curve--bottom"></span>
+      <img class="desktop-login-building" :src="desktopBuildingUrl" alt="" />
+    </div>
+
+    <section class="desktop-login-glass" aria-labelledby="desktop-login-title">
+      <div class="desktop-login-brand">
+        <img class="desktop-login-seal" :src="desktopSealUrl" alt="Colegio de Montalban seal" width="315" height="316" />
+        <div class="desktop-login-brand-copy">
+          <p class="desktop-login-kicker">Colegio de Montalban</p>
+          <h1>CDM Portal</h1>
+          <p>Academic Workspace</p>
+        </div>
+      </div>
+
+      <span class="desktop-login-divider" aria-hidden="true"></span>
+
+      <div class="desktop-login-access">
+        <header>
+          <p class="desktop-login-kicker">Account access</p>
+          <h2 id="desktop-login-title">Sign in</h2>
+          <p>Use your authorized CDM Portal credentials.</p>
+        </header>
+
+        <p v-if="formError" class="desktop-login-error" role="alert">{{ formError }}</p>
+        <form novalidate @submit.prevent="submit">
+          <label for="desktop-username">Email or username</label>
+          <div class="desktop-login-field" :class="{ 'desktop-login-field--invalid': errors.username }">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Z"/><path d="m5 7 7 5 7-5"/></svg>
+            <input id="desktop-username" v-model="form.username" autocomplete="username" inputmode="email" placeholder="name@cdm.edu.ph" :aria-invalid="Boolean(errors.username)" :aria-describedby="errors.username ? 'desktop-username-error' : undefined" />
+          </div>
+          <p v-if="errors.username" id="desktop-username-error" class="desktop-login-field-error">{{ errors.username }}</p>
+
+          <label for="desktop-password">Password</label>
+          <div class="desktop-login-field" :class="{ 'desktop-login-field--invalid': errors.password }">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            <input id="desktop-password" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Enter your password" :aria-invalid="Boolean(errors.password)" :aria-describedby="errors.password ? 'desktop-password-error' : undefined" />
+            <button class="desktop-password-toggle" type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" :title="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword">
+              <svg v-if="showPassword" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3 21 21"/><path d="M10.6 10.7a2 2 0 0 0 2.7 2.7"/><path d="M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9 6 9 6a17.7 17.7 0 0 1-2.1 2.8M6.6 6.6C4.4 8 3 10 3 10s3.5 6 9 6c1 0 1.9-.2 2.8-.5"/></svg>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+            </button>
+          </div>
+          <p v-if="errors.password" id="desktop-password-error" class="desktop-login-field-error">{{ errors.password }}</p>
+
+          <button class="desktop-login-submit" type="submit" :disabled="isLoading">
+            <span>{{ isLoading ? 'Signing in…' : 'Sign in' }}</span>
+            <svg v-if="!isLoading" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+            <span v-else class="desktop-login-spinner" aria-hidden="true"></span>
+          </button>
+        </form>
+        <p class="desktop-login-security-note">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+          Authorized Registrar and Admin access only.
+        </p>
+      </div>
+    </section>
+
+    <p class="desktop-login-footnote">Official academic services workspace</p>
+  </div>
+
+  <div v-else class="public-page">
     <header class="site-header">
       <div class="nav-shell">
         <button class="brand-link" type="button" aria-label="Colegio de Montalban home" @click="scrollTo('home')">
-          <img :src="logoUrl" alt="Colegio de Montalban seal" />
+          <img :src="logoUrl" alt="" width="1254" height="1254" />
           <span><strong>CDM Portal</strong><small>Colegio de Montalban</small></span>
         </button>
         <button class="menu-button" type="button" :aria-expanded="mobileMenuOpen" aria-label="Toggle navigation" @click="mobileMenuOpen = !mobileMenuOpen"><span></span><span></span><span></span></button>
@@ -132,7 +256,7 @@ const registrationComplete = () => {
           </div>
 
           <aside id="login" class="login-card" aria-labelledby="login-title">
-            <div class="card-brand"><img :src="logoUrl" alt="" /><span>CDM <strong>PORTAL</strong></span></div>
+            <div class="card-brand"><img :src="logoUrl" alt="" width="1254" height="1254" /><span>CDM <strong>PORTAL</strong></span></div>
             <p class="card-kicker">Account access</p>
             <h2 id="login-title">Welcome back</h2>
             <p class="login-intro">Sign in with your campus credentials.</p>
@@ -189,7 +313,7 @@ const registrationComplete = () => {
         <div class="section-shell about-grid">
           <div class="about-mark">
             <div class="about-code"><span>CDM</span><strong>One school.<br />One connected portal.</strong></div>
-            <div class="seal-lockup"><img :src="logoUrl" alt="Colegio de Montalban seal" /><span>For students, staff,<br />and campus services.</span></div>
+            <div class="seal-lockup"><img :src="logoUrl" alt="Colegio de Montalban seal" width="1254" height="1254" /><span>For students, staff,<br />and campus services.</span></div>
           </div>
           <div class="about-copy">
             <p class="section-kicker">About the portal</p>
@@ -204,13 +328,16 @@ const registrationComplete = () => {
         </div>
       </section>
 
-      <section class="cta-section"><div class="cta-seal"><img :src="logoUrl" alt="" /></div><div><p class="section-kicker">Ready when you are</p><h2>Your CDM services are one sign-in away.</h2><p>Access your account or register as a Guest to begin using available public portal services.</p></div><button class="yellow-button" type="button" @click="scrollTo('login')">Go to login <span>↑</span></button></section>
+      <section class="cta-section"><div class="cta-seal"><img :src="logoUrl" alt="" width="1254" height="1254" /></div><div><p class="section-kicker">Ready when you are</p><h2>Your CDM services are one sign-in away.</h2><p>Access your account or register as a Guest to begin using available public portal services.</p></div><button class="yellow-button" type="button" @click="scrollTo('login')">Go to login <span>↑</span></button></section>
     </main>
 
-    <footer class="site-footer"><div class="footer-shell"><div class="footer-brand"><img :src="logoUrl" alt="Colegio de Montalban seal" /><div><strong>Colegio de Montalban</strong><span>CDM Portal</span></div></div><p>Centralized access to academic and registrar services.</p><nav aria-label="Legal links"><RouterLink to="/terms">Terms & Conditions</RouterLink><RouterLink to="/privacy">Privacy Policy</RouterLink></nav></div><div class="footer-bottom"><span>© 2026 Colegio de Montalban. Project portal.</span><span>Designed for the CDM community.</span></div></footer>
+    <footer class="site-footer"><div class="footer-shell"><div class="footer-brand"><img :src="logoUrl" alt="" width="1254" height="1254" /><div><strong>Colegio de Montalban</strong><span>CDM Portal</span></div></div><p>Centralized access to academic and registrar services.</p><nav aria-label="Legal links"><RouterLink to="/terms">Terms & Conditions</RouterLink><RouterLink to="/privacy">Privacy Policy</RouterLink></nav></div><div class="footer-bottom"><span>© 2026 Colegio de Montalban. Project portal.</span><span>Designed for the CDM community.</span></div></footer>
 
     <RegistrationWizard v-if="showRegistration" @close="showRegistration = false" @registered="registrationComplete" />
   </div>
+
+  <RegistrationWizard v-if="clientPlatform === 'web' && showRegistration" @close="showRegistration = false" @registered="registrationComplete" />
 </template>
 
 <style scoped src="../assets/styles/public-home.css"></style>
+<style scoped src="../assets/styles/desktop-login.css"></style>

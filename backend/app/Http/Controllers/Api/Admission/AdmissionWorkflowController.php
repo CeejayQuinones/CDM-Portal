@@ -21,6 +21,7 @@ use App\Services\Admission\AdmissionExamService;
 use App\Services\Admission\AdmissionRecommendationService;
 use App\Services\Admission\AdmissionResultService;
 use App\Services\Admission\ProgramMatcher;
+use App\Support\ClientPlatform;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -113,11 +114,25 @@ class AdmissionWorkflowController extends Controller
 
     public function exam(Request $request, AdmissionExamService $service)
     {
-        return $this->ok($service->status($request->user()));
+        $status = $service->status($request->user());
+        if ($request->header(ClientPlatform::HEADER) !== ClientPlatform::WEB) {
+            $status = array_replace($status, [
+                'eligible' => false,
+                'reason' => 'unsupported_client',
+                'session' => null,
+            ]);
+        }
+
+        return $this->ok($status);
     }
 
     public function start(Request $request, AdmissionExamService $service)
     {
+        $this->requireWebsiteExamClient($request);
+        $request->validate([
+            'rules_acknowledged' => ['required', 'accepted'],
+        ]);
+
         return $this->ok($service->start($request->user()));
     }
 
@@ -133,9 +148,19 @@ class AdmissionWorkflowController extends Controller
 
     private function write(Request $request, AdmissionExamService $service, string $id, bool $submit)
     {
+        $this->requireWebsiteExamClient($request);
         $data = $request->validate(['revision' => 'required|integer|min:0', 'answers' => 'required|array|min:5|max:500', 'answers.*' => 'nullable|in:A,B,C,D', 'position' => 'required|integer|between:0,499']);
 
         return $this->ok($service->write($request->user(), $id, $data, $submit));
+    }
+
+    private function requireWebsiteExamClient(Request $request): void
+    {
+        abort_unless(
+            $request->header(ClientPlatform::HEADER) === ClientPlatform::WEB,
+            403,
+            'Admission examinations can only be taken through the CDM Portal website on a supported desktop or laptop.',
+        );
     }
 
     public function result(Request $request, AdmissionExamService $service)
