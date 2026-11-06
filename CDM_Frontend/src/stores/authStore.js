@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { apiClient } from '../services/apiClient'
+import { clearGradeRecoveryForAccount } from '../modules/grading/gradeDraftRecovery'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
 
@@ -51,6 +52,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const clearAuth = () => {
+    const accountId = currentUser.value?.id || currentUser.value?.username
+    if (accountId && typeof sessionStorage !== 'undefined') clearGradeRecoveryForAccount(sessionStorage, accountId)
     token.value = null
     currentUser.value = null
     currentRole.value = null

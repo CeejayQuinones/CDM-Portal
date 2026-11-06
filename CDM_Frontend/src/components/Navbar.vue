@@ -20,6 +20,10 @@ defineProps({
     type: Boolean,
     default: false,
   },
+  desktopPresentation: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['toggle-sidebar'])
@@ -27,10 +31,18 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const resettingDemo = ref(false)
+const menuButton = ref(null)
 const { isOpen: appointmentAvailabilityOpen, open: openAppointmentAvailability } = useAppointmentAvailabilityState()
 const installPrompt = ref(null)
 const canInstall = ref(false)
 const pageTitle = computed(() => router.currentRoute.value.meta.title || 'CDM Portal')
+const accountName = computed(() => {
+  const profile = authStore.currentUser?.profile
+  return [profile?.first_name, profile?.last_name].filter(Boolean).join(' ')
+    || authStore.currentUser?.username
+    || 'Portal User'
+})
+const accountInitials = computed(() => accountName.value.split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase())
 const navbarContext = computed(() =>
   navbarContextForRoute(route, { appointmentAvailabilityOpen: appointmentAvailabilityOpen.value }),
 )
@@ -70,15 +82,20 @@ const resetDemo = async () => {
   }
 }
 
+const focusMenuButton = () => menuButton.value?.focus()
+
+defineExpose({ focusMenuButton })
+
 </script>
 
 <template>
-  <header class="navbar">
+  <header class="navbar" :class="{ 'desktop-navbar': desktopPresentation }">
     <button
+      ref="menuButton"
       class="menu-button"
       :class="{ 'is-visible': showMenuButton }"
       type="button"
-      aria-label="Toggle sidebar"
+      :aria-label="sidebarOpen ? 'Close navigation menu' : 'Open navigation menu'"
       :aria-expanded="sidebarOpen"
       title="Toggle navigation"
       @click="emit('toggle-sidebar')"
@@ -88,7 +105,12 @@ const resetDemo = async () => {
       <span></span>
     </button>
 
-    <nav v-if="navbarContext" class="contextual-nav" aria-label="Module navigation">
+    <div v-if="desktopPresentation" class="desktop-page-context">
+      <p>CDM Portal <span aria-hidden="true">/</span> {{ authStore.currentRole }}</p>
+      <h1>{{ title === 'CDM Portal' ? pageTitle : title }}</h1>
+    </div>
+
+    <nav v-if="navbarContext && !desktopPresentation" class="contextual-nav" aria-label="Module navigation">
       <template v-for="item in navbarContext.items" :key="item.key">
         <RouterLink
           v-if="item.to"
@@ -120,7 +142,11 @@ const resetDemo = async () => {
         </button>
       </div>
       <button v-if="canInstall" class="install-button" type="button" @click="installApp">Install App</button>
-      <div class="navbar-title">
+      <div v-if="desktopPresentation" class="desktop-account" :aria-label="`Signed in as ${accountName}, ${authStore.currentRole}`">
+        <span class="desktop-account-avatar" aria-hidden="true">{{ accountInitials }}</span>
+        <span class="desktop-account-copy"><strong>{{ accountName }}</strong><small>{{ authStore.currentRole }}</small></span>
+      </div>
+      <div v-else class="navbar-title">
         <p class="navbar-label">COLEGIO DE MONTALBAN</p>
         <h1>{{ title === 'CDM Portal' ? pageTitle : title }}</h1>
       </div>
@@ -246,6 +272,79 @@ h1 {
 .navbar-title {
   min-width: 0;
   text-align: right;
+}
+
+.desktop-navbar {
+  min-height: 76px;
+  padding: 12px clamp(22px, 2.2vw, 34px);
+}
+
+.desktop-page-context {
+  min-width: 0;
+}
+
+.desktop-page-context p {
+  color: var(--desktop-text-muted, #64746b);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.desktop-page-context p span {
+  color: var(--desktop-gold, #caa62a);
+  padding: 0 5px;
+}
+
+.desktop-page-context h1 {
+  color: var(--desktop-text, #183326);
+  font-size: clamp(1.12rem, 1.5vw, 1.35rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-account {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.desktop-account-avatar {
+  align-items: center;
+  background: var(--desktop-green-soft, #e5f2e9);
+  border: 1px solid var(--desktop-border-strong, #bdd1c3);
+  border-radius: 10px;
+  color: var(--desktop-green, #0c643c);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 800;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.desktop-account-copy strong,
+.desktop-account-copy small {
+  display: block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-account-copy strong {
+  color: var(--desktop-text, #183326);
+  font-size: 0.8rem;
+}
+
+.desktop-account-copy small {
+  color: var(--desktop-text-muted, #64746b);
+  font-size: 0.64rem;
+  margin-top: 2px;
 }
 
 .demo-controls { display: flex; align-items: center; gap: 8px; white-space: nowrap; }

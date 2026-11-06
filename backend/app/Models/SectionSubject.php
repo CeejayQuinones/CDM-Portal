@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SectionSubject extends Model
 {
@@ -28,5 +29,10 @@ class SectionSubject extends Model
     public function gradeSheet()
     {
         return $this->hasOne(GradeSheet::class);
+    }
+
+    public function meetings(): HasMany
+    {
+        return $this->hasMany(SectionSubjectMeeting::class)->orderBy('id');
     }
 }

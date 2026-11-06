@@ -50,13 +50,15 @@ return [
         ],
     ],
 
-    'monitoring_ai' => [
-        'enabled' => filter_var(env('MONITORING_AI_ENABLED', false), FILTER_VALIDATE_BOOL),
-        'provider' => env('MONITORING_AI_PROVIDER', 'disabled'),
-        'model' => env('MONITORING_AI_MODEL'),
-        'base_url' => env('MONITORING_AI_BASE_URL'),
-        'api_key' => env('MONITORING_AI_API_KEY'),
-        'timeout' => (int) env('MONITORING_AI_TIMEOUT', 15),
+    'campus_weather' => [
+        'enabled' => filter_var(env('CAMPUS_WEATHER_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'provider' => env('CAMPUS_WEATHER_PROVIDER', 'open_meteo'),
+        'base_url' => env('CAMPUS_WEATHER_BASE_URL', 'https://api.open-meteo.com/v1/forecast'),
+        'latitude' => (float) env('CAMPUS_WEATHER_LATITUDE', 14.7314),
+        'longitude' => (float) env('CAMPUS_WEATHER_LONGITUDE', 121.1447),
+        'location_name' => env('CAMPUS_WEATHER_LOCATION', 'Rodriguez, Rizal'),
+        'cache_minutes' => (int) env('CAMPUS_WEATHER_CACHE_MINUTES', 45),
+        'timeout' => (int) env('CAMPUS_WEATHER_TIMEOUT', 3),
     ],
 
 ];

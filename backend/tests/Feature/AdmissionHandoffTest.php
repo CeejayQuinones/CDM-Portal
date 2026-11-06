@@ -113,9 +113,7 @@ class AdmissionHandoffTest extends TestCase
         $this->assertDatabaseCount('students', 0);
         $this->postJson('/api/admission/exam/start')->assertForbidden();
         $this->getJson('/api/grading/student/grades')->assertForbidden();
-        $this->getJson('/api/monitoring/my-risk')->assertForbidden();
-        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/event-promotions')->assertOk();
-        $this->withHeader('X-CDM-Client', 'web')->getJson('/api/events')->assertForbidden();
+        $this->getJson('/api/monitoring/my-risk')->assertNotFound();
     }
 
     public function test_completion_is_idempotent_and_removed_conversion_endpoint_cannot_create_student(): void
@@ -189,6 +187,52 @@ class AdmissionHandoffTest extends TestCase
         ])->assertConflict()
             ->assertJsonPath('message', 'This Admission handoff already has an Enrollment application. Open your existing application.');
         $this->assertDatabaseCount('enrollment_applications', 1);
+    }
+
+    public function test_admitted_guest_can_restart_cancelled_draft_without_student_identity(): void
+    {
+        $this->postJson($this->path('accept'), $this->payload())->assertOk();
+        $guest = $this->case['user']->fresh();
+        Sanctum::actingAs($guest);
+        $first = $this->postJson('/api/enrollment/applications', [
+            'period_id' => $this->period->id, 'classification' => 'regular',
+        ])->assertCreated()->assertJsonPath('data.student_id', null)->json('data');
+        $cancelled = $this->postJson('/api/enrollment/applications/'.$first['id'].'/cancel', [
+            'version' => $first['version'], 'confirmed' => true,
+        ])->assertOk()->assertJsonPath('data.status', 'cancelled')->json('data');
+        $this->getJson('/api/enrollment/applications/mine')->assertOk()
+            ->assertJsonPath('data.data.0.id', $first['id'])
+            ->assertJsonPath('data.data.0.status', 'cancelled');
+        $this->postJson('/api/enrollment/applications/'.$first['id'].'/cancel', [
+            'version' => $cancelled['version'], 'confirmed' => true,
+        ])->assertConflict();
+
+        $this->period->update(['enabled' => false]);
+        $this->getJson('/api/enrollment/status')->assertOk()
+            ->assertJsonPath('data.eligible', false)
+            ->assertJsonPath('data.reason', 'enrollment_period_unavailable');
+        $this->postJson('/api/enrollment/applications', [
+            'period_id' => $this->period->id, 'classification' => 'regular',
+        ])->assertConflict();
+
+        $this->period->update(['enabled' => true]);
+        $this->getJson('/api/enrollment/status')->assertOk()
+            ->assertJsonPath('data.eligible', true)
+            ->assertJsonPath('data.current_application', null);
+        $second = $this->postJson('/api/enrollment/applications', [
+            'period_id' => $this->period->id, 'classification' => 'regular',
+        ])->assertCreated()->json('data');
+        $this->assertNotSame($first['id'], $second['id']);
+        $this->assertSame($first['owner_user_id'], $second['owner_user_id']);
+        $this->assertSame($first['admission_applicant_id'], $second['admission_applicant_id']);
+        $this->assertNull($second['student_id']);
+        $this->assertDatabaseHas('enrollment_applications', ['id' => $first['id'], 'status' => 'cancelled', 'blocking_admission_applicant_id' => null]);
+        $this->assertDatabaseHas('enrollment_applications', ['id' => $second['id'], 'status' => 'draft', 'blocking_admission_applicant_id' => $first['admission_applicant_id']]);
+        $this->assertDatabaseCount('students', 0);
+        $this->assertSame(Role::GUEST, $guest->fresh('role')->role->role_name);
+        $this->postJson('/api/enrollment/applications', [
+            'period_id' => $this->period->id, 'classification' => 'regular',
+        ])->assertConflict();
     }
 
     public function test_failed_unpublished_or_stale_result_cannot_complete_admission(): void

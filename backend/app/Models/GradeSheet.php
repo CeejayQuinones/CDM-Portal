@@ -44,9 +44,4 @@ class GradeSheet extends Model
     {
         return $this->hasOne(GradeSubmissionAttempt::class)->latestOfMany('attempt_number');
     }
-
-    public function conversations()
-    {
-        return $this->hasMany(GradeConversation::class);
-    }
 }

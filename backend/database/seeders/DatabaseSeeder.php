@@ -10,6 +10,10 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(ProductionReferenceSeeder::class);
 
+        if (app()->environment('production')) {
+            $this->call(ProductionBootstrapAccountsSeeder::class);
+        }
+
         if (app()->environment(['local', 'testing'])) {
             $this->call([
                 AppointmentBlockedDateSeeder::class,
@@ -20,7 +24,6 @@ class DatabaseSeeder extends Seeder
                 ProfessorsSeeder::class,
                 StudentDocumentsSeeder::class,
                 PhysicalRecordsSeeder::class,
-                EventRoleTestingSeeder::class,
             ]);
         }
     }

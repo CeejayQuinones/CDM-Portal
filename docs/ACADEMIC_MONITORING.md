@@ -32,7 +32,6 @@ The following data is deliberately excluded:
 - live Professor score entries and assessments
 - legacy **grades** and **grading_periods**
 - Admission examination scores
-- Event attendance
 
 Phase 1 assessments remain computed read-only from current authoritative records. Phase 2 adds only notice context, a duplicate-lookup index, and an append-only intervention audit table.
 
@@ -159,7 +158,9 @@ The unified Monitoring page exposes role-safe tabs. Students see Early Warnings,
 
 AI Help is an advisory coach layered on the existing Phase 1 assessment. It receives a minimized summary of the selected Student's published immutable Grade Sheet snapshots: the current risk signal, reasons, trend, completeness, and Subject-level official evidence. It does not query live grade workspaces, recalculate grades, calculate GWA, decide Pass or Fail, invent institutional policy, diagnose a Student, predict outcomes, or write academic records.
 
-The request is stateless. Conversation display exists only in the current browser page and no prompt or reply is stored. Students may request help only for their own Student identity. Professors remain limited to Students in their current Section and Subject assignments. Registrar Staff and Admin retain their Phase 1 institution scope. Monitoring additionally constrains Professor use to Web, Registrar Staff to Desktop, Students to Web or Mobile, and Admin to Web or Desktop.
+The request is stateless on the server. Conversation display exists only in the current browser page and no prompt or reply is stored. For a follow-up, the client sends at most the six most recent, bounded messages as explicitly untrusted context. Students may request help only for their own Student identity. Professors remain limited to Students in their current Section and Subject assignments. Registrar Staff and Admin retain their Phase 1 institution scope. Monitoring additionally constrains Professor use to Web, Registrar Staff to Desktop, Students to Web or Mobile, and Admin to Web or Desktop.
+
+The **Suggested Academic Support Plan** is generated on demand by `EarlyWarningService` from published Grade Sheet snapshots. It is not a separately stored or independently published academic record. Both the provider prompt and fallback identify this distinction so generated recommendations are not presented as official published facts.
 
 The endpoint accepts a plain-text question of 2 to 1,500 characters and rejects markup. Prompt boundaries identify the question as untrusted input, system rules prohibit disclosure and unauthorized academic claims, and provider output is stripped of HTML. Responses are labeled **AI-generated academic guidance** and include an advisory disclaimer. Language style is inferred from each current question: English remains the default, while Tagalog and Taglish questions receive matching guidance. The service does not force one language for all users.
 
@@ -176,7 +177,28 @@ Provider configuration is isolated under these environment variables:
 
 The default is disabled. Secrets stay in environment configuration and are never returned, logged, audited, or committed. Tests replace the provider abstraction or fake HTTP, so the suite requires no network or real API key.
 
-For troubleshooting, first call **GET /api/monitoring/ai-status** and confirm `configured`. A false value means the deterministic fallback is intentionally active; check the enable flag, supported provider name, model, base URL, server-side key, and timeout. Provider failures and timeouts also switch to fallback and log only a provider identifier and exception class. No provider body, prompt, response, Student evidence, or credential is logged. Rate-limit responses use the normal Laravel 429 response, and access failures retain the Monitoring role and platform response.
+Example server-side configurations are:
+
+```text
+# OpenAI-compatible API
+MONITORING_AI_ENABLED=true
+MONITORING_AI_PROVIDER=openai
+MONITORING_AI_MODEL=<approved-model>
+MONITORING_AI_BASE_URL=https://api.openai.com/v1
+MONITORING_AI_API_KEY=<server-secret>
+MONITORING_AI_TIMEOUT=15
+
+# Local Ollama (no hosted-provider key)
+MONITORING_AI_ENABLED=true
+MONITORING_AI_PROVIDER=ollama
+MONITORING_AI_MODEL=<installed-model>
+MONITORING_AI_BASE_URL=http://127.0.0.1:11434
+MONITORING_AI_API_KEY=
+```
+
+After changing production environment values, clear/rebuild Laravel's configuration cache and reload the long-running application process. Provider billing and data-processing terms remain the deployer's responsibility; keep the minimized context contract when selecting a provider.
+
+For troubleshooting, first call **GET /api/monitoring/ai-status** and confirm `configured`. A false value means the safe built-in fallback is intentionally active; check the enable flag, supported provider name, model, base URL, server-side key, and timeout. Provider failures, timeouts, and provider-side rate limits switch to fallback and return a safe availability category while logging only a provider identifier and exception class. No provider body, prompt, response, Student evidence, or credential is logged. The application's own 10-request-per-minute limit still returns HTTP 429, and access failures retain the Monitoring role and platform response.
 
 Phase 3 endpoints are:
 

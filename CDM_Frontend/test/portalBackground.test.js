@@ -11,7 +11,12 @@ test('one animated backdrop is mounted in the shared authenticated shell', async
   ])
 
   assert.equal(layout.match(/<PortalAnimatedBackdrop/g)?.length, 1)
-  assert.match(layout, /<Sidebar[^>]*\/>[\s\S]*?<div class="shell-content portal-page-shell">[\s\S]*?<PortalAnimatedBackdrop[^>]*>[\s\S]*?<Navbar/)
+  const sidebarIndex = layout.indexOf('<Sidebar')
+  const shellIndex = layout.indexOf('<div class="shell-content portal-page-shell"')
+  const backdropIndex = layout.indexOf('<PortalAnimatedBackdrop', shellIndex)
+  const navbarIndex = layout.indexOf('<Navbar', backdropIndex)
+  assert.ok(sidebarIndex >= 0 && sidebarIndex < shellIndex)
+  assert.ok(shellIndex < backdropIndex && backdropIndex < navbarIndex)
   assert.match(layout, /<PortalAnimatedBackdrop :role="authStore\.currentRole"/)
   assert.match(layout, /\.shell-content\s*\{[\s\S]*?position: relative;[\s\S]*?max-width: 100%;[\s\S]*?min-width: 0;[\s\S]*?min-height: 100vh/)
   assert.match(layout, /\.portal-page-shell > \.main-content\s*\{[\s\S]*?z-index: 1/)

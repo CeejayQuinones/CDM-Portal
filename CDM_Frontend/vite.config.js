@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from 'vite'
+import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -59,6 +60,17 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     base: './',
+
+    resolve: {
+      alias: {
+        '@portal-seal': fileURLToPath(new URL(
+          clientPlatformForMode(mode) === 'web'
+            ? './src/assets/styles/images/cdm-seal.png'
+            : './src/assets/styles/images/cdm_logo.png',
+          import.meta.url,
+        )),
+      },
+    },
 
     define: {
       'import.meta.env.VITE_CDM_CLIENT': JSON.stringify(clientPlatformForMode(mode)),

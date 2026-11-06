@@ -28,7 +28,7 @@ test('grading view uses shared semantic tokens and responsive table', () => {
 })
 
 test('Registrar grade-period load is isolated and validation errors are field-level', () => {
-  assert.match(view, /else await loadPeriods\(\)/)
+  assert.match(view, /else\{await loadPeriods\(\);if\(isDesktopPresentation\)await loadStaffView\(staffTab\.value\)\}/)
   assert.match(view, /openStaffTab\('reviews'\)/)
   assert.match(view, /activeYear=options\.value\.academic_years\?\.find\(y=>y\.status==='active'\)/)
   assert.match(view, /periodErrors\.academic_year_id/)
@@ -72,11 +72,11 @@ test('Grade Period staff tabs expose loading, error, empty, and row actions', ()
   for (const text of [
     'Loading grade periods…',
     'No grade periods have been configured yet.',
-    'No submitted grade sheets are awaiting review.',
+    'No submitted grade sheets match the current filters.',
     'No approved grade sheets are ready for release.',
   ]) assert.match(view, new RegExp(text, 'i'))
   assert.match(view, /role="alert">\{\{error\}\}/)
-  assert.match(view, /<template v-if="!loading"><nav v-if="!professor"/)
+  assert.match(view, /<template v-if="!loading"><nav v-if="!professor&&!isDesktopPresentation"/)
   assert.match(view, /<template v-if="professor">/)
   for (const action of ['Edit', 'Archive', 'Delete']) assert.match(view, new RegExp(`>${action}<`))
 })

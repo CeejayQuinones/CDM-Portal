@@ -45,12 +45,78 @@ class DocumentRequestAppointmentTest extends TestCase
     {
         $student = $this->createStudent('26-10001');
         Sanctum::actingAs($student->user);
-        $response = $this->postJson('/api/document-requests', ['document_type_id' => $this->type()->id, 'quantity' => 1, 'purpose' => 'Employment'])
+        $response = $this->postJson('/api/document-requests', ['document_type_id' => $this->type()->id, 'quantity' => 1, 'purpose_category' => 'Scholarship'])
             ->assertCreated()->assertJsonPath('data.status', 'pending');
         $id = $response->json('data.id');
+        $this->assertDatabaseHas('document_requests', [
+            'id' => $id,
+            'purpose' => 'Scholarship',
+            'purpose_details' => null,
+        ]);
         $this->postJson("/api/registrar/document-requests/{$id}/appointment", ['appointment_date' => '2026-09-08'])->assertForbidden();
         $this->postJson('/api/registrar/document-requests/verify-code', ['verification_code' => '123456'])->assertForbidden();
         $this->postJson("/api/document-requests/{$id}/appointments", ['appointment_date' => '2026-09-08'])->assertNotFound();
+    }
+
+    public function test_purpose_is_conditionally_validated_stored_and_visible_to_student_and_registrar(): void
+    {
+        $student = $this->createStudent('26-10019');
+        $documentTypeId = $this->type()->id;
+        Sanctum::actingAs($student->user);
+
+        $this->postJson('/api/document-requests', ['document_type_id' => $documentTypeId, 'quantity' => 1])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('purpose_category');
+        $this->postJson('/api/document-requests', ['document_type_id' => $documentTypeId, 'purpose_category' => 'Employment'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('purpose_category');
+        $this->postJson('/api/document-requests', ['document_type_id' => $documentTypeId, 'purpose_category' => 'Others', 'purpose_details' => '   '])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('purpose_details');
+        $this->postJson('/api/document-requests', ['document_type_id' => $documentTypeId, 'purpose_category' => 'Others', 'purpose_details' => str_repeat('a', 501)])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('purpose_details');
+
+        $evaluation = $this->postJson('/api/document-requests', [
+            'document_type_id' => $documentTypeId,
+            'purpose_category' => 'Evaluation',
+            'purpose_details' => 'must be discarded',
+        ])->assertCreated();
+        $this->assertDatabaseHas('document_requests', [
+            'id' => $evaluation->json('data.id'),
+            'purpose' => 'Evaluation',
+            'purpose_details' => null,
+        ]);
+
+        $other = $this->postJson('/api/document-requests', [
+            'document_type_id' => $documentTypeId,
+            'purpose_category' => 'Others',
+            'purpose_details' => '  Visa application evaluation  ',
+        ])->assertCreated()
+            ->assertJsonPath('data.purpose', 'Others')
+            ->assertJsonPath('data.purpose_details', 'Visa application evaluation');
+        $otherId = $other->json('data.id');
+
+        $this->getJson('/api/document-requests')
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' => $otherId,
+                'purpose' => 'Others',
+                'purpose_details' => 'Visa application evaluation',
+            ]);
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->getJson('/api/registrar/document-requests')
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' => $otherId,
+                'purpose' => 'Others',
+                'purpose_details' => 'Visa application evaluation',
+            ]);
+        $this->getJson("/api/registrar/document-requests/{$otherId}")
+            ->assertOk()
+            ->assertJsonPath('data.purpose', 'Others')
+            ->assertJsonPath('data.purpose_details', 'Visa application evaluation');
     }
 
     public function test_registrar_assigns_date_without_approving_and_invalid_dates_are_rejected(): void

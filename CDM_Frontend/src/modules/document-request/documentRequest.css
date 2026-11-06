@@ -5429,3 +5429,25 @@
   font-size: .82rem;
   margin: 0;
 }
+
+.document-purpose-details {
+  grid-column: 1 / -1;
+}
+
+.purpose-field-enter-active,
+.purpose-field-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.purpose-field-enter-from,
+.purpose-field-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .purpose-field-enter-active,
+  .purpose-field-leave-active {
+    transition: none;
+  }
+}

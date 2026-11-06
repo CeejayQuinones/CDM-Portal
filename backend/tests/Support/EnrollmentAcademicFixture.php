@@ -16,6 +16,14 @@ class EnrollmentAcademicFixture
     public static function create(string $nonce): array
     {
         $f = AdmissionConversionFixture::create($nonce);
+        foreach ($f['cases'] as $index => $admissionCase) {
+            $admissionCase['user']->profile()->update([
+                'birth_date' => '2005-04-03',
+                'contact_number' => '0917123456'.($index + 1),
+                'email' => 'academic-'.$nonce.'-'.($index + 1).'@example.test',
+                'address' => 'Rodriguez, Rizal',
+            ]);
+        }
         $case = $f['cases'][0];
         AdmissionConversionFixture::legacyStudent($f, $case, 'LEGACY-'.$nonce);
         $user = $case['user']->fresh();

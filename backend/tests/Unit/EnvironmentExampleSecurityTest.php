@@ -14,7 +14,6 @@ class EnvironmentExampleSecurityTest extends TestCase
             'APP_KEY',
             'DB_PASSWORD',
             'GEMINI_API_KEY',
-            'MONITORING_AI_API_KEY',
             'MAIL_PASSWORD',
             'ADMISSION_GEMINI_API_KEY',
             'AWS_ACCESS_KEY_ID',

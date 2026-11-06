@@ -18,10 +18,11 @@ class DocumentTypesSeeder extends Seeder
             ['document_name' => 'Form 138', 'description' => 'Student report card submitted as a supporting academic record.', 'workflow_category' => 'supporting_record', 'student_requestable' => false, 'student_uploadable' => true, 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false, 'status' => 'active'],
             ['document_name' => 'Statement of Grades', 'description' => 'Official grade statement issued by the Registrar.', 'workflow_category' => 'official_issuance', 'student_requestable' => true, 'student_uploadable' => false, 'processing_fee' => 50, 'processing_days' => 2, 'requires_appointment' => false, 'status' => 'active'],
         ] as $documentType) {
-            DB::table('document_types')->updateOrInsert(
-                ['document_name' => $documentType['document_name']],
-                [...$documentType, 'created_at' => now(), 'updated_at' => now()],
-            );
+            DB::table('document_types')->insertOrIgnore([
+                ...$documentType,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
         }
     }
 }

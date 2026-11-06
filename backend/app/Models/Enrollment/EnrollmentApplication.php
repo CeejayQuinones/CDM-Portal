@@ -20,9 +20,24 @@ class EnrollmentApplication extends Model
 
     protected $attributes = ['version' => 1, 'status' => 'draft'];
 
+    protected static function booted(): void
+    {
+        static::saving(function (self $application): void {
+            $released = $application->status === 'cancelled'
+                && $application->submitted_at === null
+                && $application->reviewed_at === null
+                && $application->reviewed_by === null
+                && $application->finalized_at === null
+                && $application->enrollment_id === null;
+            $application->blocking_owner_user_id = $released ? null : $application->owner_user_id;
+            $application->blocking_student_id = $released ? null : $application->student_id;
+            $application->blocking_admission_applicant_id = $released ? null : $application->admission_applicant_id;
+        });
+    }
+
     protected function casts(): array
     {
-        return ['submitted_at' => 'immutable_datetime', 'reviewed_at' => 'immutable_datetime', 'finalized_at' => 'immutable_datetime'];
+        return ['personal_details' => 'array', 'submitted_at' => 'immutable_datetime', 'reviewed_at' => 'immutable_datetime', 'finalized_at' => 'immutable_datetime'];
     }
 
     public function student()

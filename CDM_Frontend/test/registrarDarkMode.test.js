@@ -72,7 +72,7 @@ test('shared shell, header, controls, tables, and sidebar consume theme tokens',
     read('../src/components/Navbar.vue'),
     read('../src/components/Sidebar.vue'),
     read('../src/assets/styles/main.css'),
-    read('../src/composables/useStudentTheme.js'),
+    read('../src/composables/portalAppearance.js'),
   ])
   assert.match(navbar, /background: var\(--bg-header\)/)
   assert.match(theme, /\.registrar-theme-shell \.shell-content/)
@@ -89,11 +89,10 @@ test('shared shell, header, controls, tables, and sidebar consume theme tokens',
 })
 
 test('meaningful shared text, tabs and reduced motion retain semantic treatment', async () => {
-  const [theme, main, backdrop, monitoring] = await Promise.all([
+  const [theme, main, backdrop] = await Promise.all([
     read('../src/assets/styles/student-theme.css'),
     read('../src/assets/styles/main.css'),
     read('../src/components/PortalAnimatedBackdrop.vue'),
-    read('../src/modules/monitoring/MonitoringView.vue'),
   ])
   for (const token of ['tab-inactive', 'tab-active', 'tab-hover']) {
     assert.match(main, new RegExp(`--${token}:`))
@@ -101,7 +100,6 @@ test('meaningful shared text, tabs and reduced motion retain semantic treatment'
   }
   assert.match(theme, /\.app-shell :is\(\.page-kicker, \.eyebrow, \.grading-eyebrow\)/)
   assert.match(theme, /\.app-shell :is\(\.page-description,[\s\S]*var\(--text-secondary\)/)
-  assert.match(monitoring, /color: var\(--tab-inactive, var\(--text-secondary\)\)/)
   assert.match(backdrop, /@media \(prefers-reduced-motion: reduce\)/)
   assert.match(main, /@media \(prefers-reduced-motion: reduce\)/)
 })

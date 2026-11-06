@@ -9,7 +9,7 @@ class GradingPeriodsSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('grading_periods')->insert([
+        foreach ([
             [
                 'period_name' => 'Prelim',
                 'period_order' => 1,
@@ -31,6 +31,8 @@ class GradingPeriodsSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
-        ]);
+        ] as $period) {
+            DB::table('grading_periods')->insertOrIgnore($period);
+        }
     }
 }

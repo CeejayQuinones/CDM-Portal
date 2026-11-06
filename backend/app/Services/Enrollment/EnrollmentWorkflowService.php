@@ -16,6 +16,7 @@ use App\Models\StudentDocument;
 use App\Models\User;
 use App\Notifications\EnrollmentNotice;
 use App\Services\Admission\AdmissionHandoffService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -134,22 +135,29 @@ class EnrollmentWorkflowService
                 $curriculumId = $student->curriculum_id;
                 $yearLevel = $student->year_level;
             }
-            $existing = EnrollmentApplication::ownedBy($actor)->where('academic_year_id', $p->academic_year_id)
+            $existing = EnrollmentApplication::ownedBy($actor)->whereNotNull('blocking_owner_user_id')->where('academic_year_id', $p->academic_year_id)
                 ->where('semester_id', $p->semester_id)->lockForUpdate()->first();
             abort_if($existing, 409, 'An application already exists for this term. Open your existing application.');
             if ($admission) {
                 $existingHandoff = EnrollmentApplication::where('admission_applicant_id', $admission['applicant']->id)
+                    ->whereNotNull('blocking_admission_applicant_id')
                     ->lockForUpdate()->first();
                 abort_if($existingHandoff, 409, 'This Admission handoff already has an Enrollment application. Open your existing application.');
             }
-            $a = EnrollmentApplication::create([
-                'student_id' => $student?->id, 'owner_user_id' => $actor->id,
-                'admission_applicant_id' => $admission['applicant']->id ?? null,
-                'period_id' => $p->id, 'academic_year_id' => $p->academic_year_id,
-                'semester_id' => $p->semester_id, 'course_id' => $courseId,
-                'curriculum_id' => $curriculumId, 'year_level' => $yearLevel,
-                'classification' => $input['classification'], 'status' => 'draft',
-            ]);
+            try {
+                $a = EnrollmentApplication::create([
+                    'student_id' => $student?->id, 'owner_user_id' => $actor->id,
+                    'admission_applicant_id' => $admission['applicant']->id ?? null,
+                    'period_id' => $p->id, 'academic_year_id' => $p->academic_year_id,
+                    'semester_id' => $p->semester_id, 'course_id' => $courseId,
+                    'curriculum_id' => $curriculumId, 'year_level' => $yearLevel,
+                    'classification' => $input['classification'],
+                    'personal_details' => $this->personalDetailsSnapshot($actor),
+                    'status' => 'draft',
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                abort(409, 'An application already exists for this term. Reload your applications.');
+            }
             $this->audit->record($actor, 'draft_created', 'application', $a->id, ['status' => $a->status, 'version' => 1]);
 
             return $a->fresh();
@@ -200,8 +208,10 @@ class EnrollmentWorkflowService
             abort_unless(in_array($a->status, $from[$action] ?? [], true), 409, 'This action is not allowed for the current application status.');
             if ($action === 'save') {
                 $a->classification = $input['classification'];
+                $a->personal_details = $input['personal_details'];
             }
             if ($action === 'submit') {
+                $this->personalDetailsComplete($a);
                 if ($student) {
                     $this->eligibleStudent($owner, $student, $p);
                     $a->course_id = $student->course_id;
@@ -248,13 +258,67 @@ class EnrollmentWorkflowService
             ? StudentDocument::where('student_id', $a->student_id)->whereIn('document_type_id', $ids)->where('verification_status', 'verified')->get()->keyBy('document_type_id')
             : collect();
 
-        return DocumentType::whereIn('id', $ids)->orderBy('document_name')->get()->map(function ($type) use ($attached, $existing, $configuration) {
+        return DocumentType::whereIn('id', $ids)->orderBy('document_name')->get()->map(function ($type) use ($a, $attached, $existing, $configuration) {
             $doc = $attached->get($type->id);
             $reuse = $existing->get($type->id);
             $reusable = $reuse && $reuse->file_path && Storage::disk('local')->exists($reuse->file_path);
+            $presentation = $doc ? $this->documentPresentation($a, $doc) : null;
 
-            return ['id' => $type->id, 'name' => $type->document_name, 'required' => in_array($type->id, $configuration['required'], true), 'attached' => $doc !== null, 'document_id' => $doc?->id, 'reusable' => $reusable, 'student_document_id' => $reusable ? $reuse->id : null];
+            return ['id' => $type->id, 'name' => $type->document_name, 'required' => in_array($type->id, $configuration['required'], true),
+                'attached' => $doc !== null, 'document_id' => $doc?->id, 'filename' => $presentation['filename'] ?? null,
+                'mime_type' => $presentation['mime_type'] ?? null, 'preview_kind' => $presentation['preview_kind'] ?? 'file',
+                'preview_url' => $doc ? "/enrollment/applications/{$a->id}/documents/{$doc->id}?preview=1" : null,
+                'reusable' => $reusable, 'student_document_id' => $reusable ? $reuse->id : null];
         })->all();
+    }
+
+    public function documentPresentation(EnrollmentApplication $application, EnrollmentDocument $document): array
+    {
+        $path = $this->documentPath($application, $document);
+        $filename = $document->original_name ?: ($path ? 'enrollment-document.'.pathinfo($path, PATHINFO_EXTENSION) : 'enrollment-document');
+        $detectedMime = $path && Storage::disk('local')->exists($path) ? Storage::disk('local')->mimeType($path) : null;
+        $mime = strtolower((string) ($document->mime_type ?: $detectedMime));
+        $extension = strtolower(pathinfo($document->original_name ?: (string) $path, PATHINFO_EXTENSION));
+        $extensionMime = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'pdf' => 'application/pdf'][$extension] ?? null;
+        if (! in_array($mime, ['image/jpeg', 'image/png', 'application/pdf'], true)) {
+            $mime = $extensionMime ?: 'application/octet-stream';
+        }
+
+        return [
+            'path' => $path,
+            'filename' => $filename,
+            'mime_type' => $mime,
+            'preview_kind' => str_starts_with($mime, 'image/') ? 'image' : ($mime === 'application/pdf' ? 'pdf' : 'file'),
+        ];
+    }
+
+    private function personalDetailsSnapshot(User $actor): array
+    {
+        $profile = $actor->profile()->first();
+
+        return [
+            'first_name' => $profile?->first_name,
+            'middle_name' => $profile?->middle_name,
+            'last_name' => $profile?->last_name,
+            'birth_date' => $profile?->birth_date?->toDateString(),
+            'gender' => $profile?->gender,
+            'contact_number' => $profile?->contact_number,
+            'email' => $profile?->email ?: $actor->email,
+            'address' => $profile?->address,
+        ];
+    }
+
+    public function personalDetailsFor(EnrollmentApplication $application): array
+    {
+        return $application->personal_details ?: $this->personalDetailsSnapshot($application->owner()->firstOrFail());
+    }
+
+    private function personalDetailsComplete(EnrollmentApplication $application): void
+    {
+        $details = $application->personal_details ?? [];
+        foreach (['first_name', 'last_name', 'birth_date', 'gender', 'contact_number', 'email', 'address'] as $field) {
+            abort_if(trim((string) ($details[$field] ?? '')) === '', 422, 'Complete and save the Enrollment personal details before submitting.');
+        }
     }
 
     private function documentsComplete(EnrollmentApplication $a, EnrollmentPeriod $p): void
@@ -288,8 +352,9 @@ class EnrollmentWorkflowService
     public function upload(User $user, int $id, array $input, UploadedFile $file): EnrollmentDocument
     {
         $path = null;
+        $oldPath = null;
         try {
-            return DB::transaction(function () use ($user, $id, $input, $file, &$path) {
+            $document = DB::transaction(function () use ($user, $id, $input, $file, &$path, &$oldPath) {
                 $actor = EnrollmentAccess::require($user, false, true);
                 $ref = EnrollmentApplication::findOrFail($id);
                 abort_unless($ref->owner_user_id === $actor->id, 404, 'Application not found.');
@@ -297,18 +362,32 @@ class EnrollmentWorkflowService
                 $a = EnrollmentApplication::lockForUpdate()->findOrFail($id);
                 abort_unless($a->status === 'draft' && $a->version === $input['version'], 409, 'Reload your draft before uploading.');
                 abort_unless(in_array($input['document_type_id'], $a->period->documentTypeIds($a->classification), true), 422, 'This document is not configured for your classification.');
-                abort_if($a->documents()->where('document_type_id', $input['document_type_id'])->lockForUpdate()->first(['id']), 409, 'This requirement already has a document.');
+                $current = $a->documents()->where('document_type_id', $input['document_type_id'])->lockForUpdate()->first();
+                abort_if($current?->student_document_id, 409, 'A verified document is already available and cannot be replaced here.');
                 $existing = $student ? StudentDocument::where('student_id', $student->id)->where('document_type_id', $input['document_type_id'])->where('verification_status', 'verified')->lockForUpdate()->first() : null;
                 abort_if($existing && $existing->file_path && Storage::disk('local')->exists($existing->file_path), 409, 'A verified document is already available and will be reused when submitting.');
                 $path = $file->store('enrollment/'.$a->id, 'local');
                 abort_unless($path, 503, 'The document could not be stored.');
-                $doc = $a->documents()->create(['document_type_id' => $input['document_type_id'], 'file_path' => $path]);
+                $originalName = basename(str_replace('\\', '/', $file->getClientOriginalName()));
+                $values = ['file_path' => $path, 'original_name' => $originalName, 'mime_type' => $file->getMimeType()];
+                if ($current) {
+                    $oldPath = $current->file_path;
+                    $current->fill($values)->save();
+                    $doc = $current;
+                } else {
+                    $doc = $a->documents()->create(['document_type_id' => $input['document_type_id'], ...$values]);
+                }
                 $a->version++;
                 $a->save();
-                $this->audit->record($actor, 'document_attached', 'application', $a->id, ['version' => $a->version]);
+                $this->audit->record($actor, $current ? 'document_replaced' : 'document_attached', 'application', $a->id, ['version' => $a->version]);
 
                 return $doc;
             });
+            if ($oldPath && $oldPath !== $path) {
+                Storage::disk('local')->delete($oldPath);
+            }
+
+            return $document;
         } catch (\Throwable $e) {
             if ($path) {
                 Storage::disk('local')->delete($path);

@@ -38,7 +38,6 @@ export async function ensureOfflineSeeded() {
     for (const row of appointments) await offlineDb.put('appointments', row)
     await offlineDb.put('physical_records', { id:1, student_id:1, cabinet_code:'CAB-DEMO-A', slot_code:'A-01' })
     await offlineDb.put('grades', { id:1, student_id:1, subject:'Web Development', grade:'1.50', term:'1st Semester' })
-    await offlineDb.put('events', { id:1, name:'CDM Foundation Day', event_date:date(7), attended:false })
     await offlineDb.put('settings', { id:'availability', block_saturday:true, block_sunday:true })
     await offlineDb.put('meta', { id:'seed', version:SEED_VERSION })
   })().finally(() => { seeding = null })

@@ -6,7 +6,6 @@ use App\Models\AcademicYear;
 use App\Models\Enrollment;
 use App\Models\Enrollment\EnrollmentApplication;
 use App\Models\EnrollmentSubject;
-use App\Models\Professor;
 use App\Models\Role;
 use App\Models\Section;
 use App\Models\SectionSubject;
@@ -108,17 +107,14 @@ class EnrollmentAcademicService
                 }
                 $ids = DB::table('enrollment_application_subjects')->where('application_id', $a->id)->lockForUpdate()->pluck('subject_id')->all();
                 $load = $this->subjects->validate($a, $ids);
-                $schedules = SectionSubject::where('section_id', $section->id)->whereIn('subject_id', $ids)->lockForUpdate()->get()->keyBy('subject_id');
-                abort_unless($schedules->count() === $load->count(), 422, 'Every selected subject needs a schedule in the assigned section.');
-                $profIds = $schedules->pluck('professor_id')->filter()->unique();
-                $professors = Professor::whereIn('id', $profIds)->where('status', 'active')->lockForUpdate()->get();
-                $professorRole = Role::where('role_name', Role::PROFESSOR)->value('id');
-                $activeUsers = User::whereIn('id', $professors->pluck('user_id'))->where('status', 'active')->where('role_id', $professorRole)->lockForUpdate()->pluck('id')->all();
-                $activeProf = $professors->whereIn('user_id', $activeUsers)->pluck('id')->all();
-                foreach ($schedules as $s) {
-                    abort_unless($s->day && $s->start_time && $s->end_time && $s->start_time < $s->end_time && $s->room && in_array($s->professor_id, $activeProf), 422, 'Every subject needs a complete schedule and active Professor.');
-                }
-                app(EnrollmentSchedulingService::class)->assertFinalSchedules($schedules, $a->academic_year_id, $a->semester_id);
+                // Enrollment and timetable preparation are independent workflows. An
+                // existing teaching assignment may contribute its Professor, but neither
+                // that assignment nor its meetings are prerequisites for finalization.
+                $assignments = SectionSubject::where('section_id', $section->id)
+                    ->whereIn('subject_id', $ids)
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('subject_id');
                 if (! $student) {
                     abort_unless($owner->role?->role_name === Role::GUEST && $owner->profile, 409, 'The admitted Guest identity needs review.');
                     abort_if(Student::where('user_id', $owner->id)->orWhere('user_profile_id', $owner->profile->id)->lockForUpdate()->exists(), 409, 'A Student identity already exists for this account.');
@@ -137,13 +133,13 @@ class EnrollmentAcademicService
                 }
                 $this->documentHandoff->link($actor, $a, $student);
                 $e = Enrollment::create(['student_id' => $student->id, 'section_id' => $section->id, 'academic_year_id' => $a->academic_year_id, 'semester_id' => $a->semester_id, 'enrollment_date' => now()->toDateString(), 'status' => 'enrolled']);
-                $rows = $load->map(fn ($s) => ['enrollment_id' => $e->id, 'subject_id' => $s->id, 'professor_id' => $schedules[$s->id]->professor_id, 'subject_status' => 'enrolled', 'remarks' => 'In Progress', 'created_at' => now(), 'updated_at' => now()])->all();
+                $rows = $load->map(fn ($s) => ['enrollment_id' => $e->id, 'subject_id' => $s->id, 'professor_id' => $assignments->get($s->id)?->professor_id, 'subject_status' => 'enrolled', 'remarks' => 'In Progress', 'created_at' => now(), 'updated_at' => now()])->all();
                 EnrollmentSubject::insert($rows);
                 $a->enrollment_id = $e->id;
                 $a->status = 'enrolled';
                 $a->finalized_at = now();
                 $event = 'finalized';
-                $message = 'Your academic enrollment is complete. Your COR and schedule are available.';
+                $message = 'Your academic enrollment is complete. Your COR is available; class times will appear when Scheduling finalizes them.';
             }
             $a->version++;
             $a->save();

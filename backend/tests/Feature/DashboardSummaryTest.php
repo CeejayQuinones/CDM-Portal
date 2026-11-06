@@ -4,10 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Enrollment;
 use App\Models\EnrollmentSubject;
-use App\Models\Event;
 use App\Models\GradeSheet;
 use App\Models\Professor;
-use App\Models\RiskNotification;
 use App\Models\Role;
 use App\Models\SectionSubject;
 use App\Models\User;
@@ -46,42 +44,6 @@ class DashboardSummaryTest extends TestCase
                 'subject_status' => 'enrolled',
             ]);
         }
-        RiskNotification::create([
-            'student_id' => $this->fixture['student']->id,
-            'sender_user_id' => $this->fixture['registrar']->id,
-            'risk_level' => 'moderate',
-            'title' => 'Review your plan',
-            'message' => 'A current notice.',
-        ]);
-        RiskNotification::create([
-            'student_id' => $this->fixture['student']->id,
-            'sender_user_id' => $this->fixture['registrar']->id,
-            'risk_level' => 'low',
-            'title' => 'Already reviewed',
-            'message' => 'An older notice.',
-            'read_at' => now(),
-        ]);
-        Event::create([
-            'title' => 'Student orientation',
-            'venue' => 'Campus hall',
-            'venue_key' => 'campus-hall',
-            'starts_at' => now()->addDay(),
-            'ends_at' => now()->addDays(2),
-            'status' => 'published',
-            'created_by' => $this->fixture['registrar']->id,
-            'updated_by' => $this->fixture['registrar']->id,
-        ]);
-        Event::create([
-            'title' => 'Unpublished event',
-            'venue' => 'Campus hall',
-            'venue_key' => 'campus-hall',
-            'starts_at' => now()->addDay(),
-            'ends_at' => now()->addDays(2),
-            'status' => 'draft',
-            'created_by' => $this->fixture['registrar']->id,
-            'updated_by' => $this->fixture['registrar']->id,
-        ]);
-
         Sanctum::actingAs($this->fixture['user']);
         $this->getJson('/api/student/dashboard', $this->web)
             ->assertOk()
@@ -92,8 +54,7 @@ class DashboardSummaryTest extends TestCase
             ->assertJsonPath('data.identity.section', 'AC-dashboards')
             ->assertJsonPath('data.summary.enrollment_status', 'enrolled')
             ->assertJsonPath('data.summary.enrolled_subjects', 2)
-            ->assertJsonPath('data.summary.unread_monitoring_notices', 1)
-            ->assertJsonPath('data.summary.upcoming_events', 1)
+            ->assertJsonMissingPath('data.summary.unread_monitoring_notices')
             ->assertJsonPath('data.has_finalized_enrollment', true);
     }
 
@@ -108,7 +69,7 @@ class DashboardSummaryTest extends TestCase
             ->assertJsonPath('data.identity.name', 'New Student')
             ->assertJsonPath('data.identity.student_number', null)
             ->assertJsonPath('data.summary.enrolled_subjects', 0)
-            ->assertJsonPath('data.summary.unread_monitoring_notices', 0)
+            ->assertJsonMissingPath('data.summary.unread_monitoring_notices')
             ->assertJsonPath('data.has_finalized_enrollment', false);
     }
 
@@ -162,7 +123,7 @@ class DashboardSummaryTest extends TestCase
             ->assertJsonPath('data.summary.students', 1)
             ->assertJsonPath('data.summary.grade_sheets_needing_work', 1)
             ->assertJsonPath('data.summary.submitted_grade_sheets', 1)
-            ->assertJsonStructure(['data' => ['summary' => ['monitoring_alerts', 'high_risk_alerts', 'attention_alerts']]])
+            ->assertJsonMissingPath('data.summary.monitoring_alerts')
             ->assertJsonPath('data.has_assignments', true);
     }
 

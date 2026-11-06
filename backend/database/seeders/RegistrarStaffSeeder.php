@@ -4,13 +4,17 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use App\Models\UserProfile;
+use Database\Seeders\Concerns\DevelopmentOnlySeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 class RegistrarStaffSeeder extends Seeder
 {
+    use DevelopmentOnlySeeder;
+
     public function run(): void
     {
+        $this->ensureDevelopmentEnvironment();
         $user = User::query()->where('username', 'registrar1')->firstOrFail();
         $profile = UserProfile::query()->where('user_id', $user->id)->firstOrFail();
 

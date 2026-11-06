@@ -14,8 +14,10 @@ use App\Models\SectionSubject;
 use App\Models\Semester;
 use App\Models\Subject;
 use App\Notifications\EnrollmentNotice;
+use App\Services\AccountProvisioningService;
 use App\Services\Enrollment\EnrollmentAcademicService;
 use App\Services\Enrollment\EnrollmentAccess;
+use App\Services\Enrollment\EnrollmentOvrfService;
 use App\Services\Enrollment\EnrollmentSchedulingService;
 use App\Services\Enrollment\EnrollmentSubjectManagementService;
 use App\Services\Enrollment\EnrollmentSubjectPolicy;
@@ -24,7 +26,7 @@ use Illuminate\Validation\Rule;
 
 class EnrollmentAcademicController extends Controller
 {
-    public function __construct(private EnrollmentAcademicService $academic, private EnrollmentSubjectPolicy $loads, private EnrollmentSchedulingService $scheduling, private EnrollmentSubjectManagementService $subjectManagement) {}
+    public function __construct(private EnrollmentAcademicService $academic, private EnrollmentSubjectPolicy $loads, private EnrollmentSchedulingService $scheduling, private EnrollmentSubjectManagementService $subjectManagement, private AccountProvisioningService $accounts, private EnrollmentOvrfService $ovrf) {}
 
     private function ok($data, int $status = 200)
     {
@@ -51,6 +53,57 @@ class EnrollmentAcademicController extends Controller
         $this->staff($r);
 
         return $this->ok(['courses' => Course::where('status', 'active')->orderBy('course_name')->limit(300)->get(['id', 'course_name', 'years']), 'curriculums' => Curriculum::where('status', 'active')->orderByDesc('effective_year')->get(['id', 'course_id', 'curriculum_code', 'curriculum_name', 'effective_year']), 'academic_years' => AcademicYear::where('status', 'active')->latest('id')->limit(50)->get(), 'semesters' => Semester::where('status', 'active')->get(), 'professors' => Professor::with('user.profile')->where('status', 'active')->whereHas('user', fn ($q) => $q->where('status', 'active')->whereHas('role', fn ($r) => $r->where('role_name', Role::PROFESSOR)))->orderBy('id')->paginate(100)]);
+    }
+
+    public function catalog(Request $r)
+    {
+        $actor = EnrollmentAccess::require($r->user());
+        abort_unless($actor->fresh('role')->role?->role_name === Role::STUDENT, 403, 'The academic program catalog is available to active Students.');
+
+        $academicYear = AcademicYear::where('status', 'active')->orderByDesc('start_date')->orderByDesc('id')->first();
+        $courses = Course::query()
+            ->where('status', 'active')
+            ->with([
+                'department:id,department_name',
+                'curriculums' => fn ($query) => $query->where('status', 'active')->orderByDesc('effective_year')->orderBy('curriculum_code'),
+                'curriculums.subjects' => fn ($query) => $query->where('status', 'active')->orderBy('year_level')->orderBy('semester_id')->orderBy('subject_code'),
+                'curriculums.subjects.semester:id,semester_name,semester_order,status',
+            ])
+            ->orderBy('course_name')
+            ->limit(300)
+            ->get()
+            ->map(fn (Course $course) => [
+                'id' => $course->id,
+                'code' => $course->course_code,
+                'title' => $course->course_name,
+                'duration_years' => $course->years,
+                'department' => $course->department?->department_name,
+                'curricula' => $course->curriculums->map(fn (Curriculum $curriculum) => [
+                    'id' => $curriculum->id,
+                    'code' => $curriculum->curriculum_code,
+                    'name' => $curriculum->curriculum_name,
+                    'effective_year' => $curriculum->effective_year,
+                    'subjects' => $curriculum->subjects->map(fn (Subject $subject) => [
+                        'id' => $subject->id,
+                        'code' => $subject->subject_code,
+                        'name' => $subject->subject_name,
+                        'year_level' => $subject->year_level,
+                        'semester' => $subject->semester?->semester_name,
+                        'semester_order' => $subject->semester?->semester_order,
+                        'units' => (float) $subject->units,
+                    ])->values(),
+                ])->values(),
+            ])->values();
+
+        return $this->ok([
+            'academic_year' => $academicYear?->only(['id', 'school_year', 'start_date', 'end_date']),
+            'programs' => $courses,
+            'metadata' => [
+                'descriptions_available' => false,
+                'capacity_available' => false,
+                'study_mode_available' => false,
+            ],
+        ]);
     }
 
     public function sections(Request $r)
@@ -146,14 +199,57 @@ class EnrollmentAcademicController extends Controller
         return $this->ok($this->subjectManagement->setStatus($r->user(), $id, $action === 'archive' ? 'inactive' : 'active'));
     }
 
+    public function subjectProfessors(Request $r, Subject $subject)
+    {
+        $this->staff($r);
+        abort_unless($r->user()->fresh('role')->role?->role_name === Role::REGISTRAR_STAFF, 403, 'Only Registrar Staff may manage Professor subject associations.');
+        $assignedIds = $subject->professors()->pluck('professors.id')->map(fn (int $id): int => $id)->sort()->values();
+        $professors = Professor::query()->with(['user.profile', 'department'])
+            ->where(function ($query) use ($assignedIds): void {
+                $query->where('status', 'active')->orWhereIn('id', $assignedIds);
+            })
+            ->whereHas('user', fn ($query) => $query->whereHas('role', fn ($role) => $role->where('role_name', Role::PROFESSOR)))
+            ->orderBy('employee_number')->get()->map(fn (Professor $professor): array => [
+                'id' => $professor->id,
+                'employee_number' => $professor->employee_number,
+                'status' => $professor->status,
+                'account_status' => $professor->user?->status,
+                'first_name' => $professor->user?->profile?->first_name,
+                'middle_name' => $professor->user?->profile?->middle_name,
+                'last_name' => $professor->user?->profile?->last_name,
+                'department_code' => $professor->department?->department_code,
+                'department_name' => $professor->department?->department_name,
+            ]);
+
+        return $this->ok([
+            'subject' => $subject->only(['id', 'subject_code', 'subject_name', 'status']),
+            'assigned_professor_ids' => $assignedIds->all(),
+            'professors' => $professors,
+        ]);
+    }
+
+    public function syncSubjectProfessors(Request $r, Subject $subject)
+    {
+        $this->staff($r);
+        abort_unless($r->user()->fresh('role')->role?->role_name === Role::REGISTRAR_STAFF, 403, 'Only Registrar Staff may manage Professor subject associations.');
+        $input = $r->validate([
+            'professor_ids' => ['present', 'array', 'max:500'],
+            'professor_ids.*' => ['required', 'integer', 'distinct', 'exists:professors,id'],
+            'confirmed' => ['required', 'accepted'],
+        ]);
+        $subject = $this->accounts->syncSubjectProfessors($r->user(), $subject, array_map('intval', $input['professor_ids']));
+
+        return $this->ok(['assigned_professor_ids' => $subject->professors->pluck('id')->sort()->values()->all()]);
+    }
+
     public function schedules(Request $r)
     {
         $this->staff($r);
         $in = $r->validate(['section_id' => 'required|integer|exists:sections,id', 'search' => 'nullable|string|max:100', 'day' => ['nullable', Rule::in(EnrollmentSchedulingService::DAYS)]]);
         $section = Section::with(['course', 'curriculum', 'academicYear', 'semester'])->findOrFail($in['section_id']);
-        $q = SectionSubject::with(['subject', 'professor.user.profile'])->where('section_id', $section->id);
+        $q = SectionSubject::with(['subject', 'professor.user.profile', 'meetings'])->where('section_id', $section->id);
         if (! empty($in['day'])) {
-            $q->where('day', $in['day']);
+            $q->whereHas('meetings', fn ($meeting) => $meeting->where('day', $in['day']));
         }if (! empty($in['search'])) {
             $q->whereHas('subject', fn ($s) => $s->where('subject_name', 'like', '%'.$in['search'].'%')->orWhere('subject_code', 'like', '%'.$in['search'].'%'));
         }
@@ -164,21 +260,71 @@ class EnrollmentAcademicController extends Controller
         $curriculum = $curricula->count() === 1 ? $curricula->first() : null;
         $configurationIssue = $curriculum ? null : 'This Section has no unambiguous active curriculum. Edit the Section and choose its curriculum.';
 
-        return $this->ok(['section' => $section, 'curriculum' => $curriculum, 'configuration_issue' => $configurationIssue, 'schedules' => $q->orderBy('day')->orderBy('start_time')->paginate(100), 'subjects' => $curriculum ? Subject::where('curriculum_id', $curriculum->id)->where('semester_id', $section->semester_id)->where('year_level', $section->year_level)->where('status', 'active')->orderBy('subject_code')->limit(500)->get() : [], 'days' => EnrollmentSchedulingService::DAYS]);
+        return $this->ok(['section' => $section, 'curriculum' => $curriculum, 'configuration_issue' => $configurationIssue, 'schedules' => $q->orderBy('id')->paginate(100), 'subjects' => $curriculum ? Subject::with('professors:id')->where('curriculum_id', $curriculum->id)->where('semester_id', $section->semester_id)->where('year_level', $section->year_level)->where('status', 'active')->orderBy('subject_code')->limit(500)->get() : [], 'days' => EnrollmentSchedulingService::DAYS]);
     }
 
     public function saveSchedule(Request $r, ?int $id = null)
     {
         $this->staff($r);
-        $in = $r->validate(['assignment_id' => $id ? 'prohibited' : 'nullable|integer|exists:section_subjects,id', 'section_id' => 'required|integer|exists:sections,id', 'subject_id' => 'required|integer|exists:subjects,id', 'professor_id' => 'required|integer|exists:professors,id', 'day' => ['required', Rule::in(EnrollmentSchedulingService::DAYS)], 'start_time' => 'required|date_format:H:i', 'end_time' => 'required|date_format:H:i|after:start_time', 'room' => 'required|string|max:50', 'version' => $id ? 'required|integer|min:1' : 'sometimes|integer']);
+        $batch = $r->has('meetings');
+        $in = $r->validate([
+            'assignment_id' => $id ? 'prohibited' : 'nullable|integer|exists:section_subjects,id',
+            'section_id' => 'required|integer|exists:sections,id',
+            'subject_id' => 'required|integer|exists:subjects,id',
+            'professor_id' => 'required|integer|exists:professors,id',
+            'day' => $batch ? 'prohibited' : ['required', Rule::in(EnrollmentSchedulingService::DAYS)],
+            'start_time' => $batch ? 'prohibited' : 'required|date_format:H:i',
+            'end_time' => $batch ? 'prohibited' : 'required|date_format:H:i|after:start_time',
+            'meetings' => $batch ? 'required|array|min:1|max:7' : 'prohibited',
+            'meetings.*.day' => $batch ? ['required', 'distinct', Rule::in(EnrollmentSchedulingService::DAYS)] : 'prohibited',
+            'meetings.*.start_time' => $batch ? 'required|date_format:H:i' : 'prohibited',
+            'meetings.*.end_time' => $batch ? 'required|date_format:H:i|after:meetings.*.start_time' : 'prohibited',
+            'room' => 'required|string|max:50',
+            'version' => $id ? 'required|integer|min:1' : 'sometimes|integer',
+        ]);
         foreach (['assignment_id', 'section_id', 'subject_id', 'professor_id', 'version'] as $key) {
             if (isset($in[$key])) {
                 $in[$key] = (int) $in[$key];
             }
-        }$in['start_time'] .= ':00';
-        $in['end_time'] .= ':00';
+        }
+        if ($batch) {
+            $in['meetings'] = array_map(fn (array $meeting): array => array_replace($meeting, [
+                'start_time' => $meeting['start_time'].':00',
+                'end_time' => $meeting['end_time'].':00',
+            ]), $in['meetings']);
+        } else {
+            $in['start_time'] .= ':00';
+            $in['end_time'] .= ':00';
+        }
 
         return $this->ok($this->scheduling->schedule($r->user(), $in, $id), $id ? 200 : 201);
+    }
+
+    public function scheduleAvailability(Request $r)
+    {
+        $this->staff($r);
+        $in = $r->validate([
+            'schedule_id' => 'nullable|integer|exists:section_subjects,id',
+            'section_id' => 'required|integer|exists:sections,id',
+            'subject_id' => 'required|integer|exists:subjects,id',
+            'professor_id' => 'required|integer|exists:professors,id',
+            'meetings' => 'required|array|min:1|max:7',
+            'meetings.*.day' => ['required', Rule::in(EnrollmentSchedulingService::DAYS)],
+            'meetings.*.start_time' => 'required|date_format:H:i',
+            'meetings.*.end_time' => 'required|date_format:H:i|after:meetings.*.start_time',
+            'room' => 'required|string|max:50',
+        ]);
+        foreach (['schedule_id', 'section_id', 'subject_id', 'professor_id'] as $key) {
+            if (isset($in[$key])) {
+                $in[$key] = (int) $in[$key];
+            }
+        }
+        $in['meetings'] = array_map(fn (array $meeting): array => array_replace($meeting, [
+            'start_time' => $meeting['start_time'].':00',
+            'end_time' => $meeting['end_time'].':00',
+        ]), $in['meetings']);
+
+        return $this->ok($this->scheduling->availability($r->user(), $in, $in['schedule_id'] ?? null));
     }
 
     public function deleteSchedule(Request $r, int $id)
@@ -196,7 +342,23 @@ class EnrollmentAcademicController extends Controller
         $a = $this->academic->application($r->user(), $id)->load(['student.userProfile', 'owner.profile', 'admissionApplicant', 'course', 'curriculum', 'period.academicYear', 'period.semester', 'section', 'subjects']);
         $sections = $this->counts(Section::with(['academicYear', 'semester'])->where('course_id', $a->course_id)->where('year_level', $a->year_level)->where('academic_year_id', $a->academic_year_id)->where('semester_id', $a->semester_id)->where('status', 'open'))->orderBy('section_name')->paginate(50);
 
-        return $this->ok(['application' => $a, 'load' => $this->loads->proposal($a), 'sections' => $sections, 'total_units' => $a->subjects->sum('units')]);
+        $load = $this->loads->proposal($a);
+        $assignments = $a->section_id
+            ? SectionSubject::with('meetings')
+                ->where('section_id', $a->section_id)
+                ->whereIn('subject_id', collect($load['candidates'])->pluck('id'))
+                ->get()
+                ->keyBy('subject_id')
+            : collect();
+        $load['candidates'] = collect($load['candidates'])->map(function (array $subject) use ($assignments): array {
+            $assignment = $assignments->get($subject['id']);
+            $scheduled = $assignment && ($assignment->meetings->isNotEmpty()
+                || ($assignment->day && $assignment->start_time && $assignment->end_time && $assignment->room));
+
+            return $subject + ['schedule_status' => $scheduled ? 'scheduled' : 'pending'];
+        })->all();
+
+        return $this->ok(['application' => $a, 'load' => $load, 'sections' => $sections, 'total_units' => $a->subjects->sum('units')]);
     }
 
     public function change(Request $r, int $id, string $action)
@@ -265,11 +427,25 @@ class EnrollmentAcademicController extends Controller
         $actor = EnrollmentAccess::require($r->user(), $staff);
         $e = Enrollment::when(! $staff, fn ($q) => $q->whereHas('student', fn ($s) => $s->where('user_id', $actor->id)))->with(['student.userProfile', 'student.course', 'section', 'academicYear', 'semester', 'enrollmentSubjects.subject', 'application.course'])->findOrFail($id);
         abort_unless(in_array($e->status, ['enrolled', 'completed']), 409, 'COR is available only for finalized academic enrollment.');
-        $schedules = SectionSubject::with('professor.user.profile')->where('section_id', $e->section_id)->whereIn('subject_id', $e->enrollmentSubjects->pluck('subject_id'))->get()->keyBy('subject_id');
+        $schedules = SectionSubject::with(['professor.user.profile', 'meetings'])->where('section_id', $e->section_id)->whereIn('subject_id', $e->enrollmentSubjects->pluck('subject_id'))->get()->keyBy('subject_id');
         $profile = $e->student->userProfile;
 
         return $this->ok(['id' => $e->id, 'student_number' => $e->student->student_number, 'name' => trim($profile->first_name.' '.$profile->last_name), 'course' => $e->application?->course?->course_name ?? $e->student->course?->course_name, 'year_level' => $e->application?->year_level ?? $e->section->year_level, 'academic_year' => $e->academicYear->school_year, 'semester' => $e->semester->semester_name, 'section' => $e->section->section_name, 'classification' => $e->application?->classification, 'status' => $e->status, 'enrollment_date' => $e->enrollment_date,
-            'subjects' => $e->enrollmentSubjects->map(fn ($es) => ['id' => $es->subject_id, 'subject_code' => $es->subject->subject_code, 'subject_name' => $es->subject->subject_name, 'units' => (float) $es->subject->units, 'lecture_hours' => $es->subject->lecture_hours, 'laboratory_hours' => $es->subject->laboratory_hours, 'schedule' => $schedules->get($es->subject_id)])->values(), 'total_units' => $e->enrollmentSubjects->sum(fn ($es) => (float) $es->subject->units)]);
+            'subjects' => $e->enrollmentSubjects->map(function ($es) use ($schedules): array {
+                $schedule = $schedules->get($es->subject_id);
+                $scheduled = $schedule && ($schedule->meetings->isNotEmpty() || ($schedule->day && $schedule->start_time && $schedule->end_time && $schedule->room));
+
+                return ['id' => $es->subject_id, 'subject_code' => $es->subject->subject_code, 'subject_name' => $es->subject->subject_name, 'units' => (float) $es->subject->units, 'lecture_hours' => $es->subject->lecture_hours, 'laboratory_hours' => $es->subject->laboratory_hours, 'schedule_status' => $scheduled ? 'scheduled' : 'pending', 'schedule' => $schedule];
+            })->values(), 'total_units' => $e->enrollmentSubjects->sum(fn ($es) => (float) $es->subject->units)]);
+    }
+
+    public function ovrf(Request $request, int $id)
+    {
+        $input = $request->validate([
+            'disposition' => ['nullable', Rule::in(['inline', 'attachment'])],
+        ]);
+
+        return $this->ovrf->render($request->user(), $id, $input['disposition'] ?? 'inline');
     }
 
     public function professor(Request $r, ?int $section = null)
@@ -293,7 +469,7 @@ class EnrollmentAcademicController extends Controller
                 ->paginate(25));
         }
 
-        return $this->ok($q->with(['course', 'academicYear', 'semester', 'schedules' => fn ($s) => $s->where('professor_id', $p->id)->with('subject')])->orderByDesc('id')->paginate(25));
+        return $this->ok($q->with(['course', 'academicYear', 'semester', 'schedules' => fn ($s) => $s->where('professor_id', $p->id)->with(['subject', 'meetings'])])->orderByDesc('id')->paginate(25));
     }
 
     public function notices(Request $r)

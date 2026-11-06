@@ -346,6 +346,7 @@ class PortalDevelopmentSeed extends Command
                 $this->warn($course->course_code.' has no active curriculum Subjects in this term for year(s): '.$missing->implode(', ').'. No Subjects fabricated.');
             }
         }
+        $this->syncTrackedScheduleMeetings();
         $converted = DB::table('admission_applicants')->whereIn('id', $this->ids('applicant'))->where('status', 'converted')->count();
 
         return 'DEV-ENR fixture ready: '.$reused.' existing Students reused, '.count($this->ids('student')).' synthetic Student accounts ('.$converted.' converted Admission identities), '.
@@ -407,12 +408,41 @@ class PortalDevelopmentSeed extends Command
                     'room' => 'DEV-ENR ROOM '.$section->id]);
                 $this->track('schedule', $schedule->id);
             }
+            if (in_array($schedule->id, $this->ids('schedule'), true)) {
+                $this->ensureTrackedScheduleMeeting($schedule);
+            }
             $application->subjects()->attach($subject->id);
             EnrollmentSubject::create(['enrollment_id' => $enrollment->id, 'subject_id' => $subject->id,
                 'professor_id' => $schedule->professor_id, 'subject_status' => 'enrolled', 'remarks' => 'In Progress']);
         }
         app(EnrollmentSchedulingService::class)->assertFinalSchedules($section->schedules()->whereIn('subject_id', $subjects->pluck('id'))->get(), $period->academic_year_id, $period->semester_id);
         $application->update(['section_id' => $section->id, 'enrollment_id' => $enrollment->id, 'finalized_at' => now()]);
+    }
+
+    private function syncTrackedScheduleMeetings(): void
+    {
+        SectionSubject::whereIn('id', $this->ids('schedule'))->each(fn (SectionSubject $schedule) => $this->ensureTrackedScheduleMeeting($schedule));
+    }
+
+    private function ensureTrackedScheduleMeeting(SectionSubject $schedule): void
+    {
+        $meeting = $schedule->meetings()->where([
+            'day' => $schedule->day,
+            'start_time' => $schedule->start_time,
+            'end_time' => $schedule->end_time,
+            'room' => $schedule->room ?? '',
+        ])->first();
+        if (! $meeting && ! $schedule->meetings()->exists() && $schedule->day && $schedule->start_time && $schedule->end_time) {
+            $meeting = $schedule->meetings()->create([
+                'day' => $schedule->day,
+                'start_time' => $schedule->start_time,
+                'end_time' => $schedule->end_time,
+                'room' => $schedule->room ?? '',
+            ]);
+        }
+        if ($meeting) {
+            $this->track('schedule_meeting', $meeting->id);
+        }
     }
 
     private function seedSessionQuestions(AdmissionExamSession $session, $bank, ?int $correct): void
@@ -478,7 +508,7 @@ class PortalDevelopmentSeed extends Command
             'professors' => 'professor', 'admission_applicants' => 'applicant',
             'admission_cycles' => 'cycle', 'admission_exam_questions' => 'question',
             'enrollment_applications' => 'application', 'enrollments' => 'enrollment',
-            'section_subjects' => 'schedule'] as $table => $type) {
+            'section_subjects' => 'schedule', 'section_subject_meetings' => 'schedule_meeting'] as $table => $type) {
             $owned[$table] = $this->ids($type);
         }
         if (! $retainInfrastructure) {

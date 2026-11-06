@@ -12,7 +12,7 @@ class DocumentRequest extends Model
 {
     protected $hidden = ['verification_code_lookup', 'verification_code_hash'];
 
-    protected $fillable = ['student_id', 'document_type_id', 'registrar_staff_id', 'quantity', 'total_fee', 'purpose', 'status', 'request_date', 'release_date', 'remarks', 'cancellation_reason', 'cancelled_at', 'approved_at', 'completed_at', 'rejected_at', 'verification_code_lookup', 'verification_code_hash', 'code_verified_at'];
+    protected $fillable = ['student_id', 'document_type_id', 'registrar_staff_id', 'quantity', 'total_fee', 'purpose', 'purpose_details', 'status', 'request_date', 'release_date', 'remarks', 'cancellation_reason', 'cancelled_at', 'approved_at', 'completed_at', 'rejected_at', 'verification_code_lookup', 'verification_code_hash', 'code_verified_at'];
 
     protected $appends = ['request_reference'];
 

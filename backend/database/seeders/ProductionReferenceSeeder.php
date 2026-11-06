@@ -3,13 +3,14 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class ProductionReferenceSeeder extends Seeder
 {
     /** Seed only non-account reference/configuration records. */
     public function run(): void
     {
-        $this->call([
+        DB::transaction(fn () => $this->call([
             RolesSeeder::class,
             DepartmentsSeeder::class,
             AcademicYearsSeeder::class,
@@ -19,6 +20,6 @@ class ProductionReferenceSeeder extends Seeder
             SubjectsSeeder::class,
             GradingPeriodsSeeder::class,
             DocumentTypesSeeder::class,
-        ]);
+        ]), 3);
     }
 }

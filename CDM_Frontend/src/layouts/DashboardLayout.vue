@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import CDMBuddy from '../components/CDMBuddy.vue'
 import Navbar from '../components/Navbar.vue'
 import PortalAnimatedBackdrop from '../components/PortalAnimatedBackdrop.vue'
 import Sidebar from '../components/Sidebar.vue'
@@ -8,98 +9,95 @@ import StepUpAuthModal from '../components/StepUpAuthModal.vue'
 import { clientPlatform } from '../config/clientPlatform'
 import { useAuthStore } from '../stores/authStore'
 import { useStudentTheme } from '../composables/useStudentTheme'
+import {
+  readWebsiteSidebarPreference,
+  WEBSITE_DESKTOP_SIDEBAR_QUERY,
+  WEBSITE_SIDEBAR_LAYOUT_EVENT,
+  writeWebsiteSidebarPreference,
+} from '../composables/useWebsiteSidebar'
 
-const HOVER_SIDEBAR_QUERY = '(min-width: 861px) and (hover: hover) and (pointer: fine)'
-const SIDEBAR_CLOSE_DELAY = 220
 const isSidebarOpen = ref(false)
-const hasHoverPointer = ref(typeof window !== 'undefined' && window.matchMedia(HOVER_SIDEBAR_QUERY).matches)
-const pointerInEdge = ref(false)
-const pointerInSidebar = ref(false)
-const manuallyOpened = ref(false)
-const edgeTrigger = ref(null)
+const WebsiteAppShell = defineAsyncComponent(() => import('./WebsiteAppShell.vue'))
+const DesktopAppShell = defineAsyncComponent(() => import('./DesktopAppShell.vue'))
+const desktopSidebarCollapsed = ref(false)
+const isDesktopViewport = ref(typeof window !== 'undefined' && window.matchMedia(WEBSITE_DESKTOP_SIDEBAR_QUERY).matches)
+const sidebar = ref(null)
+const navbar = ref(null)
 const authStore = useAuthStore()
 const route = useRoute()
+const isWebsitePresentation = clientPlatform === 'web'
+const isDesktopPresentation = clientPlatform === 'desktop'
 const isStudentTheme = computed(() => authStore.currentRole === 'Student')
 const isStaffTheme = computed(() => ['Registrar Staff', 'Admin'].includes(authStore.currentRole))
-const usesHoverSidebar = computed(() =>
-  clientPlatform === 'web' &&
-  ['Student', 'Professor'].includes(authStore.currentRole) &&
-  hasHoverPointer.value,
-)
-let hoverMedia
-let closeTimer
+const accountKey = computed(() => authStore.currentUser?.id || authStore.currentUser?.username || 'session')
+const isDesktopWebsite = computed(() => isWebsitePresentation && isDesktopViewport.value)
+const isMobileWebsite = computed(() => isWebsitePresentation && !isDesktopViewport.value)
+const isDesktopShellWide = computed(() => isDesktopPresentation && isDesktopViewport.value)
+const isDesktopShellDrawer = computed(() => isDesktopPresentation && !isDesktopViewport.value)
+let desktopMedia
 
-const clearCloseTimer = () => {
-  if (closeTimer) window.clearTimeout(closeTimer)
-  closeTimer = undefined
-}
-const closeSidebar = (restoreFocus = false) => {
-  clearCloseTimer()
-  isSidebarOpen.value = false
-  manuallyOpened.value = false
-  if (restoreFocus && usesHoverSidebar.value) edgeTrigger.value?.focus()
-}
-const openSidebar = (manual = false) => {
-  clearCloseTimer()
-  isSidebarOpen.value = true
-  if (manual) manuallyOpened.value = true
-}
-const scheduleHoverClose = () => {
-  clearCloseTimer()
-  if (!usesHoverSidebar.value || manuallyOpened.value) return
-  closeTimer = window.setTimeout(() => {
-    if (!pointerInEdge.value && !pointerInSidebar.value && !manuallyOpened.value) {
-      isSidebarOpen.value = false
-    }
-  }, SIDEBAR_CLOSE_DELAY)
-}
-const handleEdgeEnter = () => {
-  pointerInEdge.value = true
-  openSidebar()
-}
-const handleEdgeLeave = () => {
-  pointerInEdge.value = false
-  scheduleHoverClose()
-}
-const handleSidebarEnter = () => {
-  if (!usesHoverSidebar.value) return
-  pointerInSidebar.value = true
-  clearCloseTimer()
-}
-const handleSidebarLeave = () => {
-  if (!usesHoverSidebar.value) return
-  pointerInSidebar.value = false
-  scheduleHoverClose()
-}
-const toggleSidebar = () => {
-  if (!usesHoverSidebar.value) {
-    isSidebarOpen.value = !isSidebarOpen.value
+const notifySidebarLayout = () => nextTick(() => {
+  if (!isWebsitePresentation) return
+  window.dispatchEvent(new CustomEvent(WEBSITE_SIDEBAR_LAYOUT_EVENT))
+})
+const restoreDesktopPreference = () => {
+  if (isWebsitePresentation) {
+    desktopSidebarCollapsed.value = readWebsiteSidebarPreference(localStorage, accountKey.value)
     return
   }
-  if (isSidebarOpen.value) closeSidebar()
-  else openSidebar(true)
+  if (isDesktopPresentation) {
+    desktopSidebarCollapsed.value = localStorage.getItem(`cdm-desktop-sidebar:${accountKey.value}`) === 'collapsed'
+  }
+}
+const closeSidebar = (restoreFocus = false) => {
+  isSidebarOpen.value = false
+  if (restoreFocus && (isMobileWebsite.value || isDesktopShellDrawer.value)) nextTick(() => navbar.value?.focusMenuButton())
+}
+const openSidebar = () => {
+  isSidebarOpen.value = true
+  if (isMobileWebsite.value || isDesktopShellDrawer.value) nextTick(() => sidebar.value?.focusFirst())
+}
+const toggleSidebar = () => {
+  if (isSidebarOpen.value) closeSidebar(true)
+  else openSidebar()
+}
+const toggleDesktopSidebar = () => {
+  if (!isDesktopWebsite.value && !isDesktopShellWide.value) return
+  desktopSidebarCollapsed.value = !desktopSidebarCollapsed.value
+  if (isDesktopWebsite.value) writeWebsiteSidebarPreference(localStorage, accountKey.value, desktopSidebarCollapsed.value)
+  else localStorage.setItem(`cdm-desktop-sidebar:${accountKey.value}`, desktopSidebarCollapsed.value ? 'collapsed' : 'expanded')
+  notifySidebarLayout()
 }
 const handleEscape = (event) => {
   if (event.key === 'Escape' && isSidebarOpen.value) closeSidebar(true)
 }
-const updateHoverCapability = event => {
-  hasHoverPointer.value = event.matches
+const updateDesktopViewport = event => {
+  isDesktopViewport.value = event.matches
+  if (event.matches) closeSidebar()
+  notifySidebarLayout()
 }
 
-watch(() => route.fullPath, () => closeSidebar())
-watch(usesHoverSidebar, enabled => {
-  if (!enabled) closeSidebar()
+watch(() => route.fullPath, () => {
+  if (isSidebarOpen.value) closeSidebar()
+  notifySidebarLayout()
+})
+watch(accountKey, restoreDesktopPreference)
+watch(() => (isMobileWebsite.value || isDesktopShellDrawer.value) && isSidebarOpen.value, locked => {
+  document.documentElement.classList.toggle('website-sidebar-drawer-open', locked)
 })
 
 onMounted(() => {
-  hoverMedia = window.matchMedia(HOVER_SIDEBAR_QUERY)
-  hasHoverPointer.value = hoverMedia.matches
-  hoverMedia.addEventListener?.('change', updateHoverCapability)
+  if (isWebsitePresentation || isDesktopPresentation) return
+  desktopMedia = window.matchMedia(WEBSITE_DESKTOP_SIDEBAR_QUERY)
+  isDesktopViewport.value = desktopMedia.matches
+  desktopMedia.addEventListener?.('change', updateDesktopViewport)
   window.addEventListener('keydown', handleEscape)
+  restoreDesktopPreference()
 })
 onBeforeUnmount(() => {
-  clearCloseTimer()
-  hoverMedia?.removeEventListener?.('change', updateHoverCapability)
+  if (isWebsitePresentation || isDesktopPresentation) return
+  document.documentElement.classList.remove('website-sidebar-drawer-open')
+  desktopMedia?.removeEventListener?.('change', updateDesktopViewport)
   window.removeEventListener('keydown', handleEscape)
 })
 
@@ -107,31 +105,27 @@ useStudentTheme(authStore)
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'student-portal-shell': isStudentTheme, 'registrar-theme-shell': isStaffTheme, 'hover-sidebar-shell': usesHoverSidebar }">
+  <WebsiteAppShell v-if="isWebsitePresentation" />
+  <DesktopAppShell v-else-if="isDesktopPresentation" />
+  <div v-else class="app-shell" :class="{ 'student-portal-shell': isStudentTheme, 'registrar-theme-shell': isStaffTheme }">
     <StepUpAuthModal />
-    <button
-      v-if="usesHoverSidebar"
-      ref="edgeTrigger"
-      class="sidebar-edge-trigger"
-      type="button"
-      aria-label="Open navigation sidebar"
-      :aria-expanded="isSidebarOpen"
-      @click="openSidebar(true)"
-      @mouseenter="handleEdgeEnter"
-      @mouseleave="handleEdgeLeave"
-    ></button>
     <Sidebar
+      ref="sidebar"
       :is-open="isSidebarOpen"
-      @close="closeSidebar()"
-      @mouseenter="handleSidebarEnter"
-      @mouseleave="handleSidebarLeave"
+      :collapsed="(isDesktopWebsite || isDesktopShellWide) && desktopSidebarCollapsed"
+      :collapsible="isDesktopWebsite || isDesktopShellWide"
+      :mobile-drawer="(isMobileWebsite || isDesktopShellDrawer) && isSidebarOpen"
+      :website-presentation="isWebsitePresentation"
+      :desktop-presentation="isDesktopPresentation"
+      @close="restoreFocus => closeSidebar(Boolean(restoreFocus))"
+      @toggle-collapse="toggleDesktopSidebar"
     />
 
-    <div v-if="isSidebarOpen && !usesHoverSidebar" class="sidebar-backdrop" aria-hidden="true" @click="closeSidebar()"></div>
+    <div v-if="isSidebarOpen && (isDesktopShellDrawer || isMobileWebsite)" class="sidebar-backdrop" aria-hidden="true" @click="closeSidebar(true)"></div>
 
-    <div class="shell-content portal-page-shell">
+    <div class="shell-content portal-page-shell" :inert="(isMobileWebsite || isDesktopShellDrawer) && isSidebarOpen">
       <PortalAnimatedBackdrop :role="authStore.currentRole" />
-      <Navbar :show-menu-button="usesHoverSidebar" :sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+      <Navbar ref="navbar" :show-menu-button="isMobileWebsite || isDesktopShellDrawer" :sidebar-open="isSidebarOpen" :desktop-presentation="isDesktopPresentation" @toggle-sidebar="toggleSidebar" />
 
       <main class="main-content">
         <RouterView v-slot="{ Component, route }">
@@ -142,6 +136,7 @@ useStudentTheme(authStore)
           </Transition>
         </RouterView>
       </main>
+      <CDMBuddy />
     </div>
   </div>
 </template>
@@ -192,50 +187,25 @@ useStudentTheme(authStore)
   background: rgba(31, 31, 31, 0.44);
 }
 
-.sidebar-edge-trigger {
-  display: none;
+.website-academic-shell .sidebar-backdrop {
+  z-index: 29;
 }
 
-@media (min-width: 861px) and (hover: hover) and (pointer: fine) {
-  .hover-sidebar-shell .shell-content {
-    margin-left: 0;
-  }
+.website-desktop-sidebar {
+  --sidebar-width: 264px;
+}
 
-  .hover-sidebar-shell .main-content {
-    max-width: none;
-    width: 100%;
-  }
+.website-desktop-sidebar.website-sidebar-collapsed {
+  --sidebar-width: 84px;
+}
 
-  .hover-sidebar-shell :deep(.sidebar) {
-    border-right: 1px solid rgb(244 211 94 / 38%);
-    box-shadow: 12px 0 30px rgb(0 0 0 / 24%);
-    transform: translateX(calc(-100% - 16px));
-    transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
+.website-desktop-sidebar .shell-content {
+  transition: margin-left 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
 
-  .hover-sidebar-shell :deep(.sidebar.is-open) {
-    transform: translateX(0);
-  }
-
-  .hover-sidebar-shell .sidebar-edge-trigger {
-    background: transparent;
-    border: 0;
-    cursor: default;
-    display: block;
-    height: 100vh;
-    height: 100dvh;
-    inset: 0 auto 0 0;
-    padding: 0;
-    position: fixed;
-    width: 14px;
-    z-index: 29;
-  }
-
-  .hover-sidebar-shell .sidebar-edge-trigger:focus-visible {
-    background: var(--accent, var(--color-dartmouth-green));
-    box-shadow: 3px 0 0 var(--color-naples-yellow);
-    outline: 0;
-  }
+.website-desktop-sidebar .main-content {
+  width: min(1240px, 100%);
+  padding: clamp(24px, 3vw, 38px);
 }
 
 .portal-route-enter-active,
@@ -256,7 +226,7 @@ useStudentTheme(authStore)
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hover-sidebar-shell :deep(.sidebar),
+  .website-desktop-sidebar .shell-content,
   .portal-route-enter-active,
   .portal-route-leave-active {
     transition-duration: 0.01ms;
@@ -266,6 +236,12 @@ useStudentTheme(authStore)
   .portal-route-leave-to {
     transform: none;
   }
+}
+
+:global(html.website-sidebar-drawer-open),
+:global(html.website-sidebar-drawer-open body) {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 @media (max-width: 860px) {

@@ -22,6 +22,10 @@ Document AI requires `AI_DOCUMENT_ANALYZER=gemini`, `GEMINI_API_KEY`,
 `ADMISSION_GEMINI_API_KEY` and `ADMISSION_GEMINI_MODEL`. Monitoring AI remains
 disabled unless `MONITORING_AI_ENABLED=true` and its provider settings are present.
 
+Run `php artisan portal:production-audit --json` on the deployed host before and
+after a release. The complete backup, bootstrap-account, migration, worker, scheduler,
+smoke-test, and cleanup procedure is in `docs/PRODUCTION_DEPLOYMENT_RUNBOOK.md`.
+
 ## Frontend releases
 
 Release builds require explicit public HTTPS API endpoints. Supply variables from

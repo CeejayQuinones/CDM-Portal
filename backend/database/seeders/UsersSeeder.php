@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use Database\Seeders\Concerns\DevelopmentOnlySeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -9,8 +10,11 @@ use RuntimeException;
 
 class UsersSeeder extends Seeder
 {
+    use DevelopmentOnlySeeder;
+
     public function run(): void
     {
+        $this->ensureDevelopmentEnvironment();
         $roleNames = [
             'Guest',
             'Admin',
@@ -29,7 +33,7 @@ class UsersSeeder extends Seeder
             }
         }
 
-        DB::table('users')->insert([
+        foreach ([
             [
                 'username' => 'ken',
                 'password' => Hash::make('ken123!'),
@@ -80,6 +84,11 @@ class UsersSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
-        ]);
+        ] as $user) {
+            DB::table('users')->updateOrInsert(
+                ['username' => $user['username']],
+                $user,
+            );
+        }
     }
 }

@@ -9,4 +9,5 @@ async function getDashboard(path) {
 export const getStudentDashboard = () => getDashboard('/student/dashboard')
 export const getProfessorDashboard = () => getDashboard('/professor/dashboard')
 export const getAdminDashboard = () => getDashboard('/admin/dashboard')
+export const getStudentEnrollmentStatus = () => getDashboard('/enrollment/status')
 

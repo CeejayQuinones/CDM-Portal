@@ -1,0 +1,3 @@
+<script setup>defineProps({title:{type:String,default:'Nothing here yet'},message:String})</script>
+<template><div class="cdm-empty"><span aria-hidden="true">—</span><h2>{{title}}</h2><p v-if="message">{{message}}</p><slot /></div></template>
+<style scoped>.cdm-empty{display:grid;justify-items:center;gap:6px;padding:34px 20px;border:1px dashed var(--cdm-border-strong);border-radius:var(--cdm-radius-md);background:var(--cdm-surface-muted);color:var(--cdm-text-muted);text-align:center}.cdm-empty>span{color:var(--cdm-primary);font-size:20px}.cdm-empty h2{margin:0;color:var(--cdm-text);font-size:16px}.cdm-empty p{max-width:520px;margin:0;font-size:12px;line-height:1.5}</style>

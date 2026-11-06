@@ -9,11 +9,10 @@ Campus Management System for Colegio de Montalban.
 - Admission
 - Enrollment
 - Grading
-- Academic Monitoring
 - Student Management
 - Registrar Appointment
-- Event Management
-- QR Attendance
+- Document Requests
+- CDM Buddy verified portal updates
 
 ## Tech Stack
 

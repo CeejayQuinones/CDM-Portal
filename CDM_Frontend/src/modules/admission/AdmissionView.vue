@@ -3,9 +3,14 @@ import AdmissionDialog from './components/AdmissionDialog.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { admissionApi } from './services/workflowService'
 import { ROLES } from '../../config/accessControl.js'
+import { clientPlatform } from '../../config/clientPlatform.js'
 import { useAuthStore } from '../../stores/authStore'
 import AdmissionStaffWorkspace from './components/AdmissionStaffWorkspace.vue'
 import { fetchAdmissionIdentity, fetchAdmissionAvailability, createAdmissionApplication, admissionCreationMessage } from './services/admissionService.js'
+import WebsiteModuleHeader from '../../components/website/WebsiteModuleHeader.vue'
+import WebsiteStepper from '../../components/website/WebsiteStepper.vue'
+const isWebsitePresentation=clientPlatform==='web'
+const admissionSteps=['Application','Exam','Review','Result','Recommendation']
 
 defineProps({ title: { type: String, default: 'Admission Status' } })
 const auth = useAuthStore()
@@ -126,7 +131,8 @@ onBeforeUnmount(() => { requestVersion++ })
 <template>
   <AdmissionStaffWorkspace v-if="!canReadIdentity" :title="title" description="Choose an Admission workspace below."><p class="placeholder-panel panel">Applicants, Programs, Exams, Exam Questions, Results, and Admission History use the same staff permissions.</p></AdmissionStaffWorkspace>
   <section v-else class="admission-workflow admission-applicant" aria-labelledby="admission-page-title" :aria-busy="loading">
-    <header class="page-header">
+    <WebsiteModuleHeader v-if="isWebsitePresentation" eyebrow="Applicant journey" :title="title" title-id="admission-page-title" description="Follow your verified application, entrance examination, result, and next action from one guided workspace." />
+    <header v-else class="page-header">
       <p class="page-kicker">Admission</p>
       <h1 id="admission-page-title" class="page-title">{{ title }}</h1>
       <p class="page-description">Your application, exam, and next steps in one place.</p>
@@ -146,14 +152,14 @@ onBeforeUnmount(() => { requestVersion++ })
           <p v-else-if="availability" role="status">{{ admissionCreationMessage(availability.reason) }}</p>
         </template>
       </div>
-      <div v-else>
+      <div v-else :class="{ 'application-content-grid': isWebsitePresentation }">
         <div class="placeholder-panel panel identity-card"><h2>Your application</h2><dl class="admission-details">
           <div><dt>Applicant Number</dt><dd>{{ application.applicant_number }}</dd></div>
           <div><dt>Admission Cycle</dt><dd>{{ application.cycle.name }} <span class="admission-cycle-code">({{ application.cycle.code }})</span></dd></div>
           <div><dt>Application record status</dt><dd><span class="badge">{{ status[0] }}</span></dd></div>
         </dl></div>
         <div v-if="application.admission_completed" class="placeholder-panel panel next-step"><h2>Admission completed</h2><p role="status">Your Admission workflow is complete and read-only.</p><dl class="admission-details"><div v-if="application.admitted_program"><dt>Admitted program</dt><dd>{{ application.admitted_program.course_name }}</dd></div><div v-if="application.admitted_curriculum"><dt>Curriculum</dt><dd>{{ application.admitted_curriculum.curriculum_name }}</dd></div><div><dt>Current portal role</dt><dd>{{ application.eligible_for_enrollment ? 'Guest' : 'Student' }}</dd></div><div><dt>Student identity</dt><dd>{{ application.student_identity_created ? 'Existing identity preserved' : 'Not created yet' }}</dd></div></dl><p v-if="application.eligible_for_enrollment">You are eligible to continue to Enrollment. Student creation and official student-number assignment occur during Enrollment finalization in Phase 2.</p><p v-else>Your Student identity was created under the earlier lifecycle and remains unchanged.</p><router-link class="link-button primary" to="/enrollment/status">Continue to Enrollment</router-link></div>
-        <template v-else><ol class="progress-steps" aria-label="Admission progress"><li v-for="(step,index) in ['Application','Exam','Review','Result','Recommendation']" :key="step" :aria-current="index === nextStep.stage ? 'step' : undefined" :class="{ current: index === nextStep.stage, complete: index < nextStep.stage }"><span class="step-number" aria-hidden="true">{{ index < nextStep.stage ? '✓' : index + 1 }}</span><span>{{ step }}<small>{{ index < nextStep.stage ? 'Completed' : index === nextStep.stage ? 'Current step' : 'Upcoming' }}</small></span></li></ol>
+        <template v-else><WebsiteStepper v-if="isWebsitePresentation" :steps="admissionSteps" :current-index="nextStep.stage" style="--step-count:5"/><ol v-else class="progress-steps" aria-label="Admission progress"><li v-for="(step,index) in admissionSteps" :key="step" :aria-current="index === nextStep.stage ? 'step' : undefined" :class="{ current: index === nextStep.stage, complete: index < nextStep.stage }"><span class="step-number" aria-hidden="true">{{ index < nextStep.stage ? '✓' : index + 1 }}</span><span>{{ step }}<small>{{ index < nextStep.stage ? 'Completed' : index === nextStep.stage ? 'Current step' : 'Upcoming' }}</small></span></li></ol>
         <div class="placeholder-panel panel next-step"><h2>Your next step</h2><p role="status">{{ nextStep.text }}</p><router-link v-if="nextStep.label" class="link-button primary" :to="nextStep.to">{{ nextStep.label }}</router-link><button v-else type="button" @click="loadIdentity">Refresh status</button><p v-if="result?.published"><router-link to="/admission/result">View published result</router-link></p></div></template>
         <details class="placeholder-panel panel"><summary>Application details</summary><dl class="admission-details">
           <div><dt>Exam</dt><dd>{{ exam?.session && !exam.session.exam_completed ? 'In progress' : exam?.attempts_submitted ? exam.attempts_submitted + ' of ' + (exam.max_attempts || 2) + ' attempts submitted' : 'Not started' }}</dd></div>

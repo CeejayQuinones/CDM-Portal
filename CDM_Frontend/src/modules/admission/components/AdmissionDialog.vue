@@ -1,13 +1,19 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-const props = defineProps({ labelledby: { type: String, required: true }, busy: Boolean, wide: Boolean })
+const props = defineProps({
+  labelledby: { type: String, required: true },
+  describedby: { type: String, default: undefined },
+  busy: Boolean,
+  wide: Boolean,
+  dismissible: { type: Boolean, default: true },
+})
 const emit = defineEmits(['cancel'])
 const dialog = ref(null)
 let trigger, previousOverflow
 const inertSiblings = []
 const controls = () => Array.from(dialog.value?.querySelectorAll?.('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') || []).filter(el => el.getClientRects().length)
 function keydown(event) {
-  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (!props.busy) emit('cancel') }
+  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (!props.busy && props.dismissible) emit('cancel') }
   if (event.key !== 'Tab') return
   const items = controls(), first = items[0], last = items.at(-1)
   if (!first) { event.preventDefault(); dialog.value?.focus?.(); return }
@@ -39,6 +45,6 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="admission-dialog-backdrop">
-    <div ref="dialog" class="admission-dialog" :class="{ 'admission-dialog--wide': wide }" role="dialog" aria-modal="true" :aria-labelledby="labelledby" :aria-busy="busy" tabindex="-1" @keydown="keydown"><slot /></div>
+    <div ref="dialog" class="admission-dialog" :class="{ 'admission-dialog--wide': wide }" role="dialog" aria-modal="true" :aria-labelledby="labelledby" :aria-describedby="describedby" :aria-busy="busy" tabindex="-1" @keydown="keydown"><slot /></div>
   </div>
 </template>

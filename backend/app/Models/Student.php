@@ -85,11 +85,6 @@ class Student extends Model
         return $this->hasMany(Appointment::class);
     }
 
-    public function riskNotifications(): HasMany
-    {
-        return $this->hasMany(RiskNotification::class);
-    }
-
     public function physicalRecordLocation(): HasOne
     {
         return $this->hasOne(StudentRecordLocation::class);
@@ -113,15 +108,5 @@ class Student extends Model
     public function settings(): HasOne
     {
         return $this->hasOne(StudentSetting::class);
-    }
-
-    public function eventAttendances(): HasMany
-    {
-        return $this->hasMany(EventAttendance::class);
-    }
-
-    public function eventCertificates(): HasMany
-    {
-        return $this->hasMany(EventCertificate::class);
     }
 }

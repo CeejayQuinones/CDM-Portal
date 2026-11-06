@@ -2,7 +2,7 @@ import { performanceMonitor } from '../performance/performanceMonitor.js'
 
 const DATABASE_NAME = 'cdm_portal_offline_demo'
 const DATABASE_VERSION = 2
-const stores = ['users','students','document_types','document_requests','appointments','grades','events','physical_records','activity','blocked_dates','settings','meta']
+const stores = ['users','students','document_types','document_requests','appointments','grades','physical_records','activity','blocked_dates','settings','meta']
 const indexes = {
   students: ['user_id'],
   document_requests: ['student_id', 'status'],

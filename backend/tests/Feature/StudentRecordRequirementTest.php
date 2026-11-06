@@ -102,11 +102,19 @@ class StudentRecordRequirementTest extends TestCase
         $this->patchJson($url.'/require', ['instruction' => 'Submit the original at Window 3.'])
             ->assertOk()->assertJsonPath('data.physical_copy_status', 'required');
         $this->getJson('/api/student-records/productivity')->assertOk()
-            ->assertJsonFragment(['key' => $student->id.':'.$type->id, 'attention_reason' => 'Hard Copy Awaiting Submission']);
+            ->assertJsonFragment(['key' => $student->id.':'.$type->id, 'attention_reason' => 'Hard Copy Awaiting Submission'])
+            ->assertJsonFragment(['id' => $type->id, 'name' => 'Form 137'])
+            ->assertJsonFragment(['student_id' => $student->id, 'student_number' => '26-10004']);
         $this->patchJson($url.'/receive')->assertOk()->assertJsonPath('data.verification_status', 'verified')
             ->assertJsonPath('data.physical_copy_status', 'submitted');
         $this->getJson('/api/student-records/productivity')->assertOk()
-            ->assertJsonMissing(['key' => $student->id.':'.$type->id]);
+            ->assertJsonMissingExact(['key' => $student->id.':'.$type->id, 'attention_reason' => 'Hard Copy Awaiting Submission'])
+            ->assertJsonFragment([
+                'key' => $student->id.':'.$type->id,
+                'digital_status' => 'verified',
+                'physical_status' => 'submitted',
+                'attention_reasons' => [],
+            ]);
         $this->patchJson($url.'/reopen')->assertUnprocessable();
         $this->patchJson($url.'/reopen', ['reason' => 'The original was incomplete.'])->assertOk();
         $this->assertSame('verified', $document->fresh()->verification_status);

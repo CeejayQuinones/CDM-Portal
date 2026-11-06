@@ -3,8 +3,8 @@
 .grading-weights{display:flex;align-items:end;gap:.75rem;flex-wrap:wrap;padding:1rem}.grading-weights label{width:9rem}.grading-weights button{padding:.7rem;border-radius:9px;border:1px solid var(--border-color)}
 .grading-readiness,.grading-release-form,.grading-review-filters{background:var(--bg-surface);border:1px solid var(--border-color);border-radius:16px;padding:1rem;margin:1rem 0}.grading-readiness{display:flex;justify-content:space-between;gap:1rem}.grading-readiness ul{margin:.5rem 0 0;padding-left:1.25rem;color:var(--danger)}.grading-final-weights{display:flex;align-items:end;gap:.6rem;flex-wrap:wrap}.grading-final-weights label{width:7rem}.grading-review-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:.75rem;align-items:end}.grading-release-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.grading-release-form h2,.grading-release-form fieldset{grid-column:1/-1}.grading-release-form fieldset{border:1px solid var(--border-color);border-radius:10px;display:grid;gap:.5rem}.grading-release-form fieldset label{display:flex;align-items:center;gap:.5rem}.grading-release-form fieldset input{width:auto}.grading-review-detail{display:grid;gap:1rem}.grading-review-detail textarea{background:var(--bg-surface);border:1px solid var(--border-color);border-radius:9px;color:inherit;padding:.7rem}.grading-status{text-transform:capitalize}
 @media(max-width:700px){.grading-readiness{flex-direction:column}.grading-release-form{grid-template-columns:1fr}.grading-release-form h2,.grading-release-form fieldset{grid-column:1}}
-.grading-alert.warning{background:var(--warning-bg);color:var(--warning)}.student-grade-summary span{color:var(--text-secondary);font-size:.82rem}.student-term-filter{grid-template-columns:repeat(2,minmax(160px,240px)) auto;justify-content:start}.grade-unread{display:inline-grid;place-items:center;min-width:1.35rem;height:1.35rem;padding:0 .35rem;border-radius:999px;background:var(--accent);color:var(--text-on-accent);font-size:.72rem}.grade-message-modal{width:min(820px,100%);position:relative}.grade-chat-close{position:absolute;right:1rem;top:.7rem;border:0;background:transparent;font-size:1.7rem;z-index:2}.grade-chat{display:grid;gap:1rem;min-width:0}.grade-chat header{padding-right:2rem}.grade-chat header div{display:grid;gap:.2rem}.grade-chat header span{color:var(--text-secondary)}.grade-chat-history{display:flex;flex-direction:column;gap:.75rem;max-height:55vh;overflow:auto;padding:.75rem;background:var(--bg-surface-alt);border-radius:12px}.grade-chat-empty{text-align:center;color:var(--text-secondary)}.grade-chat-bubble{align-self:flex-start;width:min(78%,560px);padding:.75rem;border-radius:14px;background:var(--bg-surface);border:1px solid var(--border-color);display:grid;gap:.35rem}.grade-chat-bubble.mine{align-self:flex-end;background:var(--bg-hover)}.grade-chat-bubble.unsent{opacity:.7;font-style:italic}.grade-chat-bubble p{margin:0;white-space:pre-wrap}.grade-chat-bubble img{display:block;max-width:min(100%,420px);max-height:320px;object-fit:contain;border-radius:10px}.grade-chat-bubble small{color:var(--text-secondary)}.grade-chat-bubble button{justify-self:start;border:0;background:transparent;color:var(--accent);padding:0}.grade-chat-composer{display:grid!important;grid-template-columns:1fr minmax(180px,.5fr)!important;gap:.75rem}.grade-chat-composer button{align-self:end}.grade-chat-file small{font-weight:400;color:var(--text-secondary)}.grade-message-layout{display:grid;grid-template-columns:minmax(230px,.36fr) 1fr;gap:1rem}.grade-conversation-list{display:flex;flex-direction:column;gap:.5rem;max-height:70vh;overflow:auto}.grade-conversation-list button{position:relative;text-align:left;padding:.8rem;border:1px solid var(--border-color);background:var(--bg-surface);color:inherit;border-radius:10px;display:grid;gap:.25rem}.grade-conversation-list button.active{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}.grade-conversation-list span,.grade-conversation-list small{color:var(--text-secondary)}.grade-conversation-list .grade-unread{position:absolute;right:.6rem;top:.6rem;color:var(--text-on-accent)}.professor-grade-messages{margin-top:1rem}
-@media(max-width:760px){.student-term-filter{grid-template-columns:1fr}.grade-message-layout{grid-template-columns:1fr}.grade-chat-composer{grid-template-columns:1fr!important}.grade-chat-bubble{width:92%}.student-grade-table table,.student-grade-table tbody,.student-grade-table tr,.student-grade-table td{display:block;min-width:0}.student-grade-table thead{display:none}.student-grade-table tr{border-bottom:1px solid var(--border-color);padding:.65rem}.student-grade-table td{border:0!important;padding:.35rem .4rem!important;display:grid!important;grid-template-columns:minmax(6.5rem,40%) 1fr;gap:.5rem}.student-grade-table td::before{content:attr(data-label);font-weight:800;color:var(--text-secondary)}}
+.grading-alert.warning{background:var(--warning-bg);color:var(--warning)}.student-grade-summary span{color:var(--text-secondary);font-size:.82rem}.student-term-filter{grid-template-columns:repeat(2,minmax(160px,240px)) auto;justify-content:start}
+@media(max-width:760px){.student-term-filter{grid-template-columns:1fr}.student-grade-table table,.student-grade-table tbody,.student-grade-table tr,.student-grade-table td{display:block;min-width:0}.student-grade-table thead{display:none}.student-grade-table tr{border-bottom:1px solid var(--border-color);padding:.65rem}.student-grade-table td{border:0!important;padding:.35rem .4rem!important;display:grid!important;grid-template-columns:minmax(6.5rem,40%) 1fr;gap:.5rem}.student-grade-table td::before{content:attr(data-label);font-weight:800;color:var(--text-secondary)}}
 
 @media(max-width:480px){.grading-summary{grid-template-columns:minmax(0,1fr)}.grading-release-form,.grading-review-filters{gap:.65rem;padding:.8rem}.grading-modal footer{flex-wrap:wrap}.grading-modal footer button{flex:1 1 auto}}
 
@@ -71,7 +71,6 @@
   background: var(--bg-hover);
 }
 
-.student-grade-table td:last-child button,
 .grade-history-open {
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface-alt));
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-color));
@@ -79,43 +78,6 @@
   color: var(--accent);
   font-weight: 750;
   padding: .55rem .7rem;
-}
-
-.grade-unread {
-  background: var(--accent);
-  color: var(--text-on-accent);
-}
-
-.grade-chat-close {
-  color: var(--text-primary);
-}
-
-.grade-chat-history {
-  background: var(--bg-surface-alt);
-  border: 1px solid var(--border-color);
-}
-
-.grade-chat-bubble {
-  background: var(--bg-surface);
-  border-color: var(--border-color);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-soft);
-}
-
-.grade-chat-bubble.mine {
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg-surface));
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border-color));
-}
-
-.grade-chat-bubble button,
-.grade-conversation-list button.active {
-  color: var(--accent);
-}
-
-.grade-conversation-list button {
-  background: var(--bg-surface);
-  border-color: var(--border-color);
-  color: var(--text-primary);
 }
 
 .grading-skeleton {
@@ -278,7 +240,7 @@
   opacity: .66;
 }
 
-.grading-page button:not(.grading-button, .grading-back, .grade-chat-close) {
+.grading-page button:not(.grading-button, .grading-back) {
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -286,7 +248,7 @@
   padding: .5rem .7rem;
 }
 
-.grading-page button:not(.grading-button, .grading-back, .grade-chat-close):hover:not(:disabled) {
+.grading-page button:not(.grading-button, .grading-back):hover:not(:disabled) {
   background: var(--bg-hover);
   border-color: var(--accent);
 }
@@ -307,15 +269,13 @@
   border-color: var(--accent) !important;
 }
 
-.grading-table-wrap th button,
-.grade-chat-bubble button {
+.grading-table-wrap th button {
   background: transparent !important;
   border: 0 !important;
   color: var(--accent) !important;
   padding: 0 !important;
 }
 
-.student-grade-table td:last-child button,
 .grade-history-open {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface-2)) !important;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-color)) !important;
@@ -352,21 +312,10 @@
   padding: 1rem 1.25rem;
 }
 
-.grading-modal > header button,
-.grade-chat-close {
+.grading-modal > header button {
   background: var(--surface-3) !important;
   border: 1px solid var(--border-strong) !important;
   color: var(--text-secondary) !important;
-}
-
-.grade-chat-close {
-  align-items: center;
-  border-radius: 50%;
-  display: inline-flex;
-  height: 36px;
-  justify-content: center;
-  padding: 0;
-  width: 36px;
 }
 
 .grading-review-detail footer,
@@ -473,4 +422,3359 @@
 .grading-bulk-assessment table select {
   min-width: 110px;
   width: 100%;
+}
+
+/* Website-only Professor spreadsheet workspace. The non-web grading presentation keeps its legacy markup. */
+.website-professor-grading .grading-summary {
+  grid-template-columns: minmax(260px, 1.7fr) repeat(4, minmax(120px, .7fr));
+}
+
+.website-professor-grading .grading-summary > div {
+  min-height: 86px;
+  padding: .85rem 1rem;
+}
+
+.website-professor-grading .grading-summary strong {
+  font-size: 1rem;
+}
+
+.website-professor-grading .grading-readiness {
+  align-items: center;
+  border-radius: 12px;
+  margin: .8rem 0;
+  padding: .8rem 1rem;
+}
+
+.website-professor-grading .grading-tabs {
+  margin: .8rem 0;
+}
+
+.grade-sheet-context,
+.grade-sheet-weights,
+.grade-sheet-toolbar,
+.grade-sheet-savebar,
+.grade-sheet-scroll {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
+}
+
+.grade-sheet-context {
+  align-items: center;
+  border-radius: 14px 14px 0 0;
+  display: flex;
+  gap: 1.5rem;
+  justify-content: space-between;
+  padding: 1rem 1.15rem;
+}
+
+.grade-sheet-context h2,
+.grade-sheet-context p {
+  margin: 0;
+}
+
+.grade-sheet-context h2 {
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  line-height: 1.3;
+  margin-top: .18rem;
+}
+
+.grade-sheet-context p,
+.grade-sheet-kicker {
+  color: var(--text-secondary);
+  font-size: .8rem;
+}
+
+.grade-sheet-kicker {
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.grade-sheet-context dl {
+  display: flex;
+  gap: 1.4rem;
+  margin: 0;
+}
+
+.grade-sheet-context dl > div {
+  min-width: 92px;
+}
+
+.grade-sheet-context dt {
+  color: var(--text-muted);
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.grade-sheet-context dd {
+  color: var(--text-primary);
+  font-size: .86rem;
+  font-weight: 800;
+  margin: .2rem 0 0;
+  text-transform: capitalize;
+}
+
+.grade-sheet-weights {
+  border-top: 0;
+  padding: .75rem 1rem;
+}
+
+.grade-sheet-section-heading,
+.grade-sheet-toolbar,
+.grade-sheet-savebar {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.grade-sheet-section-heading > div,
+.grade-sheet-savebar > div:first-child {
+  display: grid;
+  gap: .12rem;
+}
+
+.grade-sheet-section-heading span,
+.grade-sheet-savebar strong {
+  color: var(--text-primary);
+  font-size: .86rem;
+  font-weight: 800;
+}
+
+.grade-sheet-section-heading small,
+.grade-sheet-savebar span {
+  color: var(--text-secondary);
+  font-size: .74rem;
+}
+
+.grade-sheet-section-heading button,
+.grade-sheet-assessment button {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font-weight: 750;
+}
+
+.grade-sheet-section-heading button {
+  min-height: 36px;
+  padding: .4rem .65rem;
+}
+
+.grade-sheet-weight-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+  margin-top: .65rem;
+}
+
+.website-professor-grading .grade-sheet-weight-fields label {
+  width: 112px;
+}
+
+.website-professor-grading .grade-sheet-weight-fields input {
+  min-height: 38px;
+  padding: .45rem .55rem;
+}
+
+.grade-sheet-toolbar {
+  border-radius: 12px 12px 0 0;
+  margin-top: .8rem;
+  padding: .75rem 1rem;
+}
+
+.website-professor-grading .grade-sheet-search {
+  max-width: 420px;
+  width: min(42vw, 420px);
+}
+
+.website-professor-grading .grade-sheet-search input {
+  min-height: 40px;
+  padding: .5rem .7rem;
+}
+
+.grade-sheet-savebar {
+  border-top: 0;
+  padding: .7rem 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 8;
+}
+
+.grade-sheet-savebar > div:last-child {
+  display: flex;
+  flex: 0 0 auto;
+  gap: .5rem;
+}
+
+.grade-sheet-savebar button {
+  min-height: 40px;
+}
+
+.grade-sheet-scroll {
+  border-radius: 0 0 14px 14px;
+  max-height: min(64vh, 700px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: relative;
+}
+
+.professor-grade-sheet {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: max(100%, 760px);
+  table-layout: fixed;
+  width: max-content;
+}
+
+.professor-grade-sheet th,
+.professor-grade-sheet td {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: .5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.professor-grade-sheet thead th {
+  background: var(--bg-surface-alt);
+  box-shadow: inset 0 -1px var(--border-strong);
+  position: static;
+}
+
+.professor-grade-sheet .number {
+  text-align: center;
+}
+
+.professor-grade-sheet tbody .number,
+.professor-grade-sheet tbody .identity {
+  box-shadow: 1px 0 var(--border-color);
+}
+
+.professor-grade-sheet tbody tr:hover > :is(td, th) {
+  background: var(--bg-hover);
+}
+
+.professor-grade-sheet .identity strong,
+.professor-grade-sheet .identity small {
+  display: block;
+}
+
+.professor-grade-sheet .identity strong {
+  font-size: .84rem;
+  line-height: 1.3;
+}
+
+.professor-grade-sheet .identity small {
+  color: var(--text-secondary);
+  font-size: .7rem;
+  margin-top: .18rem;
+}
+
+.grade-sheet-assessment {
+  display: grid;
+  gap: .18rem;
+}
+
+.grade-sheet-assessment > span {
+  color: var(--text-primary);
+  font-size: .79rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grade-sheet-assessment > small {
+  color: var(--text-secondary);
+  font-size: .68rem;
+}
+
+.website-professor-grading .grade-sheet-toolbar[data-column-mode='true'] {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border-color));
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.column-edit-actions {
+  align-items: center;
+}
+
+.column-edit-actions > span {
+  color: var(--accent);
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.professor-grade-sheet.is-editing-columns thead th:not(.sticky) {
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--bg-surface));
+}
+
+.column-label-editor {
+  display: grid;
+  gap: .24rem;
+  grid-template-columns: minmax(96px, 1fr) 34px;
+}
+
+.website-professor-grading .column-label-editor input {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: .76rem;
+  font-weight: 750;
+  min-height: 34px;
+  min-width: 0;
+  padding: .3rem .4rem;
+  width: 100%;
+}
+
+.website-professor-grading .column-label-editor input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent);
+  outline: 0;
+}
+
+.website-professor-grading .column-label-editor input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.column-label-editor .grading-field-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  white-space: normal;
+}
+
+.website-professor-grading .column-remove-button {
+  align-items: center;
+  align-self: start;
+  background: var(--danger-bg);
+  border: 1px solid color-mix(in srgb, var(--danger) 48%, var(--border-color));
+  border-radius: 50%;
+  color: var(--danger);
+  display: inline-flex;
+  font-size: 1.15rem;
+  font-weight: 800;
+  height: 34px;
+  justify-content: center;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0;
+  width: 34px;
+}
+
+.website-professor-grading .column-remove-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 16%, var(--bg-surface));
+}
+
+.website-professor-grading .column-remove-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.grading-visually-hidden {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.grade-sheet-assessment > div {
+  display: flex;
+  gap: .3rem;
+}
+
+.grade-sheet-assessment > .column-label-editor {
+  display: grid;
+}
+
+.grade-sheet-assessment button {
+  font-size: .68rem;
+  min-height: 28px;
+  padding: .15rem .25rem;
+}
+
+.grade-score-cell {
+  min-width: 132px;
+  padding: 0 !important;
+  position: relative;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.website-professor-grading .grade-score-cell input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  background: transparent;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: var(--text-primary);
+  min-height: 44px;
+  outline: 0 !important;
+  padding: .48rem .62rem;
+  text-align: right;
+  width: 100%;
+}
+
+.website-professor-grading .grade-score-cell input::-webkit-inner-spin-button,
+.website-professor-grading .grade-score-cell input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.website-professor-grading .grade-score-cell input:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-soft) 26%, transparent);
+}
+
+.website-professor-grading .grade-score-cell input:focus,
+.website-professor-grading .grade-score-cell input:focus-visible,
+.website-professor-grading .grade-score-cell input[aria-invalid='true']:focus,
+.website-professor-grading .grade-score-cell input[aria-invalid='true']:focus-visible {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+
+.grade-score-cell.is-dirty {
+  background: color-mix(in srgb, var(--warning) 9%, var(--bg-surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+.grade-score-cell.is-invalid {
+  background: var(--danger-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 58%, transparent);
+}
+
+.website-professor-grading .grade-score-cell.is-selected {
+  background: color-mix(in srgb, var(--accent-soft) 44%, var(--bg-surface));
+}
+
+.website-professor-grading .grade-score-cell.is-active {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  z-index: 2;
+}
+
+.website-professor-grading .grade-score-cell.is-active.is-invalid {
+  box-shadow: inset 0 0 0 2px var(--danger);
+}
+
+.grade-paste-feedback {
+  align-items: start;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  display: grid;
+  font-size: .78rem;
+  gap: .45rem;
+  margin: .55rem 0;
+  padding: .65rem .8rem;
+}
+
+.grade-paste-feedback.error {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border-color));
+  color: var(--danger);
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.grade-paste-feedback.error ul {
+  grid-column: 1 / -1;
+  margin: 0;
+  max-height: 9rem;
+  overflow: auto;
+  padding-left: 1.2rem;
+}
+
+.grade-paste-feedback.error button {
+  background: transparent;
+  border: 0;
+  color: currentColor;
+  font-size: 1.2rem;
+  min-height: 32px;
+  min-width: 32px;
+}
+
+.grade-paste-feedback.success {
+  background: var(--success-bg);
+  border-color: color-mix(in srgb, var(--success) 38%, var(--border-color));
+  color: var(--success);
+}
+
+.grade-find-control {
+  align-items: end;
+  display: grid;
+  gap: .5rem;
+  grid-template-columns: minmax(280px, 1.6fr) minmax(160px, .7fr);
+  min-width: 0;
+  position: relative;
+}
+
+.grade-find-search {
+  display: grid;
+  gap: .28rem;
+  min-width: 0;
+  position: relative;
+}
+
+.grade-find-search:focus-within {
+  z-index: 35;
+}
+
+.grade-find-search > label,
+.grade-find-assessment > span {
+  color: var(--text-secondary);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.grade-find-input {
+  align-items: center;
+  display: grid;
+  min-width: 0;
+  position: relative;
+  width: 100%;
+}
+
+.grade-find-input svg {
+  fill: none;
+  height: 16px;
+  left: .65rem;
+  pointer-events: none;
+  position: absolute;
+  stroke: var(--text-secondary);
+  stroke-width: 2;
+  width: 16px;
+}
+
+.website-professor-grading .grade-find-input input {
+  box-sizing: border-box;
+  display: block;
+  min-height: 42px;
+  min-width: 0;
+  padding-left: 2rem;
+  padding-right: 2.4rem;
+  width: 100%;
+}
+
+.grade-find-input button {
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  min-height: 34px;
+  min-width: 34px;
+  position: absolute;
+  right: .25rem;
+}
+
+.grade-find-results {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: var(--shadow-raised);
+  left: 0;
+  list-style: none;
+  margin: .25rem 0 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: .3rem;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 30;
+}
+
+.grade-find-results [role='option'] {
+  background: transparent;
+  border-radius: 7px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: grid;
+  gap: .12rem;
+  min-height: 44px;
+  padding: .45rem .55rem;
+  text-align: left;
+  width: 100%;
+}
+
+.grade-find-results [role='option']:hover,
+.grade-find-results [role='option'].active {
+  background: var(--bg-hover);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.grade-find-results span,
+.grade-find-empty {
+  color: var(--text-secondary);
+  font-size: .72rem;
+}
+
+.grade-find-empty {
+  padding: .7rem;
+}
+
+.grade-find-selected {
+  align-items: center;
+  background: color-mix(in srgb, var(--success-bg) 70%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--success) 32%, var(--border-color));
+  border-radius: 7px;
+  color: var(--text-secondary);
+  display: flex;
+  font-size: .7rem;
+  gap: .5rem;
+  justify-content: space-between;
+  padding: .35rem .45rem;
+}
+
+.grade-find-selected span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grade-find-selected button {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 800;
+  min-height: 28px;
+  padding: .2rem .35rem;
+}
+
+.grade-find-assessment {
+  min-width: 0;
+}
+
+.website-professor-grading .grade-find-assessment select {
+  min-height: 42px;
+  width: 100%;
+}
+
+.grade-recovery-option {
+  align-items: center;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  display: flex;
+  gap: .75rem;
+  justify-content: space-between;
+  margin: -.35rem 0 .75rem;
+  padding: .6rem .75rem;
+}
+
+.grade-recovery-option label {
+  align-items: start;
+  display: flex;
+  flex: 1;
+  gap: .55rem;
+}
+
+.grade-recovery-option input {
+  flex: 0 0 auto;
+  height: 18px;
+  margin-top: .1rem;
+  width: 18px;
+}
+
+.grade-recovery-option label span {
+  display: grid;
+  gap: .15rem;
+}
+
+.grade-recovery-option small {
+  font-weight: 500;
+}
+
+.grade-recovery-enabled {
+  color: var(--success);
+  font-size: .72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.grade-recovery-found {
+  background: color-mix(in srgb, var(--warning-bg) 62%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--warning) 48%, var(--border-color));
+  border-left: 4px solid var(--warning);
+  border-radius: 9px;
+  display: grid;
+  gap: .7rem;
+  margin-bottom: .7rem;
+  padding: .85rem;
+}
+
+.grade-recovery-found h2,
+.grade-recovery-found p {
+  margin: 0;
+}
+
+.grade-recovery-found h2 {
+  font-size: 1rem;
+  margin: .15rem 0 .3rem;
+}
+
+.grade-recovery-found p {
+  color: var(--text-secondary);
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
+.grade-recovery-found dl {
+  display: flex;
+  gap: .55rem;
+  margin: 0;
+}
+
+.grade-recovery-found dl div {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  min-width: 84px;
+  padding: .45rem .55rem;
+}
+
+.grade-recovery-found dt {
+  color: var(--text-secondary);
+  font-size: .65rem;
+  text-transform: uppercase;
+}
+
+.grade-recovery-found dd {
+  font-weight: 850;
+  margin: .1rem 0 0;
+}
+
+.grade-recovery-conflicts {
+  display: grid;
+  gap: .35rem;
+  list-style: none;
+  margin: 0;
+  max-height: 150px;
+  overflow: auto;
+  padding: 0;
+}
+
+.grade-recovery-conflicts li {
+  background: var(--danger-bg);
+  border-radius: 6px;
+  display: grid;
+  font-size: .72rem;
+  gap: .1rem;
+  padding: .45rem .55rem;
+}
+
+.grade-recovery-conflicts span {
+  color: var(--danger);
+}
+
+.grade-recovery-actions {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+}
+
+.website-professor-grading .registrar-inspired-grid .grade-score-cell.is-jump-target {
+  background: color-mix(in srgb, var(--warning-bg) 72%, var(--bg-surface));
+  box-shadow: inset 0 0 0 3px var(--warning);
+  z-index: 7;
+}
+
+@media (max-width: 1100px) {
+  .grade-find-control {
+    grid-template-columns: minmax(220px, 1fr) minmax(140px, .55fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .grade-find-control {
+    grid-template-columns: minmax(0, 1fr) minmax(125px, .7fr);
+    width: 100%;
+  }
+
+  .grade-find-search {
+    grid-column: 1 / -1;
+  }
+
+  .grade-recovery-option {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .grade-recovery-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 390px) {
+  .grade-find-control {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .website-professor-grading .registrar-inspired-grid .grade-score-cell.is-jump-target {
+    transition: none !important;
+  }
+}
+
+.grade-score-error {
+  color: var(--danger);
+  display: block;
+  font-size: .66rem;
+  line-height: 1.2;
+  padding: 0 .4rem .3rem;
+}
+
+.grade-score-archived {
+  color: var(--text-muted);
+  font-size: .72rem;
+}
+
+.professor-grade-sheet .grade-sheet-total {
+  background: var(--bg-surface-alt);
+  min-width: 104px;
+  text-align: right;
+}
+
+@media (max-width: 1100px) {
+  .website-professor-grading .grading-summary {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+
+  .grade-sheet-context {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .grade-sheet-context dl {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 700px) {
+  .website-professor-grading .grading-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .grade-sheet-context dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .grade-sheet-section-heading,
+  .grade-sheet-toolbar,
+  .grade-sheet-savebar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .website-professor-grading .grade-sheet-search {
+    max-width: none;
+    width: 100%;
+  }
+
+  .grade-sheet-savebar > div:last-child,
+  .grade-sheet-toolbar .grading-toolbar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .grade-sheet-toolbar .column-edit-actions > span {
+    grid-column: 1 / -1;
+  }
+
+}
+
+@media (max-width: 420px) {
+  .website-professor-grading .grading-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .grade-sheet-context,
+  .grade-sheet-weights,
+  .grade-sheet-toolbar,
+  .grade-sheet-savebar {
+    padding-left: .75rem;
+    padding-right: .75rem;
+  }
+
+  .grade-sheet-savebar > div:last-child,
+  .grade-sheet-toolbar .grading-toolbar-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grade-score-cell {
+    transition: none;
+  }
+}
+
+/* Website Professor submission readiness and assessment naming. */
+.submission-readiness-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+  color: var(--text-primary);
+  margin: 1rem 0;
+  overflow: hidden;
+}
+
+.submission-readiness-header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1.15rem 1.25rem;
+}
+
+.submission-readiness-header-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: .55rem;
+}
+
+.submission-readiness-toggle {
+  align-items: center;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  color: var(--accent);
+  cursor: pointer;
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0;
+  width: 40px;
+}
+
+.submission-readiness-toggle:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-color));
+}
+
+.submission-readiness-toggle:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.submission-readiness-toggle svg {
+  height: 18px;
+  width: 18px;
+}
+
+.submission-readiness-header h2,
+.submission-readiness-header p,
+.submission-section-heading h3,
+.submission-section-heading p {
+  margin: 0;
+}
+
+.submission-readiness-header h2 {
+  font-size: 1.18rem;
+  line-height: 1.3;
+}
+
+.submission-readiness-header > div > p:last-child,
+.submission-section-heading p {
+  color: var(--text-secondary);
+  font-size: .8rem;
+  line-height: 1.5;
+  margin-top: .22rem;
+}
+
+.submission-readiness-kicker {
+  color: var(--accent);
+  font-size: .69rem;
+  font-weight: 850;
+  letter-spacing: .08em;
+  margin-bottom: .2rem !important;
+  text-transform: uppercase;
+}
+
+.submission-readiness-compact {
+  display: grid;
+  gap: .48rem;
+  padding: .85rem 1.25rem 1rem;
+}
+
+.submission-readiness-compact p {
+  color: var(--text-secondary);
+  font-size: .79rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.submission-readiness-compact p:first-child strong {
+  color: var(--text-primary);
+}
+
+.submission-readiness-compact ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .42rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.submission-readiness-compact li {
+  background: var(--warning-bg);
+  border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--border-color));
+  border-radius: 999px;
+  color: var(--warning);
+  font-size: .7rem;
+  font-weight: 800;
+  padding: .34rem .52rem;
+}
+
+.submission-readiness-warning {
+  border-left: 3px solid var(--warning);
+  padding-left: .62rem;
+}
+
+.submission-readiness-panel.expanded .submission-readiness-warning {
+  color: var(--text-muted);
+}
+
+.submission-readiness-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows 280ms cubic-bezier(.22, 1, .36, 1), opacity 180ms ease, visibility 0s linear 280ms;
+}
+
+.submission-readiness-panel.expanded .submission-readiness-reveal {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s, 70ms, 0s;
+}
+
+.submission-readiness-reveal-inner {
+  border-top: 1px solid var(--border-color);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.submission-readiness-badge,
+.submission-status-overview dd,
+.submission-weight-total {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: .74rem;
+  font-weight: 850;
+  line-height: 1;
+  margin: 0;
+  padding: .48rem .68rem;
+  white-space: nowrap;
+}
+
+.submission-readiness-badge[data-state='Ready'],
+.submission-status-overview dd[data-state='Complete'],
+.submission-status-overview dd[data-state='Open'],
+.submission-weight-total[data-valid='true'] {
+  background: var(--success-bg);
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border-color));
+  color: var(--success);
+}
+
+.submission-readiness-badge[data-state='Incomplete'],
+.submission-status-overview dd[data-state='Incomplete'],
+.submission-weight-total[data-valid='false'] {
+  background: var(--warning-bg);
+  border-color: color-mix(in srgb, var(--warning) 46%, var(--border-color));
+  color: var(--warning);
+}
+
+.submission-readiness-badge[data-state='Closed'],
+.submission-status-overview dd[data-state='Closed'] {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--border-color));
+  color: var(--danger);
+}
+
+.submission-readiness-badge[data-state='Not Open'],
+.submission-status-overview dd[data-state='Not Open'] {
+  background: var(--bg-surface-alt);
+  color: var(--text-secondary);
+}
+
+.submission-status-overview {
+  display: grid;
+  gap: .75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding: 1rem 1.25rem;
+}
+
+.submission-status-overview > div {
+  align-items: center;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  display: flex;
+  gap: .75rem;
+  justify-content: space-between;
+  min-width: 0;
+  padding: .7rem .8rem;
+}
+
+.submission-status-overview dt {
+  color: var(--text-secondary);
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.submission-requirements,
+.submission-final-weights {
+  border-top: 1px solid var(--border-color);
+  padding: 1rem 1.25rem;
+}
+
+.submission-section-heading {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.submission-section-heading h3 {
+  font-size: .94rem;
+}
+
+.submission-requirement-groups {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  margin-top: .8rem;
+  overflow: hidden;
+}
+
+.submission-requirement-groups details + details {
+  border-top: 1px solid var(--border-color);
+}
+
+.submission-requirement-groups summary {
+  align-items: center;
+  background: var(--bg-surface-alt);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  gap: .75rem;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: .65rem .8rem;
+}
+
+.submission-requirement-groups summary::marker {
+  color: var(--accent);
+}
+
+.submission-requirement-groups summary strong {
+  color: var(--warning);
+  font-size: .74rem;
+}
+
+.submission-requirement-groups summary:focus-visible,
+.submission-review-shortcut:focus-visible,
+.assessment-label-heading button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: -3px;
+}
+
+.submission-requirement-detail {
+  background: var(--bg-surface);
+  padding: .75rem .85rem .85rem;
+}
+
+.submission-requirement-detail ul {
+  color: var(--text-secondary);
+  display: grid;
+  font-size: .79rem;
+  gap: .42rem;
+  line-height: 1.45;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.submission-requirement-detail li::marker {
+  color: var(--warning);
+}
+
+.submission-review-shortcut,
+.assessment-label-heading button {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.submission-review-shortcut {
+  margin-top: .65rem;
+  min-height: 36px;
+  padding: .35rem 0;
+}
+
+.submission-requirements-complete {
+  align-items: flex-start;
+  background: var(--success-bg);
+  border-top: 1px solid color-mix(in srgb, var(--success) 30%, var(--border-color));
+  color: var(--success);
+  display: flex;
+  flex-direction: column;
+  gap: .18rem;
+  padding: .9rem 1.25rem;
+}
+
+.submission-requirements-complete span {
+  font-size: .78rem;
+}
+
+.submission-weight-grid {
+  align-items: end;
+  display: grid;
+  gap: .75rem;
+  grid-template-columns: repeat(2, minmax(140px, 190px)) auto;
+  margin-top: .8rem;
+}
+
+.submission-weight-grid label > div {
+  align-items: center;
+  display: flex;
+  position: relative;
+}
+
+.website-professor-grading .submission-weight-grid input {
+  min-height: 42px;
+  padding-right: 2rem;
+  width: 100%;
+}
+
+.submission-weight-grid label > div > span {
+  color: var(--text-muted);
+  pointer-events: none;
+  position: absolute;
+  right: .7rem;
+}
+
+.submission-weight-grid button {
+  min-height: 42px;
+}
+
+.submission-readiness-footer {
+  align-items: center;
+  background: var(--bg-surface-alt);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: .9rem 1.25rem;
+}
+
+.submission-readiness-footer p {
+  color: var(--text-secondary);
+  font-size: .78rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.submission-readiness-footer button {
+  flex: 0 0 auto;
+  min-height: 42px;
+}
+
+.assessment-label-heading {
+  align-items: center;
+  display: flex;
+  gap: .5rem;
+  justify-content: space-between;
+}
+
+.assessment-label-heading button {
+  font-size: .72rem;
+  min-height: 32px;
+  padding: .2rem .35rem;
+}
+
+.assessment-label-field small {
+  color: var(--text-secondary);
+  font-size: .72rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+@media (max-width: 760px) {
+  .submission-readiness-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .submission-readiness-header {
+    align-items: flex-start;
+  }
+
+  .submission-readiness-header-actions {
+    align-self: flex-start;
+  }
+
+  .submission-weight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .submission-weight-grid button {
+    grid-column: 1 / -1;
+  }
+
+  .submission-readiness-footer button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .submission-readiness-header,
+  .submission-readiness-compact,
+  .submission-status-overview,
+  .submission-requirements,
+  .submission-final-weights,
+  .submission-readiness-footer {
+    padding-left: .8rem;
+    padding-right: .8rem;
+  }
+
+  .submission-status-overview,
+  .submission-weight-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .submission-weight-grid button {
+    grid-column: auto;
+  }
+
+  .submission-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .submission-readiness-panel *,
+  .assessment-label-field * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
+
+/* Professor Grading 3.0: reference-matched website Grade Entry and separate submission page. */
+.website-professor-grading .grade-entry-header {
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: .8rem;
+  padding: .15rem 0 .75rem;
+}
+
+.website-professor-grading .grade-entry-header .grading-back {
+  display: inline-flex;
+  margin-bottom: .7rem;
+  min-height: 36px;
+}
+
+.website-professor-grading .grade-entry-header h1 {
+  color: var(--text-primary);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  letter-spacing: .035em;
+  margin: .1rem 0 .65rem;
+}
+
+.website-professor-grading .grade-entry-header > p:last-child {
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.grade-entry-title-row {
+  align-items: end;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.grade-entry-title-row > div {
+  display: grid;
+  gap: .18rem;
+}
+
+.grade-entry-title-row > div strong {
+  color: var(--text-primary);
+  font-size: 1.03rem;
+}
+
+.grade-entry-title-row > div span {
+  color: var(--text-secondary);
+  font-size: .78rem;
+}
+
+.grade-entry-title-row dl {
+  display: flex;
+  gap: 1.25rem;
+  margin: 0;
+}
+
+.grade-entry-title-row dl > div {
+  display: grid;
+  gap: .14rem;
+}
+
+.grade-entry-title-row dt {
+  color: var(--text-muted);
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+.grade-entry-title-row dd {
+  color: var(--text-primary);
+  font-size: .78rem;
+  font-weight: 800;
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.grade-workflow-nav {
+  align-items: center;
+  display: flex;
+  gap: .3rem;
+  margin-top: .75rem;
+}
+
+.grade-workflow-nav :is(a, button, span) {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: .76rem;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 38px;
+  padding: .55rem .85rem;
+  text-decoration: none;
+}
+
+.grade-workflow-nav [aria-current='page'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.grade-workflow-nav :is(a, button):hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.grade-workflow-nav :is(a, button):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.website-professor-grading .grade-sheet-context {
+  border-radius: 10px;
+  box-shadow: none;
+  padding: .65rem .85rem;
+}
+
+.website-professor-grading .grade-sheet-context h2 {
+  font-size: .96rem;
+  text-transform: capitalize;
+}
+
+.website-professor-grading .grade-sheet-toolbar {
+  border-radius: 10px;
+  box-shadow: none;
+  flex-wrap: wrap;
+  margin-top: .55rem;
+  padding: .58rem .7rem;
+}
+
+.website-professor-grading .grade-sheet-toolbar .grading-toolbar-actions {
+  flex-wrap: wrap;
+}
+
+.website-professor-grading .grade-sheet-toolbar button {
+  min-height: 38px;
+  padding: .48rem .68rem;
+}
+
+.grade-entry-workspace-grid {
+  align-items: start;
+  display: grid;
+  gap: .75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 285px);
+  margin-top: .65rem;
+}
+
+.grade-entry-sheet {
+  min-width: 0;
+}
+
+.website-professor-grading .grade-entry-sheet .grade-sheet-savebar {
+  border-radius: 10px 10px 0 0;
+  box-shadow: none;
+  position: static;
+}
+
+.website-professor-grading .grade-entry-sheet .grade-sheet-scroll {
+  border-radius: 0 0 10px 10px;
+  box-shadow: none;
+  max-height: min(62vh, 660px);
+}
+
+.grouped-grade-sheet {
+  min-width: 100%;
+}
+
+.grouped-grade-sheet th,
+.grouped-grade-sheet td {
+  padding: .38rem .42rem;
+}
+
+.grouped-grade-sheet thead th {
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--bg-surface));
+}
+
+.grouped-grade-sheet thead tr:first-child th {
+  height: 36px;
+  top: 0;
+}
+
+.grouped-grade-sheet thead tr:nth-child(2) th {
+  top: 36px;
+}
+
+.grouped-grade-sheet .grade-category-heading {
+  color: var(--accent-strong, var(--accent));
+  font-size: .71rem;
+  letter-spacing: .045em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.website-professor-grading .grouped-grade-sheet .grade-score-cell input {
+  min-height: 38px;
+  padding: .35rem .48rem;
+}
+
+.grouped-grade-sheet .grade-sheet-calculated {
+  background: color-mix(in srgb, var(--accent-soft) 48%, var(--bg-surface));
+  text-align: right;
+}
+
+.grade-entry-criteria {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow-soft);
+  color: var(--text-primary);
+  overflow: hidden;
+  position: sticky;
+  top: 1rem;
+}
+
+.grade-entry-criteria:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.grade-entry-criteria > header {
+  background: color-mix(in srgb, var(--accent-soft) 75%, var(--bg-surface));
+  border-bottom: 1px solid var(--border-color);
+  padding: .68rem .75rem;
+  text-align: center;
+}
+
+.grade-entry-criteria > header span {
+  color: var(--accent);
+  display: block;
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.grade-entry-criteria > header h2 {
+  font-size: .94rem;
+  margin: .12rem 0 0;
+}
+
+.criteria-table-wrap {
+  overflow-x: auto;
+}
+
+.grade-entry-criteria table {
+  border-collapse: collapse;
+  font-size: .73rem;
+  width: 100%;
+}
+
+.grade-entry-criteria :is(th, td) {
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  padding: .48rem .42rem;
+  text-align: left;
+}
+
+.grade-entry-criteria :is(th, td):last-child {
+  border-right: 0;
+}
+
+.grade-entry-criteria thead th,
+.grade-entry-criteria tfoot th,
+.grade-entry-criteria tfoot td {
+  background: var(--bg-surface-alt);
+  font-weight: 850;
+}
+
+.grade-entry-criteria td:nth-child(2),
+.grade-entry-criteria td:last-child,
+.grade-entry-criteria tfoot td {
+  text-align: right;
+}
+
+.grade-entry-criteria label {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  position: relative;
+}
+
+.website-professor-grading .grade-entry-criteria input {
+  min-height: 34px;
+  padding: .3rem 1.25rem .3rem .35rem;
+  text-align: right;
+  width: 72px;
+}
+
+.grade-entry-criteria label > span:last-child {
+  color: var(--text-muted);
+  pointer-events: none;
+  position: absolute;
+  right: .38rem;
+}
+
+.grade-entry-criteria tfoot td[data-valid='true'] {
+  color: var(--success);
+}
+
+.grade-entry-criteria tfoot td[data-valid='false'] {
+  color: var(--danger);
+}
+
+.grade-entry-criteria > button {
+  margin: .65rem;
+  width: calc(100% - 1.3rem);
+}
+
+.grade-submission-page {
+  color: var(--text-primary);
+}
+
+.submission-class-picker,
+.grade-submission-context {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  padding: 1rem;
+}
+
+.submission-class-picker {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+}
+
+.submission-class-picker h2,
+.submission-class-picker p,
+.grade-submission-context h2,
+.grade-submission-context p {
+  margin: 0;
+}
+
+.submission-class-picker > div > p:last-child {
+  color: var(--text-secondary);
+  font-size: .8rem;
+  margin-top: .22rem;
+}
+
+.grade-submission-context {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: .7rem;
+}
+
+.grade-submission-context > div > p,
+.grade-submission-context > div > span {
+  color: var(--text-secondary);
+  font-size: .76rem;
+}
+
+.grade-submission-context h2 {
+  font-size: 1.08rem;
+  margin: .16rem 0;
+}
+
+.grade-submission-context dl {
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+}
+
+.grade-submission-context dt {
+  color: var(--text-muted);
+  font-size: .65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.grade-submission-context dd {
+  font-size: .76rem;
+  font-weight: 800;
+  margin: .15rem 0 0;
+  text-transform: capitalize;
+}
+
+@media (max-width: 840px) {
+  .grade-entry-workspace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .grade-entry-criteria {
+    position: static;
+  }
+
+  .grade-entry-title-row,
+  .grade-submission-context {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 620px) {
+  .grade-entry-title-row dl,
+  .grade-submission-context dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .submission-class-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .website-professor-grading .grade-sheet-toolbar .grading-toolbar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+}
+
+@media (max-width: 390px) {
+  .grade-entry-title-row dl,
+  .grade-submission-context dl,
+  .website-professor-grading .grade-sheet-toolbar .grading-toolbar-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .grade-workflow-nav :is(a, button, span) {
+    flex: 1;
+  }
+}
+
+/* Professor Grade Entry 4.0: institutional Registrar-inspired working sheet. */
+.website-professor-grading .grade-entry-header {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: .55rem;
+  padding-bottom: .55rem;
+}
+
+.website-professor-grading .grade-entry-header > div {
+  align-items: center;
+  display: flex;
+  gap: .85rem;
+}
+
+.website-professor-grading .grade-entry-header .grading-back {
+  margin: 0;
+}
+
+.website-professor-grading .grade-entry-header h1,
+.website-professor-grading .grade-entry-header p {
+  margin: 0;
+}
+
+.website-professor-grading .grade-entry-header h1 {
+  font-size: clamp(1.3rem, 2vw, 1.7rem);
+}
+
+.website-professor-grading .grade-entry-header .grade-workflow-nav {
+  margin: 0;
+}
+
+.registrar-sheet-header {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px 10px 0 0;
+  box-shadow: var(--shadow-soft);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.registrar-sheet-institution {
+  align-items: center;
+  background: var(--academic-emerald-900, var(--accent));
+  border-bottom: 3px solid var(--warning);
+  color: var(--text-on-accent);
+  display: grid;
+  gap: .85rem;
+  grid-template-columns: 68px minmax(0, 1fr) auto;
+  padding: .72rem .9rem;
+}
+
+.registrar-sheet-seal {
+  height: 62px;
+  width: 62px;
+}
+
+.registrar-sheet-name,
+.registrar-sheet-identification {
+  display: grid;
+  gap: .1rem;
+}
+
+.registrar-sheet-name > span,
+.registrar-sheet-name > small,
+.registrar-sheet-identification > span,
+.registrar-sheet-identification > small {
+  color: color-mix(in srgb, var(--text-on-accent) 78%, transparent);
+  font-size: .62rem;
+  letter-spacing: .035em;
+}
+
+.registrar-sheet-name > strong {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.08rem, 2vw, 1.42rem);
+  letter-spacing: .025em;
+  text-transform: uppercase;
+}
+
+.registrar-sheet-identification {
+  border-left: 1px solid color-mix(in srgb, var(--text-on-accent) 28%, transparent);
+  min-width: 210px;
+  padding-left: 1rem;
+  text-align: right;
+}
+
+.registrar-sheet-identification h2 {
+  color: var(--text-on-accent);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.15rem;
+  letter-spacing: .11em;
+  margin: 0;
+}
+
+.registrar-sheet-academic-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+
+.registrar-sheet-academic-fields > div {
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  min-width: 0;
+  padding: .48rem .62rem;
+}
+
+.registrar-sheet-academic-fields > div:nth-child(4n) {
+  border-right: 0;
+}
+
+.registrar-sheet-academic-fields .registrar-sheet-field-wide {
+  grid-column: span 2;
+}
+
+.registrar-sheet-academic-fields dt,
+.registrar-sheet-note dt {
+  color: var(--accent);
+  font-size: .59rem;
+  font-weight: 850;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.registrar-sheet-academic-fields dd,
+.registrar-sheet-note dd {
+  color: var(--text-primary);
+  font-size: .76rem;
+  font-weight: 750;
+  line-height: 1.3;
+  margin: .12rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.registrar-sheet-note {
+  align-items: center;
+  background: color-mix(in srgb, var(--warning-bg) 54%, var(--bg-surface));
+  display: grid;
+  gap: .75rem;
+  grid-template-columns: minmax(250px, 1.25fr) minmax(0, 2fr);
+  padding: .48rem .62rem;
+}
+
+.registrar-sheet-note > p {
+  color: var(--text-secondary);
+  font-size: .66rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.registrar-sheet-note > p strong {
+  color: var(--warning);
+}
+
+.registrar-sheet-note > dl {
+  display: grid;
+  gap: .35rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+}
+
+.website-professor-grading .registrar-sheet-header + .grading-tabs {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-bottom: 0;
+  border-top: 0;
+  margin: 0;
+  padding: .5rem .62rem;
+}
+
+.website-professor-grading .registrar-sheet-header + .grading-tabs button {
+  min-height: 36px;
+  padding: .45rem .85rem;
+}
+
+.website-professor-grading .registrar-sheet-header + .grading-tabs + .grade-sheet-toolbar,
+.website-professor-grading .grade-sheet-toolbar {
+  border-color: var(--border-strong);
+  border-radius: 0;
+  margin-top: 0;
+}
+
+.website-professor-grading .grade-entry-workspace-grid {
+  gap: .65rem;
+  margin-top: 0;
+}
+
+.registrar-inspired-grid {
+  font-variant-numeric: tabular-nums;
+}
+
+.registrar-inspired-grid th,
+.registrar-inspired-grid td {
+  border-color: var(--border-strong);
+  font-size: .7rem;
+  height: 38px;
+  padding: .28rem .36rem;
+  vertical-align: middle;
+}
+
+.registrar-inspired-grid tbody .student-number,
+.registrar-inspired-grid tbody .student-name {
+  background: var(--bg-surface);
+  box-shadow: 1px 0 var(--border-color);
+}
+
+.registrar-inspired-grid tbody tr:hover > .student-number,
+.registrar-inspired-grid tbody tr:hover > .student-name {
+  background: var(--bg-hover);
+}
+
+.registrar-inspired-grid .grade-category-heading,
+.registrar-inspired-grid .grade-results-heading,
+.registrar-inspired-grid .student-information-heading {
+  box-shadow: inset 0 3px color-mix(in srgb, var(--warning) 80%, transparent), inset 0 -1px var(--border-strong);
+  color: var(--accent);
+  font-size: .65rem;
+  font-weight: 900;
+  letter-spacing: .055em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.registrar-inspired-grid .grade-sheet-calculated {
+  background: color-mix(in srgb, var(--accent-soft) 42%, var(--bg-surface));
+  color: var(--text-primary);
+  font-weight: 750;
+  text-align: center;
+}
+
+.registrar-inspired-grid .grade-sheet-calculated[data-readonly='true'] {
+  cursor: default;
+}
+
+.registrar-inspired-grid .grade-sheet-remarks {
+  text-align: left;
+}
+
+.registrar-inspired-grid .grade-sheet-total {
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .registrar-sheet-academic-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .registrar-sheet-academic-fields > div:nth-child(odd) {
+    border-right: 1px solid var(--border-color);
+  }
+
+  .registrar-sheet-academic-fields > div:nth-child(even) {
+    border-right: 0;
+  }
+
+  .registrar-sheet-note {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .website-professor-grading .grade-entry-header,
+  .website-professor-grading .grade-entry-header > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .registrar-sheet-institution {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+
+  .registrar-sheet-seal {
+    height: 48px;
+    width: 48px;
+  }
+
+  .registrar-sheet-identification {
+    border-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--text-on-accent) 28%, transparent);
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: .5rem 0 0;
+    text-align: left;
+  }
+
+  .registrar-sheet-note > dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 390px) {
+  .registrar-sheet-academic-fields,
+  .registrar-sheet-note > dl {
+    grid-template-columns: 1fr;
+  }
+
+  .registrar-sheet-academic-fields .registrar-sheet-field-wide {
+    grid-column: auto;
+  }
+
+  .registrar-sheet-academic-fields > div {
+    border-right: 0 !important;
+  }
+
+}
+
+/* Grade Entry refinement: clearer Registrar-style grouping and working density. */
+.website-professor-grading .grade-sheet-toolbar {
+  align-items: end;
+  background: var(--bg-surface);
+  border-width: 1px;
+  display: grid;
+  gap: .75rem 1rem;
+  grid-template-columns: minmax(540px, 1.3fr) minmax(360px, .7fr);
+  padding: .75rem .85rem;
+}
+
+.website-professor-grading .grade-sheet-search {
+  display: grid;
+  gap: .28rem;
+  max-width: none;
+  width: 100%;
+}
+
+.website-professor-grading .grade-sheet-search > span {
+  color: var(--text-secondary);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.website-professor-grading .grade-sheet-search input {
+  min-height: 42px;
+}
+
+.website-professor-grading .grade-sheet-toolbar .grading-toolbar-actions {
+  align-items: center;
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+}
+
+.website-professor-grading .grade-sheet-toolbar .grading-toolbar-actions .primary {
+  min-width: 144px;
+}
+
+.website-professor-grading .grade-entry-workspace-grid {
+  gap: .8rem;
+  grid-template-columns: minmax(0, 1fr) minmax(270px, 310px);
+}
+
+.website-professor-grading .grade-entry-sheet {
+  min-width: 0;
+}
+
+.website-professor-grading .grade-entry-sheet .grade-sheet-savebar {
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-strong);
+  border-left: 4px solid var(--success);
+  border-radius: 8px 8px 0 0;
+  min-height: 70px;
+  padding: .72rem .85rem;
+}
+
+.website-professor-grading .grade-entry-sheet .grade-sheet-savebar[data-state='dirty'] {
+  background: color-mix(in srgb, var(--warning-bg) 54%, var(--bg-surface));
+  border-left-color: var(--warning);
+}
+
+.website-professor-grading .grade-entry-sheet .grade-sheet-savebar[data-state='invalid'] {
+  background: color-mix(in srgb, var(--danger-bg) 62%, var(--bg-surface));
+  border-left-color: var(--danger);
+}
+
+.grade-save-state-copy {
+  min-width: 0;
+}
+
+.grade-sheet-savebar .grade-save-state-copy strong {
+  align-items: center;
+  display: flex;
+  font-size: .88rem;
+  gap: .42rem;
+}
+
+.grade-sheet-savebar .grade-save-state-copy strong::before {
+  background: var(--success);
+  border-radius: 50%;
+  content: '';
+  flex: 0 0 auto;
+  height: 8px;
+  width: 8px;
+}
+
+.grade-sheet-savebar[data-state='dirty'] .grade-save-state-copy strong::before {
+  background: var(--warning);
+}
+
+.grade-sheet-savebar[data-state='invalid'] .grade-save-state-copy strong::before {
+  background: var(--danger);
+}
+
+.grade-sheet-savebar .grade-save-state-copy span {
+  line-height: 1.4;
+  margin-left: 1.1rem;
+}
+
+.grade-save-actions {
+  align-items: center;
+}
+
+.website-professor-grading .grade-entry-sheet .grade-sheet-scroll {
+  border: 1px solid var(--border-strong);
+  border-radius: 0 0 8px 8px;
+  border-top: 0;
+  max-height: min(64vh, 720px);
+  scrollbar-color: var(--border-strong) var(--bg-surface-alt);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.website-professor-grading .grade-sheet-scroll::-webkit-scrollbar {
+  height: 11px;
+  width: 11px;
+}
+
+.website-professor-grading .grade-sheet-scroll::-webkit-scrollbar-track {
+  background: var(--bg-surface-alt);
+}
+
+.website-professor-grading .grade-sheet-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid var(--bg-surface-alt);
+  border-radius: 999px;
+}
+
+/* The colgroup and gradeTableModel are the sole source of Grade Entry geometry.
+   Horizontal and vertical sticky positioning is deliberately disabled until
+   it can be validated in a real browser without overlapping grouped headers. */
+.website-professor-grading .registrar-inspired-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  box-sizing: border-box;
+  min-width: var(--grade-table-width);
+  table-layout: fixed;
+  width: var(--grade-table-width);
+}
+
+.website-professor-grading .registrar-inspired-grid :is(col, th, td) {
+  box-sizing: border-box;
+}
+
+.website-professor-grading .registrar-inspired-grid th,
+.website-professor-grading .registrar-inspired-grid td {
+  border-bottom-color: var(--border-strong);
+  border-right-color: var(--border-strong);
+  font-size: .72rem;
+  height: 46px;
+  line-height: 1.3;
+  min-width: 0;
+  overflow: hidden;
+  padding: .38rem .48rem;
+  position: static;
+}
+
+.website-professor-grading .registrar-inspired-grid thead tr:first-child th {
+  background: color-mix(in srgb, var(--accent-soft) 82%, var(--bg-surface));
+  height: 46px;
+  line-height: 1.25;
+  padding: .58rem .7rem;
+}
+
+.website-professor-grading .registrar-inspired-grid thead tr:nth-child(2) th {
+  background: color-mix(in srgb, var(--accent-soft) 48%, var(--bg-surface));
+  height: 64px;
+  padding: .48rem .5rem;
+}
+
+.website-professor-grading .registrar-inspired-grid .student-information-heading {
+  min-width: 0;
+  text-align: center;
+  width: auto;
+}
+
+.website-professor-grading .registrar-inspired-grid tbody .student-name {
+  box-shadow: 2px 0 color-mix(in srgb, var(--accent) 28%, var(--border-strong));
+}
+
+.website-professor-grading .registrar-inspired-grid .grade-category-heading,
+.website-professor-grading .registrar-inspired-grid .grade-results-heading {
+  min-width: 0;
+  padding-inline: .75rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  width: auto;
+}
+
+.website-professor-grading .registrar-inspired-grid .grade-category-heading > span {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.website-professor-grading .registrar-inspired-grid [data-group-start='true'],
+.website-professor-grading .registrar-inspired-grid .grade-results-heading,
+.website-professor-grading .registrar-inspired-grid .grade-sheet-total {
+  border-left: 2px solid color-mix(in srgb, var(--accent) 52%, var(--border-strong));
+}
+
+.website-professor-grading .registrar-inspired-grid .grade-sheet-assessment {
+  align-content: center;
+  gap: .2rem;
+  min-height: 42px;
+  text-align: center;
+}
+
+.website-professor-grading .registrar-inspired-grid .grade-sheet-assessment > span {
+  display: block;
+  font-size: .75rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.website-professor-grading .registrar-inspired-grid .grade-sheet-assessment > small {
+  font-size: .64rem;
+  line-height: 1.2;
+}
+
+.website-professor-grading .registrar-inspired-grid .grade-score-cell input {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  min-height: 46px;
+  padding: .42rem .5rem;
+  text-align: center;
+}
+
+.website-professor-grading .registrar-inspired-grid .grade-score-cell.is-selected {
+  background: color-mix(in srgb, var(--accent-soft) 44%, var(--bg-surface));
+}
+
+.website-professor-grading .registrar-inspired-grid .grade-score-cell.is-active {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  z-index: 6;
+}
+
+.grade-entry-criteria {
+  border-color: var(--border-strong);
+  border-radius: 8px;
+  box-shadow: none;
+  min-width: 0;
+  width: 100%;
+}
+
+.grade-entry-criteria > header {
+  border-bottom-color: var(--border-strong);
+  padding: .78rem .85rem;
+  text-align: left;
+}
+
+.grade-entry-criteria > header h2 {
+  font-size: .98rem;
+}
+
+.grade-entry-criteria table {
+  font-size: .75rem;
+  table-layout: fixed;
+}
+
+.workbook-launch {
+  align-items: center;
+  display: inline-flex;
+  gap: .42rem;
+  white-space: nowrap;
+}
+
+.workbook-launch svg,
+.workbook-download svg,
+.workbook-dropzone svg {
+  fill: none;
+  height: 18px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 18px;
+}
+
+.workbook-workflow-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  max-height: min(92dvh, 820px);
+  overflow: hidden;
+  padding: 0;
+  width: min(920px, 100%);
+}
+
+.workbook-workflow-modal > header {
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  padding: 1rem 1.15rem;
+}
+
+.workbook-workflow-modal > header h2 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.workbook-close {
+  align-items: center;
+  border-radius: 8px !important;
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.workbook-workflow {
+  display: grid;
+  gap: .9rem;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: 1rem 1.15rem 1.15rem;
+}
+
+.workbook-progress {
+  display: grid;
+  gap: .35rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.workbook-progress button {
+  align-items: center;
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--text-muted) !important;
+  display: grid;
+  font-size: .66rem;
+  gap: .32rem;
+  justify-items: center;
+  min-width: 0;
+  padding: .35rem .2rem !important;
+  position: relative;
+  text-align: center;
+}
+
+.workbook-progress button::before {
+  background: var(--border-color);
+  content: '';
+  height: 2px;
+  left: calc(-50% + 14px);
+  position: absolute;
+  right: calc(50% + 14px);
+  top: 17px;
+}
+
+.workbook-progress button:first-child::before {
+  display: none;
+}
+
+.workbook-progress button > span {
+  align-items: center;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  display: inline-flex;
+  font-size: .72rem;
+  font-weight: 850;
+  height: 28px;
+  justify-content: center;
+  position: relative;
+  width: 28px;
+  z-index: 1;
+}
+
+.workbook-progress button strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.workbook-progress button.active,
+.workbook-progress button.complete {
+  color: var(--accent) !important;
+}
+
+.workbook-progress button.active > span {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.workbook-progress button.complete > span {
+  background: var(--success-bg);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.workbook-progress button.complete::before,
+.workbook-progress button.active::before {
+  background: color-mix(in srgb, var(--success) 62%, var(--border-color));
+}
+
+.workbook-context {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-surface-alt));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-color));
+  border-radius: 10px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: .78rem;
+  gap: .45rem 1rem;
+  padding: .65rem .8rem;
+}
+
+.workbook-context span:not(:first-child) {
+  border-left: 1px solid var(--border-color);
+  padding-left: 1rem;
+}
+
+.workbook-step {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.workbook-step > div:first-child > :is(h3, p),
+.workbook-step > p,
+.workbook-inline-error p,
+.workbook-preview-blockers p,
+.workbook-draft-boundary p,
+.workbook-pending-warning p {
+  margin: 0;
+}
+
+.workbook-step > div:first-child > h3 {
+  color: var(--text-primary);
+  font-size: 1.15rem;
+  margin-bottom: .3rem;
+  outline: none;
+}
+
+.workbook-step > div:first-child > p {
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.workbook-step-kicker {
+  color: var(--accent);
+  display: block;
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .08em;
+  margin-bottom: .2rem;
+  text-transform: uppercase;
+}
+
+.workbook-step footer {
+  align-items: center;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+  justify-content: flex-end;
+  margin-top: .15rem;
+  padding-top: .9rem;
+}
+
+.workbook-download {
+  align-items: center;
+  display: inline-flex;
+  gap: .5rem;
+  justify-self: start;
+}
+
+.workbook-success,
+.workbook-draft-boundary,
+.workbook-pending-warning,
+.workbook-inline-error,
+.workbook-empty-review {
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  padding: .75rem .85rem;
+}
+
+.workbook-success {
+  background: var(--success-bg);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border-color));
+  color: var(--success);
+}
+
+.workbook-pending-warning,
+.workbook-draft-boundary {
+  background: var(--warning-bg);
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--border-color));
+  color: var(--text-primary);
+}
+
+.workbook-pending-warning p,
+.workbook-draft-boundary p {
+  color: var(--text-secondary);
+  margin-top: .22rem;
+}
+
+.workbook-inline-error {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--border-color));
+  color: var(--danger);
+}
+
+.workbook-guidance {
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  display: grid;
+  gap: .55rem;
+  line-height: 1.45;
+  margin: 0;
+  padding: 1rem 1rem 1rem 2rem;
+}
+
+.workbook-dropzone {
+  align-items: center;
+  background: var(--bg-surface-alt);
+  border: 2px dashed var(--border-strong);
+  border-radius: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: grid;
+  gap: .35rem;
+  justify-items: center;
+  min-height: 160px;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.workbook-dropzone:hover,
+.workbook-dropzone.dragging,
+.workbook-dropzone:focus-visible {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+  border-color: var(--accent);
+  outline: none;
+}
+
+.workbook-dropzone svg {
+  color: var(--accent);
+  height: 30px;
+  width: 30px;
+}
+
+.workbook-dropzone span,
+.workbook-selected-file {
+  color: var(--text-secondary);
+  font-size: .78rem;
+}
+
+.workbook-selected-file {
+  overflow-wrap: anywhere;
+}
+
+.workbook-progress-status {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  gap: .6rem;
+}
+
+.workbook-progress-status > span {
+  animation: workbook-spin .75s linear infinite;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  border-top-color: var(--accent);
+  height: 18px;
+  width: 18px;
+}
+
+@keyframes workbook-spin {
+  to { transform: rotate(360deg); }
+}
+
+.workbook-preview-summary {
+  display: grid;
+  gap: .65rem;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  margin: 0;
+}
+
+.workbook-preview-summary > div {
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: .75rem;
+}
+
+.workbook-preview-summary dt {
+  color: var(--text-secondary);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: capitalize;
+}
+
+.workbook-preview-summary dd {
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  font-weight: 850;
+  margin: .2rem 0 0;
+}
+
+.workbook-preview-blockers {
+  background: var(--danger-bg);
+  border: 1px solid color-mix(in srgb, var(--danger) 38%, var(--border-color));
+  border-radius: 8px;
+  color: var(--danger);
+  padding: .8rem 1rem;
+}
+
+.workbook-preview-blockers ul {
+  margin: .45rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.workbook-preview-table-wrap {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  max-height: 270px;
+  overflow: auto;
+}
+
+.workbook-preview-table-wrap h3 {
+  background: var(--bg-surface-alt);
+  border-bottom: 1px solid var(--border-color);
+  font-size: .85rem;
+  margin: 0;
+  padding: .7rem .8rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.workbook-preview-table-wrap table {
+  border-collapse: collapse;
+  font-size: .75rem;
+  min-width: 640px;
+  width: 100%;
+}
+
+.workbook-preview-table-wrap :is(th, td) {
+  border-bottom: 1px solid var(--border-color);
+  padding: .6rem .7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.workbook-preview-table-wrap th {
+  background: var(--bg-surface-alt);
+  color: var(--text-secondary);
+}
+
+.workbook-preview-table-wrap small {
+  margin-top: .15rem;
+}
+
+.workbook-change-status {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: .68rem;
+  font-weight: 800;
+  padding: .22rem .5rem;
+  text-transform: capitalize;
+}
+
+.workbook-change-status[data-status='ready'] {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.workbook-change-status[data-status='conflict'] {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.grade-entry-criteria :is(th, td) {
+  padding: .55rem .5rem;
+  vertical-align: middle;
+}
+
+.grade-entry-criteria thead th:first-child {
+  width: 42%;
+}
+
+.grade-entry-criteria thead th:nth-child(2) {
+  width: 25%;
+}
+
+.grade-entry-criteria thead th:last-child {
+  width: 33%;
+}
+
+.website-professor-grading .grade-entry-criteria input {
+  min-height: 36px;
+  width: 76px;
+}
+
+.grade-entry-criteria > button {
+  margin: .75rem;
+  width: calc(100% - 1.5rem);
+}
+
+@media (max-width: 1180px) {
+  .website-professor-grading .grade-sheet-toolbar {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .website-professor-grading .grade-sheet-toolbar .grading-toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .website-professor-grading .grade-entry-workspace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .website-professor-grading .grade-entry-criteria {
+    position: static;
+  }
+}
+
+@media (max-width: 820px) {
+  .website-professor-grading .grade-sheet-toolbar {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .website-professor-grading .grade-sheet-toolbar .grading-toolbar-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 620px) {
+  .website-professor-grading .grade-sheet-toolbar .grading-toolbar-actions {
+    display: grid;
+  }
+
+  .website-professor-grading .grade-entry-sheet .grade-sheet-savebar {
+    min-height: 0;
+  }
+
+  .grade-sheet-savebar .grade-save-state-copy span {
+    margin-left: 0;
+  }
+
+  .workbook-workflow-modal {
+    border-radius: 12px;
+    max-height: calc(100dvh - 16px);
+    width: calc(100vw - 16px);
+  }
+
+  .workbook-workflow {
+    padding: .8rem;
+  }
+
+  .workbook-progress button strong {
+    display: none;
+  }
+
+  .workbook-context {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .workbook-context span:not(:first-child) {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .workbook-dropzone {
+    min-height: 136px;
+  }
+
+  .workbook-step footer > button {
+    flex: 1 1 140px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbook-progress-status > span {
+    animation: none;
+  }
+}
+
+/* Electron Registrar Grading — approved reference architecture. */
+html.cdm-desktop-client .desktop-registrar-grading {
+  --registrar-grade-green: var(--desk-primary, var(--accent));
+  --registrar-grade-line: var(--desk-border, var(--border-color));
+  --registrar-grade-muted: var(--desk-text-muted, var(--text-secondary));
+  color: var(--desk-text, var(--text-primary));
+  display: grid;
+  font-size: 14px;
+  gap: 12px;
+  line-height: 1.5;
+  padding: 14px;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-hero {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+  padding: 0 0 4px;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-hero h1 { font-size: 24px; letter-spacing: -.025em; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-hero > div > p:last-child { font-size: 13px; line-height: 1.45; margin-top: 4px; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-eyebrow { font-size: 12px; letter-spacing: .06em; }
+html.cdm-desktop-client .desktop-registrar-grading :is(button,.grading-button) { font-size: 13px; line-height: 1.3; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-button { border-radius: 7px; min-height: 36px; padding: 7px 12px; }
+html.cdm-desktop-client .desktop-registrar-grading :is(label,legend) { font-size: 12px; font-weight: 650; line-height: 1.35; }
+html.cdm-desktop-client .desktop-registrar-grading :is(input,select,textarea) { font-size: 13px; line-height: 1.4; }
+html.cdm-desktop-client .desktop-registrar-grading small { font-size: 12px; line-height: 1.4; }
+html.cdm-desktop-client .desktop-registrar-grading :is(h2,h3) { font-size: 17px; font-weight: 700; line-height: 1.3; }
+
+html.cdm-desktop-client .registrar-institute-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+html.cdm-desktop-client .registrar-institute-card {
+  background: var(--desk-surface, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--registrar-grade-line) 86%, transparent);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--registrar-grade-green) 7%, transparent);
+  display: grid;
+  gap: 9px;
+  min-height: 240px;
+  overflow: hidden;
+  padding: 20px 16px 14px;
+  text-align: center;
+}
+
+html.cdm-desktop-client .registrar-institute-card[data-card="1"] { background: linear-gradient(150deg, var(--warning-bg), var(--desk-surface, var(--bg-surface)) 68%); }
+html.cdm-desktop-client .registrar-institute-card[data-card="2"] { background: linear-gradient(150deg, color-mix(in srgb, var(--warning-bg) 72%, var(--danger-bg)), var(--desk-surface, var(--bg-surface)) 68%); }
+html.cdm-desktop-client .registrar-institute-card[data-card="3"] { background: linear-gradient(150deg, color-mix(in srgb, var(--bg-hover) 76%, var(--success-bg)), var(--desk-surface, var(--bg-surface)) 68%); }
+html.cdm-desktop-client .registrar-institute-mark { align-items: center; background: color-mix(in srgb, var(--registrar-grade-green) 5%, var(--bg-surface)); border: 1px solid color-mix(in srgb, var(--registrar-grade-green) 16%, transparent); border-radius: 50%; box-sizing: border-box; color: var(--registrar-grade-green); display: flex; font-size: 13px; font-weight: 850; height: 88px; justify-content: center; margin: 0 auto; overflow: hidden; padding: 7px; width: 88px; }
+html.cdm-desktop-client .registrar-institute-mark img { border-radius: 50%; display: block; height: 100%; max-height: 100%; max-width: 100%; object-fit: contain; width: 100%; }
+html.cdm-desktop-client .registrar-institute-mark[data-institute="IBE"] { padding: 2px; }
+html.cdm-desktop-client .registrar-institute-mark[data-institute="ICS"] { padding: 7px; }
+html.cdm-desktop-client .registrar-institute-mark[data-institute="ITE"] { background: var(--desk-surface-alt, var(--bg-surface-alt)); padding: 8px; }
+html.cdm-desktop-client .registrar-institute-mark[data-institute="ITE"] img { border-radius: 50%; }
+html.cdm-desktop-client .registrar-institute-card h2 { font-size: 16px; line-height: 1.3; margin: 0 auto; max-width: 250px; }
+html.cdm-desktop-client .registrar-institute-card p { color: var(--registrar-grade-muted); font-size: 13px; line-height: 1.45; margin: 0; }
+html.cdm-desktop-client .registrar-institute-card button { align-items: center; align-self: end; background: color-mix(in srgb, var(--registrar-grade-green) 10%, var(--desk-surface, var(--bg-surface))); border: 0; border-radius: 7px; color: var(--registrar-grade-green); display: flex; font-weight: 700; justify-content: center; min-height: 38px; }
+
+html.cdm-desktop-client .registrar-grading-activity,
+html.cdm-desktop-client .registrar-institute-context {
+  background: var(--desk-surface, var(--bg-surface));
+  border: 1px solid var(--registrar-grade-line);
+  border-radius: 9px;
+}
+
+html.cdm-desktop-client .registrar-grading-activity { margin-top: 2px; overflow: hidden; }
+html.cdm-desktop-client .registrar-grading-activity > header { align-items: center; border-bottom: 1px solid var(--registrar-grade-line); display: flex; justify-content: space-between; padding: 11px 14px; }
+html.cdm-desktop-client .registrar-grading-activity h2 { font-size: 17px; margin: 0; }
+html.cdm-desktop-client .registrar-grading-activity header p { color: var(--registrar-grade-muted); font-size: 13px; line-height: 1.4; margin: 3px 0 0; }
+html.cdm-desktop-client .registrar-grading-activity header button { background: transparent; border: 0; color: var(--registrar-grade-muted); }
+html.cdm-desktop-client .registrar-grading-activity ul { list-style: none; margin: 0; padding: 0 14px; }
+html.cdm-desktop-client .registrar-grading-activity li { align-items: center; border-bottom: 1px solid var(--registrar-grade-line); display: grid; gap: 9px; grid-template-columns: 28px 1fr auto; padding: 9px 0; }
+html.cdm-desktop-client .registrar-grading-activity li:last-child { border-bottom: 0; }
+html.cdm-desktop-client .registrar-grading-activity li div { display: grid; font-size: 13px; gap: 2px; }
+html.cdm-desktop-client .registrar-grading-activity li div span,
+html.cdm-desktop-client .registrar-grading-activity time { color: var(--registrar-grade-muted); font-size: 12px; }
+html.cdm-desktop-client .registrar-activity-icon { align-items: center; background: color-mix(in srgb, var(--registrar-grade-green) 10%, transparent); border-radius: 6px; color: var(--registrar-grade-green); display: flex; height: 27px; justify-content: center; width: 27px; }
+
+html.cdm-desktop-client .registrar-configuration-tabs {
+  align-items: center;
+  border-bottom: 1px solid var(--registrar-grade-line);
+  display: flex;
+  gap: 20px;
+  margin: -2px 0 2px;
+  padding: 0 2px;
+}
+
+html.cdm-desktop-client .registrar-configuration-tabs button {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--registrar-grade-muted);
+  font-weight: 700;
+  min-height: 38px;
+  padding: 7px 3px;
+}
+
+html.cdm-desktop-client .registrar-configuration-tabs button.active {
+  border-bottom-color: var(--registrar-grade-green);
+  color: var(--registrar-grade-green);
+}
+
+html.cdm-desktop-client .registrar-back-institutes {
+  align-items: center;
+  display: inline-flex;
+  font-size: 13px;
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+html.cdm-desktop-client .registrar-institute-unavailable {
+  border-style: dashed;
+  box-shadow: none;
+  padding: 28px 20px;
+}
+
+html.cdm-desktop-client .registrar-institute-context { align-items: center; display: grid; gap: 12px; grid-template-columns: minmax(190px, auto) 1fr auto; padding: 10px 12px; }
+html.cdm-desktop-client .registrar-institute-context div { display: grid; }
+html.cdm-desktop-client .registrar-institute-context small,
+html.cdm-desktop-client .registrar-institute-context > span { color: var(--registrar-grade-muted); font-size: 12px; line-height: 1.4; }
+html.cdm-desktop-client .registrar-institute-context button { background: transparent; border: 1px solid var(--registrar-grade-line); border-radius: 7px; min-height: 32px; padding: 5px 9px; }
+
+html.cdm-desktop-client .registrar-review-summary { grid-template-columns: repeat(3, minmax(120px, 1fr)); padding: 9px; }
+html.cdm-desktop-client .registrar-review-summary > div { border-right: 1px solid var(--registrar-grade-line); padding: 1px 10px; }
+html.cdm-desktop-client .registrar-review-summary > div:last-child { border-right: 0; }
+html.cdm-desktop-client .registrar-review-summary strong { font-size: 18px; }
+html.cdm-desktop-client .registrar-review-filters { align-items: end; border-radius: 9px; display: grid; gap: 8px; grid-template-columns: minmax(260px, 1fr) minmax(120px, 150px) minmax(120px, 150px) auto auto; margin: 0; padding: 9px; }
+html.cdm-desktop-client .registrar-review-filters label { font-size: 12px; gap: 5px; }
+html.cdm-desktop-client .registrar-review-filters input,
+html.cdm-desktop-client .registrar-review-filters select,
+html.cdm-desktop-client .registrar-review-filters > button,
+html.cdm-desktop-client .registrar-review-filters summary { box-sizing: border-box; min-height: 36px; }
+html.cdm-desktop-client .registrar-review-filters details { position: relative; }
+html.cdm-desktop-client .registrar-review-filters summary { align-items: center; border: 1px solid var(--registrar-grade-line); border-radius: 7px; display: flex; list-style: none; padding: 7px 10px; white-space: nowrap; }
+html.cdm-desktop-client .registrar-review-filters details > div { background: var(--desk-surface, var(--bg-surface)); border: 1px solid var(--registrar-grade-line); border-radius: 9px; box-shadow: 0 12px 28px color-mix(in srgb, var(--text-primary) 16%, transparent); display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(150px, 1fr)); padding: 10px; position: absolute; right: 0; top: calc(100% + 5px); width: min(430px, 70vw); z-index: 20; }
+html.cdm-desktop-client .registrar-review-table { border-radius: 9px; }
+html.cdm-desktop-client .registrar-review-table table { min-width: 820px; }
+html.cdm-desktop-client .registrar-review-table th,
+html.cdm-desktop-client .registrar-review-table td { font-size: 13px; line-height: 1.4; padding: 10px 11px; }
+html.cdm-desktop-client .registrar-review-table th { font-size: 13px; font-weight: 700; letter-spacing: .015em; }
+html.cdm-desktop-client .registrar-review-table .registrar-year-group th { background: color-mix(in srgb, var(--registrar-grade-green) 8%, var(--desk-surface, var(--bg-surface))); color: var(--registrar-grade-green); font-size: 13px; text-transform: none; }
+html.cdm-desktop-client .registrar-year-group small { display: inline; font-weight: 500; margin-left: 7px; text-transform: none; }
+html.cdm-desktop-client .registrar-review-action { background: color-mix(in srgb, var(--accent) 14%, transparent); border: 0; border-radius: 6px; color: var(--accent); min-height: 34px; padding: 6px 10px; }
+
+html.cdm-desktop-client .desktop-registrar-grading.institute-grade-sheets {
+  gap: 14px;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-summary {
+  background: transparent;
+  gap: 10px;
+  padding: 0;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-summary > div {
+  background: var(--desk-surface, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--institute-accent) 18%, var(--registrar-grade-line));
+  border-top: 2px solid color-mix(in srgb, var(--institute-accent) 76%, transparent);
+  border-radius: 10px;
+  min-height: 64px;
+  padding: 10px 13px;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-summary > div:last-child {
+  border-right: 1px solid color-mix(in srgb, var(--institute-accent) 18%, var(--registrar-grade-line));
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-summary small {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-filters {
+  background: var(--desk-surface, var(--bg-surface));
+  border: 1px solid var(--registrar-grade-line);
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--registrar-grade-green) 5%, transparent);
+  padding: 11px 12px;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-filters :is(input,select):focus-visible,
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-filters summary:focus-visible {
+  border-color: var(--institute-accent);
+  outline: 2px solid color-mix(in srgb, var(--institute-accent) 24%, transparent);
+  outline-offset: 1px;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .grading-button.primary {
+  background: var(--institute-accent);
+  color: var(--text-on-accent);
+}
+
+html.cdm-desktop-client .institute-grade-sheets .grading-button.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--institute-accent) 86%, #000);
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-search input {
+  min-width: 260px;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .grading-state {
+  background: var(--desk-surface, var(--bg-surface));
+  border: 1px dashed color-mix(in srgb, var(--registrar-grade-line) 88%, transparent);
+  border-radius: 10px;
+  box-shadow: none;
+  min-height: 118px;
+  padding: 26px 20px;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .grading-state::before {
+  background: linear-gradient(90deg, var(--institute-secondary), var(--institute-accent));
+  border-radius: 999px;
+  content: '';
+  height: 3px;
+  justify-self: center;
+  width: 42px;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .grading-state strong {
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-table {
+  border: 1px solid var(--registrar-grade-line);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--registrar-grade-green) 5%, transparent);
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-table .registrar-year-group th {
+  background: color-mix(in srgb, var(--institute-tint) 72%, var(--desk-surface, var(--bg-surface)));
+  color: var(--institute-accent);
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-action {
+  background: color-mix(in srgb, var(--institute-accent) 12%, transparent);
+  color: var(--institute-accent);
+}
+
+html.cdm-desktop-client .institute-grade-sheets .registrar-review-action:hover {
+  background: color-mix(in srgb, var(--institute-accent) 18%, transparent);
+}
+
+html.cdm-desktop-client .registrar-scale-intro { align-items: center; border-radius: 9px; margin: 0; padding: 14px 16px; }
+html.cdm-desktop-client .registrar-scale-intro > div { display: grid; gap: 5px; min-width: 0; }
+html.cdm-desktop-client .registrar-scale-intro strong { display: block; font-size: 16px; font-weight: 750; line-height: 1.25; }
+html.cdm-desktop-client .registrar-scale-intro span { color: var(--registrar-grade-muted); display: block; font-size: 13px; font-weight: 400; line-height: 1.45; }
+html.cdm-desktop-client .registrar-scale-table,
+html.cdm-desktop-client .registrar-period-table { border-radius: 9px; overflow-x: auto; }
+html.cdm-desktop-client .registrar-scale-table table { min-width: 760px; table-layout: fixed; }
+html.cdm-desktop-client .registrar-scale-table th:nth-child(1),
+html.cdm-desktop-client .registrar-scale-table th:nth-child(2) { width: 17%; }
+html.cdm-desktop-client .registrar-scale-table th:nth-child(3) { width: 15%; }
+html.cdm-desktop-client .registrar-scale-table th:nth-child(4) { width: 20%; }
+html.cdm-desktop-client .registrar-scale-table th:nth-child(5) { width: 12%; }
+html.cdm-desktop-client .registrar-scale-table th:nth-child(6) { width: 19%; }
+html.cdm-desktop-client .registrar-period-table table { min-width: 900px; table-layout: fixed; }
+html.cdm-desktop-client .registrar-period-table th:nth-child(1) { width: 17%; }
+html.cdm-desktop-client .registrar-period-table th:nth-child(2),
+html.cdm-desktop-client .registrar-period-table th:nth-child(3) { width: 25%; }
+html.cdm-desktop-client .registrar-period-table th:nth-child(4) { width: 12%; }
+html.cdm-desktop-client .registrar-period-table th:nth-child(5) { width: 21%; }
+html.cdm-desktop-client .registrar-scale-table th,
+html.cdm-desktop-client .registrar-period-table th,
+html.cdm-desktop-client .grading-professor-repository .account-table-wrap th,
+html.cdm-desktop-client .grade-history-directory-table th,
+html.cdm-desktop-client .grade-history-detail-table th { background: color-mix(in srgb, var(--registrar-grade-green, var(--accent)) 9%, var(--desk-surface, var(--bg-surface))); color: var(--registrar-grade-green, var(--accent)); font-size: 13px; font-weight: 700; letter-spacing: .015em; line-height: 1.35; padding: 10px 12px; text-transform: uppercase; }
+html.cdm-desktop-client .registrar-scale-table td,
+html.cdm-desktop-client .registrar-period-table td,
+html.cdm-desktop-client .grading-professor-repository .account-table-wrap td,
+html.cdm-desktop-client .grade-history-directory-table td,
+html.cdm-desktop-client .grade-history-detail-table td { font-size: 13px; line-height: 1.4; padding: 11px 12px; vertical-align: middle; }
+html.cdm-desktop-client .registrar-scale-table :is(th,td):is(:nth-child(1),:nth-child(2),:nth-child(3)) { font-variant-numeric: tabular-nums; text-align: right; }
+html.cdm-desktop-client .registrar-period-table td small { line-height: 1.4; margin-top: 4px; white-space: normal; }
+html.cdm-desktop-client :is(.registrar-scale-table,.registrar-period-table) em { display: inline-flex; font-size: 12px; font-weight: 700; padding: 4px 8px; white-space: nowrap; }
+html.cdm-desktop-client :is(.registrar-scale-table,.registrar-period-table) .grading-period-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; }
+html.cdm-desktop-client :is(.registrar-scale-table,.registrar-period-table) .grading-period-actions button { font-size: 13px; min-height: 34px; padding: 6px 10px; white-space: nowrap; }
+
+html.cdm-desktop-client .grading-professor-repository .account-management-page { gap: 10px; }
+html.cdm-desktop-client .grading-professor-repository .cdm-page-header { justify-content: flex-end; margin: 0; }
+html.cdm-desktop-client .grading-professor-repository .cdm-page-header > div:first-child { display: none; }
+html.cdm-desktop-client .grading-professor-repository .account-filter,
+html.cdm-desktop-client .grade-history-directory-filters { align-items: end; border-radius: 9px; gap: 10px; margin: 0; padding: 12px; }
+html.cdm-desktop-client .grading-professor-repository .account-filter :is(input,select,button),
+html.cdm-desktop-client .grade-history-directory-filters :is(input,select,button) { box-sizing: border-box; font-size: 13px; min-height: 40px; }
+html.cdm-desktop-client .grading-professor-repository .account-filter label,
+html.cdm-desktop-client .grade-history-directory-filters label { color: var(--registrar-grade-muted, var(--text-secondary)); font-size: 12px; gap: 5px; }
+html.cdm-desktop-client .grading-professor-repository .account-table-wrap,
+html.cdm-desktop-client .grade-history-directory,
+html.cdm-desktop-client .grade-history-directory-table,
+html.cdm-desktop-client .grade-history-detail-table { border-color: var(--registrar-grade-line, var(--border-color)); border-radius: 9px; box-shadow: none; }
+html.cdm-desktop-client .grading-professor-repository .account-table-wrap table,
+html.cdm-desktop-client .grade-history-directory-table table { min-width: 820px; }
+html.cdm-desktop-client .grading-professor-repository .account-actions { flex-wrap: wrap; gap: 6px; }
+html.cdm-desktop-client .grading-professor-repository .account-actions button,
+html.cdm-desktop-client .grade-history-open { font-size: 13px; min-height: 34px; padding: 6px 10px !important; white-space: nowrap; }
+html.cdm-desktop-client .grading-professor-repository .account-pagination,
+html.cdm-desktop-client .grade-history-pagination { border-top: 1px solid var(--registrar-grade-line, var(--border-color)); color: var(--registrar-grade-muted, var(--text-secondary)); font-size: 13px; gap: 10px; justify-content: flex-end; padding: 10px 12px; }
+html.cdm-desktop-client .grading-professor-repository .account-pagination button,
+html.cdm-desktop-client .grade-history-pagination button { font-size: 13px; min-height: 34px; padding: 6px 10px; }
+html.cdm-desktop-client .grading-professor-repository .account-state,
+html.cdm-desktop-client .grade-history-directory .grading-state { box-shadow: none; font-size: 13px; padding: 32px 20px; }
+html.cdm-desktop-client .grade-history-page { display: grid; font-size: 14px; gap: 12px; line-height: 1.5; padding: 14px; }
+html.cdm-desktop-client .grade-history-page .grading-hero { border: 0; border-radius: 0; box-shadow: none; margin: 0; padding: 0 0 4px; }
+html.cdm-desktop-client .grade-history-page .grading-hero h1 { font-size: 24px; letter-spacing: -.025em; }
+html.cdm-desktop-client .grade-history-page .grading-hero > div > p:last-child { font-size: 13px; line-height: 1.45; margin-top: 4px; }
+html.cdm-desktop-client .grade-history-directory > header { font-size: 14px; padding: 10px 12px; }
+html.cdm-desktop-client .grade-history-page :is(h2,h3) { font-size: 17px; font-weight: 700; line-height: 1.3; }
+html.cdm-desktop-client .grade-history-page :is(label,legend) { font-size: 12px; font-weight: 650; line-height: 1.35; }
+html.cdm-desktop-client .grade-history-page :is(button,input,select) { font-size: 13px; line-height: 1.4; }
+html.cdm-desktop-client .grade-history-page small { font-size: 12px; line-height: 1.4; }
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-modal {
+  border-radius: 12px;
+  padding: 0;
+  width: min(620px, calc(100vw - 32px));
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-modal > header {
+  align-items: center;
+  margin: 0;
+  padding: 15px 18px;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-modal > header h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-modal > header button {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0;
+  width: 34px;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-form {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+  padding: 18px;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading :is(.grading-scale-percentage-row,.grading-scale-detail-row) {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-form label {
+  align-content: start;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-form :is(input:not([type='checkbox']),select) {
+  box-sizing: border-box;
+  min-height: 40px;
+  width: 100%;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-form label > small {
+  color: var(--registrar-grade-muted);
+  margin: 0;
+  min-height: 17px;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-form label > small.grading-field-error {
+  color: var(--danger);
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-active {
+  align-items: start;
+  background: var(--desk-surface-muted, var(--bg-surface-alt));
+  border: 1px solid var(--registrar-grade-line);
+  border-radius: 8px;
+  grid-template-columns: auto 1fr;
+  padding: 11px 12px;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-active input {
+  height: 18px;
+  margin: 2px 0 0;
+  min-height: 18px;
+  width: 18px;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-active span { display: grid; gap: 2px; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-active strong { font-size: 13px; font-weight: 700; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-active small { color: var(--registrar-grade-muted); font-weight: 400; }
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-form > footer {
+  align-items: center;
+  background: transparent;
+  border-top: 1px solid var(--registrar-grade-line);
+  gap: 8px;
+  margin: 0;
+  padding: 14px 0 0;
+}
+
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-form > footer button {
+  min-height: 36px;
+  padding: 7px 13px;
+}
+
+@media (max-width: 1180px) {
+  html.cdm-desktop-client .registrar-institute-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html.cdm-desktop-client .registrar-review-filters { grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(115px, 140px)) auto; }
+  html.cdm-desktop-client .registrar-review-filters details { grid-column: 1 / -2; }
+}
+
+@media (max-width: 820px) {
+  html.cdm-desktop-client .registrar-institute-grid { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .registrar-institute-card { min-height: 210px; }
+  html.cdm-desktop-client .registrar-review-filters { grid-template-columns: 1fr 1fr; }
+  html.cdm-desktop-client .registrar-review-search { grid-column: 1 / -1; }
+  html.cdm-desktop-client .registrar-review-filters details { grid-column: 1; }
+  html.cdm-desktop-client .registrar-institute-context { grid-template-columns: 1fr auto; }
+  html.cdm-desktop-client .registrar-institute-context > span { grid-column: 1 / -1; grid-row: 2; }
+  html.cdm-desktop-client .institute-grade-sheets .registrar-review-summary { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .institute-grade-sheets .registrar-review-summary > div { border-right: 1px solid color-mix(in srgb, var(--institute-accent) 18%, var(--registrar-grade-line)); }
+  html.cdm-desktop-client .institute-grade-sheets .registrar-review-search input { min-width: 0; }
+  html.cdm-desktop-client .desktop-registrar-grading :is(.grading-scale-percentage-row,.grading-scale-detail-row) { grid-template-columns: 1fr; }
+}
+
+/* Registrar-only refinement; the Professor workspace and shared navigation are excluded. */
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) { gap: 18px; font-size: 13px; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) .grading-hero { gap: 16px; flex-wrap: wrap; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) .grading-hero h1 { font-size: 22px; font-weight: 700; line-height: 1.3; letter-spacing: -.015em; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) :is(p,td,strong) { overflow-wrap: anywhere; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) strong { font-weight: 650; }
+html.cdm-desktop-client .desktop-registrar-grading .registrar-institute-card { gap: 12px; padding: 22px 18px 18px; }
+html.cdm-desktop-client .desktop-registrar-grading .registrar-institute-card h2 { min-height: 42px; font-size: 16px; }
+html.cdm-desktop-client .desktop-registrar-grading .registrar-grading-activity .grading-state { padding: 28px 20px; gap: 8px; background: var(--desk-surface-muted); border: 0; box-shadow: none; }
+html.cdm-desktop-client .desktop-registrar-grading .registrar-review-summary { gap: 12px; padding: 14px; }
+html.cdm-desktop-client .desktop-registrar-grading .registrar-review-summary > div { gap: 6px; padding: 2px 12px; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) :is(.grading-review-filters,.account-filter) { gap: 12px; padding: 14px; align-items: end; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) :is(input:not([type='checkbox']),select) { box-sizing: border-box; min-width: 0; min-height: 40px; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) :is(.grading-table-wrap,.account-table-wrap) :is(th,td) { padding: 12px 14px; font-size: 13px; line-height: 1.45; vertical-align: middle; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) :is(.grading-table-wrap,.account-table-wrap) th { background: var(--desk-green-100); color: var(--desk-ink); font-weight: 650; text-transform: none; letter-spacing: 0; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) :is(.grading-period-actions,.account-actions) { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) :is(.grading-period-actions,.account-actions) button { font-weight: 600; }
+html.cdm-desktop-client .desktop-registrar-grading em[data-state] { font-size: 12px; font-weight: 600; line-height: 1.4; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-release-form { margin: 0; padding: 20px; gap: 18px; border-radius: 10px; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-release-form h2 { margin: 0; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-release-form fieldset { padding: 14px; background: var(--desk-surface-muted); gap: 10px; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-release-form fieldset input { min-height: 18px; height: 18px; width: 18px; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-release-form > button { justify-self: start; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-modal:not(.grading-scale-modal) > header { align-items: center; gap: 16px; padding-block: 16px; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-modal > header h2 { margin: 0; font-size: 18px; line-height: 1.35; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-modal form:not(.grading-scale-form) { gap: 18px 16px; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-modal form > label { min-width: 0; gap: 7px; align-content: start; font-weight: 600; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-modal form > footer { gap: 8px; background: transparent; }
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-percentage-row,
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-detail-row { padding-bottom: 16px; border-bottom: 1px solid var(--desk-line); }
+html.cdm-desktop-client .desktop-registrar-grading .grading-scale-active { border: 0; }
+html.cdm-desktop-client :is(.desktop-registrar-grading,.grade-history-page) :is(button,select,input,summary):focus-visible { outline: 2px solid var(--desk-green-700); outline-offset: 2px; }
+@media (max-width: 820px) {
+  html.cdm-desktop-client .desktop-registrar-grading .grading-release-form { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .desktop-registrar-grading .grading-modal form:not(.grading-scale-form) { grid-template-columns: 1fr; }
+  html.cdm-desktop-client .desktop-registrar-grading .registrar-review-filters details > div { position: static; width: auto; grid-template-columns: 1fr; margin-top: 8px; }
 }

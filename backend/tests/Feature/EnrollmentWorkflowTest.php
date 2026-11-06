@@ -39,6 +39,7 @@ class EnrollmentWorkflowTest extends TestCase
         $case = $this->fixture['cases'][0];
         AdmissionConversionFixture::legacyStudent($this->fixture, $case, 'LEGACY-WORKFLOW');
         $this->user = $case['user']->fresh();
+        $this->user->profile()->update(['birth_date' => '2005-04-03', 'contact_number' => '09171234567', 'email' => 'workflow@example.test', 'address' => 'Rodriguez, Rizal']);
         $this->student = $this->user->student;
         $semester = Semester::firstOrCreate(['semester_name' => 'First'], ['semester_order' => 1, 'status' => 'active']);
         $this->period = EnrollmentPeriod::create(['academic_year_id' => $this->fixture['cycle']->academic_year_id, 'semester_id' => $semester->id, 'opens_at' => now()->subDay(), 'closes_at' => now()->addDay(), 'enabled' => true, 'document_requirements' => ['regular' => [], 'irregular' => [], 'transferee' => [], 'returnee' => []], 'created_by' => $this->fixture['registrar']->id, 'updated_by' => $this->fixture['registrar']->id]);
@@ -52,6 +53,10 @@ class EnrollmentWorkflowTest extends TestCase
 
     private function action(array $a, string $action, array $extra = [])
     {
+        if ($action === 'save' && ! array_key_exists('personal_details', $extra)) {
+            $extra['personal_details'] = EnrollmentApplication::findOrFail($a['id'])->personal_details;
+        }
+
         return $this->postJson('/api/enrollment/applications/'.$a['id'].'/'.$action, ['version' => $a['version'], 'confirmed' => true] + $extra);
     }
 
@@ -126,22 +131,76 @@ class EnrollmentWorkflowTest extends TestCase
         $this->period->update(['opens_at' => now()->subDay(), 'closes_at' => now()]);
         $this->action($a, 'submit')->assertConflict();
         $this->period->update(['closes_at' => now()->addDay()]);
+        $this->getJson('/api/enrollment/status')->assertOk()
+            ->assertJsonPath('data.period.state', 'open')
+            ->assertJsonPath('data.eligible', true);
         $this->student->update(['student_status' => 'leave_of_absence']);
         $this->action($a, 'submit')->assertConflict();
         $this->assertDatabaseHas('enrollment_applications', ['id' => $a['id'], 'status' => 'draft', 'version' => 1]);
     }
 
-    public function test_closed_period_and_duplicate_term_creation_denied_by_service_and_database(): void
+    public function test_cancelled_unsubmitted_draft_can_be_replaced_without_losing_history_or_duplicate_protection(): void
     {
         $this->period->update(['enabled' => false]);
         $this->postJson('/api/enrollment/applications', ['period_id' => $this->period->id, 'classification' => 'regular'])->assertConflict();
         $this->period->update(['enabled' => true]);
+        $this->getJson('/api/enrollment/status')->assertJsonPath('data.current_application', null);
         $a = $this->create();
         $this->postJson('/api/enrollment/applications', ['period_id' => $this->period->id, 'classification' => 'regular'])->assertConflict();
         $this->action($a, 'cancel')->assertOk()->assertJsonPath('data.status', 'cancelled');
+        $this->getJson('/api/enrollment/status')->assertJsonPath('data.current_application', null)->assertJsonPath('data.eligible', true);
+        $this->getJson('/api/enrollment/applications/mine')->assertOk()->assertJsonPath('data.data.0.id', $a['id'])->assertJsonPath('data.data.0.status', 'cancelled');
+        $this->action($a, 'save', ['classification' => 'irregular'])->assertConflict();
+        $replacement = $this->create('irregular');
+        $this->assertNotSame($a['id'], $replacement['id']);
+        $this->assertSame($this->user->id, $replacement['owner_user_id']);
+        $this->assertSame($this->student->id, $replacement['student_id']);
+        $this->assertSame($this->period->academic_year_id, $replacement['academic_year_id']);
+        $this->assertSame($this->period->semester_id, $replacement['semester_id']);
+        $this->assertDatabaseHas('enrollment_applications', ['id' => $a['id'], 'status' => 'cancelled', 'blocking_owner_user_id' => null, 'blocking_student_id' => null]);
+        $this->assertDatabaseHas('enrollment_applications', ['id' => $replacement['id'], 'status' => 'draft', 'blocking_owner_user_id' => $this->user->id, 'blocking_student_id' => $this->student->id]);
+        $this->getJson('/api/enrollment/status')->assertJsonPath('data.current_application.id', $replacement['id']);
         $this->postJson('/api/enrollment/applications', ['period_id' => $this->period->id, 'classification' => 'regular'])->assertConflict();
         $this->expectException(UniqueConstraintViolationException::class);
-        EnrollmentApplication::find($a['id'])->replicate()->save();
+        EnrollmentApplication::find($replacement['id'])->replicate()->save();
+    }
+
+    public function test_cancellation_does_not_bypass_closed_term_or_ineligible_student(): void
+    {
+        $a = $this->create();
+        $this->action($a, 'cancel')->assertOk();
+        $this->period->update(['enabled' => false]);
+        $this->postJson('/api/enrollment/applications', ['period_id' => $this->period->id, 'classification' => 'regular'])->assertConflict();
+        $this->period->update(['enabled' => true]);
+        $this->student->update(['student_status' => 'leave_of_absence']);
+        $this->postJson('/api/enrollment/applications', ['period_id' => $this->period->id, 'classification' => 'regular'])->assertConflict();
+        $this->assertDatabaseCount('enrollment_applications', 1);
+    }
+
+    public function test_submitted_application_cannot_be_cancelled_or_replaced(): void
+    {
+        $a = $this->create();
+        $submitted = $this->action($a, 'submit')->assertOk()->json('data');
+        $this->action($submitted, 'cancel')->assertConflict();
+        $this->postJson('/api/enrollment/applications', ['period_id' => $this->period->id, 'classification' => 'regular'])->assertConflict();
+        $this->assertDatabaseCount('enrollment_applications', 1);
+    }
+
+    public function test_migration_rollback_refuses_to_remove_reapplication_history(): void
+    {
+        $first = $this->create();
+        $this->action($first, 'cancel')->assertOk();
+        $second = $this->create();
+        $migration = require database_path('migrations/2026_10_29_000001_allow_reapplication_after_cancelled_enrollment_draft.php');
+
+        try {
+            $migration->down();
+            $this->fail('Rollback should refuse duplicate historical identities.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('Cannot restore Enrollment uniqueness', $exception->getMessage());
+        }
+        $this->assertDatabaseHas('enrollment_applications', ['id' => $first['id'], 'status' => 'cancelled']);
+        $this->assertDatabaseHas('enrollment_applications', ['id' => $second['id'], 'status' => 'draft']);
     }
 
     public function test_both_staff_roles_filter_inspect_manage_period_and_review(): void
@@ -240,6 +299,103 @@ class EnrollmentWorkflowTest extends TestCase
         $this->assertCount(1, Storage::disk('local')->allFiles());
         $this->assertDatabaseCount('student_documents', 0);
         $this->action(EnrollmentApplication::find($a['id'])->toArray(), 'submit')->assertOk();
+    }
+
+    public function test_personal_details_are_draft_scoped_and_survive_reload_without_changing_profile(): void
+    {
+        $a = $this->create();
+        $profileFields = ['first_name', 'middle_name', 'last_name', 'birth_date', 'gender', 'contact_number', 'email', 'address'];
+        $profileBefore = collect($this->user->profile()->firstOrFail()->toArray())->only($profileFields)->all();
+        $details = ['first_name' => 'Enrollment', 'middle_name' => null, 'last_name' => 'Applicant', 'birth_date' => '2005-04-03',
+            'gender' => 'Prefer not to say', 'contact_number' => '09171234567', 'email' => 'draft@example.test', 'address' => 'Draft address only'];
+
+        $saved = $this->action($a, 'save', ['classification' => 'regular', 'personal_details' => $details])
+            ->assertOk()->assertJsonPath('data.personal_details.first_name', 'Enrollment')->json('data');
+        $this->getJson('/api/enrollment/applications/'.$a['id'])->assertOk()
+            ->assertJsonPath('data.application.personal_details.email', 'draft@example.test');
+        $this->assertSame($profileBefore, collect($this->user->profile()->firstOrFail()->toArray())->only($profileFields)->all());
+        $this->action($saved, 'save', ['classification' => 'regular', 'personal_details' => array_replace($details, ['email' => 'invalid'])])
+            ->assertUnprocessable()->assertJsonValidationErrors('personal_details.email');
+    }
+
+    public function test_image_preview_and_transactional_replacement_keep_private_metadata(): void
+    {
+        Storage::fake('local');
+        $type = DocumentType::create(['document_name' => 'Photo', 'status' => 'active', 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false]);
+        $this->period->update(['document_requirements' => ['regular' => [$type->id], 'irregular' => [], 'transferee' => [], 'returnee' => []]]);
+        $a = $this->create();
+        $this->post('/api/enrollment/applications/'.$a['id'].'/documents', ['document_type_id' => $type->id, 'version' => 1,
+            'file' => UploadedFile::fake()->image('first.png')], ['Accept' => 'application/json'])->assertCreated();
+        $document = EnrollmentApplication::findOrFail($a['id'])->documents()->firstOrFail();
+        $oldPath = $document->file_path;
+
+        $this->getJson('/api/enrollment/applications/'.$a['id'])->assertOk()
+            ->assertJsonPath('data.requirements.0.filename', 'first.png')
+            ->assertJsonPath('data.requirements.0.preview_kind', 'image')
+            ->assertJsonMissingPath('data.requirements.0.file_path');
+        $this->get('/api/enrollment/applications/'.$a['id'].'/documents/'.$document->id.'?preview=1')->assertOk()
+            ->assertHeader('Content-Type', 'image/png')
+            ->assertHeader('Content-Disposition', 'inline; filename=first.png');
+
+        // Attachments created before metadata columns were populated still use
+        // the validated stored file for preview classification and delivery.
+        $document->forceFill(['original_name' => null, 'mime_type' => null])->save();
+        $this->getJson('/api/enrollment/applications/'.$a['id'])->assertOk()
+            ->assertJsonPath('data.requirements.0.preview_kind', 'image');
+        $this->get('/api/enrollment/applications/'.$a['id'].'/documents/'.$document->id.'?preview=1')->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
+
+        $this->post('/api/enrollment/applications/'.$a['id'].'/documents', ['document_type_id' => $type->id, 'version' => 2,
+            'file' => UploadedFile::fake()->image('replacement.jpg')], ['Accept' => 'application/json'])->assertCreated();
+        $document->refresh();
+        $this->assertSame('replacement.jpg', $document->original_name);
+        Storage::disk('local')->assertMissing($oldPath);
+        Storage::disk('local')->assertExists($document->file_path);
+        $this->assertDatabaseCount('enrollment_documents', 1);
+    }
+
+    public function test_failed_replacement_preserves_the_previous_attachment(): void
+    {
+        Storage::fake('local');
+        $type = DocumentType::create(['document_name' => 'Evidence', 'status' => 'active', 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false]);
+        $this->period->update(['document_requirements' => ['regular' => [$type->id], 'irregular' => [], 'transferee' => [], 'returnee' => []]]);
+        $a = $this->create();
+        $auditCalls = 0;
+        $this->mock(EnrollmentAuditWriter::class)->shouldReceive('record')->twice()->andReturnUsing(function () use (&$auditCalls): void {
+            $auditCalls++;
+            if ($auditCalls === 2) {
+                throw new \RuntimeException('private failure');
+            }
+        });
+        $this->post('/api/enrollment/applications/'.$a['id'].'/documents', ['document_type_id' => $type->id, 'version' => 1,
+            'file' => UploadedFile::fake()->create('original.pdf', 5, 'application/pdf')], ['Accept' => 'application/json'])->assertCreated();
+        $document = EnrollmentApplication::findOrFail($a['id'])->documents()->firstOrFail();
+        $originalPath = $document->file_path;
+        $this->getJson('/api/enrollment/applications/'.$a['id'])->assertJsonPath('data.requirements.0.preview_kind', 'pdf');
+
+        $this->post('/api/enrollment/applications/'.$a['id'].'/documents', ['document_type_id' => $type->id, 'version' => 2,
+            'file' => UploadedFile::fake()->image('replacement.png')], ['Accept' => 'application/json'])->assertStatus(503);
+
+        $document->refresh();
+        $this->assertSame('original.pdf', $document->original_name);
+        $this->assertSame($originalPath, $document->file_path);
+        Storage::disk('local')->assertExists($originalPath);
+        $this->assertCount(1, Storage::disk('local')->allFiles());
+    }
+
+    public function test_missing_saved_document_returns_not_found_without_exposing_storage_path(): void
+    {
+        Storage::fake('local');
+        $type = DocumentType::create(['document_name' => 'Photo', 'status' => 'active', 'processing_fee' => 0, 'processing_days' => 1, 'requires_appointment' => false]);
+        $this->period->update(['document_requirements' => ['regular' => [$type->id], 'irregular' => [], 'transferee' => [], 'returnee' => []]]);
+        $a = $this->create();
+        $this->post('/api/enrollment/applications/'.$a['id'].'/documents', ['document_type_id' => $type->id, 'version' => 1,
+            'file' => UploadedFile::fake()->image('missing.png')], ['Accept' => 'application/json'])->assertCreated();
+        $document = EnrollmentApplication::findOrFail($a['id'])->documents()->firstOrFail();
+        Storage::disk('local')->delete($document->file_path);
+
+        $this->get('/api/enrollment/applications/'.$a['id'].'/documents/'.$document->id.'?preview=1')
+            ->assertNotFound()->assertDontSee($document->file_path);
     }
 
     public function test_period_creation_validation_and_requirement_freeze_for_both_staff_roles(): void

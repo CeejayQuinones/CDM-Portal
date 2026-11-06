@@ -11,7 +11,7 @@ const Registrar = () => import('./AdmissionRegistrarView.vue')
 // Paths are relative to the existing authenticated DashboardLayout.
 export const admissionRoutes = [
   { name: 'admission', path: 'admission', title: 'Admission Status' },
-  { name: 'student-admission-exam', path: 'admission/exam', title: 'Entrance Exam' },
+  { name: 'student-admission-exam', path: 'admission/exam', title: 'Entrance Exam', platforms: ['web'] },
   { name: 'student-admission-result', path: 'admission/result', title: 'Result' },
   { name: 'student-admission-recommendation', path: 'admission/recommendation', title: 'Recommendation' },
   { name: 'registrar-admissions', path: 'registrar/admissions', title: 'Applicants' },
@@ -20,12 +20,12 @@ export const admissionRoutes = [
   { name: 'admin-admission-exams', path: 'admin/admissions/exams', title: 'Exams' },
   { name: 'admin-admission-questions', path: 'admin/admissions/questions', title: 'Exam Questions' },
   { name: 'admin-admission-programs', path: 'admin/admissions/programs', title: 'Programs' },
-].map(({ name, path, title }) => ({
+].map(({ name, path, title, platforms }) => ({
   name,
   path,
   component: name === 'admin-admission-exams' ? Exams : name === 'admission' ? AdmissionView : name.startsWith('admin-') ? Admin : name.startsWith('registrar-') ? Registrar : name.endsWith('-exam') ? Exam : name.endsWith('-result') ? Result : Recommendation,
   props: { title, mode: path.split('/').at(-1) === 'admissions' ? 'applicants' : path.split('/').at(-1) },
-  meta: { title, roles: ROUTE_ROLES[name] },
+  meta: { title, roles: ROUTE_ROLES[name], ...(platforms ? { platforms } : {}) },
 }))
 
 admissionRoutes.push(

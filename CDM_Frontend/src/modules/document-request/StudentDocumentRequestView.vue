@@ -8,6 +8,7 @@ import DocumentRequestPageHeader from './DocumentRequestPageHeader.vue'
 import DocumentRequestStatusBadge from './DocumentRequestStatusBadge.vue'
 import DocumentRequestTableSkeleton from './DocumentRequestTableSkeleton.vue'
 import { formatExactDateTime, requestReference } from './documentRequestPresentation'
+import { DOCUMENT_REQUEST_PURPOSES, documentRequestPurpose, purposePayload } from './documentRequestPurpose'
 import { documentRequestService as api } from './documentRequestService'
 
 const route = useRoute()
@@ -34,7 +35,8 @@ const requestSubmitting = ref(false)
 const requestFormError = ref('')
 const selectedTypeId = ref('')
 const quantity = ref(1)
-const purpose = ref('')
+const purposeCategory = ref('')
+const purposeDetails = ref('')
 
 const bookingRequest = ref(null)
 const appointmentDate = ref('')
@@ -119,6 +121,12 @@ const detailTransitionKey = computed(
   () => `${selectedPanel.value}-${selectedPanel.value === 'request' ? selectedRequest.value?.id || 'empty' : selectedAppointment.value?.id || 'empty'}`,
 )
 const selectedType = computed(() => documentTypes.value.find((item) => item.id === Number(selectedTypeId.value)))
+const purposeIsValid = computed(() =>
+  DOCUMENT_REQUEST_PURPOSES.includes(purposeCategory.value) &&
+  (purposeCategory.value !== 'Others' || (
+    Boolean(purposeDetails.value.trim()) && purposeDetails.value.trim().length <= 500
+  )),
+)
 const canBookSelectedRequest = computed(() => {
   return false
 })
@@ -139,7 +147,7 @@ const filteredStudentRequests = computed(() => {
     const matchesStatus = !studentStatus.value || item.status === studentStatus.value
     const matchesSearch =
       !term ||
-      [requestReference(item.id), item.document_type?.document_name, item.purpose]
+      [requestReference(item.id), item.document_type?.document_name, documentRequestPurpose(item)]
         .some((value) => String(value || '').toLowerCase().includes(term))
 
     return matchesStatus && matchesSearch
@@ -387,11 +395,18 @@ function closeRequestForm(force = false) {
   requestFormError.value = ''
   selectedTypeId.value = ''
   quantity.value = 1
-  purpose.value = ''
+  purposeCategory.value = ''
+  purposeDetails.value = ''
 }
 
 async function submitRequest() {
   if (requestSubmitting.value || requestFormLoading.value) return
+  if (!purposeIsValid.value) {
+    requestFormError.value = purposeCategory.value === 'Others'
+      ? 'Please specify your purpose.'
+      : 'Select a reason or purpose for this request.'
+    return
+  }
   requestSubmitting.value = true
   requestFormError.value = ''
   message.value = ''
@@ -399,7 +414,7 @@ async function submitRequest() {
     const created = await api.createRequest({
       document_type_id: Number(selectedTypeId.value),
       quantity: Number(quantity.value),
-      purpose: purpose.value || null,
+      ...purposePayload(purposeCategory.value, purposeDetails.value),
     })
     closeRequestForm(true)
     await loadRequests()
@@ -632,6 +647,11 @@ watch([studentSearch, studentStatus], () => {
   studentRequestPage.value = 1
 })
 
+watch(purposeCategory, (category, previousCategory) => {
+  if (previousCategory === 'Others' && category !== 'Others') purposeDetails.value = ''
+  requestFormError.value = ''
+})
+
 onMounted(refresh)
 </script>
 
@@ -676,7 +696,7 @@ onMounted(refresh)
         <tbody>
           <tr v-for="item in visibleStudentRequests" :key="item.id">
             <td><strong class="history-request-reference">{{ requestReference(item.id) }}</strong></td>
-            <td><strong>{{ item.document_type.document_name }}</strong><small v-if="item.purpose">{{ item.purpose }}</small></td>
+            <td><strong>{{ item.document_type.document_name }}</strong><small v-if="documentRequestPurpose(item)">{{ documentRequestPurpose(item) }}</small></td>
             <td>{{ formatDate(item.request_date || item.created_at) }}</td>
             <td><DocumentRequestStatusBadge :status="item.status" /></td>
             <td>{{ formatExactDateTime(item.completed_at || item.rejected_at || item.cancelled_at || item.approved_at || item.created_at) }}</td>
@@ -716,7 +736,7 @@ onMounted(refresh)
           <div><dt>Requested</dt><dd>{{ formatDate(selectedRequest.request_date || selectedRequest.created_at) }}</dd></div>
           <div><dt>Fee</dt><dd>₱{{ formatMoney(selectedRequest.total_fee) }}</dd></div>
           <div><dt>Status</dt><dd><DocumentRequestStatusBadge :status="selectedRequest.status" /></dd></div>
-          <div class="wide"><dt>Purpose</dt><dd>{{ selectedRequest.purpose || 'No purpose provided.' }}</dd></div>
+          <div class="wide"><dt>Purpose</dt><dd>{{ documentRequestPurpose(selectedRequest) || 'No purpose provided.' }}</dd></div>
           <div v-if="selectedRequest.remarks" class="wide"><dt>Registrar remarks</dt><dd>{{ selectedRequest.remarks }}</dd></div>
           <div v-if="selectedRequest.cancellation_reason" class="wide"><dt>Cancellation reason</dt><dd>{{ selectedRequest.cancellation_reason }}</dd></div>
         </dl>
@@ -792,14 +812,26 @@ onMounted(refresh)
                   <input v-model="quantity" type="number" min="1" max="10" :disabled="requestSubmitting" required />
                 </label>
                 <label class="wide">
-                  Purpose / remarks
-                  <textarea
-                    v-model="purpose"
-                    rows="4"
-                    :disabled="requestSubmitting"
-                    placeholder="Tell us why you need this document (optional)."
-                  ></textarea>
+                  Reason / Purpose of Request
+                  <select v-model="purposeCategory" :disabled="requestSubmitting" required>
+                    <option value="" disabled>Select a purpose</option>
+                    <option v-for="option in DOCUMENT_REQUEST_PURPOSES" :key="option" :value="option">{{ option }}</option>
+                  </select>
                 </label>
+                <Transition name="purpose-field">
+                  <label v-if="purposeCategory === 'Others'" class="wide document-purpose-details">
+                    Please specify your purpose
+                    <textarea
+                      v-model="purposeDetails"
+                      rows="4"
+                      maxlength="500"
+                      :disabled="requestSubmitting"
+                      required
+                      placeholder="Explain why you need this document."
+                    ></textarea>
+                    <small>{{ purposeDetails.length }} / 500</small>
+                  </label>
+                </Transition>
               </div>
 
               <aside v-if="selectedType" class="student-request-summary" aria-live="polite">
@@ -815,7 +847,7 @@ onMounted(refresh)
 
             <footer class="appointment-details-footer">
               <button type="button" class="appointment-close-action" :disabled="requestSubmitting" @click="closeRequestForm">Cancel</button>
-              <button type="submit" :disabled="requestFormLoading || requestSubmitting || !selectedTypeId">
+              <button type="submit" :disabled="requestFormLoading || requestSubmitting || !selectedTypeId || !purposeIsValid">
                 {{ requestSubmitting ? 'Submitting…' : 'Submit Request' }}
               </button>
             </footer>

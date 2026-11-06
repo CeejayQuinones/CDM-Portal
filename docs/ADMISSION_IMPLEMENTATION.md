@@ -390,10 +390,9 @@ the authoritative admitted-Guest handoff. `/api/me` exposes only derived complet
 flags; it does not trust a browser flag. The applicant sees a read-only completion
 page and cannot restart the exam, result or recommendation workflow.
 
-An admitted Guest can view the Enrollment handoff/status and public promotional
-Events on web. Enrollment application creation remains disabled because the current
+An admitted Guest can view the Enrollment handoff/status on web. Enrollment application creation remains disabled because the current
 application schema requires `student_id`. Grading, Academic Monitoring, Student
-document services and operational Event tools remain role-protected. Existing
+document services, and staff-only tools remain role-protected. Existing
 Students converted under the earlier lifecycle keep their Student row, number, role
 and Admission history.
 

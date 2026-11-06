@@ -10,9 +10,6 @@ use App\Models\Curriculum;
 use App\Models\Enrollment;
 use App\Models\Enrollment\EnrollmentApplication;
 use App\Models\Enrollment\EnrollmentPeriod;
-use App\Models\Event;
-use App\Models\EventAttendanceSession;
-use App\Models\EventModeratorRequest;
 use App\Models\Professor;
 use App\Models\Role;
 use App\Models\Section;
@@ -96,20 +93,6 @@ class AdminDashboardTest extends TestCase
             'status' => AdmissionApplicant::SUBMITTED, 'version' => 1,
         ])->save();
 
-        $event = Event::query()->create([
-            'title' => 'Current Event', 'venue' => 'Gym', 'venue_key' => 'gym',
-            'starts_at' => now()->subHour(), 'ends_at' => now()->addHours(2), 'status' => 'published',
-            'created_by' => $admin->id, 'updated_by' => $admin->id,
-        ]);
-        EventAttendanceSession::query()->create([
-            'event_id' => $event->id, 'opened_by' => $admin->id, 'opened_at' => now(), 'status' => 'open',
-        ]);
-        EventModeratorRequest::query()->create([
-            'event_id' => $event->id, 'requester_user_id' => $studentUser->id, 'status' => 'pending',
-            'active_request_key' => EventModeratorRequest::activeKey($event->id, $studentUser->id),
-            'request_reason' => 'Help with attendance.', 'requested_at' => now(),
-        ]);
-
         Sanctum::actingAs($admin);
         $this->getJson('/api/admin/dashboard')
             ->assertOk()
@@ -120,11 +103,9 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('data.summary.guest_accounts', 1)
             ->assertJsonPath('data.summary.pending_admission_applications', 1)
             ->assertJsonPath('data.summary.current_term_enrollments', 1)
-            ->assertJsonPath('data.summary.pending_administrative_actions', 3)
-            ->assertJsonPath('data.summary.published_or_ongoing_events', 1)
+            ->assertJsonPath('data.summary.pending_administrative_actions', 2)
             ->assertJsonPath('data.enrollment.current_term.period_id', $period->id)
             ->assertJsonPath('data.enrollment.by_status.submitted', 1)
-            ->assertJsonPath('data.events.items.0.attendance_session.status', 'open')
             ->assertJsonStructure(['data' => ['administrative' => ['pending_reviews', 'recent_activity']]]);
     }
 
@@ -138,7 +119,6 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('data.summary.pending_administrative_actions', 0)
             ->assertJsonPath('data.enrollment.current_term', null)
             ->assertJsonPath('data.admissions.by_status', [])
-            ->assertJsonCount(0, 'data.events.items')
             ->assertJsonCount(0, 'data.administrative.recent_activity');
     }
 

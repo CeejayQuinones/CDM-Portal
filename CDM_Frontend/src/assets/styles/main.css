@@ -280,14 +280,14 @@ textarea {
   .page-description { margin-top: 7px; font-size: 0.92rem; line-height: 1.5; }
   .placeholder-panel { border-radius: 12px; padding: 16px; }
 
-  :is(.table-wrap, .en-table, .grading-table-wrap, .event-table-wrap, .attendance-table) {
+  :is(.table-wrap, .en-table, .grading-table-wrap) {
     max-width: 100%;
     overflow-x: auto;
     overscroll-behavior-inline: contain;
     -webkit-overflow-scrolling: touch;
   }
 
-  :is(.grading-tabs, .monitoring-tabs, .history-tabs, .group-tabs, .admission-context-nav) {
+  :is(.grading-tabs, .history-tabs, .group-tabs, .admission-context-nav) {
     max-width: 100%;
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -295,16 +295,16 @@ textarea {
     scrollbar-width: none;
   }
 
-  :is(.grading-tabs, .monitoring-tabs, .history-tabs, .group-tabs, .admission-context-nav)::-webkit-scrollbar {
+  :is(.grading-tabs, .history-tabs, .group-tabs, .admission-context-nav)::-webkit-scrollbar {
     display: none;
   }
 
-  :is(.grading-tabs, .monitoring-tabs, .history-tabs, .group-tabs, .admission-context-nav) > * {
+  :is(.grading-tabs, .history-tabs, .group-tabs, .admission-context-nav) > * {
     flex: 0 0 auto;
     white-space: nowrap;
   }
 
-  :is([role='dialog'], .grading-modal, .event-modal, .admission-dialog, .en-dialog, .dr-dialog) {
+  :is([role='dialog'], .grading-modal, .admission-dialog, .en-dialog, .dr-dialog) {
     max-width: calc(100vw - 24px);
     max-height: 90dvh;
     overflow-y: auto;

@@ -5,12 +5,16 @@ namespace Database\Seeders;
 use App\Models\DocumentType;
 use App\Models\Student;
 use App\Models\StudentDocument;
+use Database\Seeders\Concerns\DevelopmentOnlySeeder;
 use Illuminate\Database\Seeder;
 
 class StudentDocumentsSeeder extends Seeder
 {
+    use DevelopmentOnlySeeder;
+
     public function run(): void
     {
+        $this->ensureDevelopmentEnvironment();
         $student = Student::query()->where('student_number', '26-00001')->firstOrFail();
         $records = [
             ['name' => 'Form 137', 'availability_status' => 'available'],

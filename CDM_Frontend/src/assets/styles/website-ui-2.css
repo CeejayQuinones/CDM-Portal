@@ -1,0 +1,260 @@
+:root {
+  --website-forest: #042017;
+  --website-deep-green: #064e3b;
+  --website-emerald: #059669;
+  --website-emerald-bright: #10b981;
+  --website-gold: #d9a93e;
+  --website-canvas: #f8fafc;
+  --website-surface: #ffffff;
+  --website-surface-elevated: #ffffff;
+  --website-surface-soft: #f1f5f9;
+  --website-input: #ffffff;
+  --website-hover: #ecfdf5;
+  --website-disabled: #e2e8f0;
+  --website-card: var(--website-surface);
+  --website-ink: #0f172a;
+  --website-muted: #64748b;
+  --website-border: #e2e8f0;
+  --website-border-strong: #cbd5e1;
+  --website-focus: #d9a93e;
+  --website-on-primary: #ffffff;
+  --website-success: #047857;
+  --website-success-bg: #ecfdf5;
+  --website-success-border: #a7f3d0;
+  --website-warning: #92400e;
+  --website-warning-bg: #fffbeb;
+  --website-warning-border: #fde68a;
+  --website-danger: #b91c1c;
+  --website-danger-bg: #fef2f2;
+  --website-danger-border: #fecaca;
+  --website-info: #1d4ed8;
+  --website-info-bg: #eff6ff;
+  --website-skeleton: #e2e8f0;
+  --website-skeleton-highlight: #f8fafc;
+  --website-overlay: rgb(2 13 9 / 55%);
+  --website-radius: 18px;
+  --website-shadow: 0 16px 45px rgba(15, 23, 42, 0.08);
+}
+
+html.website-ui-2-client {
+  background: var(--website-canvas);
+  max-width: 100%;
+  scrollbar-gutter: stable;
+}
+
+html.website-ui-2-client body {
+  background: var(--website-canvas);
+  color: var(--website-ink);
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+html.website-ui-2-client .website-ui-2-shell .page-header {
+  animation: none;
+}
+
+html.website-ui-2-client .website-ui-2-shell .website-route-view > .enrollment-workspace {
+  width: 100%;
+  max-width: 1320px;
+}
+
+html.website-ui-2-client .website-ui-2-shell .enrollment-workspace :is(.en-card, .en-grid, .en-table, .en-timetable) {
+  max-width: 100%;
+  min-width: 0;
+}
+
+html[data-student-theme='dark'].website-ui-2-client {
+  --website-canvas: #0b1613;
+  --website-surface: #13241d;
+  --website-surface-elevated: #1d3529;
+  --website-surface-soft: #172b22;
+  --website-input: #102019;
+  --website-hover: #1a3026;
+  --website-disabled: #243b30;
+  --website-card: var(--website-surface);
+  --website-ink: #e5ece8;
+  --website-muted: #a7b8ad;
+  --website-border: #294133;
+  --website-border-strong: #3c5b49;
+  --website-focus: #f4d35e;
+  --website-on-primary: #07130c;
+  --website-success: #7ee2ad;
+  --website-success-bg: #153c2b;
+  --website-success-border: #2b694c;
+  --website-warning: #f4d35e;
+  --website-warning-bg: #3b341d;
+  --website-warning-border: #6e5d25;
+  --website-danger: #ffaaa2;
+  --website-danger-bg: #492925;
+  --website-danger-border: #7e4a44;
+  --website-info: #93c5fd;
+  --website-info-bg: #17304a;
+  --website-skeleton: #1d3529;
+  --website-skeleton-highlight: #29483a;
+  --website-overlay: rgb(0 0 0 / 72%);
+  --website-deep-green: #34d399;
+  --website-emerald: #34d399;
+  --website-emerald-bright: #6ee7b7;
+  --website-shadow: 0 16px 45px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
+}
+
+html[data-student-theme='dark'].website-ui-2-client .website-ui-2-shell :is(
+  .website-topbar,
+  .website-navigation-panel,
+  .website-mobile-navigation,
+  .website-stat-card,
+  .website-quick-action,
+  .website-activity-panel,
+  .account-trigger,
+  .icon-button,
+  .search-popover,
+  .account-popover
+) {
+  background-color: var(--website-card);
+}
+
+html[data-student-theme='dark'].website-ui-2-client .website-ui-2-shell :is(.panel-link:hover, .search-popover a:hover, .account-popover a:hover, .account-popover button:hover) {
+  background: var(--website-hover);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-student-theme='system'].website-ui-2-client {
+    --website-canvas: #0b1613;
+    --website-surface: #13241d;
+    --website-surface-elevated: #1d3529;
+    --website-surface-soft: #172b22;
+    --website-input: #102019;
+    --website-hover: #1a3026;
+    --website-disabled: #243b30;
+    --website-card: var(--website-surface);
+    --website-ink: #e5ece8;
+    --website-muted: #a7b8ad;
+    --website-border: #294133;
+    --website-border-strong: #3c5b49;
+    --website-focus: #f4d35e;
+    --website-on-primary: #07130c;
+    --website-success: #7ee2ad;
+    --website-success-bg: #153c2b;
+    --website-success-border: #2b694c;
+    --website-warning: #f4d35e;
+    --website-warning-bg: #3b341d;
+    --website-warning-border: #6e5d25;
+    --website-danger: #ffaaa2;
+    --website-danger-bg: #492925;
+    --website-danger-border: #7e4a44;
+    --website-info: #93c5fd;
+    --website-info-bg: #17304a;
+    --website-skeleton: #1d3529;
+    --website-skeleton-highlight: #29483a;
+    --website-overlay: rgb(0 0 0 / 72%);
+    --website-deep-green: #34d399;
+    --website-emerald: #34d399;
+    --website-emerald-bright: #6ee7b7;
+    --website-shadow: 0 16px 45px rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
+  }
+
+  html[data-student-theme='system'].website-ui-2-client .website-ui-2-shell :is(
+    .website-topbar,
+    .website-navigation-panel,
+    .website-mobile-navigation,
+    .website-stat-card,
+    .website-quick-action,
+    .website-activity-panel,
+    .account-trigger,
+    .icon-button,
+    .search-popover,
+    .account-popover
+  ) {
+    background-color: var(--website-card);
+  }
+
+  html[data-student-theme='system'].website-ui-2-client :is(
+    .dr-dialog-overlay,
+    .en-overlay,
+    .admission-overlay,
+    .grading-modal-backdrop,
+    .step-up-backdrop,
+    .student-workflow-backdrop
+  ) {
+    background: var(--website-overlay);
+  }
+}
+
+html.website-ui-2-client .website-ui-2-shell :is(input, select, textarea) {
+  background: var(--website-input);
+  border-color: var(--website-border-strong);
+  color: var(--website-ink);
+}
+
+html.website-ui-2-client .website-ui-2-shell select option {
+  background: var(--website-surface-elevated);
+  color: var(--website-ink);
+}
+
+html.website-ui-2-client .website-ui-2-shell :is(input, select, textarea):disabled {
+  background: var(--website-disabled);
+  color: var(--website-muted);
+}
+
+html.website-ui-2-client .website-ui-2-shell :is(input, select, textarea)::placeholder {
+  color: var(--website-muted);
+}
+
+html.website-ui-2-client:is([data-student-theme='dark']) :is(
+  .dr-dialog,
+  .en-dialog,
+  .admission-dialog,
+  .grading-modal,
+  .step-up-modal,
+  .student-workflow-dialog
+) {
+  background: var(--website-surface-elevated);
+  border-color: var(--website-border);
+  color: var(--website-ink);
+  color-scheme: dark;
+}
+
+html.website-ui-2-client:is([data-student-theme='dark']) :is(
+  .dr-dialog-overlay,
+  .en-overlay,
+  .admission-overlay,
+  .grading-modal-backdrop,
+  .step-up-backdrop,
+  .student-workflow-backdrop
+) {
+  background: var(--website-overlay);
+}
+
+@media (prefers-color-scheme: dark) {
+  html.website-ui-2-client[data-student-theme='system'] :is(
+    .dr-dialog,
+    .en-dialog,
+    .admission-dialog,
+    .grading-modal,
+    .step-up-modal,
+    .student-workflow-dialog
+  ) {
+    background: var(--website-surface-elevated);
+    border-color: var(--website-border);
+    color: var(--website-ink);
+    color-scheme: dark;
+  }
+}
+
+.website-ui-2-shell :focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--website-focus) 72%, transparent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .website-ui-2-shell *,
+  .website-ui-2-shell *::before,
+  .website-ui-2-shell *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

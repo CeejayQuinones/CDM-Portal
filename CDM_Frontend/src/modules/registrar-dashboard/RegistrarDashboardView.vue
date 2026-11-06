@@ -85,6 +85,41 @@ const alerts = computed(() => [
   },
 ])
 
+const priorityItems = computed(() => [
+  {
+    key: 'pending-documents',
+    count: dashboard.value.summary.pending_document_requests ?? 0,
+    title: 'Pending document requests',
+    detail: 'Review requests awaiting Registrar processing.',
+    to: { name: 'registrar-document-requests' },
+    tone: 'priority',
+  },
+  {
+    key: 'missing-documents',
+    count: dashboard.value.summary.students_with_missing_documents ?? 0,
+    title: 'Incomplete student requirements',
+    detail: 'Open Student Records requiring document follow-up.',
+    to: { name: 'student-management' },
+    tone: 'warning',
+  },
+  {
+    key: 'record-location',
+    count: dashboard.value.summary.students_without_record_location ?? 0,
+    title: 'Records without a physical location',
+    detail: 'Assign or verify the physical filing location.',
+    to: { name: 'physical-records' },
+    tone: 'warning',
+  },
+  {
+    key: 'appointments',
+    count: dashboard.value.summary.todays_appointments ?? 0,
+    title: "Today's document appointments",
+    detail: 'Open the current appointment schedule.',
+    to: { name: 'registrar-document-appointments', query: { group: 'today' } },
+    tone: 'schedule',
+  },
+])
+
 function activityDestination(activity) {
   if (activity.type === 'appointment') return { name: 'registrar-document-appointments' }
   if (activity.type === 'record_location') return { name: 'physical-records' }
@@ -123,149 +158,65 @@ onMounted(loadDashboard)
 </script>
 
 <template>
-  <section class="dashboard-page">
-    <header class="dashboard-header">
-      <div>
-        <p class="page-kicker">Registrar Staff</p>
-        <h1 class="page-title">Registrar Dashboard</h1>
-        <p class="page-description">A live overview of student records, document requests, and appointments.</p>
-      </div>
-      <button v-if="error" type="button" class="retry-button" :disabled="loading" @click="loadDashboard">
-        Try again
-      </button>
-    </header>
-
+  <section class="operations-dashboard">
+    <div class="operations-intro">
+      <p>Live operational view of records, document processing, and today's appointments.</p>
+      <button v-if="error" type="button" class="retry-button" :disabled="loading" @click="loadDashboard">Reload dashboard</button>
+    </div>
     <p v-if="error" class="dashboard-error" role="alert">{{ error }}</p>
 
-    <section class="summary-grid" aria-label="Registrar summary">
-      <article v-for="card in summaryCards" :key="card.key" class="summary-card" :class="`tone-${card.tone}`">
-        <span class="card-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path :d="card.icon" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </span>
-        <div>
-          <strong>{{ loading ? '—' : card.value.toLocaleString() }}</strong>
-          <span>{{ card.label }}</span>
-        </div>
-      </article>
+    <section class="operations-metric-strip" aria-label="Registrar work summary">
+      <div v-for="card in summaryCards" :key="card.key" class="operations-metric">
+        <span>{{ card.label }}</span><strong>{{ loading ? '—' : card.value.toLocaleString() }}</strong>
+      </div>
     </section>
 
-    <div class="middle-grid">
-      <section class="dashboard-panel quick-actions-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="section-kicker">Shortcuts</p>
-            <h2>Quick Actions</h2>
-          </div>
-        </div>
-        <div class="quick-actions">
-          <RouterLink v-for="action in quickActions" :key="action.label" :to="action.to" class="quick-action">
-            <span class="action-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path :d="action.icon" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </span>
-            <span>
-              <strong>{{ action.label }}</strong>
-              <small>{{ action.description }}</small>
-            </span>
-            <span class="arrow" aria-hidden="true">→</span>
+    <div class="operations-grid">
+      <section class="operations-queue" aria-labelledby="priority-work-title">
+        <header class="operations-section-heading">
+          <div><p>Requires attention</p><h2 id="priority-work-title">Priority work queue</h2></div>
+          <span>Verified live counts</span>
+        </header>
+        <p v-if="loading" class="operations-state">Loading priority work…</p>
+        <div v-else class="priority-list">
+          <RouterLink v-for="item in priorityItems" :key="item.key" :to="item.to" class="priority-row">
+            <span class="priority-count" :class="item.tone">{{ item.count }}</span>
+            <span class="priority-copy"><strong>{{ item.title }}</strong><small>{{ item.detail }}</small></span>
+            <span class="priority-action">Open <span aria-hidden="true">→</span></span>
           </RouterLink>
         </div>
       </section>
 
-      <section class="dashboard-panel alerts-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="section-kicker">Needs attention</p>
-            <h2>Record Alerts</h2>
+      <aside class="operations-side-column">
+        <section class="operations-appointments" aria-labelledby="today-title">
+          <header class="operations-section-heading compact">
+            <div><p>Schedule</p><h2 id="today-title">Today's appointments</h2></div>
+            <RouterLink :to="{ name: 'registrar-document-appointments', query: { group: 'today' } }">View all</RouterLink>
+          </header>
+          <p v-if="loading" class="operations-state">Loading schedule…</p>
+          <div v-else-if="!dashboard.todays_appointments.length" class="operations-empty"><strong>No appointments today</strong><span>The current schedule is clear.</span></div>
+          <div v-else class="compact-appointment-list">
+            <RouterLink v-for="appointment in dashboard.todays_appointments" :key="appointment.id" :to="{ name: 'registrar-document-appointments', query: { appointment_id: appointment.id } }">
+              <time>{{ formatAppointmentTime(appointment.appointment_time) }}</time>
+              <span><strong>{{ appointment.student_name }}</strong><small>{{ appointment.student_number }} · {{ appointment.document }}</small></span>
+              <span class="status-badge" :class="appointment.status">{{ readableStatus(appointment.status) }}</span>
+            </RouterLink>
           </div>
-        </div>
-        <div class="alerts-list">
-          <RouterLink v-for="alert in alerts" :key="alert.text" :to="alert.to" class="record-alert">
-            <span class="alert-count" :class="alert.tone">{{ loading ? '—' : alert.count }}</span>
-            <span>
-              <strong>{{ alert.text }}</strong>
-              <small>Open records</small>
-            </span>
-            <span class="arrow" aria-hidden="true">→</span>
-          </RouterLink>
-        </div>
-      </section>
-    </div>
+        </section>
 
-    <div class="bottom-grid">
-      <section class="dashboard-panel activity-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="section-kicker">Latest updates</p>
-            <h2>Recent Activity</h2>
+        <section class="operations-activity" aria-labelledby="activity-title">
+          <header class="operations-section-heading compact"><div><p>Operational context</p><h2 id="activity-title">Recent activity</h2></div></header>
+          <p v-if="loading" class="operations-state">Loading recent activity…</p>
+          <p v-else-if="!dashboard.recent_activity.length" class="operations-state">No recent activity yet.</p>
+          <div v-else class="compact-activity-list">
+            <RouterLink v-for="activity in dashboard.recent_activity" :key="activity.id" :to="activityDestination(activity)">
+              <span class="activity-dot" :class="activity.type" aria-hidden="true"></span>
+              <span><strong>{{ activity.student_name }}</strong><small>{{ activity.action }}</small></span>
+              <time :datetime="activity.occurred_at" :title="formatExactDateTime(activity.occurred_at)">{{ formatRelativeTime(activity.occurred_at) }}</time>
+            </RouterLink>
           </div>
-        </div>
-        <p v-if="loading" class="panel-state">Loading recent activity…</p>
-        <p v-else-if="!dashboard.recent_activity.length" class="panel-state">No recent activity yet.</p>
-        <div v-else class="activity-list">
-          <div class="table-heading activity-table-heading" aria-hidden="true">
-            <span>Activity</span>
-            <span>Updated</span>
-          </div>
-          <RouterLink
-            v-for="activity in dashboard.recent_activity"
-            :key="activity.id"
-            :to="activityDestination(activity)"
-            class="activity-item"
-          >
-            <span class="activity-dot" :class="activity.type" aria-hidden="true"></span>
-            <span class="activity-copy">
-              <strong>{{ activity.student_name }}</strong>
-              <span>{{ activity.action }}</span>
-              <small v-if="activity.detail">{{ activity.detail }}</small>
-            </span>
-            <time :datetime="activity.occurred_at" :title="formatExactDateTime(activity.occurred_at)">
-              {{ formatRelativeTime(activity.occurred_at) }}
-            </time>
-          </RouterLink>
-        </div>
-      </section>
-
-      <section class="dashboard-panel appointments-panel">
-        <div class="panel-heading appointment-heading">
-          <div>
-            <p class="section-kicker">Schedule</p>
-            <h2>Today's Appointments</h2>
-          </div>
-          <RouterLink :to="{ name: 'registrar-document-appointments', query: { group: 'today' } }" class="view-link">
-            View Appointments
-          </RouterLink>
-        </div>
-        <p v-if="loading" class="panel-state">Loading today's schedule…</p>
-        <div v-else-if="!dashboard.todays_appointments.length" class="empty-appointments">
-          <span aria-hidden="true">✓</span>
-          <strong>No appointments today</strong>
-          <p>The schedule is clear for the day.</p>
-        </div>
-        <div v-else class="appointment-list">
-          <div class="table-heading appointment-table-heading" aria-hidden="true">
-            <span>Time</span>
-            <span>Student / Document</span>
-            <span>Status</span>
-          </div>
-          <RouterLink
-            v-for="appointment in dashboard.todays_appointments"
-            :key="appointment.id"
-            :to="{ name: 'registrar-document-appointments', query: { appointment_id: appointment.id } }"
-            class="appointment-item"
-          >
-            <time>{{ formatAppointmentTime(appointment.appointment_time) }}</time>
-            <span class="appointment-copy">
-              <strong>{{ appointment.student_name }}</strong>
-              <small>{{ appointment.student_number }} · {{ appointment.document }}</small>
-            </span>
-            <span class="status-badge" :class="appointment.status">{{ readableStatus(appointment.status) }}</span>
-          </RouterLink>
-        </div>
-      </section>
+        </section>
+      </aside>
     </div>
   </section>
 </template>
@@ -886,6 +837,49 @@ onMounted(loadDashboard)
   color: var(--danger);
 }
 
+.operations-dashboard { min-width: 0; }
+.operations-intro { align-items: center; display: flex; justify-content: space-between; margin-bottom: 12px; }
+.operations-intro p { color: var(--desk-muted, var(--text-secondary)); font-size: .78rem; margin: 0; }
+.operations-metric-strip { background: var(--desk-surface, #fff); border: 1px solid var(--desk-line, #dce5df); border-radius: 7px; display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); margin-bottom: 14px; overflow: hidden; }
+.operations-metric { align-items: center; border-right: 1px solid var(--desk-line, #dce5df); display: flex; gap: 12px; justify-content: space-between; min-height: 68px; padding: 12px 16px; }
+.operations-metric:last-child { border-right: 0; }
+.operations-metric span { color: var(--desk-muted, #65756b); font-size: .7rem; font-weight: 650; line-height: 1.3; }
+.operations-metric strong { color: var(--desk-ink, #183326); font-size: 1.55rem; font-variant-numeric: tabular-nums; }
+.operations-grid { display: grid; gap: 14px; grid-template-columns: minmax(430px,1.25fr) minmax(330px,.75fr); min-width: 0; }
+.operations-queue, .operations-appointments, .operations-activity { background: var(--desk-surface, #fff); border: 1px solid var(--desk-line, #dce5df); border-radius: 7px; min-width: 0; overflow: hidden; }
+.operations-side-column { align-content: start; display: grid; gap: 14px; min-width: 0; }
+.operations-section-heading { align-items: center; border-bottom: 1px solid var(--desk-line, #dce5df); display: flex; justify-content: space-between; min-height: 60px; padding: 11px 15px; }
+.operations-section-heading.compact { min-height: 54px; }
+.operations-section-heading p { color: var(--desk-green-700, #08714d); font-size: .61rem; font-weight: 750; letter-spacing: .06em; margin: 0 0 3px; text-transform: uppercase; }
+.operations-section-heading h2 { color: var(--desk-ink, #183326); font-size: .9rem; margin: 0; }
+.operations-section-heading > span, .operations-section-heading a { color: var(--desk-muted, #65756b); font-size: .65rem; font-weight: 700; }
+.operations-section-heading a:hover { color: var(--desk-green-700, #08714d); }
+.priority-list { display: grid; }
+.priority-row { align-items: center; border-bottom: 1px solid var(--desk-line, #dce5df); color: inherit; display: grid; gap: 12px; grid-template-columns: 44px minmax(0,1fr) auto; min-height: 76px; padding: 11px 15px; }
+.priority-row:last-child { border-bottom: 0; }
+.priority-row:hover { background: var(--desk-surface-muted, #f8faf8); }
+.priority-row:focus-visible { outline: 2px solid var(--desk-green-700, #08714d); outline-offset: -2px; }
+.priority-count { align-items: center; background: var(--desk-green-100, #e4f2e9); border-radius: 6px; color: var(--desk-green-700, #08714d); display: flex; font-size: .88rem; font-weight: 800; height: 38px; justify-content: center; min-width: 38px; padding: 0 5px; }
+.priority-count.warning { background: var(--desk-warning-soft, #fff7dc); color: var(--desk-warning, #76560b); }
+.priority-copy strong, .priority-copy small { display: block; }
+.priority-copy strong { color: var(--desk-ink, #183326); font-size: .78rem; }
+.priority-copy small { color: var(--desk-muted, #65756b); font-size: .67rem; line-height: 1.4; margin-top: 3px; }
+.priority-action { color: var(--desk-green-700, #08714d); font-size: .67rem; font-weight: 750; white-space: nowrap; }
+.compact-appointment-list, .compact-activity-list { display: grid; }
+.compact-appointment-list > a { align-items: center; border-bottom: 1px solid var(--desk-line, #dce5df); color: inherit; display: grid; gap: 9px; grid-template-columns: 64px minmax(0,1fr) auto; min-height: 58px; padding: 8px 12px; }
+.compact-appointment-list > a:last-child, .compact-activity-list > a:last-child { border-bottom: 0; }
+.compact-appointment-list > a:hover, .compact-activity-list > a:hover { background: var(--desk-surface-muted, #f8faf8); }
+.compact-appointment-list time { color: var(--desk-green-700, #08714d); font-size: .68rem; font-weight: 750; }
+.compact-appointment-list strong, .compact-appointment-list small, .compact-activity-list strong, .compact-activity-list small { display: block; }
+.compact-appointment-list strong, .compact-activity-list strong { color: var(--desk-ink, #183326); font-size: .72rem; }
+.compact-appointment-list small, .compact-activity-list small { color: var(--desk-muted, #65756b); font-size: .62rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-activity-list > a { align-items: start; border-bottom: 1px solid var(--desk-line, #dce5df); color: inherit; display: grid; gap: 8px; grid-template-columns: 10px minmax(0,1fr) auto; min-height: 52px; padding: 9px 12px; }
+.compact-activity-list time { color: var(--desk-muted, #65756b); font-size: .58rem; white-space: nowrap; }
+.operations-state, .operations-empty { color: var(--desk-muted, #65756b); font-size: .72rem; margin: 0; padding: 24px 15px; text-align: center; }
+.operations-empty strong, .operations-empty span { display: block; }
+.operations-empty strong { color: var(--desk-ink, #183326); }
+.operations-empty span { margin-top: 4px; }
+
 @media (max-width: 1100px) {
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -895,6 +889,8 @@ onMounted(loadDashboard)
   .bottom-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .operations-grid { grid-template-columns: minmax(0,1fr); }
 }
 
 @media (max-width: 620px) {
@@ -937,5 +933,9 @@ onMounted(loadDashboard)
   .table-heading {
     display: none;
   }
+
+  .operations-metric-strip { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .operations-metric:nth-child(2) { border-right: 0; }
+  .operations-metric:nth-child(-n+2) { border-bottom: 1px solid var(--desk-line, #dce5df); }
 }
 </style>

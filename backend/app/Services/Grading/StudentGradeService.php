@@ -4,7 +4,6 @@ namespace App\Services\Grading;
 
 use App\Models\AcademicYear;
 use App\Models\EnrollmentSubject;
-use App\Models\GradeConversation;
 use App\Models\GradeSheet;
 use App\Models\Role;
 use App\Models\Semester;
@@ -23,10 +22,10 @@ class StudentGradeService
         $actor->loadMissing(['role', 'student']);
         abort_unless($actor->status === 'active' && $actor->role?->role_name === Role::STUDENT && $actor->student, 403, 'Active Student access required.');
 
-        return $this->forStudent($actor->student, $filters, $actor);
+        return $this->forStudent($actor->student, $filters);
     }
 
-    public function forStudent(Student $student, array $filters = [], ?User $viewer = null): array
+    public function forStudent(Student $student, array $filters = []): array
     {
         $sheets = GradeSheet::query()
             ->where('status', 'published')
@@ -40,19 +39,10 @@ class StudentGradeService
                 'professor.user.profile',
             ])->get();
 
-        $conversations = GradeConversation::query()
-            ->where('student_id', $student->id)
-            ->whereIn('grade_sheet_id', $sheets->pluck('id'))
-            ->withCount(['messages as unread_count' => fn ($query) => $viewer
-                ? $query->where('sender_user_id', '!=', $viewer->id)->whereNull('read_at')->whereNull('unsent_at')
-                : $query->whereRaw('1 = 0')])
-            ->get()->keyBy('grade_sheet_id');
-
-        $rows = $sheets->map(function (GradeSheet $sheet) use ($conversations): array {
+        $rows = $sheets->map(function (GradeSheet $sheet): array {
             $attempt = $sheet->latestSubmission;
             $result = $attempt->students->first();
             $context = $this->context($sheet);
-            $conversation = $conversations->get($sheet->id);
 
             return [
                 'grade_sheet_id' => $sheet->id,
@@ -77,8 +67,6 @@ class StudentGradeService
                 'grade_point' => $result->grade_point,
                 'remarks' => $result->remarks,
                 'published_at' => $sheet->published_at?->toIso8601String(),
-                'conversation_id' => $conversation?->id,
-                'unread_messages' => (int) ($conversation?->unread_count ?? 0),
                 'historical_context' => isset($attempt->configuration['context']) ? 'snapshot' : 'legacy_current_reference',
             ];
         });
