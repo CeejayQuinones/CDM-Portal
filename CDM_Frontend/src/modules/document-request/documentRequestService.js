@@ -41,10 +41,16 @@ export const documentRequestService = {
   documentTypes,
   myRequests: () => unwrap(apiClient.get('/document-requests')),
   createRequest: (payload) => unwrap(apiClient.post('/document-requests', payload)),
+  createRequestBatch: (payload) => unwrap(apiClient.post('/document-request-batches', payload)),
+  registrarBatches: (params) => unwrap(apiClient.get('/registrar/document-request-batches', { params })),
+  registrarRequestStudents: (params) => unwrap(apiClient.get('/registrar/document-request-students', { params })),
+  registrarRequestStudent: (id, params) => unwrap(apiClient.get(`/registrar/document-request-students/${id}`, { params })),
+  sameLocationRequests: (id, params) => unwrap(apiClient.get(`/registrar/document-request-students/${id}/same-location`, { params })),
+  bulkRejectRequests: (payload) => unwrap(apiClient.post('/registrar/document-requests/bulk-reject', payload)),
+  retrievalTasks: (params) => unwrap(apiClient.get('/registrar/physical-retrieval', { params })),
+  updateRetrievalTask: (id, action) => unwrap(apiClient.patch(`/registrar/physical-retrieval/${id}`, { action })),
   cancelRequest: (requestId, payload) =>
     unwrap(apiClient.patch(`/document-requests/${requestId}/cancel`, payload)),
-  appointmentAvailability: (month) =>
-    unwrap(apiClient.get('/appointment-availability', { params: { month } })),
   registrarRecentActivity: (params) => unwrap(apiClient.get('/registrar/document-request-activity', { params })),
   registrarRequests: (params) => unwrap(apiClient.get('/registrar/document-requests', { params })),
   registrarHistory: (params) => unwrap(apiClient.get('/registrar/document-requests/history', { params })),

@@ -18,6 +18,7 @@ class StoreDocumentTypeRequest extends ApiFormRequest
             'description' => ['nullable', 'string', 'max:3000'],
             'workflow_category' => ['required', Rule::in(['supporting_record', 'official_issuance'])],
             'requires_appointment' => ['required', 'boolean'],
+            'requires_physical_retrieval' => ['sometimes', 'boolean'],
             'student_requestable' => ['required', 'boolean'],
             'student_uploadable' => ['required', 'boolean', Rule::prohibitedIf(fn (): bool => $this->input('workflow_category') !== 'supporting_record' && $this->boolean('student_uploadable'))],
             'processing_fee' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],

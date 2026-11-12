@@ -80,3 +80,13 @@ test('desktop scheduling is data-derived and contains no drag-and-drop or synthe
   assert.doesNotMatch(schedule, /mock|sample schedule|demo meeting/i)
 })
 
+test('Registrar Enrollment uses dark semantic text tokens without changing light defaults', async () => {
+  const css = await source('modules/enrollment/registrarEnrollmentComplete.css')
+  assert.match(css, /html\.cdm-desktop-client\[data-student-theme='dark'\] \.registrar-workspace :is\(\.en-staff-modern, \.ear-workspace\)/)
+  assert.match(css, /html\.cdm-desktop-client\[data-student-theme='system'\] \.registrar-workspace :is\(\.en-staff-modern, \.ear-workspace\)/)
+  for (const token of ['--desk-text: var(--desk-ink)', '--desk-text-muted: var(--desk-muted)', '--en-green: var(--desk-green-700)', '--en-action: var(--desk-action)', '--en-muted: var(--desk-muted)', '--en-error: var(--desk-danger)']) assert.ok(css.includes(token))
+  assert.match(css, /--en-action: var\(--en-green\)/)
+  assert.match(css, /\.en-day-picker button\.selected \{ background: var\(--en-action\)/)
+  assert.doesNotMatch(css, /html\.cdm-desktop-client\[data-student-theme='light'\] \.registrar-workspace/)
+})
+

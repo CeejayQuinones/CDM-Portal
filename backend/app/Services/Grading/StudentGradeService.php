@@ -5,6 +5,7 @@ namespace App\Services\Grading;
 use App\Models\AcademicYear;
 use App\Models\EnrollmentSubject;
 use App\Models\GradeSheet;
+use App\Models\HistoricalGradeRecord;
 use App\Models\Role;
 use App\Models\Semester;
 use App\Models\Student;
@@ -74,6 +75,16 @@ class StudentGradeService
         $terms = $this->terms($student, $rows);
         $selected = $this->selectedTerm($terms, $filters);
         $selectedRows = $selected ? $rows->where('academic_year_id', $selected['academic_year_id'])->where('semester_id', $selected['semester_id'])->values() : collect();
+        $historicalRows = $selected ? HistoricalGradeRecord::where('student_id', $student->id)
+            ->where('verification_status', 'verified')
+            ->where('academic_year_id', $selected['academic_year_id'])
+            ->where('semester_id', $selected['semester_id'])
+            ->orderBy('subject_code')->get()->map(fn ($record) => [
+                'id' => $record->id, 'subject_code' => $record->subject_code,
+                'subject_name' => $record->subject_name, 'final_grade' => $record->final_grade,
+                'official_result' => $record->official_result, 'credited_units' => $record->credited_units,
+                'source_type' => $record->source_type, 'source_reference' => $record->source_reference,
+            ])->all() : [];
         $expected = $selected ? $this->expectedSubjects($student, $selected['academic_year_id'], $selected['semester_id']) : collect();
         $publishedIds = $selectedRows->pluck('grade_sheet_id')->count();
         $expectedIds = $expected->pluck('id')->unique();
@@ -102,6 +113,7 @@ class StudentGradeService
                 'gwa' => ['available' => false, 'value' => null, 'message' => 'Not available until grading scale is configured.'],
             ],
             'grades' => $selectedRows,
+            'historical_grades' => $historicalRows,
         ];
     }
 
@@ -127,6 +139,13 @@ class StudentGradeService
             fputcsv($out, ['Subject Code', 'Subject Description', 'Professor', 'Section', 'Units', 'Midterm', 'Finals', 'Final Grade', 'Grade Point', 'Remarks', 'Published At']);
             foreach ($report['grades'] as $row) {
                 fputcsv($out, [$row['subject_code'], $row['subject_name'], $row['professor'], $row['section'], $row['units'], $row['midterm_grade'], $row['finals_grade'], $row['final_grade'], $row['grade_point'] ?? 'N/A', $row['remarks'] ?? 'N/A', $row['published_at']]);
+            }
+            fputcsv($out, []);
+            fputcsv($out, ['Historical Grades — verified Registrar records']);
+            fputcsv($out, ['Subject Code', 'Subject Description', 'Credited Units', 'Final Grade', 'Official Result', 'Source Reference']);
+            foreach ($report['historical_grades'] as $row) {
+                $safe = fn ($value) => preg_match('/^[=+@\-\t\r]/u', (string) $value) ? "'".$value : $value;
+                fputcsv($out, [$safe($row['subject_code']), $safe($row['subject_name']), $row['credited_units'], $safe($row['final_grade']), $row['official_result'], $safe($row['source_reference'])]);
             }
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
@@ -175,7 +194,12 @@ class StudentGradeService
     {
         $enrollmentTerms = collect($student->enrollments()->whereIn('status', ['enrolled', 'completed'])->with(['academicYear', 'semester'])->get()->map(fn ($row) => ['academic_year_id' => $row->academic_year_id, 'academic_year' => $row->academicYear?->school_year, 'semester_id' => $row->semester_id, 'semester' => $row->semester?->semester_name])->all());
         $publishedTerms = collect($rows->map(fn ($row) => collect($row)->only(['academic_year_id', 'academic_year', 'semester_id', 'semester'])->all())->all());
-        $terms = $publishedTerms->merge($enrollmentTerms)->unique(fn ($term) => $term['academic_year_id'].':'.$term['semester_id']);
+        $historicalTerms = HistoricalGradeRecord::where('student_id', $student->id)->where('verification_status', 'verified')
+            ->with(['academicYear', 'semester'])->get()->map(fn ($row) => [
+                'academic_year_id' => $row->academic_year_id, 'academic_year' => $row->academicYear?->school_year,
+                'semester_id' => $row->semester_id, 'semester' => $row->semester?->semester_name,
+            ]);
+        $terms = $publishedTerms->merge($enrollmentTerms)->merge($historicalTerms)->unique(fn ($term) => $term['academic_year_id'].':'.$term['semester_id']);
         $years = AcademicYear::whereIn('id', $terms->pluck('academic_year_id')->filter())->get()->keyBy('id');
         $semesters = Semester::whereIn('id', $terms->pluck('semester_id')->filter())->get()->keyBy('id');
 

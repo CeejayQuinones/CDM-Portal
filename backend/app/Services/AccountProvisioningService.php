@@ -214,6 +214,10 @@ class AccountProvisioningService
             $updates['is_first_login'] = true;
         }
         $user->update($updates);
+        if (array_key_exists('password', $updates)) {
+            $user->tokens()->delete();
+            $this->invalidateLoginChallenges($user);
+        }
         $user->profile()->lockForUpdate()->firstOrFail()->update($this->profileData($data));
     }
 
@@ -241,6 +245,7 @@ class AccountProvisioningService
             $user = $record->user()->lockForUpdate()->firstOrFail();
             $previous = $record->status;
             $user->update(['status' => $status]);
+            $this->invalidateLoginChallenges($user);
             $record->update(['status' => $status]);
             $this->audit->record($actor, $user, $action, [
                 'role' => $user->role()->value('role_name'),
@@ -250,5 +255,13 @@ class AccountProvisioningService
 
             return $record->fresh()->load('user.profile');
         });
+    }
+
+    private function invalidateLoginChallenges(User $user): void
+    {
+        $user->loginOtpChallenges()
+            ->whereNull('consumed_at')
+            ->whereNull('superseded_at')
+            ->update(['superseded_at' => now()]);
     }
 }

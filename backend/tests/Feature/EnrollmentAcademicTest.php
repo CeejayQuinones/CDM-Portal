@@ -3,11 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\AcademicYear;
+use App\Models\Admission\AdmissionApplicant;
+use App\Models\Admission\AdmissionCycle;
 use App\Models\Course;
 use App\Models\DocumentType;
 use App\Models\Enrollment;
 use App\Models\Enrollment\EnrollmentApplication;
 use App\Models\Enrollment\EnrollmentDocument;
+use App\Models\Enrollment\EnrollmentPeriod;
 use App\Models\Enrollment\EnrollmentWorkflowEvent;
 use App\Models\EnrollmentSubject;
 use App\Models\GradeSheet;
@@ -15,6 +18,7 @@ use App\Models\Professor;
 use App\Models\Role;
 use App\Models\Section;
 use App\Models\SectionSubject;
+use App\Models\Semester;
 use App\Models\Student;
 use App\Models\StudentDocument;
 use App\Models\StudentRecordAuditEvent;
@@ -191,10 +195,58 @@ class EnrollmentAcademicTest extends TestCase
         $this->assertTrue($eligibility['academic_ready']);
         $this->assertSame('term_enrollment_exists', $eligibility['reason']);
 
+        $this->getJson('/api/students?search='.$student->student_number)->assertOk()
+            ->assertJsonPath('data.0.id', $student->id)
+            ->assertJsonPath('data.0.admission_record', 'Available')
+            ->assertJsonPath('data.0.has_admission_record', true);
+        $this->getJson('/api/students/'.$student->id)->assertOk()
+            ->assertJsonPath('data.admission_record', 'Available')
+            ->assertJsonPath('data.has_admission_record', true);
+        $this->getJson('/api/students/'.$student->id.'/history')->assertOk()
+            ->assertJsonPath('data.entry_classification', 'Freshman')
+            ->assertJsonPath('data.admission_link_status', 'linked')
+            ->assertJsonPath('data.admission.applicant_number', $case['applicant']->applicant_number)
+            ->assertJsonPath('data.admission.status', 'accepted')
+            ->assertJsonPath('data.admission.provenance', 'enrollment_finalization');
+
         $this->postJson($this->base().'/applications/'.$application->id.'/finalize', [
             'version' => $application->version - 1, 'confirmed' => true,
         ])->assertOk()->assertJsonPath('data.enrollment_id', $response->json('data.enrollment_id'));
         $this->assertSame($studentCount + 1, Student::count());
+
+        $unrelatedUser = User::factory()->create(['role_id' => Role::where('role_name', Role::STUDENT)->value('id')]);
+        $unrelatedProfile = $unrelatedUser->profile()->create([
+            'first_name' => 'Unrelated', 'last_name' => 'Student', 'gender' => 'Prefer not to say',
+        ]);
+        $unrelatedStudent = Student::create([
+            'user_id' => $unrelatedUser->id, 'user_profile_id' => $unrelatedProfile->id,
+            'course_id' => $this->f['course']->id, 'curriculum_id' => $this->f['curriculum']->id,
+            'student_number' => 'UNRELATED-ADMISSION', 'year_level' => 1,
+            'admission_date' => now()->toDateString(), 'student_status' => 'regular',
+        ]);
+        $this->getJson('/api/students?search=UNRELATED-ADMISSION')->assertOk()
+            ->assertJsonPath('data.0.admission_record', 'No linked Admission record')
+            ->assertJsonPath('data.0.has_admission_record', false);
+        $this->getJson('/api/students/'.$unrelatedStudent->id.'/history')->assertOk()
+            ->assertJsonPath('data.admission', null);
+
+        EnrollmentApplication::create([
+            'student_id' => $student->id,
+            'owner_user_id' => $student->user_id,
+            'admission_applicant_id' => $case['applicant']->id,
+            'period_id' => $this->f['period']->id,
+            'academic_year_id' => $this->f['year']->id,
+            'semester_id' => $this->f['semester']->id,
+            'course_id' => $this->f['course']->id,
+            'curriculum_id' => $this->f['curriculum']->id,
+            'year_level' => 1,
+            'classification' => 'regular',
+            'status' => 'cancelled',
+        ]);
+        $this->getJson('/api/students/'.$student->id.'/history')->assertOk()
+            ->assertJsonCount(2, 'data.applications')
+            ->assertJsonPath('data.admission.applicant_number', $case['applicant']->applicant_number)
+            ->assertJsonPath('data.admission.provenance', 'enrollment_finalization');
     }
 
     public function test_first_time_finalization_links_supported_enrollment_documents_without_copying_files(): void
@@ -318,7 +370,7 @@ class EnrollmentAcademicTest extends TestCase
 
         $this->postJson($this->base().'/applications/'.$application->id.'/finalize', [
             'version' => $application->version, 'confirmed' => true,
-        ])->assertStatus(503)->assertDontSee('private first-time rollback test');
+        ])->assertStatus(500)->assertDontSee('private first-time rollback test');
 
         $this->assertSame($studentCount, Student::count());
         $this->assertSame($enrollmentCount, Enrollment::count());
@@ -505,6 +557,47 @@ class EnrollmentAcademicTest extends TestCase
             ->assertJsonPath('data.total', 0);
     }
 
+    public function test_admitted_guest_finalizes_two_subjects_with_pending_schedules(): void
+    {
+        [$case, $application] = $this->firstTimeApplication();
+        $this->assertDatabaseCount('section_subjects', 0);
+
+        $this->postJson($this->base().'/applications/'.$application->id.'/subjects', [
+            'version' => $application->version, 'subject_ids' => [],
+        ])->assertOk();
+        $application->refresh();
+        $this->postJson($this->base().'/applications/'.$application->id.'/assign', [
+            'version' => $application->version, 'section_id' => $this->f['section']->id,
+        ])->assertOk();
+        $application->refresh();
+
+        $this->getJson($this->base().'/applications/'.$application->id)
+            ->assertOk()
+            ->assertJsonPath('data.load.candidates.0.schedule_status', 'pending')
+            ->assertJsonPath('data.load.candidates.1.schedule_status', 'pending');
+
+        $response = $this->postJson($this->base().'/applications/'.$application->id.'/finalize', [
+            'version' => $application->version, 'confirmed' => true,
+        ])->assertOk()->assertJsonPath('data.status', 'enrolled');
+
+        $student = Student::findOrFail($response->json('data.student_id'));
+        $this->assertSame($case['user']->id, $student->user_id);
+        $this->assertNotEmpty($student->student_number);
+        $this->assertDatabaseHas('enrollments', [
+            'id' => $response->json('data.enrollment_id'),
+            'section_id' => $this->f['section']->id,
+            'student_id' => $student->id,
+        ]);
+        $this->assertDatabaseCount('enrollment_subjects', 2);
+        foreach (array_slice($this->f['subjects'], 0, 2) as $subject) {
+            $this->assertDatabaseHas('enrollment_subjects', [
+                'enrollment_id' => $response->json('data.enrollment_id'),
+                'subject_id' => $subject->id,
+            ]);
+        }
+        $this->assertDatabaseCount('section_subjects', 0);
+    }
+
     public function test_ovrf_is_shared_authoritative_owned_and_available_without_schedules(): void
     {
         $this->assertDatabaseCount('section_subjects', 0);
@@ -521,10 +614,22 @@ class EnrollmentAcademicTest extends TestCase
             ->assertHeader('Content-Type', 'application/pdf')
             ->assertHeader('X-OVRF-Validation-Status', 'physical-verification-required');
         $this->assertStringStartsWith('%PDF-', $studentResponse->getContent());
-        $this->withHeader('X-CDM-Client', 'mobile')
+        $pdfStreams = static function (string $pdf): string {
+            preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdf, $matches);
+
+            return implode("\n", array_map(static fn (string $stream): string => @gzuncompress($stream) ?: '', $matches[1]));
+        };
+        $this->assertStringContainsString('VIEWING PURPOSES ONLY', $pdfStreams($studentResponse->getContent()));
+        $this->assertMatchesRegularExpression('/\/Subtype\s*\/Image\b/', $studentResponse->getContent());
+        $this->assertSame(
+            '117da29e58dc7cdcb7054072b4b09f8781ea3e99d3ccec235fa6e1f4e83d4097',
+            hash_file('sha256', resource_path('images/cdm-seal.png')),
+        );
+        $studentDownload = $this->withHeader('X-CDM-Client', 'mobile')
             ->get($this->base().'/records/'.$enrollmentId.'/ovrf?disposition=attachment')
             ->assertOk()
             ->assertHeader('Content-Disposition', 'attachment; filename="OVRF-'.$this->f['student']->student_number.'-'.$this->f['year']->school_year.'.pdf"');
+        $this->assertStringNotContainsString('VIEWING PURPOSES ONLY', $pdfStreams($studentDownload->getContent()));
         $this->getJson($this->base().'/records/'.$enrollmentId)
             ->assertOk()
             ->assertJsonPath('data.subjects.0.schedule_status', 'pending');
@@ -537,10 +642,11 @@ class EnrollmentAcademicTest extends TestCase
         $this->get($this->base().'/records/'.$enrollmentId.'/ovrf')->assertForbidden();
 
         Sanctum::actingAs($this->f['registrar']);
-        $this->withHeader('X-CDM-Client', 'desktop')
+        $registrarResponse = $this->withHeader('X-CDM-Client', 'desktop')
             ->get($this->base().'/records/'.$enrollmentId.'/ovrf')
             ->assertOk()
             ->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringNotContainsString('VIEWING PURPOSES ONLY', $pdfStreams($registrarResponse->getContent()));
 
         $enrollment = Enrollment::findOrFail($enrollmentId);
         $enrollment->update(['status' => 'pending']);
@@ -552,12 +658,23 @@ class EnrollmentAcademicTest extends TestCase
 
         $this->assertDatabaseCount('enrollments', $enrollmentCount);
         $this->assertDatabaseCount('enrollment_subjects', $subjectCount);
-        $template = file_get_contents(resource_path('views/enrollment/ovrf.blade.php'));
+        $template = file_get_contents(resource_path('views/enrollment/ovrf-default.blade.php'));
+        $this->assertStringContainsString('Student General Information', $template);
+        $this->assertStringContainsString('Courses Enrolled', $template);
+        $this->assertStringContainsString('Assessed Fees', $template);
+        $this->assertStringContainsString('Payment Details', $template);
+        $this->assertStringContainsString('Not yet assessed', $template);
+        $this->assertStringContainsString('Provisional wording — Registrar review required', $template);
+        $this->assertStringContainsString('In consideration of my admission to Colegio de Montalban', $template);
+        $this->assertStringNotContainsString('₱0.00', $template);
+        $this->assertStringNotContainsString('SAMPLE TEMPLATE', $template);
         $this->assertStringContainsString('Student signature over printed name', $template);
         $this->assertStringContainsString('Registrar signature over printed name', $template);
         $this->assertStringContainsString('Official school stamp / seal', $template);
         $this->assertStringContainsString('Generating, downloading, or printing this form does not constitute Registrar approval', $template);
         $this->assertStringContainsString('no verified fee assessment or payment record', file_get_contents(app_path('Services/Enrollment/EnrollmentOvrfService.php')));
+        $this->assertFileExists(resource_path('images/cdm-seal.png'));
+        $this->assertStringNotContainsString('CDM_Frontend', file_get_contents(app_path('Services/Enrollment/EnrollmentOvrfService.php')));
     }
 
     public function test_scheduling_after_enrollment_closes_updates_students_without_reenrollment(): void
@@ -594,6 +711,33 @@ class EnrollmentAcademicTest extends TestCase
         $this->withHeader('X-CDM-Client', 'web')->getJson('/api/grading/classes')
             ->assertOk()
             ->assertJsonPath('data.total', 1);
+    }
+
+    public function test_legacy_meeting_with_a_blank_room_remains_schedule_pending(): void
+    {
+        $this->action('subjects', ['subject_ids' => []])->assertOk();
+        $this->action('assign', ['section_id' => $this->f['section']->id])->assertOk();
+        $enrollmentId = $this->action('finalize')->assertOk()->json('data.enrollment_id');
+        $assignment = SectionSubject::create([
+            'section_id' => $this->f['section']->id,
+            'subject_id' => $this->f['subjects'][0]->id,
+            'professor_id' => $this->f['professor']->id,
+            'day' => 'Monday',
+            'start_time' => '09:00:00',
+            'end_time' => '10:00:00',
+            'room' => '',
+        ]);
+        $assignment->meetings()->create([
+            'day' => 'Monday',
+            'start_time' => '09:00:00',
+            'end_time' => '10:00:00',
+            'room' => '',
+        ]);
+
+        Sanctum::actingAs($this->f['user']);
+        $this->getJson($this->base().'/records/'.$enrollmentId)
+            ->assertOk()
+            ->assertJsonPath('data.subjects.0.schedule_status', 'pending');
     }
 
     public function test_scheduling_is_independent_of_the_enrollment_period_window(): void
@@ -677,6 +821,109 @@ class EnrollmentAcademicTest extends TestCase
             ->assertJsonPath('data.entry_classification', 'Continuing');
     }
 
+    public function test_student_records_preserve_verified_legacy_admission_conversion(): void
+    {
+        $applicant = $this->f['cases'][0]['applicant']->fresh();
+
+        $this->getJson('/api/students?search='.$this->f['student']->student_number)->assertOk()
+            ->assertJsonPath('data.0.admission_record', 'Available');
+        $this->getJson('/api/students/'.$this->f['student']->id.'/history')->assertOk()
+            ->assertJsonPath('data.entry_classification', 'Freshman')
+            ->assertJsonPath('data.admission.applicant_number', $applicant->applicant_number)
+            ->assertJsonPath('data.admission.provenance', 'legacy_conversion')
+            ->assertJsonPath('data.admission.converted_at', $applicant->converted_at->toISOString());
+    }
+
+    public function test_incomplete_or_rejected_enrollment_handoff_does_not_create_an_admission_link(): void
+    {
+        [$case, $application] = $this->firstTimeApplication(2);
+        $student = Student::create([
+            'user_id' => $case['user']->id, 'user_profile_id' => $case['profile']->id,
+            'course_id' => $this->f['course']->id, 'curriculum_id' => $this->f['curriculum']->id,
+            'student_number' => 'INCOMPLETE-HANDOFF', 'year_level' => 1,
+            'admission_date' => now()->toDateString(), 'student_status' => 'regular',
+        ]);
+        $application->update(['student_id' => $student->id]);
+
+        foreach (['approved', 'rejected'] as $status) {
+            $application->update(['status' => $status]);
+            $this->getJson('/api/students?search=INCOMPLETE-HANDOFF')->assertOk()
+                ->assertJsonPath('data.0.admission_record', 'No linked Admission record');
+            $this->getJson('/api/students/'.$student->id.'/history')->assertOk()
+                ->assertJsonPath('data.admission', null)
+                ->assertJsonPath('data.entry_classification', 'Legacy / Existing Student');
+        }
+    }
+
+    public function test_ambiguous_verified_admission_ownership_fails_closed(): void
+    {
+        [$case, $application] = $this->firstTimeApplication();
+        $this->prepareApplication($application->id);
+        $application->refresh();
+        $this->postJson($this->base().'/applications/'.$application->id.'/finalize', [
+            'version' => $application->version, 'confirmed' => true,
+        ])->assertOk();
+        $application->refresh();
+        $student = Student::findOrFail($application->student_id);
+
+        $otherYear = AcademicYear::create([
+            'school_year' => 'AMBIGUOUS-ADMISSION', 'start_date' => now()->addYear()->startOfYear(),
+            'end_date' => now()->addYear()->endOfYear(), 'status' => 'completed',
+        ]);
+        $otherSemester = Semester::create([
+            'semester_name' => 'Ambiguous Admission', 'semester_order' => 2, 'status' => 'inactive',
+        ]);
+        $otherPeriod = EnrollmentPeriod::create([
+            'academic_year_id' => $otherYear->id, 'semester_id' => $otherSemester->id,
+            'opens_at' => now()->subDays(2), 'closes_at' => now()->subDay(), 'enabled' => false,
+            'document_requirements' => ['regular' => []],
+            'created_by' => $this->f['registrar']->id, 'updated_by' => $this->f['registrar']->id,
+        ]);
+        $otherCycle = AdmissionCycle::create([
+            'code' => 'AMBIGUOUS-ADMISSION', 'name' => 'Ambiguous Admission',
+            'academic_year_id' => $otherYear->id, 'status' => 'closed',
+            'opens_at' => now()->subMonth(), 'closes_at' => now()->subWeeks(3),
+            'confirmation_closes_at' => now()->subWeeks(2),
+            'created_by_user_id' => $this->f['registrar']->id,
+            'updated_by_user_id' => $this->f['registrar']->id,
+        ]);
+        $otherApplicant = new AdmissionApplicant;
+        $otherApplicant->forceFill([
+            'user_id' => $student->user_id, 'cycle_id' => $otherCycle->id,
+            'status' => AdmissionApplicant::ACCEPTED, 'accepted_at' => now()->subWeeks(2),
+            'accepted_course_id' => $this->f['course']->id,
+            'accepted_curriculum_id' => $this->f['curriculum']->id,
+        ])->save();
+        $otherSection = Section::create([
+            'course_id' => $this->f['course']->id, 'academic_year_id' => $otherYear->id,
+            'semester_id' => $otherSemester->id, 'section_name' => 'AMBIGUOUS-A',
+            'year_level' => 1, 'capacity' => 40, 'status' => 'closed',
+        ]);
+        $otherEnrollment = Enrollment::create([
+            'student_id' => $student->id, 'section_id' => $otherSection->id,
+            'academic_year_id' => $otherYear->id, 'semester_id' => $otherSemester->id,
+            'enrollment_date' => now()->subWeeks(2)->toDateString(), 'status' => 'completed',
+        ]);
+        EnrollmentApplication::create([
+            'student_id' => $student->id, 'owner_user_id' => $student->user_id,
+            'admission_applicant_id' => $otherApplicant->id, 'period_id' => $otherPeriod->id,
+            'academic_year_id' => $otherYear->id, 'semester_id' => $otherSemester->id,
+            'course_id' => $this->f['course']->id, 'curriculum_id' => $this->f['curriculum']->id,
+            'year_level' => 1, 'classification' => 'regular', 'status' => 'enrolled',
+            'section_id' => $otherSection->id, 'enrollment_id' => $otherEnrollment->id,
+            'submitted_at' => now()->subWeeks(3), 'reviewed_at' => now()->subWeeks(2),
+            'reviewed_by' => $this->f['registrar']->id, 'load_reviewed_at' => now()->subWeeks(2),
+            'load_reviewed_by' => $this->f['registrar']->id, 'finalized_at' => now()->subWeeks(2),
+        ]);
+
+        $this->getJson('/api/students?search='.$student->student_number)->assertOk()
+            ->assertJsonPath('data.0.admission_record', 'No linked Admission record');
+        $this->getJson('/api/students/'.$student->id.'/history')->assertOk()
+            ->assertJsonPath('data.admission', null)
+            ->assertJsonPath('data.admission_link_status', 'ambiguous')
+            ->assertJsonPath('data.entry_classification', 'Admission Linkage Review Required');
+    }
+
     public function test_irregular_selection_duplicates_curriculum_and_staff_review(): void
     {
         $a = $this->f['application'];
@@ -754,7 +1001,7 @@ class EnrollmentAcademicTest extends TestCase
                 throw new \RuntimeException('private test failure');
             }
         });
-        $this->action('finalize')->assertStatus(503)->assertDontSee('private test failure');
+        $this->action('finalize')->assertStatus(500)->assertDontSee('private test failure');
         $this->assertDatabaseCount('enrollments', 0);
         $this->assertDatabaseCount('enrollment_subjects', 0);
         $this->assertDatabaseCount('notifications', $notices);

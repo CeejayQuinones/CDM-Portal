@@ -61,32 +61,54 @@ test('Registrar Academic Enrollment review finalizes without schedule fields and
       classification: 'regular',
       version: 8,
       year_level: 1,
-      section_id: 4,
-      section,
-      load_reviewed_at: '2026-11-06T02:00:00Z',
+      section_id: null,
+      section: null,
+      load_reviewed_at: null,
+      load_reviewed_by: null,
       course: { course_code: 'BSIT', course_name: 'Bachelor of Science in Information Technology' },
       period,
       owner: { profile: { first_name: 'Kenneth', last_name: 'Gallaza' } },
       admission_applicant: { applicant_number: 'APP-1001' },
       student: null,
     }
+    let invalidSubject = true
+    let savedSubjectIds = []
     const payload = () => ({
       application,
       load: {
         candidates: [
           { id: 1, subject_code: 'IT101', subject_name: 'Introduction to Computing', units: 3, completed: false, prerequisite_met: true, schedule_status: 'pending' },
-          { id: 2, subject_code: 'IT102', subject_name: 'Computer Programming 1', units: 3, completed: false, prerequisite_met: true, schedule_status: 'pending' },
+          { id: 2, subject_code: 'IT102', subject_name: 'Computer Programming 1', units: 3, completed: false, prerequisite_met: !invalidSubject, schedule_status: 'pending' },
         ],
-        selected_subject_ids: [1, 2],
+        selected_subject_ids: savedSubjectIds,
         standard_subject_ids: [1, 2],
       },
       sections: { data: [section], current_page: 1, last_page: 1 },
     })
-    let rejectFinalize = true
-    apiState.handler = async (method, url) => {
+    let rejectFinalize = 'validation'
+    let holdFinalize = false
+    let releaseFinalize
+    apiState.handler = async (method, url, request) => {
       if (method === 'get') return { data: { success: true, data: payload() } }
+      if (url.endsWith('/assign')) {
+        assert.deepEqual(request, { version: application.version, section_id: section.id })
+        application.section_id = section.id
+        application.section = section
+        application.version++
+        return { data: { success: true, data: application } }
+      }
+      if (url.endsWith('/subjects')) {
+        assert.deepEqual(request, { version: application.version, subject_ids: [1, 2] })
+        savedSubjectIds = [1, 2]
+        application.load_reviewed_at = '2026-11-06T02:00:00Z'
+        application.load_reviewed_by = 7
+        application.version++
+        return { data: { success: true, data: application } }
+      }
       if (url.endsWith('/finalize')) {
-        if (rejectFinalize) throw { response: { status: 409, data: { message: 'The section is full.' } } }
+        if (rejectFinalize === 'validation') throw { response: { status: 422, data: { errors: { section_id: ['The assigned section no longer matches the academic term.'] } } } }
+        if (rejectFinalize === 'conflict') throw { response: { status: 409, data: { message: 'The section is full.' } } }
+        if (holdFinalize) await new Promise(resolve => { releaseFinalize = resolve })
         application.status = 'enrolled'
         application.enrollment_id = 44
         application.version++
@@ -149,24 +171,76 @@ test('Registrar Academic Enrollment review finalizes without schedule fields and
       assert.match(textOf(root), /To be announced/)
       assert.match(textOf(root), /Schedule pending/)
       assert.match(textOf(root), /Kenneth Gallaza/)
+      assert.equal(findButton(root, 'Finalize Academic Enrollment').props.disabled, true)
+      assert.match(textOf(root), /IT102 has an unmet prerequisite/)
+      assert.match(textOf(root), /Review the subject load using the button below/)
+      assert.match(textOf(root), /Choose a section and click Assign section/)
+      assert.doesNotMatch(textOf(root), /Enrollment can be finalized now/)
+      assert.equal(findButton(root, 'Review subject load').props.disabled, true)
+      assert.equal(apiState.calls.filter(call => call.url.endsWith('/finalize')).length, 0)
+
+      invalidSubject = false
+      const sectionSelect = all(root, 'select')[0]
+      assert.ok(sectionSelect)
+      sectionSelect.options.find(option => option.value === section.id).selected = true
+      sectionSelect.listeners.change({ target: sectionSelect })
+      await settle()
+      assert.equal(findButton(root, 'Finalize Academic Enrollment').props.disabled, true)
+      await findButton(root, 'Assign section').props.onClick()
+      await settle()
+      assert.equal(findButton(root, 'Finalize Academic Enrollment').props.disabled, true)
+      assert.equal(findButton(root, 'Review subject load').props.disabled, false)
+      await findButton(root, 'Review subject load').props.onClick()
+      await settle()
+      assert.equal(findButton(root, 'Finalize Academic Enrollment').props.disabled, false)
+      assert.match(textOf(root), /Enrollment can be finalized now/)
 
       await findButton(root, 'Finalize Academic Enrollment').props.onClick()
       await settle()
       assert.match(textOf(root), /Confirm Academic Enrollment/)
       assert.match(textOf(root), /Schedules may remain pending/)
+      assert.equal(apiState.calls.filter(call => call.url.endsWith('/finalize')).length, 0)
 
+      await findButton(root, 'Confirm Final Enrollment').props.onClick()
+      await settle()
+      assert.match(textOf(root), /The assigned section no longer matches the academic term/)
+      assert.match(textOf(root), /Confirm Academic Enrollment/)
+
+      rejectFinalize = 'conflict'
       await findButton(root, 'Confirm Final Enrollment').props.onClick()
       await settle()
       assert.match(textOf(root), /The section is full/)
       assert.match(textOf(root), /Confirm Academic Enrollment/)
       const failedRequest = apiState.calls.find(call => call.url.endsWith('/finalize'))
-      assert.deepEqual(failedRequest.payload, { version: 8, confirmed: true })
+      assert.deepEqual(failedRequest.payload, { version: 10, confirmed: true })
 
       rejectFinalize = false
-      await findButton(root, 'Confirm Final Enrollment').props.onClick()
+      holdFinalize = true
+      const firstSubmission = findButton(root, 'Confirm Final Enrollment').props.onClick()
+      const duplicateSubmission = findButton(root, 'Confirm Final Enrollment').props.onClick()
+      assert.equal(apiState.calls.filter(call => call.url.endsWith('/finalize')).length, 3)
+      releaseFinalize()
+      await Promise.all([firstSubmission, duplicateSubmission])
       await settle()
       assert.doesNotMatch(textOf(root), /Confirm Academic Enrollment/)
       assert.match(textOf(root), /Academic enrollment completed/)
+      assert.equal(findButton(root, 'Finalize Academic Enrollment'), undefined)
+
+      application.status = 'submitted'
+      const blockedRoot = { children: [] }
+      const blockedApp = renderer.createApp(EnrollmentLoad, { applicationId: 12 })
+      blockedApp.component('RouterLink', { render() { return null } })
+      blockedApp.mount(blockedRoot)
+      try {
+        await settle()
+        const blockedButton = findButton(blockedRoot, 'Finalize Academic Enrollment')
+        assert.equal(blockedButton.props.disabled, true)
+        assert.match(textOf(blockedRoot), /The application must be approved before finalization/)
+        assert.doesNotMatch(textOf(blockedRoot), /Enrollment can be finalized now/)
+        const submittedCount = apiState.calls.filter(call => call.url.endsWith('/finalize')).length
+        await blockedButton.props.onClick()
+        assert.equal(apiState.calls.filter(call => call.url.endsWith('/finalize')).length, submittedCount)
+      } finally { blockedApp.unmount() }
     } finally {
       app.unmount()
     }

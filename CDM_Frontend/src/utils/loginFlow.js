@@ -13,9 +13,9 @@ export const runLoginRequest = async ({ credentials, login, redirect, onError, s
   setLoading(true)
 
   try {
-    const user = await login(credentials)
-    await redirect(user)
-    return user
+    const result = await login(credentials)
+    if (!result?.requiresOtp) await redirect(result)
+    return result
   } catch (error) {
     onError(error, loginErrorMessage(error))
     return null

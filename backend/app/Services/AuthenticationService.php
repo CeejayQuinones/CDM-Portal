@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Support\ClientPlatform;
+use App\Support\SanctumTokenExpiration;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -14,14 +16,11 @@ class AuthenticationService
     public function __construct(private readonly ClientPlatformAccessService $clientAccess) {}
 
     /**
-     * Authenticate an active user and create a Sanctum token.
+     * Validate credentials and platform access without creating a session.
      *
      * @param  array{username: string, password: string}  $credentials
-     * @return array{user: User, token: string}
-     *
-     * @throws AuthenticationException
      */
-    public function login(array $credentials, string $client): array
+    public function authenticate(array $credentials, string $client): User
     {
         $user = User::query()
             ->with(['role', 'profile'])
@@ -36,7 +35,20 @@ class AuthenticationService
 
         $this->clientAccess->ensureUserMayUse($user, $client);
 
-        return $this->issueToken($user, $client);
+        return $user;
+    }
+
+    /**
+     * Authenticate an active user and create a Sanctum token.
+     *
+     * @param  array{username: string, password: string}  $credentials
+     * @return array{user: User, token: string}
+     *
+     * @throws AuthenticationException
+     */
+    public function login(array $credentials, string $client): array
+    {
+        return $this->issueToken($this->authenticate($credentials, $client), $client);
     }
 
     /** @return array{user: User, token: string} */
@@ -44,11 +56,13 @@ class AuthenticationService
     {
         abort_unless($user->status === 'active', 403, 'This account is not active.');
         $this->clientAccess->ensureUserMayUse($user, $client);
+        $expirationMinutes = SanctumTokenExpiration::minutes(config('sanctum.expiration'));
         $user->forceFill(['last_login' => now()])->save();
 
         return ['user' => $user->fresh(['role', 'profile']), 'token' => $user->createToken(
             'CDM Portal API Token ('.$client.')',
             [ClientPlatform::ability($client)],
+            now()->addMinutes($expirationMinutes),
         )->plainTextToken];
     }
 
@@ -82,17 +96,26 @@ class AuthenticationService
      */
     public function changePassword(User $user, array $data): User
     {
-        if (! Hash::check($data['current_password'], $user->password)) {
-            throw ValidationException::withMessages([
-                'current_password' => ['The current password is incorrect.'],
-            ]);
-        }
+        return DB::transaction(function () use ($user, $data): User {
+            $lockedUser = User::query()->lockForUpdate()->findOrFail($user->getKey());
 
-        $user->forceFill([
-            'password' => Hash::make($data['password']),
-            'is_first_login' => false,
-        ])->save();
+            if (! Hash::check($data['current_password'], $lockedUser->password)) {
+                throw ValidationException::withMessages([
+                    'current_password' => ['The current password is incorrect.'],
+                ]);
+            }
 
-        return $this->currentUser($user->fresh());
+            $lockedUser->forceFill([
+                'password' => Hash::make($data['password']),
+                'is_first_login' => false,
+            ])->save();
+            $lockedUser->tokens()->delete();
+            $lockedUser->loginOtpChallenges()
+                ->whereNull('consumed_at')
+                ->whereNull('superseded_at')
+                ->update(['superseded_at' => now()]);
+
+            return $this->currentUser($lockedUser->fresh());
+        });
     }
 }

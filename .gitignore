@@ -77,6 +77,14 @@ web_modules/
 .env.*
 !.env.example
 
+# Local recovery snapshots and operating-system artifacts are not release assets.
+/.local-recovery/
+*:Zone.Identifier
+~$*
+/backend/q
+/backend/')
+/backend/torical_grade_records')
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

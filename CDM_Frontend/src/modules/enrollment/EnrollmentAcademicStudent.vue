@@ -21,7 +21,7 @@ const subjects=computed(()=>route.name==='enrollment-subjects'),cor=computed(()=
 const pageTitle=computed(()=>subjects.value?'My Subjects':cor.value?'Certificate of Registration':'My Schedule')
 const pageDescription=computed(()=>subjects.value?'Review the finalized subject load attached to your approved enrollment.':cor.value?'Open and print an official registration record without changing its required content.':'Review enrolled subjects now; verified class times and rooms appear when Scheduling completes them.')
 const sectionLabel=value=>typeof value?.section==='string'?value.section:value?.section?.section_name||'Not assigned'
-const scheduleRows=computed(()=>(record.value?.subjects||[]).map(subject=>subject.schedule?{...subject.schedule,subject}:{id:`pending-${subject.id}`,subject,schedule_status:'pending',meetings:[],day:null,start_time:null,end_time:null,room:null,professor:null}))
+const scheduleRows=computed(()=>(record.value?.subjects||[]).map(subject=>subject.schedule?{...subject.schedule,subject,schedule_status:subject.schedule_status}:{id:`pending-${subject.id}`,subject,schedule_status:'pending',meetings:[],day:null,start_time:null,end_time:null,room:null,professor:null}))
 let epoch=0
 async function load(){const v=++epoch;busy.value=true;error.value='';record.value=null;application.value=null;try{const r=await apiClient.get(subjects.value?'/enrollment/applications/mine':'/enrollment/academic/records',{params:{page:page.value}});if(v!==epoch)return;data.value=r.data.data;if(!subjects.value && route.query.record)await openRecord(Number(route.query.record))}catch(e){if(v===epoch)error.value=safeError(e)}finally{if(v===epoch)busy.value=false}}
 async function openRecord(id){const v=++epoch;busy.value=true;error.value='';try{const r=await apiClient.get(`/enrollment/academic/records/${id}`);if(v===epoch)record.value=r.data.data}catch(e){if(v===epoch)error.value=safeError(e)}finally{if(v===epoch)busy.value=false}}
@@ -52,7 +52,7 @@ watch(()=>[route.name,auth.currentUser?.id],()=>{data.value=null;page.value=1;lo
   <EnrollmentLoad v-if="application" :application-id="application"/>
   <div v-if="record && isWebsitePresentation" class="ui4-selected-record"><span>Viewing {{ termLabel(record) }}</span><button type="button" @click="record=null">Close record</button></div>
   <EnrollmentCor v-if="record && cor" :record="record"/>
-  <EnrollmentOvrfActions v-if="record && cor" :enrollment-id="record.id" :student-name="record.name" :academic-term="`${record.academic_year} · ${record.semester}`" />
+  <EnrollmentOvrfActions v-if="record && cor" :enrollment-id="record.id" :student-name="record.name" :academic-term="`${record.academic_year} · ${record.semester}`" read-only-indicator />
   <WebsiteSectionPanel v-else-if="record && isWebsitePresentation" :title="`${record.section} · ${record.academic_year}`" :description="record.semester"><EnrollmentSchedule :schedules="scheduleRows"/></WebsiteSectionPanel>
   <div v-else-if="record" class="en-card"><h2>{{ record.section }} · {{ record.academic_year }} · {{ record.semester }}</h2><EnrollmentSchedule :schedules="scheduleRows"/></div>
 </template>

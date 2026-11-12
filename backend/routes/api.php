@@ -11,16 +11,21 @@ use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentAcademicController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentStatusController;
 use App\Http\Controllers\Api\Enrollment\EnrollmentWorkflowController;
+use App\Http\Controllers\Api\Enrollment\OvrfTemplateDraftController;
 use App\Http\Controllers\Api\GradingController;
 use App\Http\Controllers\Api\GradingExperienceController;
 use App\Http\Controllers\Api\GradingScaleController;
+use App\Http\Controllers\Api\HistoricalGradeController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\PortalNoticeController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
 use App\Http\Controllers\Api\RegistrarDashboardController;
+use App\Http\Controllers\Api\RegistrarDocumentRequestBatchController;
 use App\Http\Controllers\Api\RegistrarDocumentRequestController;
+use App\Http\Controllers\Api\RegistrarDocumentRequestWorkspaceController;
 use App\Http\Controllers\Api\RegistrarDocumentTypeController;
+use App\Http\Controllers\Api\RegistrarPhysicalRetrievalController;
 use App\Http\Controllers\Api\RegistrarSettingsController;
 use App\Http\Controllers\Api\RegistrarStudentDocumentController;
 use App\Http\Controllers\Api\StepUpAuthenticationController;
@@ -35,6 +40,8 @@ use App\Http\Middleware\EnrollmentBoundary;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+Route::post('/auth/login/otp/verify', [AuthController::class, 'verifyLoginOtp'])->middleware('throttle:30,1');
+Route::post('/auth/login/otp/resend', [AuthController::class, 'resendLoginOtp'])->middleware('throttle:10,1');
 Route::post('/auth/google/exchange', [GoogleAuthController::class, 'exchange'])->middleware('throttle:10,1');
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/registration/email-verification/send', [AuthController::class, 'sendEmailVerification'])
@@ -50,6 +57,17 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::patch('/registrars/{registrarStaff}/status', [AccountProvisioningController::class, 'registrarStatus']);
     });
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
+        Route::get('/historical-grades/options', [HistoricalGradeController::class, 'options']);
+        Route::get('/historical-grades/template', [HistoricalGradeController::class, 'template'])->middleware('throttle:20,1');
+        Route::post('/historical-grades/preview', [HistoricalGradeController::class, 'preview'])->middleware('throttle:10,1');
+        Route::post('/historical-grades/confirm', [HistoricalGradeController::class, 'confirm'])->middleware('throttle:10,1');
+        Route::get('/students/{student}/historical-grades', [HistoricalGradeController::class, 'index']);
+        Route::post('/students/{student}/historical-grades', [HistoricalGradeController::class, 'store'])->middleware('throttle:20,1');
+        Route::patch('/students/{student}/historical-grades/{record}', [HistoricalGradeController::class, 'correct'])->middleware('throttle:20,1');
+        Route::get('/ovrf-template-drafts', [OvrfTemplateDraftController::class, 'index']);
+        Route::post('/ovrf-template-drafts', [OvrfTemplateDraftController::class, 'store'])->middleware('throttle:10,1');
+        Route::get('/ovrf-template-drafts/{draft}/preview', [OvrfTemplateDraftController::class, 'preview'])->whereNumber('draft')->middleware('throttle:30,1');
+        Route::post('/ovrf-template-drafts/{draft}/archive', [OvrfTemplateDraftController::class, 'archive'])->whereNumber('draft')->middleware('throttle:20,1');
         Route::get('/professors', [AccountProvisioningController::class, 'professors']);
         Route::post('/professors', [AccountProvisioningController::class, 'storeProfessor']);
         Route::put('/professors/{professor}', [AccountProvisioningController::class, 'updateProfessor']);
@@ -212,6 +230,7 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::get('/holidays', HolidayController::class);
         Route::get('/document-types', [StudentDocumentRequestController::class, 'documentTypes']);
         Route::get('/document-requests', [StudentDocumentRequestController::class, 'index']);
+        Route::post('/document-request-batches', [StudentDocumentRequestController::class, 'storeBatch']);
         Route::post('/document-requests', [StudentDocumentRequestController::class, 'store']);
         Route::get('/document-requests/{documentRequest}', [StudentDocumentRequestController::class, 'show']);
         Route::patch('/document-requests/{documentRequest}/cancel', [StudentDocumentRequestController::class, 'cancelDocumentRequest']);
@@ -241,6 +260,14 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::delete('/student-documents/{studentDocument}/file', [RegistrarStudentDocumentController::class, 'destroy'])
             ->middleware('step-up');
         Route::get('/document-requests', [RegistrarDocumentRequestController::class, 'index']);
+        Route::get('/document-request-students', [RegistrarDocumentRequestWorkspaceController::class, 'index']);
+        Route::get('/document-request-students/{student}', [RegistrarDocumentRequestWorkspaceController::class, 'show']);
+        Route::get('/document-request-students/{student}/same-location', [RegistrarDocumentRequestWorkspaceController::class, 'sameLocation']);
+        Route::get('/document-request-batches', [RegistrarDocumentRequestBatchController::class, 'index']);
+        Route::post('/document-requests/bulk-reject', [RegistrarDocumentRequestBatchController::class, 'bulkReject']);
+        Route::get('/physical-retrieval', [RegistrarPhysicalRetrievalController::class, 'index']);
+        Route::get('/physical-retrieval/{physicalRetrievalTask}', [RegistrarPhysicalRetrievalController::class, 'show']);
+        Route::patch('/physical-retrieval/{physicalRetrievalTask}', [RegistrarPhysicalRetrievalController::class, 'update']);
         Route::get('/document-requests/history', [RegistrarDocumentRequestController::class, 'history']);
         Route::get('/document-request-activity', [RegistrarDocumentRequestController::class, 'activity']);
         Route::get('/document-requests/{documentRequest}', [RegistrarDocumentRequestController::class, 'show']);

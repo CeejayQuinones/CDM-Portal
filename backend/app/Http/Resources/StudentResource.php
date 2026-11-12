@@ -122,6 +122,10 @@ class StudentResource extends JsonResource
             'current_enrollment' => $this->when(array_key_exists('current_enrollment_id', $this->resource->getAttributes()), fn () => $summary),
             'admission_record' => $this->when(array_key_exists('has_admission_record', $this->resource->getAttributes()),
                 fn () => $this->has_admission_record ? 'Available' : 'No linked Admission record'),
+            'has_admission_record' => $this->when(
+                array_key_exists('has_admission_record', $this->resource->getAttributes()),
+                fn () => (bool) $this->has_admission_record,
+            ),
             'enrollment_application_available' => $this->when(isset($this->has_enrollment_application), fn () => (bool) $this->has_enrollment_application),
             'physical_record_status' => $this->when(isset($this->has_physical_record), fn () => $this->has_physical_record ? 'available' : 'unavailable'),
             'documents' => StudentDocumentResource::collection($this->whenLoaded('documents')),

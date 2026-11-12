@@ -130,6 +130,10 @@ class EnrollmentAcademicService
                     $owner->role_id = $studentRole->id;
                     $owner->save();
                     $owner->tokens()->delete();
+                    $owner->loginOtpChallenges()
+                        ->whereNull('consumed_at')
+                        ->whereNull('superseded_at')
+                        ->update(['superseded_at' => now()]);
                 }
                 $this->documentHandoff->link($actor, $a, $student);
                 $e = Enrollment::create(['student_id' => $student->id, 'section_id' => $section->id, 'academic_year_id' => $a->academic_year_id, 'semester_id' => $a->semester_id, 'enrollment_date' => now()->toDateString(), 'status' => 'enrolled']);

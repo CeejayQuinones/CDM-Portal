@@ -7,6 +7,8 @@ import { apiClient } from '../../services/apiClient'
 import { useAuthStore } from '../../stores/authStore'
 import { profilePhotoUrl } from '../../utils/profilePhoto'
 import StudentDocumentRequirementsMatrix from './StudentDocumentRequirementsMatrix.vue'
+import HistoricalGradesPanel from './HistoricalGradesPanel.vue'
+import { ROLES } from '../../config/accessControl'
 import { invalidateStudentRecordsCache, readStudentRecordsCache, studentRecordsCacheScope, writeStudentRecordsCache } from './studentRecordsCache'
 
 const router = useRouter()
@@ -441,6 +443,7 @@ onBeforeUnmount(() => {
     <h1 class="page-title">Student Management</h1>
     <p class="page-description">Search, review, and manage official student information.</p>
   </section>
+  <HistoricalGradesPanel v-if="auth.currentRole === ROLES.REGISTRAR_STAFF" />
 
   <section class="student-metrics" aria-label="Student record summary">
     <article v-for="metric in studentMetrics" :key="metric.label"><span aria-hidden="true">{{ metric.icon }}</span><div><small>{{ metric.label }}</small><strong>{{ Number(metric.value || 0).toLocaleString() }}</strong></div></article>

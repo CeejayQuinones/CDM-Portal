@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DesktopContextHeader from '../components/desktop/DesktopContextHeader.vue'
 import DesktopContextPanel from '../components/desktop/DesktopContextPanel.vue'
@@ -13,9 +13,13 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const navigation = useNavigationStore()
+const registrarRail = computed(() => auth.currentRole === 'Registrar Staff')
 const modulePanelOpen = ref(false)
 const contextPanel = ref(null)
 const contextHeader = ref(null)
+const primaryRail = ref(null)
+const narrowWindow = ref(false)
+const registrarDrawerOpen = ref(false)
 
 const modules = computed(() => desktopModulesFromMenu(navigation.menuItemsForRole(auth.currentRole, auth.currentUser?.admission)))
 const activeModule = computed(() => desktopModuleForRoute(modules.value, route) || modules.value[0] || null)
@@ -53,23 +57,48 @@ function openModuleNavigation() {
 }
 
 function handleEscape(event) {
+  if (event.key === 'Escape' && registrarDrawerOpen.value) {
+    closeRegistrarDrawer()
+    return
+  }
   if (event.key === 'Escape' && modulePanelOpen.value) closeModuleNavigation()
 }
 
+function updateWindowWidth() {
+  narrowWindow.value = window.innerWidth <= 1100
+  if (!narrowWindow.value) registrarDrawerOpen.value = false
+}
+
+function openRegistrarDrawer() {
+  registrarDrawerOpen.value = true
+  nextTick(() => primaryRail.value?.focusDrawerClose())
+}
+
+function closeRegistrarDrawer() {
+  registrarDrawerOpen.value = false
+  focusModuleButton()
+}
+
+watch(() => route.fullPath, () => { registrarDrawerOpen.value = false })
+
 onMounted(() => {
+  updateWindowWidth()
   window.addEventListener('keydown', handleEscape)
+  window.addEventListener('resize', updateWindowWidth)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscape)
+  window.removeEventListener('resize', updateWindowWidth)
 })
 </script>
 
 <template>
-  <div class="desktop-workspace-shell">
+  <div class="desktop-workspace-shell" :class="{ 'registrar-workspace': registrarRail }">
     <StepUpAuthModal />
-    <DesktopPrimaryRail :modules="modules" :active-module="activeModule" :module-panel-open="modulePanelOpen" @select="selectModule" />
+    <div v-if="registrarRail && narrowWindow && registrarDrawerOpen" class="registrar-sidebar-backdrop" @click="closeRegistrarDrawer"></div>
+    <DesktopPrimaryRail ref="primaryRail" :modules="modules" :active-module="activeModule" :module-panel-open="modulePanelOpen" :registrar-presentation="registrarRail" :appearance-account="auth.currentUser?.id || auth.currentUser?.username" :mobile-drawer="registrarRail && narrowWindow" :drawer-open="registrarDrawerOpen" @select="selectModule" @close="closeRegistrarDrawer" />
     <Transition name="desktop-context-float">
-      <div v-if="activeModule && hasContextPanel && modulePanelOpen" class="desktop-context-overlay" @mousedown.self="closeModuleNavigation">
+      <div v-if="!registrarRail && activeModule && hasContextPanel && modulePanelOpen" class="desktop-context-overlay" @mousedown.self="closeModuleNavigation">
         <DesktopContextPanel ref="contextPanel" :module="activeModule" :route="route" overlay @close="closeModuleNavigation" />
       </div>
     </Transition>
@@ -78,8 +107,9 @@ onBeforeUnmount(() => {
         ref="contextHeader"
         :module-label="activeModule?.label"
         :page-title="pageTitle"
-        :show-module-button="hasContextPanel && !modulePanelOpen"
-        @toggle-module="openModuleNavigation"
+        :show-module-button="registrarRail ? narrowWindow && !registrarDrawerOpen : hasContextPanel && !modulePanelOpen"
+        :navigation-controls-id="registrarRail ? 'desktop-registrar-navigation' : 'desktop-module-navigation'"
+        @toggle-module="registrarRail ? openRegistrarDrawer() : openModuleNavigation()"
       />
       <main class="desktop-workspace-content">
         <RouterView v-slot="{ Component, route: currentRoute }">

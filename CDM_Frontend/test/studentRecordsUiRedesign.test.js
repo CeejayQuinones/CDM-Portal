@@ -15,6 +15,14 @@ test('Student Management uses one prominent directory search and contextual bulk
   assert.match(management, /v-if="selectedCount" class="bulk-toolbar"/)
 })
 
+test('Registrar Student Records gives the directory full width at supported compact Electron sizes', () => {
+  const css = read('../src/assets/styles/desktop-ui-3.css')
+  assert.match(css, /@media \(max-width: 1580px\) \{[\s\S]*?\.registrar-workspace \.student-records-workspace \.student-directory-layout \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+  assert.match(css, /\.registrar-workspace \.student-records-workspace \.records-panel > \.table-wrap table \{ min-width: 850px; \}/)
+  assert.match(css, /@media \(max-width: 1000px\) \{[\s\S]*?\.registrar-workspace \.student-records-workspace \.student-records-insights \.productivity-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+  assert.match(management, /\.student-directory-layout\{display:grid;grid-template-columns:minmax\(220px,255px\) minmax\(0,1fr\)/)
+})
+
 test('Physical Records keeps cabinet navigation and drawer capacity in one workspace', () => {
   assert.match(physical, /class="physical-storage-workspace"/)
   assert.match(physical, /class="cabinet-browser"/)

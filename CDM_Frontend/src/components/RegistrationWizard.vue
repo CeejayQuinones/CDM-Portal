@@ -4,6 +4,7 @@ import { apiClient } from '../services/apiClient'
 import { useAuthStore } from '../stores/authStore'
 import { clientPlatform } from '../config/clientPlatform'
 import CDMSeal from './website/CDMSeal.vue'
+import TurnstileVerification from './TurnstileVerification.vue'
 
 const emit = defineEmits(['close', 'registered'])
 const authStore = useAuthStore()
@@ -47,6 +48,9 @@ const isVerifyingCode = ref(false)
 const isSubmitting = ref(false)
 const showPassword = ref(false)
 const cooldown = ref(0)
+const turnstileToken = ref('')
+const turnstileError = ref('')
+const turnstileWidget = ref(null)
 let cooldownTimer
 
 const fieldRules = {
@@ -129,17 +133,27 @@ const startCooldown = () => {
 const sendCode = async () => {
   touch('email')
   if (fieldRules.email() || isSendingCode.value || cooldown.value) return
+  if (!turnstileToken.value) {
+    turnstileError.value = 'Complete the human verification check to continue.'
+    return
+  }
   emailError.value = ''
   emailMessage.value = ''
   isSendingCode.value = true
   try {
-    const { data } = await apiClient.post('/registration/email-verification/send', { email: form.email.trim() })
+    const { data } = await apiClient.post('/registration/email-verification/send', {
+      email: form.email.trim(),
+      turnstile_token: turnstileToken.value,
+    })
     emailMessage.value = data.message
     startCooldown()
   } catch (error) {
+    turnstileError.value = error.response?.data?.errors?.turnstile_token?.[0] || ''
     emailError.value = error.response?.data?.errors?.email?.[0] || error.response?.data?.message || 'Unable to send the code.'
   } finally {
     isSendingCode.value = false
+    turnstileToken.value = ''
+    turnstileWidget.value?.reset()
   }
 }
 
@@ -288,6 +302,7 @@ onBeforeUnmount(() => clearInterval(cooldownTimer))
                 <div class="step-heading"><span>03</span><div><h3>Verify your email</h3><p>We’ll send a six-digit, one-time code to your inbox.</p></div></div>
                 <div class="email-box">
                   <label>Email address <input v-model="form.email" type="email" autocomplete="email" :disabled="Boolean(form.email_verification_token)" @blur="touch('email')" /><small v-if="showFieldError('email')">{{ fieldError('email') }}</small></label>
+                  <TurnstileVerification v-if="!form.email_verification_token" ref="turnstileWidget" action="registration" :error="turnstileError" @verified="(token) => { turnstileToken = token; if (token) turnstileError = '' }" @expired="turnstileToken = ''" @error="turnstileError = $event" />
                   <button v-if="!form.email_verification_token" class="secondary-button" type="button" :disabled="Boolean(fieldRules.email()) || isSendingCode || cooldown > 0" @click="sendCode">
                     {{ isSendingCode ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Send verification code' }}
                   </button>

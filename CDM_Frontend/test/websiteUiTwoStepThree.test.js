@@ -48,7 +48,7 @@ test('Professor Settings is a legitimate self-scoped website route', async () =>
   assert.match(view, /no self-service faculty profile endpoint is available/)
   assert.match(view, /faculty_id: dashboard\?\.identity\?\.faculty_id/)
   assert.match(view, /department: dashboard\?\.identity\?\.department/)
-  assert.match(view, /apiClient\.post\('\/change-password'/)
+  assert.match(view, /authStore\.changePassword\(/)
   assert.doesNotMatch(view, /\/professor\/settings\/profile/)
 })
 

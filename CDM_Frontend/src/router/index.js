@@ -342,7 +342,8 @@ router.beforeEach(async (to) => {
   }
   if (to.meta.platforms && !to.meta.platforms.includes(clientPlatform)) return { name: 'unauthorized' }
   if (to.name === 'home') return landingForRole(authStore.currentRole)
-  if (!canAccess(authStore.currentRole, to.meta.roles || ALL_ROLES)) return { name: 'unauthorized' }
+  if (!Array.isArray(to.meta.roles) || !canAccess(authStore.currentRole, to.meta.roles))
+    return { name: 'unauthorized' }
   const admission = authStore.currentUser?.admission || {}
   if (authStore.currentRole === ROLES.GUEST && to.path.startsWith('/enrollment') && !admission.admitted_guest)
     return { name: 'unauthorized' }

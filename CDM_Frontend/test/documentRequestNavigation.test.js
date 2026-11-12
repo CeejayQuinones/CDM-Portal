@@ -82,12 +82,30 @@ test('physical record context returns to the same request with its queue state',
     name: 'registrar-document-requests',
     query: {
       request_id: 321,
+      student_id: 45,
       search: 'REQ-000321',
       time_filter: 'last_7_days',
       pending_page: 2,
       processing_page: 1,
     },
   })
+})
+
+test('unified student workspace filters and selected student survive profile navigation', () => {
+  const source = documentRequestProfileQuery({
+    requestId: 321,
+    studentId: 45,
+    studentSearch: 'REQ-000321',
+    studentStatus: 'pending',
+    studentPage: 3,
+  })
+  const returned = documentRequestReturnContext(source)
+
+  assert.equal(returned.to.query.student_id, 45)
+  assert.equal(returned.to.query.student_search, 'REQ-000321')
+  assert.equal(returned.to.query.student_status, 'pending')
+  assert.equal(returned.to.query.student_page, 3)
+  assert.equal(returned.to.query.request_id, 321)
 })
 
 test('student profiles without valid document request context keep their normal navigation', () => {

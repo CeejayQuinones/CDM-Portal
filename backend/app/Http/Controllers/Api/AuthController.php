@@ -13,8 +13,11 @@ use App\Models\User;
 use App\Services\AuthenticationService;
 use App\Services\ClientPlatformAccessService;
 use App\Services\GuestRegistrationService;
+use App\Services\LoginOtpService;
 use App\Services\RegistrationEmailVerificationService;
 use App\Services\StepUpAuthenticationService;
+use App\Services\TurnstileVerificationService;
+use App\Support\ClientPlatform;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,6 +29,8 @@ class AuthController extends Controller
         private readonly GuestRegistrationService $guestRegistrationService,
         private readonly RegistrationEmailVerificationService $emailVerificationService,
         private readonly StepUpAuthenticationService $stepUpAuthentication,
+        private readonly LoginOtpService $loginOtpService,
+        private readonly TurnstileVerificationService $turnstile,
     ) {}
 
     /** Register a public Guest account after verified-email proof is supplied. */
@@ -44,6 +49,12 @@ class AuthController extends Controller
 
     public function sendEmailVerification(SendEmailVerificationRequest $request): JsonResponse
     {
+        $this->turnstile->verify(
+            $request->validated('turnstile_token'),
+            'registration',
+            (string) $request->ip(),
+        );
+
         if (! $this->emailVerificationService->deliveryIsConfigured()) {
             return response()->json([
                 'success' => false,
@@ -80,7 +91,29 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $client = $this->clientAccess->clientFrom($request);
-        $authenticated = $this->authenticationService->login($request->validated(), $client);
+        $credentials = $request->safe()->only(['username', 'password']);
+
+        if ($client !== ClientPlatform::DESKTOP) {
+            $this->turnstile->verify(
+                $request->validated('turnstile_token'),
+                'authentication',
+                (string) $request->ip(),
+            );
+        }
+
+        $user = $this->authenticationService->authenticate($credentials, $client);
+
+        if ($client !== ClientPlatform::DESKTOP) {
+            $challenge = $this->loginOtpService->create($user, $client, (string) $request->ip());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'A verification code was sent to your registered email address.',
+                'data' => $challenge,
+            ], 202);
+        }
+
+        $authenticated = $this->authenticationService->issueToken($user, $client);
 
         return response()->json([
             'success' => true,
@@ -90,6 +123,48 @@ class AuthController extends Controller
                 'token' => $authenticated['token'],
                 'token_type' => 'Bearer',
             ],
+        ]);
+    }
+
+    public function verifyLoginOtp(Request $request): JsonResponse
+    {
+        $client = $this->clientAccess->clientFrom($request);
+        $validated = $request->validate([
+            'challenge_id' => ['required', 'uuid'],
+            'code' => ['required', 'digits:6'],
+        ]);
+        $authenticated = $this->loginOtpService->verify(
+            $validated['challenge_id'],
+            $validated['code'],
+            $client,
+            (string) $request->ip(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Login successful.',
+            'data' => [
+                'user' => new AuthResource($authenticated['user']),
+                'token' => $authenticated['token'],
+                'token_type' => 'Bearer',
+            ],
+        ]);
+    }
+
+    public function resendLoginOtp(Request $request): JsonResponse
+    {
+        $client = $this->clientAccess->clientFrom($request);
+        $validated = $request->validate(['challenge_id' => ['required', 'uuid']]);
+        $challenge = $this->loginOtpService->resend(
+            $validated['challenge_id'],
+            $client,
+            (string) $request->ip(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'A new verification code was sent to your registered email address.',
+            'data' => $challenge,
         ]);
     }
 

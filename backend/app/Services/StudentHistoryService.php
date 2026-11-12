@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Admission\AdmissionApplicant;
 use App\Models\Admission\AdmissionDecision;
 use App\Models\Admission\AdmissionExamSession;
 use App\Models\Admission\AdmissionRecommendation;
@@ -11,15 +10,17 @@ use App\Models\Enrollment;
 use App\Models\Enrollment\EnrollmentApplication;
 use App\Models\Student;
 use App\Models\StudentRecordAuditEvent;
+use App\Services\StudentRecords\StudentAdmissionLinkResolver;
 
 class StudentHistoryService
 {
+    public function __construct(private readonly StudentAdmissionLinkResolver $admissionLinks) {}
+
     public function show(Student $student): array
     {
-        $admission = AdmissionApplicant::with(['cycle.academicYear'])
-            ->where('converted_student_id', $student->id)
-            ->where('user_id', $student->user_id)
-            ->latest('id')->first();
+        $admissionResolution = $this->admissionLinks->resolution($student);
+        $admissionLink = $admissionResolution['link'];
+        $admission = $admissionLink['applicant'] ?? null;
         $session = $admission ? AdmissionExamSession::with('result')
             ->where('applicant_id', $admission->id)->orderByDesc('attempt_number')->first() : null;
         $result = $session?->result;
@@ -69,8 +70,9 @@ class StudentHistoryService
                 'academic_status' => $student->student_status,
                 'enrollment_status' => $useAssignment ? $assignedApplication->status : $current?->status,
             ],
-            'entry_classification' => $admission ? 'Freshman' : (in_array($applications->first()?->classification, ['transferee', 'returnee'], true)
-                ? ucfirst($applications->first()->classification) : ($student->year_level > 1 ? 'Continuing' : 'Legacy / Existing Student')),
+            'entry_classification' => $admissionResolution['ambiguous'] ? 'Admission Linkage Review Required' : ($admission ? 'Freshman' : (in_array($applications->first()?->classification, ['transferee', 'returnee'], true)
+                ? ucfirst($applications->first()->classification) : ($student->year_level > 1 ? 'Continuing' : 'Legacy / Existing Student'))),
+            'admission_link_status' => $admissionResolution['ambiguous'] ? 'ambiguous' : ($admission ? 'linked' : 'not_found'),
             'admission' => $admission ? [
                 'applicant_number' => $admission->applicant_number,
                 'cycle' => $admission->cycle?->name,
@@ -82,6 +84,8 @@ class StudentHistoryService
                 'recommendation' => $recommendation?->top_course_id ? Course::whereKey($recommendation->top_course_id)->value('course_name') : $recommendation?->generation_status,
                 'accepted_course' => $admission->accepted_course_id ? Course::whereKey($admission->accepted_course_id)->value('course_name') : null,
                 'decision' => $decision?->action,
+                'provenance' => $admissionLink['provenance'],
+                'linked_at' => $admissionLink['linked_at']?->toISOString(),
                 'converted_at' => $admission->converted_at?->toISOString(),
             ] : null,
             'applications' => $applications->map(fn ($a) => [

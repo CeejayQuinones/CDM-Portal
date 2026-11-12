@@ -32,7 +32,8 @@ test('student settings contains every editable settings surface and loading/erro
   assert.match(source, /createImageBitmap\(file\)/)
   assert.match(source, /canvas\.toBlob/)
   assert.match(source, /settings\/avatar'[^\n]*Content-Type': 'multipart\/form-data'/)
-  assert.match(source, /change-password/)
+  assert.match(source, /authStore\.changePassword\(/)
+  assert.match(source, /passwordChanged: '1'/)
 })
 
 test('compiled student themes cover the shell and dialogs with live system color-scheme support', async () => {

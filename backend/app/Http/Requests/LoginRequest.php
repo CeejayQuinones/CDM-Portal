@@ -22,6 +22,7 @@ class LoginRequest extends ApiFormRequest
         return [
             'username' => ['required', 'string', 'max:50'],
             'password' => ['required', 'string'],
+            'turnstile_token' => ['nullable', 'string', 'max:2048'],
         ];
     }
 }

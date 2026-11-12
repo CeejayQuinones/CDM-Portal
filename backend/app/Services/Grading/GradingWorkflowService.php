@@ -14,7 +14,11 @@ use Illuminate\Support\Facades\DB;
 
 class GradingWorkflowService
 {
-    public function __construct(private GradingService $grading, private GradingScaleService $scales) {}
+    public function __construct(
+        private GradingService $grading,
+        private GradingScaleService $scales,
+        private PublishedGradeEnrollmentSync $enrollmentSync,
+    ) {}
 
     public function readiness(User $actor, GradeSheet $sheet): array
     {
@@ -273,6 +277,7 @@ class GradingWorkflowService
                 }
                 abort_unless($sheet->status === 'approved', 409, 'Every scheduled grade sheet must still be Approved.');
                 $this->assertSnapshotValid($sheet);
+                $this->enrollmentSync->synchronize($sheet);
                 $sheet->forceFill(['status' => 'published', 'published_at' => now(), 'published_by' => $executionActor->id, 'version' => $sheet->version + 1])->save();
                 $this->grading->audit($executionActor, 'grade_sheet.published', $sheet, null, ['release_schedule_id' => $locked->id, 'old_status' => 'approved', 'new_status' => 'published']);
             }
@@ -296,7 +301,7 @@ class GradingWorkflowService
 
     private function assertSnapshotValid(GradeSheet $sheet): void
     {
-        $attempt = $sheet->latestSubmission()->with('students')->first();
+        $attempt = $sheet->latestSubmission()->with(['students' => fn ($query) => $query->orderBy('id')])->first();
         abort_unless($attempt, 422, 'The grade sheet has no submission snapshot.');
         $results = $attempt->students->map(fn ($row) => $row->only(['enrollment_subject_id', 'student_id', 'student_number', 'student_name', 'midterm_grade', 'finals_grade', 'final_grade', 'grade_point', 'remarks', 'breakdown']))->all();
         abort_unless(hash_equals($attempt->checksum, $this->checksum($attempt->configuration, $results)), 409, 'The submission snapshot failed its integrity check.');

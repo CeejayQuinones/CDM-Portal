@@ -8,6 +8,7 @@ const props = defineProps({
   enrollmentId: { type: [Number, String], required: true },
   studentName: { type: String, default: 'Student' },
   academicTerm: { type: String, default: 'Finalized academic term' },
+  readOnlyIndicator: { type: Boolean, default: false },
 })
 
 const open = ref(false)
@@ -170,7 +171,10 @@ onBeforeUnmount(() => {
           <h2 id="en-ovrf-title">OVRF preview</h2>
           <span>{{ studentName }} · {{ academicTerm }}</span>
         </div>
-        <button type="button" aria-label="Close OVRF preview" :disabled="busy" @click="close">×</button>
+        <div class="en-ovrf-header-actions">
+          <span v-if="readOnlyIndicator" class="en-ovrf-view-only" aria-label="Viewing purposes only: official enrollment records cannot be changed here">VIEWING PURPOSES ONLY</span>
+          <button type="button" aria-label="Close OVRF preview" :disabled="busy" @click="close">×</button>
+        </div>
       </header>
       <div class="en-ovrf-dialog-body">
         <p class="en-ovrf-validation-note"><strong>Physical verification required.</strong> Downloading or printing does not validate this form. The Registrar's Office must physically verify, sign, and stamp it.</p>
@@ -206,7 +210,9 @@ onBeforeUnmount(() => {
 .en-ovrf-dialog > header p { color: var(--desktop-accent, #176b46); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .en-ovrf-dialog > header h2 { font-size: 20px; }
 .en-ovrf-dialog > header span { color: var(--desktop-muted, #64766f); font-size: 12px; }
-.en-ovrf-dialog > header > button { min-width: 40px; min-height: 40px; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 22px; cursor: pointer; }
+.en-ovrf-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.en-ovrf-header-actions > button { min-width: 40px; min-height: 40px; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 22px; cursor: pointer; }
+.en-ovrf-dialog > header .en-ovrf-view-only { padding: 5px 9px; border: 1px solid var(--website-border, var(--desktop-border, #cbd8d2)); border-radius: 999px; color: var(--website-muted, var(--desktop-muted, #52685d)); font-size: 11px; font-weight: 750; letter-spacing: .05em; white-space: nowrap; }
 .en-ovrf-dialog-body { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; min-width: 0; min-height: 0; overflow: hidden; padding: 12px 14px; background: var(--desktop-surface-muted, #f3f7f5); }
 .en-ovrf-validation-note { margin: 0 0 12px; padding: 9px 11px; border: 1px solid #dfc56e; border-radius: 8px; background: #fff8df; color: #604c12; font-size: 12px; }
 .en-ovrf-document { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 6px; min-width: 0; min-height: 0; overflow: hidden; }
@@ -223,6 +229,7 @@ onBeforeUnmount(() => {
   .en-ovrf-dialog { max-height: calc(100dvh - 16px); }
   .en-ovrf-dialog.has-preview { height: calc(100dvh - 16px); }
   .en-ovrf-dialog > header, .en-ovrf-dialog > footer { padding: 12px; }
+  .en-ovrf-dialog > header { flex-wrap: wrap; }
   .en-ovrf-dialog > footer { flex-wrap: wrap; }
   .en-ovrf-dialog > footer button { flex: 1 1 130px; min-height: 44px; }
   .en-ovrf-dialog-body { padding: 10px; }

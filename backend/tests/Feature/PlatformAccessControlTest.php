@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Mail\LoginVerificationCodeMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\ClientPlatform;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\PersonalAccessToken;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -198,18 +200,44 @@ class PlatformAccessControlTest extends TestCase
     {
         $role = Role::query()->firstOrCreate(['role_name' => $roleName]);
 
-        return User::factory()->create([
+        $user = User::factory()->create([
             'role_id' => $role->id,
             'password' => Hash::make('Password123!'),
             'status' => $status,
         ]);
+        $user->profile()->create([
+            'first_name' => 'Platform',
+            'last_name' => 'User',
+            'gender' => 'Prefer not to say',
+            'email' => 'platform-'.$user->id.'@example.com',
+        ]);
+
+        return $user->fresh('profile');
     }
 
     private function login(User $user, string $client)
     {
-        return $this->postJson('/api/login', [
+        if ($client !== ClientPlatform::DESKTOP) {
+            config(['mail.default' => 'smtp']);
+            Mail::fake();
+        }
+        $response = $this->postJson('/api/login', [
             'username' => $user->username,
             'password' => 'Password123!',
+        ], [ClientPlatform::HEADER => $client]);
+        if ($response->status() !== 202) {
+            return $response;
+        }
+        $code = null;
+        Mail::assertSent(LoginVerificationCodeMail::class, function ($mail) use (&$code): bool {
+            $code = $mail->code;
+
+            return true;
+        });
+
+        return $this->postJson('/api/auth/login/otp/verify', [
+            'challenge_id' => $response->json('data.challenge_id'),
+            'code' => $code,
         ], [ClientPlatform::HEADER => $client]);
     }
 }

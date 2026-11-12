@@ -352,8 +352,7 @@ class EnrollmentAcademicController extends Controller
             : collect();
         $load['candidates'] = collect($load['candidates'])->map(function (array $subject) use ($assignments): array {
             $assignment = $assignments->get($subject['id']);
-            $scheduled = $assignment && ($assignment->meetings->isNotEmpty()
-                || ($assignment->day && $assignment->start_time && $assignment->end_time && $assignment->room));
+            $scheduled = $this->hasCompleteSchedule($assignment);
 
             return $subject + ['schedule_status' => $scheduled ? 'scheduled' : 'pending'];
         })->all();
@@ -433,7 +432,7 @@ class EnrollmentAcademicController extends Controller
         return $this->ok(['id' => $e->id, 'student_number' => $e->student->student_number, 'name' => trim($profile->first_name.' '.$profile->last_name), 'course' => $e->application?->course?->course_name ?? $e->student->course?->course_name, 'year_level' => $e->application?->year_level ?? $e->section->year_level, 'academic_year' => $e->academicYear->school_year, 'semester' => $e->semester->semester_name, 'section' => $e->section->section_name, 'classification' => $e->application?->classification, 'status' => $e->status, 'enrollment_date' => $e->enrollment_date,
             'subjects' => $e->enrollmentSubjects->map(function ($es) use ($schedules): array {
                 $schedule = $schedules->get($es->subject_id);
-                $scheduled = $schedule && ($schedule->meetings->isNotEmpty() || ($schedule->day && $schedule->start_time && $schedule->end_time && $schedule->room));
+                $scheduled = $this->hasCompleteSchedule($schedule);
 
                 return ['id' => $es->subject_id, 'subject_code' => $es->subject->subject_code, 'subject_name' => $es->subject->subject_name, 'units' => (float) $es->subject->units, 'lecture_hours' => $es->subject->lecture_hours, 'laboratory_hours' => $es->subject->laboratory_hours, 'schedule_status' => $scheduled ? 'scheduled' : 'pending', 'schedule' => $schedule];
             })->values(), 'total_units' => $e->enrollmentSubjects->sum(fn ($es) => (float) $es->subject->units)]);
@@ -446,6 +445,26 @@ class EnrollmentAcademicController extends Controller
         ]);
 
         return $this->ovrf->render($request->user(), $id, $input['disposition'] ?? 'inline');
+    }
+
+    private function hasCompleteSchedule(?SectionSubject $schedule): bool
+    {
+        if (! $schedule) {
+            return false;
+        }
+
+        if ($schedule->meetings->isNotEmpty()) {
+            return $schedule->meetings->every(fn ($meeting): bool => filled($meeting->day)
+                && filled($meeting->start_time)
+                && filled($meeting->end_time)
+                && trim((string) $meeting->room) !== ''
+            );
+        }
+
+        return filled($schedule->day)
+            && filled($schedule->start_time)
+            && filled($schedule->end_time)
+            && trim((string) $schedule->room) !== '';
     }
 
     public function professor(Request $r, ?int $section = null)

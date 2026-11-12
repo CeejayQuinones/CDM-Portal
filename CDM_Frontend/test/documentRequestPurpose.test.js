@@ -39,7 +39,7 @@ test('student form requires a purpose and conditionally reveals bounded Others d
   assert.match(student, /Please specify your purpose/)
   assert.match(student, /maxlength="500"/)
   assert.match(student, /purposeDetails\.value = ''/)
-  assert.match(student, /!purposeIsValid/)
+  assert.match(student, /!cartIsValid/)
 })
 
 test('student and Registrar views display structured purpose with legacy fallback', () => {

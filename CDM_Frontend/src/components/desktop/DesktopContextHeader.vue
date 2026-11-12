@@ -7,6 +7,7 @@ defineProps({
   moduleLabel: { type: String, default: 'Workspace' },
   pageTitle: { type: String, default: 'CDM Portal' },
   showModuleButton: { type: Boolean, default: false },
+  navigationControlsId: { type: String, default: 'desktop-module-navigation' },
 })
 defineEmits(['toggle-module'])
 
@@ -34,7 +35,7 @@ async function logout() {
 
 <template>
   <header class="desktop-context-header">
-    <button v-if="showModuleButton" ref="moduleButton" class="desktop-module-button" type="button" aria-label="Open module navigation" aria-controls="desktop-module-navigation" :aria-expanded="false" title="Open module navigation" @click="$emit('toggle-module')">
+    <button v-if="showModuleButton" ref="moduleButton" class="desktop-module-button" type="button" aria-label="Open module navigation" :aria-controls="navigationControlsId" :aria-expanded="false" title="Open module navigation" @click="$emit('toggle-module')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18 6-6-6-6M21 12H7M3 4v16" /></svg>
     </button>
     <div class="desktop-header-context">

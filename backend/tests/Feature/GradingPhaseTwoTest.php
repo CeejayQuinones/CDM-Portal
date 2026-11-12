@@ -7,16 +7,20 @@ use App\Models\EnrollmentSubject;
 use App\Models\GradeAssessment;
 use App\Models\GradeAuditEvent;
 use App\Models\GradePeriodSchedule;
+use App\Models\GradeReleaseSchedule;
 use App\Models\GradeScore;
 use App\Models\GradeSheet;
 use App\Models\GradingScale;
 use App\Models\Professor;
 use App\Models\Role;
 use App\Models\SectionSubject;
+use App\Models\Student;
 use App\Models\User;
+use App\Services\Enrollment\EnrollmentSubjectPolicy;
 use App\Services\Grading\GradingWorkflowService;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\EnrollmentAcademicFixture;
 use Tests\TestCase;
 
@@ -80,6 +84,21 @@ class GradingPhaseTwoTest extends TestCase
         $this->registrarStepUp();
 
         return $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/approve', ['version' => $submitted['version']])->assertOk()->json('data');
+    }
+
+    private function configureOfficialOutcomes(): void
+    {
+        GradingScale::create(['min_percentage' => 0, 'max_percentage' => 74.99, 'grade_point' => 5, 'remark' => 'FAILED', 'is_active' => true]);
+        GradingScale::create(['min_percentage' => 75, 'max_percentage' => 100, 'grade_point' => 1, 'remark' => 'PASSED', 'is_active' => true]);
+    }
+
+    private function releaseApprovedSheet(): int
+    {
+        $payload = ['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'release_at' => now()->subMinute()->toIso8601String(), 'grade_sheet_ids' => [$this->sheet->id]];
+        $release = $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/releases', $payload)->assertCreated()->json('data');
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/releases/'.$release['id'].'/execute')->assertOk();
+
+        return $release['id'];
     }
 
     public function test_server_computation_applies_category_and_final_weights_with_deterministic_rounding(): void
@@ -245,6 +264,7 @@ class GradingPhaseTwoTest extends TestCase
 
     public function test_approved_sheet_can_be_scheduled_and_future_release_is_not_automatic_early(): void
     {
+        $this->configureOfficialOutcomes();
         $approved = $this->approve();
         $payload = ['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'release_at' => now()->addHour()->toIso8601String(), 'grade_sheet_ids' => [$this->sheet->id]];
         $release = $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/releases', $payload)->assertCreated()->json('data');
@@ -259,6 +279,7 @@ class GradingPhaseTwoTest extends TestCase
 
     public function test_due_release_is_transactional_idempotent_and_submitted_sheet_cannot_be_scheduled(): void
     {
+        $this->configureOfficialOutcomes();
         $submitted = $this->submit();
         $this->registrarStepUp();
         $payload = ['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'release_at' => now()->subMinute()->toIso8601String(), 'grade_sheet_ids' => [$this->sheet->id]];
@@ -272,5 +293,153 @@ class GradingPhaseTwoTest extends TestCase
         $this->assertSame($version, $this->sheet->fresh()->version);
         $this->assertDatabaseHas('grade_release_schedules', ['id' => $release['id'], 'status' => 'released']);
         $this->assertSame(1, GradeAuditEvent::where('action', 'grade_sheet.published')->count());
+    }
+
+    public function test_published_passing_results_complete_only_the_mapped_enrollment_subjects_and_enable_prerequisites(): void
+    {
+        $this->configureOfficialOutcomes();
+        $unrelated = EnrollmentSubject::create([
+            'enrollment_id' => $this->enrollmentSubject->enrollment_id,
+            'subject_id' => $this->f['subjects'][1]->id,
+            'subject_status' => 'enrolled',
+            'remarks' => 'In Progress',
+        ]);
+
+        $otherUser = User::factory()->create(['role_id' => Role::where('role_name', Role::STUDENT)->value('id')]);
+        $otherProfile = $otherUser->profile()->create(['first_name' => 'Second', 'last_name' => 'Student', 'gender' => 'Prefer not to say']);
+        $otherStudent = Student::create([
+            'user_id' => $otherUser->id,
+            'user_profile_id' => $otherProfile->id,
+            'course_id' => $this->f['course']->id,
+            'curriculum_id' => $this->f['curriculum']->id,
+            'student_number' => 'GRADE-TWO-SECOND',
+            'admission_date' => today(),
+            'year_level' => 1,
+            'student_status' => 'regular',
+        ]);
+        $otherEnrollment = Enrollment::create([
+            'student_id' => $otherStudent->id,
+            'section_id' => $this->f['section']->id,
+            'academic_year_id' => $this->f['year']->id,
+            'semester_id' => $this->f['semester']->id,
+            'enrollment_date' => now()->toDateString(),
+            'status' => 'enrolled',
+        ]);
+        $otherEnrollmentSubject = EnrollmentSubject::create([
+            'enrollment_id' => $otherEnrollment->id,
+            'subject_id' => $this->f['subjects'][0]->id,
+            'professor_id' => $this->f['professor']->id,
+            'subject_status' => 'enrolled',
+            'remarks' => 'In Progress',
+        ]);
+        foreach (GradeAssessment::all() as $assessment) {
+            GradeScore::create([
+                'grade_assessment_id' => $assessment->id,
+                'enrollment_subject_id' => $otherEnrollmentSubject->id,
+                'score' => 80,
+                'updated_by' => $this->f['professorUser']->id,
+            ]);
+        }
+
+        $this->approve();
+        $releaseId = $this->releaseApprovedSheet();
+
+        foreach ([$this->enrollmentSubject, $otherEnrollmentSubject] as $completed) {
+            $this->assertSame('completed', $completed->fresh()->subject_status);
+            $this->assertSame('Passed', $completed->fresh()->remarks);
+            $this->assertNotNull($completed->fresh()->final_grade);
+        }
+        $this->assertSame('enrolled', $unrelated->fresh()->subject_status);
+        $this->assertSame('In Progress', $unrelated->fresh()->remarks);
+
+        $this->f['subjects'][1]->update(['prerequisite_subject_id' => $this->f['subjects'][0]->id]);
+        $this->f['application']->update(['classification' => 'irregular']);
+        $validated = app(EnrollmentSubjectPolicy::class)->validate($this->f['application']->fresh(), [$this->f['subjects'][1]->id], false);
+        $this->assertSame([$this->f['subjects'][1]->id], $validated->pluck('id')->all());
+
+        $publishedVersion = $this->sheet->fresh()->version;
+        app(GradingWorkflowService::class)->executeRelease(GradeReleaseSchedule::findOrFail($releaseId), $this->f['registrar'], true);
+        $this->assertSame($publishedVersion, $this->sheet->fresh()->version);
+        $this->assertSame(1, GradeAuditEvent::where('action', 'grade_sheet.published')->count());
+    }
+
+    public function test_published_failing_result_is_recorded_but_does_not_satisfy_prerequisites(): void
+    {
+        $this->configureOfficialOutcomes();
+        GradeScore::query()->update(['score' => 50]);
+        $this->approve();
+        $this->releaseApprovedSheet();
+
+        $this->assertSame('completed', $this->enrollmentSubject->fresh()->subject_status);
+        $this->assertSame('Failed', $this->enrollmentSubject->fresh()->remarks);
+        $this->assertSame(50.0, $this->enrollmentSubject->fresh()->final_grade);
+
+        $this->f['subjects'][1]->update(['prerequisite_subject_id' => $this->f['subjects'][0]->id]);
+        $this->f['application']->update(['classification' => 'irregular']);
+        $this->expectException(HttpException::class);
+        app(EnrollmentSubjectPolicy::class)->validate($this->f['application']->fresh(), [$this->f['subjects'][1]->id], false);
+    }
+
+    public function test_published_incomplete_result_remains_uncompleted_and_does_not_satisfy_prerequisites(): void
+    {
+        GradingScale::create(['min_percentage' => 0, 'max_percentage' => 100, 'grade_point' => 4, 'remark' => 'INCOMPLETE', 'is_active' => true]);
+        $this->approve();
+        $this->releaseApprovedSheet();
+
+        $subject = $this->enrollmentSubject->fresh();
+        $this->assertSame('enrolled', $subject->subject_status);
+        $this->assertSame('Incomplete', $subject->remarks);
+        $this->assertSame(86.6, $subject->final_grade);
+        $this->assertNotContains($subject->subject_id, app(EnrollmentSubjectPolicy::class)->completed($this->f['application']->fresh(), false));
+    }
+
+    public function test_submission_and_approval_do_not_change_academic_completion(): void
+    {
+        $this->configureOfficialOutcomes();
+        $this->approve();
+
+        $subject = $this->enrollmentSubject->fresh();
+        $this->assertSame('enrolled', $subject->subject_status);
+        $this->assertNull($subject->final_grade);
+        $this->assertSame('In Progress', $subject->remarks);
+    }
+
+    public function test_corrected_resubmission_uses_only_the_latest_approved_snapshot(): void
+    {
+        $this->configureOfficialOutcomes();
+        $submitted = $this->submit();
+        $this->registrarStepUp();
+        $returned = $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/return', [
+            'version' => $submitted['version'],
+            'reason' => 'Correct the official result.',
+        ])->assertOk()->json('data');
+
+        GradeScore::query()->update(['score' => 50]);
+        Sanctum::actingAs($this->f['professorUser']);
+        $corrected = $this->withHeader('X-CDM-Client', 'web')->postJson('/api/grading/sheets/'.$this->sheet->id.'/submit', ['version' => $returned['version']])->assertOk()->json('data');
+        $this->registrarStepUp();
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/approve', ['version' => $corrected['version']])->assertOk();
+        $this->releaseApprovedSheet();
+
+        $this->assertDatabaseCount('grade_submission_attempts', 2);
+        $this->assertSame('Failed', $this->enrollmentSubject->fresh()->remarks);
+        $this->assertSame(50.0, $this->enrollmentSubject->fresh()->final_grade);
+    }
+
+    public function test_publication_rolls_back_when_snapshot_has_no_authoritative_outcome(): void
+    {
+        $this->approve();
+        $payload = ['academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'release_at' => now()->subMinute()->toIso8601String(), 'grade_sheet_ids' => [$this->sheet->id]];
+        $release = $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/releases', $payload)->assertCreated()->json('data');
+
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/releases/'.$release['id'].'/execute')
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Every published result requires an official PASSED, FAILED, or INCOMPLETE outcome.');
+
+        $this->assertSame('approved', $this->sheet->fresh()->status);
+        $this->assertSame('scheduled', GradeReleaseSchedule::findOrFail($release['id'])->status);
+        $this->assertSame('enrolled', $this->enrollmentSubject->fresh()->subject_status);
+        $this->assertNull($this->enrollmentSubject->fresh()->final_grade);
+        $this->assertDatabaseMissing('grade_audit_events', ['action' => 'grade_sheet.published']);
     }
 }

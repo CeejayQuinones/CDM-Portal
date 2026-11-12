@@ -22,6 +22,7 @@ class UpdateDocumentTypeRequest extends ApiFormRequest
             'description' => ['nullable', 'string', 'max:3000'],
             'workflow_category' => ['sometimes', Rule::in(['supporting_record', 'official_issuance'])],
             'requires_appointment' => ['sometimes', 'boolean'],
+            'requires_physical_retrieval' => ['sometimes', 'boolean'],
             'student_requestable' => ['sometimes', 'boolean'],
             'student_uploadable' => ['sometimes', 'boolean', Rule::prohibitedIf(fn (): bool => $this->input('workflow_category', $documentType->workflow_category) !== 'supporting_record' && $this->boolean('student_uploadable'))],
             'processing_fee' => ['sometimes', 'numeric', 'min:0', 'max:999999.99'],

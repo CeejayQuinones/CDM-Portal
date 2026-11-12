@@ -28,6 +28,7 @@ const serializedDetails=()=>JSON.stringify(personalDetails)
 const hasUnsavedClassification=computed(()=>application.value?.status==='draft' && classification.value!==application.value.classification)
 const hasUnsavedDetails=computed(()=>application.value?.status==='draft' && savedDetails.value && serializedDetails()!==savedDetails.value)
 const hasUnsavedDraft=computed(()=>hasUnsavedClassification.value||hasUnsavedDetails.value)
+const uploadStatusPending=computed(()=>Object.values(uploadStates.value).some(state=>state.statusPending))
 const selected= computed(()=>classifications.find(c=>c.value===classification.value))
 const applicantName=computed(()=>data.value?.student?.name || data.value?.admission?.name || 'Applicant')
 const applicantIdentity=computed(()=>data.value?.student?.student_number || data.value?.admission?.applicant_number || 'Student number pending')
@@ -45,7 +46,7 @@ async function loadPreview(document){
 async function loadPreviews(items){revokePreviews();previewStates.value={};await Promise.all(items.filter(d=>d.attached&&d.preview_url&&['image','pdf'].includes(d.preview_kind)).map(loadPreview))}
 function handlePreviewImageError(document){const url=previewUrls.value[document.id];if(url)globalThis.URL?.revokeObjectURL?.(url);const next={...previewUrls.value};delete next[document.id];previewUrls.value=next;previewStates.value={...previewStates.value,[document.id]:{loading:false,error:'The saved image could not be displayed. Retry the private preview.'}}}
 function setFileInput(id,element){if(element)fileInputs.value[id]=element;else delete fileInputs.value[id]}
-function activateDocument(document){if(document.reusable||busy.value||classification.value!==application.value?.classification)return;fileInputs.value[document.id]?.click?.()}
+function activateDocument(document){if(document.reusable||busy.value||uploadStatusPending.value||classification.value!==application.value?.classification)return;fileInputs.value[document.id]?.click?.()}
 function hydrateDetails(value){const source=value||{};Object.keys(personalDetails).forEach(key=>{personalDetails[key]=source[key]??''});savedDetails.value=serializedDetails()}
 async function load() {
  const v=++epoch; busy.value=true; error.value=''
@@ -56,6 +57,34 @@ async function open(a) {
  const v=++epoch;busy.value=true;error.value=''
  try {const r=await apiClient.get(`/enrollment/applications/${a.id}`);if(v!==epoch)return;application.value=r.data.data.application;requirements.value=r.data.data.requirements;classification.value=application.value.classification;hydrateDetails(application.value.personal_details);await loadPreviews(requirements.value);step.value=application.value.status==='draft'?0:finalDraftStep+1}
  catch(e){if(v===epoch)error.value=safeError(e)}finally{if(v===epoch)busy.value=false}
+}
+async function refreshUploadedDocument(type) {
+ const applicationId=application.value?.id,v=epoch
+ if(!applicationId)return false
+ const wasUploading=Boolean(uploadStates.value[type]?.uploading)
+ uploadStates.value={...uploadStates.value,[type]:{...uploadStates.value[type],refreshing:true,error:''}}
+ try {
+  const response=await apiClient.get(`/enrollment/applications/${applicationId}`)
+  if(v!==epoch||application.value?.id!==applicationId)return false
+  const updated=response.data.data.requirements.find(document=>Number(document.id)===Number(type))
+  if(Number(response.data.data.application.version)<Number(application.value.version))throw new Error('The updated draft version is not available yet. Retry its status.')
+  if(!updated?.attached)throw new Error('The updated document is not visible yet. Retry its status.')
+  application.value={...application.value,version:response.data.data.application.version}
+  requirements.value=requirements.value.map(document=>Number(document.id)===Number(type)?updated:document)
+  await loadPreview(updated)
+  if(v!==epoch||application.value?.id!==applicationId)return false
+  const localUrl=uploadStates.value[type]?.localUrl
+  if(localUrl)globalThis.URL?.revokeObjectURL?.(localUrl)
+  uploadStates.value={...uploadStates.value,[type]:{}}
+  if(!wasUploading)notice.value='Document status refreshed.'
+  return true
+ }catch(e){
+  if(v===epoch&&application.value?.id===applicationId){
+   const reason=e?.response?safeError(e):(e?.message||'The updated document status is unavailable.')
+   uploadStates.value={...uploadStates.value,[type]:{...uploadStates.value[type],refreshing:false,statusPending:true,error:`Document uploaded, but its status could not be refreshed. ${reason}`}}
+  }
+  return false
+ }finally{if(v===epoch&&uploadStates.value[type]?.refreshing)uploadStates.value={...uploadStates.value,[type]:{...uploadStates.value[type],refreshing:false}}}
 }
 async function create() {
  if(busy.value)return;const v=++epoch;busy.value=true;error.value=''
@@ -69,10 +98,10 @@ async function act(action) {
  catch(e){if(v===epoch)error.value=safeError(e)}finally{if(v===epoch)busy.value=false}
 }
 async function upload(type,event) {
- const file=event.target.files?.[0];if(!file||busy.value)return;const v=++epoch;busy.value=true;error.value=''
+ const file=event.target.files?.[0];if(!file||busy.value||uploadStatusPending.value)return;const v=++epoch;busy.value=true;error.value='';notice.value=''
  const oldState=uploadStates.value[type]||{};const localUrl=file.type.startsWith('image/')&&globalThis.URL?.createObjectURL?globalThis.URL.createObjectURL(file):null;uploadStates.value={...uploadStates.value,[type]:{uploading:true,progress:0,localUrl,error:''}}
  const form=new FormData();form.append('file',file);form.append('version',application.value.version);form.append('document_type_id',type)
- try {await apiClient.post(`/enrollment/applications/${application.value.id}/documents`,form,{headers:{'Content-Type':'multipart/form-data'},onUploadProgress:p=>{const total=p.total||file.size;uploadStates.value={...uploadStates.value,[type]:{...uploadStates.value[type],progress:total?Math.round(p.loaded/total*100):0}}}});if(v!==epoch)return;await open(application.value);if(localUrl)globalThis.URL?.revokeObjectURL?.(localUrl);uploadStates.value={...uploadStates.value,[type]:{}};step.value=0;notice.value='Document uploaded successfully.'}catch(e){if(localUrl)globalThis.URL?.revokeObjectURL?.(localUrl);uploadStates.value={...uploadStates.value,[type]:{...oldState,error:safeError(e)}};if(v===epoch)error.value=safeError(e)}finally{event.target.value='';if(v===epoch){busy.value=false;uploadStates.value={...uploadStates.value,[type]:{...uploadStates.value[type],uploading:false}}}}
+ try {await apiClient.post(`/enrollment/applications/${application.value.id}/documents`,form,{headers:{'Content-Type':'multipart/form-data'},onUploadProgress:p=>{const total=p.total||file.size;uploadStates.value={...uploadStates.value,[type]:{...uploadStates.value[type],progress:total?Math.round(p.loaded/total*100):0}}}});if(v!==epoch)return;application.value={...application.value,version:Number(application.value.version)+1};const refreshed=await refreshUploadedDocument(type);if(v===epoch)notice.value=refreshed?'Document uploaded successfully.':'Document uploaded. Refresh its status before uploading another file.'}catch(e){if(localUrl)globalThis.URL?.revokeObjectURL?.(localUrl);uploadStates.value={...uploadStates.value,[type]:{...oldState,error:safeError(e)}}}finally{event.target.value='';if(v===epoch){busy.value=false;uploadStates.value={...uploadStates.value,[type]:{...uploadStates.value[type],uploading:false}}}}
 }
 async function continueStep(){if(step.value===0){const saved=await act('save');if(saved)step.value++}else step.value++}
 function showPreview(document){if(previewUrls.value[document.id])previewDocument.value=document}
@@ -125,7 +154,7 @@ onMounted(()=>{globalThis.window?.addEventListener?.('beforeunload',handleBefore
     <article v-for="d in requirements" :key="d.id" class="enrollment-reference-document enrollment-document-card" :data-ready="d.attached||d.reusable">
       <div><strong>{{ d.name }}</strong><em>{{ d.required ? 'Required' : 'Optional' }}</em></div>
       <div class="enrollment-document-upload-shell">
-        <button type="button" class="enrollment-document-preview" :class="{empty:!d.attached&&!d.reusable,failed:previewStates[d.id]?.error}" :disabled="d.reusable || busy || classification!==application.classification" :aria-label="d.attached ? `Replace ${d.name}` : `Add ${d.name}`" @click="activateDocument(d)">
+        <button type="button" class="enrollment-document-preview" :class="{empty:!d.attached&&!d.reusable,failed:previewStates[d.id]?.error}" :disabled="d.reusable || busy || uploadStatusPending || classification!==application.classification" :aria-label="d.attached ? `Replace ${d.name}` : `Add ${d.name}`" @click="activateDocument(d)">
           <img v-if="uploadStates[d.id]?.localUrl || (d.preview_kind==='image'&&previewUrls[d.id])" :src="uploadStates[d.id]?.localUrl || previewUrls[d.id]" :alt="`Preview of ${d.name}`" @error="handlePreviewImageError(d)">
           <span v-else-if="previewStates[d.id]?.loading" class="enrollment-document-prompt"><span aria-hidden="true">↻</span><strong>Loading preview…</strong></span>
           <span v-else-if="previewStates[d.id]?.error" class="enrollment-document-prompt"><span aria-hidden="true">!</span><strong>Preview unavailable</strong></span>
@@ -135,15 +164,17 @@ onMounted(()=>{globalThis.window?.addEventListener?.('beforeunload',handleBefore
           <span v-if="!d.reusable" class="enrollment-document-replace"><span aria-hidden="true">↑</span>{{ d.attached ? (d.preview_kind==='image' ? 'Replace Image' : 'Replace Document') : 'Add Document' }}</span>
           <span v-if="d.attached&&!d.reusable" class="enrollment-document-mobile-edit" aria-hidden="true">✎</span>
         </button>
-        <input :ref="element=>setFileInput(d.id,element)" class="enrollment-document-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png" :disabled="busy || classification!==application.classification" :aria-label="d.attached ? `Replace ${d.name}` : `Add ${d.name}`" @change="upload(d.id,$event)">
+        <input :ref="element=>setFileInput(d.id,element)" class="enrollment-document-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png" :disabled="busy || uploadStatusPending || classification!==application.classification" :aria-label="d.attached ? `Replace ${d.name}` : `Add ${d.name}`" @change="upload(d.id,$event)">
         <button v-if="d.attached&&previewUrls[d.id]" type="button" class="enrollment-document-view" :aria-label="d.preview_kind==='pdf' ? `View ${d.name} document` : `View full ${d.name} image`" title="View saved document" @click.stop="showPreview(d)">⌕</button>
         <button v-else-if="d.attached&&previewStates[d.id]?.error" type="button" class="enrollment-document-retry" :disabled="previewStates[d.id]?.loading" :aria-label="`Retry ${d.name} preview`" @click.stop="loadPreview(d)">Retry preview</button>
       </div>
       <p>{{ d.filename || (d.reusable ? 'Verified existing document will be reused' : d.required ? 'Upload required before submission' : 'No file supplied') }}</p>
-      <span v-if="d.attached&&!previewStates[d.id]?.error" class="enrollment-reference-document-ready">Uploaded / Ready</span>
+      <span v-if="d.attached&&!uploadStates[d.id]?.statusPending&&!previewStates[d.id]?.error" class="enrollment-reference-document-ready">Uploaded / Ready</span>
+      <span v-else-if="uploadStates[d.id]?.statusPending" class="enrollment-document-error" role="status">Uploaded · Status refresh needed</span>
       <span v-else-if="d.attached" class="enrollment-document-error" role="status">Saved document · Preview unavailable</span>
       <progress v-if="uploadStates[d.id]?.uploading" :value="uploadStates[d.id].progress" max="100">{{ uploadStates[d.id].progress }}%</progress>
       <p v-if="uploadStates[d.id]?.error" class="enrollment-document-error" role="alert">{{ uploadStates[d.id].error }}</p>
+      <button v-if="uploadStates[d.id]?.statusPending" type="button" :disabled="uploadStates[d.id]?.refreshing" @click="refreshUploadedDocument(d.id)">{{ uploadStates[d.id]?.refreshing ? 'Refreshing status…' : 'Retry upload status' }}</button>
       <span v-if="d.reusable" class="enrollment-reference-document-ready">Verified and ready</span>
     </article>
   </div>
@@ -151,7 +182,7 @@ onMounted(()=>{globalThis.window?.addEventListener?.('beforeunload',handleBefore
 <div class="en-card enrollment-reference-stage" v-if="step===1"><div class="enrollment-reference-stage-title centered"><span aria-hidden="true">02</span><div><small>Enrollment</small><h2>Choose your classification</h2></div></div><div class="en-grid enrollment-reference-classifications"><label v-for="(c,index) in classifications" :key="c.value" class="enrollment-reference-choice" :class="{selected:classification===c.value}"><input type="radio" v-model="classification" :value="c.value" :disabled="busy" name="classification"><span class="enrollment-reference-choice-mark">{{ index+1 }}</span><strong>{{ c.label }}</strong><span>{{ c.description }}</span><em v-if="classification===c.value">Selected</em></label></div><aside class="enrollment-reference-note"><strong>Important note</strong><p>Select the classification that matches your current academic standing. Save the draft after changing it so the Registrar-configured document requirements can refresh.</p></aside></div>
 <div class="en-card enrollment-reference-stage" v-if="isWebsitePresentation && step===2"><div class="enrollment-reference-stage-title"><span aria-hidden="true">03</span><div><small>Course</small><h2>Academic path and review</h2></div></div><div class="enrollment-reference-program-choice" role="group" aria-label="Verified primary program"><div class="enrollment-reference-program selected"><span>Primary program</span><strong>{{ applicantCourse?.course_name || 'Program pending verification' }}</strong><small>{{ applicantCourse?.course_code || 'No program code available' }}</small><em>Verified selection</em></div><div class="enrollment-reference-program unavailable"><span>Secondary program</span><strong>Not available in Enrollment</strong><small>CDM Portal has no approved secondary-choice enrollment contract.</small></div></div><div class="enrollment-reference-path"><div><small>Curriculum</small><strong>{{ applicantCurriculum?.curriculum_name || 'Curriculum pending' }}</strong><span>{{ applicantCurriculum?.curriculum_code || 'No curriculum code available' }}</span></div><div><small>Year level</small><strong>{{ data.student?.year_level || application.year_level || 1 }}</strong><span>Authoritative academic record</span></div><div><small>Enrollment type</small><strong>{{ selected.label }}</strong><span>{{ selected.description }}</span></div></div><aside class="enrollment-reference-note"><strong>Your program is already verified</strong><p>The collaborators’ first-year flow allows primary and secondary program choices. CDM Portal preserves the program accepted through Admission or assigned in Student Records; it does not expose an unsupported choice or capacity value.</p></aside><div class="enrollment-reference-review-heading"><small>Final review</small><h3>Confirm before submission</h3></div><p class="enrollment-reference-review-lead">{{ applicantName }} · {{ applicantIdentity }}</p><div class="enrollment-reference-review-grid"><div><dt>Academic term</dt><dd>{{ termLabel(application.period || data.period) }}</dd></div><div><dt>Program</dt><dd>{{ applicantCourse?.course_name || 'Pending verified program' }}</dd><small>{{ applicantCurriculum?.curriculum_name || 'Pending verified curriculum' }}</small></div><div><dt>Enrollment type</dt><dd>{{ label(classification) }}</dd></div><div><dt>Documents</dt><dd>{{ requirements.filter(d=>d.attached||d.reusable).length }} of {{ requirements.length }} ready</dd></div></div><p v-if="classification!==application.classification" class="enrollment-reference-warning" role="alert">Save your classification, then return to Student info to review the refreshed document requirements before submitting.</p><p v-else-if="requirements.some(d=>d.required&&!d.attached&&!d.reusable)" class="enrollment-reference-warning" role="alert">Return to Student info and provide every required configured document before submitting.</p></div>
 <div class="en-card" v-if="!isWebsitePresentation && step===2"><h2>Academic path</h2><p>{{ applicantCourse?.course_name }} · {{ applicantCurriculum?.curriculum_name }} · {{ selected.label }}</p></div>
-<div class="en-card" v-if="!isWebsitePresentation && step===3"><h2>Review your application</h2><p>{{ applicantName }} · {{ applicantIdentity }} · {{ termLabel(application.period || data.period) }} · {{ label(classification) }}</p><p v-if="classification!==application.classification" role="alert">Save your classification to refresh document requirements before submitting.</p><div v-for="d in requirements" :key="d.id"><strong>{{ d.name }}</strong> — {{ d.attached?'Attached':d.reusable?'Verified existing document':d.required?'Required':'Optional' }}<label v-if="!d.attached&&!d.reusable">Choose document<input type="file" accept=".pdf,.jpg,.jpeg,.png" :disabled="busy||classification!==application.classification" @change="upload(d.id,$event)"></label></div></div>
+<div class="en-card" v-if="!isWebsitePresentation && step===3"><h2>Review your application</h2><p>{{ applicantName }} · {{ applicantIdentity }} · {{ termLabel(application.period || data.period) }} · {{ label(classification) }}</p><p v-if="classification!==application.classification" role="alert">Save your classification to refresh document requirements before submitting.</p><div v-for="d in requirements" :key="d.id"><strong>{{ d.name }}</strong> — {{ d.attached?'Attached':d.reusable?'Verified existing document':d.required?'Required':'Optional' }}<label v-if="!d.attached&&!d.reusable">Choose document<input type="file" accept=".pdf,.jpg,.jpeg,.png" :disabled="busy||uploadStatusPending||classification!==application.classification" @change="upload(d.id,$event)"></label><p v-if="uploadStates[d.id]?.error" class="enrollment-document-error" role="alert">{{ uploadStates[d.id].error }}</p><button v-if="uploadStates[d.id]?.statusPending" type="button" :disabled="uploadStates[d.id]?.refreshing" @click="refreshUploadedDocument(d.id)">Retry upload status</button></div></div>
 <div class="en-actions enrollment-reference-footer"><button class="en-secondary" :disabled="busy||step===0" @click="step--">Previous Step</button><button v-if="step<finalDraftStep" :disabled="busy" @click="continueStep">Continue</button><button :disabled="busy" @click="act('save')">Save draft</button><button v-if="step===finalDraftStep" :disabled="busy || hasUnsavedDraft || !data.eligible || requirements.some(d=>d.required&&!d.attached&&!d.reusable)" @click="confirmation='submit'">Submit application</button><button class="en-secondary" :disabled="busy" @click="confirmation='cancel'">Cancel Application</button></div>
 </template>
 <div v-else class="en-card"><h2>{{ label(application.status) }}</h2><p>{{ label(application.classification) }} · {{ termLabel(application.period || data.period) }}</p><p v-if="application.status==='submitted'">Your application is awaiting staff review.</p><p v-if="application.status==='under_review'">Your application is being reviewed.</p><p v-if="application.status==='approved'">Your application is approved. Academic enrollment and subject assignment are still pending finalization. Open Subjects to review your load.</p><p v-if="application.status==='rejected'">Your application was rejected. Contact the Registrar for guidance.</p><p v-if="application.review_notes">Registrar notes: {{ application.review_notes }}</p></div>

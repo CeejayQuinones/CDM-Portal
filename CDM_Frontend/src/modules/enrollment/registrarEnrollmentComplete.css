@@ -1,6 +1,8 @@
 /* Registrar Enrollment workspace. Every rule is deliberately Electron-scoped. */
 html.cdm-desktop-client .en-staff-modern {
   --en-green: var(--desk-primary, #14532d);
+  --en-action: var(--en-green);
+  --en-error: #b42318;
   --en-green-soft: color-mix(in srgb, var(--en-green) 9%, var(--desk-surface, #fff));
   --en-line: var(--desk-border, #d8e0dc);
   --en-muted: var(--desk-text-muted, #647067);
@@ -8,6 +10,34 @@ html.cdm-desktop-client .en-staff-modern {
   display: grid;
   gap: 12px;
   min-width: 0;
+}
+
+/* Existing Enrollment tokens used light fallbacks when the Registrar workspace was dark. */
+html.cdm-desktop-client[data-student-theme='dark'] .registrar-workspace :is(.en-staff-modern, .ear-workspace) {
+  --desk-text: var(--desk-ink);
+  --desk-text-muted: var(--desk-muted);
+  --desk-primary: var(--desk-green-700);
+  --desk-border: var(--desk-line);
+  --desk-soft: var(--desk-surface-muted);
+  --en-green: var(--desk-green-700);
+  --en-action: var(--desk-action);
+  --en-line: var(--desk-line);
+  --en-muted: var(--desk-muted);
+  --en-error: var(--desk-danger);
+}
+@media (prefers-color-scheme: dark) {
+  html.cdm-desktop-client[data-student-theme='system'] .registrar-workspace :is(.en-staff-modern, .ear-workspace) {
+    --desk-text: var(--desk-ink);
+    --desk-text-muted: var(--desk-muted);
+    --desk-primary: var(--desk-green-700);
+    --desk-border: var(--desk-line);
+    --desk-soft: var(--desk-surface-muted);
+    --en-green: var(--desk-green-700);
+    --en-action: var(--desk-action);
+    --en-line: var(--desk-line);
+    --en-muted: var(--desk-muted);
+    --en-error: var(--desk-danger);
+  }
 }
 
 html.cdm-desktop-client .en-staff-modern [hidden] { display: none !important; }
@@ -64,13 +94,13 @@ html.cdm-desktop-client .en-row-menu button {
 }
 
 html.cdm-desktop-client .en-modern-primary,
-html.cdm-desktop-client .en-schedule-search button[type="submit"] { background: var(--en-green); border: 1px solid var(--en-green); color: #fff; }
+html.cdm-desktop-client .en-schedule-search button[type="submit"] { background: var(--en-action); border: 1px solid var(--en-action); color: #fff; }
 html.cdm-desktop-client .en-modern-outline,
 html.cdm-desktop-client .en-compact-pagination button,
 html.cdm-desktop-client .en-actions button { background: color-mix(in srgb, var(--desk-surface, #fff) 96%, var(--en-line)); border: 1px solid color-mix(in srgb, var(--en-line) 78%, transparent); color: var(--desk-text, #17211b); }
 html.cdm-desktop-client .en-modern-ghost { background: transparent; border: 1px solid transparent; color: var(--en-muted); }
 html.cdm-desktop-client .en-modern-danger { background: #b42318; border: 1px solid #b42318; color: #fff; }
-html.cdm-desktop-client .en-danger-link { color: #b42318 !important; }
+html.cdm-desktop-client .en-danger-link { color: var(--en-error) !important; }
 html.cdm-desktop-client button:disabled { cursor: not-allowed; opacity: .55; }
 html.cdm-desktop-client .en-modern-primary:not(:disabled):hover,
 html.cdm-desktop-client .en-schedule-search button[type="submit"]:not(:disabled):hover { box-shadow: 0 3px 9px color-mix(in srgb, var(--en-green) 22%, transparent); }
@@ -311,8 +341,8 @@ html.cdm-desktop-client .en-modern-details div { border-bottom: 1px solid var(--
 html.cdm-desktop-client .en-modern-details dt { color: var(--en-muted); font-size: 11px; font-weight: 800; }
 html.cdm-desktop-client .en-modern-details dd { margin: 0; }
 html.cdm-desktop-client .en-form-note { background: var(--en-green-soft); border-radius: 8px; color: var(--en-muted); margin: 14px 0 0; padding: 10px; }
-html.cdm-desktop-client .en-form-validation-summary { background: color-mix(in srgb, #b42318 8%, var(--desk-surface, #fff)); border: 1px solid color-mix(in srgb, #b42318 30%, var(--en-line)); border-radius: 8px; color: #b42318; font-size: 12px; margin: 0 0 12px; padding: 9px 11px; }
-html.cdm-desktop-client .en-field-error { color: #b42318; font-size: 11px; font-weight: 700; line-height: 1.35; }
+html.cdm-desktop-client .en-form-validation-summary { background: color-mix(in srgb, #b42318 8%, var(--desk-surface, #fff)); border: 1px solid color-mix(in srgb, #b42318 30%, var(--en-line)); border-radius: 8px; color: var(--en-error); font-size: 12px; margin: 0 0 12px; padding: 9px 11px; }
+html.cdm-desktop-client .en-field-error { color: var(--en-error); font-size: 11px; font-weight: 700; line-height: 1.35; }
 html.cdm-desktop-client .en-professor-assignment-dialog .en-modern-dialog-body { display: grid; gap: 12px; max-height: min(62vh, 580px); overflow: hidden; }
 html.cdm-desktop-client .en-professor-search { color: var(--en-muted); display: grid; font-size: 11px; font-weight: 800; gap: 5px; }
 html.cdm-desktop-client .en-professor-search input { background: var(--desk-surface, #fff); border: 1px solid var(--en-line); border-radius: 8px; color: inherit; min-height: 38px; padding: 7px 10px; }
@@ -329,7 +359,7 @@ html.cdm-desktop-client .en-professor-assignment-list > p { color: var(--en-mute
 html.cdm-desktop-client .en-day-picker { border: 0; display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; margin: 0; padding: 0; }
 html.cdm-desktop-client .en-day-picker legend { color: var(--en-muted); font-size: 11px; font-weight: 800; margin-bottom: 6px; width: 100%; }
 html.cdm-desktop-client .en-day-picker button { background: var(--desk-surface, #fff); border: 1px solid var(--en-line); border-radius: 999px; color: inherit; min-height: 34px; padding: 5px 12px; }
-html.cdm-desktop-client .en-day-picker button.selected { background: var(--en-green); border-color: var(--en-green); color: #fff; }
+html.cdm-desktop-client .en-day-picker button.selected { background: var(--en-action); border-color: var(--en-action); color: #fff; }
 html.cdm-desktop-client .en-schedule-editor-overlay .en-dialog { display: block; max-height: min(90dvh, 760px); overflow: hidden; padding: 0; width: min(900px, 100%); }
 html.cdm-desktop-client .en-schedule-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: min(90dvh, 760px); min-height: 0; overflow: hidden; width: 100%; }
 html.cdm-desktop-client .en-schedule-dialog > header,
@@ -361,15 +391,15 @@ html.cdm-desktop-client .en-time-spinner button:disabled,
 html.cdm-desktop-client .en-time-spinner input:disabled { cursor: not-allowed; opacity: .55; }
 html.cdm-desktop-client .en-meeting-duration { align-self: center; display: grid; gap: 4px; min-width: 76px; }
 html.cdm-desktop-client .en-meeting-duration strong { font-size: 12px; white-space: nowrap; }
-html.cdm-desktop-client .en-meeting-error { color: #b42318; font-size: 11px; grid-column: 2 / -1; margin: 0; }
+html.cdm-desktop-client .en-meeting-error { color: var(--en-error); font-size: 11px; grid-column: 2 / -1; margin: 0; }
 html.cdm-desktop-client .en-meeting-availability { align-items: start; border-radius: 8px; display: grid; font-size: 11px; gap: 4px; grid-column: 1 / -1; line-height: 1.4; min-width: 0; padding: 7px 9px; }
 html.cdm-desktop-client .en-meeting-availability[data-status="checking"] { background: color-mix(in srgb, #d7a317 10%, var(--desk-surface, #fff)); color: color-mix(in srgb, #805d00 88%, var(--desk-text, #17211b)); }
 html.cdm-desktop-client .en-meeting-availability[data-status="available"] { background: color-mix(in srgb, var(--en-green) 9%, var(--desk-surface, #fff)); color: var(--en-green); font-weight: 800; }
 html.cdm-desktop-client .en-meeting-availability[data-status="conflict"],
-html.cdm-desktop-client .en-meeting-availability[data-status="error"] { background: color-mix(in srgb, #b42318 8%, var(--desk-surface, #fff)); color: #b42318; }
+html.cdm-desktop-client .en-meeting-availability[data-status="error"] { background: color-mix(in srgb, #b42318 8%, var(--desk-surface, #fff)); color: var(--en-error); }
 html.cdm-desktop-client .en-meeting-availability ul { display: grid; gap: 2px; margin: 0; padding-left: 18px; }
 html.cdm-desktop-client .en-meeting-availability li { overflow-wrap: anywhere; }
-html.cdm-desktop-client .en-weekly-hours { align-items: center; background: linear-gradient(135deg, var(--en-green), color-mix(in srgb, var(--en-green) 76%, #021)); border-radius: 11px; color: #fff; display: grid; gap: 2px; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; padding: 12px 14px; }
+html.cdm-desktop-client .en-weekly-hours { align-items: center; background: linear-gradient(135deg, var(--en-action), color-mix(in srgb, var(--en-action) 76%, #021)); border-radius: 11px; color: #fff; display: grid; gap: 2px; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; padding: 12px 14px; }
 html.cdm-desktop-client .en-weekly-hours > span { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 html.cdm-desktop-client .en-weekly-hours > strong { font-size: 20px; grid-row: 1 / span 2; }
 html.cdm-desktop-client .en-weekly-hours > small { color: color-mix(in srgb, #fff 82%, transparent); }

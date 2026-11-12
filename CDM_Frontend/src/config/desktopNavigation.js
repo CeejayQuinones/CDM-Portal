@@ -3,6 +3,7 @@ const destinationFromItem = item => ({
   label: item.label,
   path: item.path,
   activeRoutes: item.activeRoutes || [item.name],
+  activeQuery: item.activeQuery,
 })
 
 export function desktopModulesFromMenu(items = []) {
@@ -17,11 +18,13 @@ export function desktopModulesFromMenu(items = []) {
   }))
 }
 
-export const destinationContainsDesktopRoute = (destination, route) =>
-  destination.path === route.fullPath
-  || destination.path.split('?')[0] === route.path
-  || destination.name === route.name
-  || destination.activeRoutes?.includes(route.name)
+export const destinationContainsDesktopRoute = (destination, route) => {
+  if (destination.name === route.name || destination.activeRoutes?.includes(route.name)) return true
+  const [path, query = ''] = destination.path.split('?')
+  if (path !== route.path) return false
+  const expectedQuery = destination.activeQuery || Object.fromEntries(new URLSearchParams(query))
+  return Object.entries(expectedQuery).every(([key, value]) => String(route.query?.[key] ?? '') === String(value))
+}
 
 export const desktopModuleContainsRoute = (module, route) =>
   module?.destinations.some(destination => destinationContainsDesktopRoute(destination, route)) === true

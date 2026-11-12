@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
+  destinationContainsDesktopRoute,
   desktopModuleContainsRoute,
   desktopModuleForRoute,
   desktopModulesFromMenu,
 } from '../src/config/desktopNavigation.js'
+import { NAVIGATION_ITEMS } from '../src/config/accessControl.js'
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
@@ -37,7 +39,25 @@ test('desktop modules derive only from authorized navigation and retain stable r
   assert.equal(desktopModuleForRoute(modules, { name: 'enrollment-records', path: '/enrollment/records' }).name, 'enrollment')
 })
 
-test('Electron uses an icon-only rail and contextual module navigation instead of the legacy Sidebar and Navbar', async () => {
+test('Grading highlights only the current query destination while other accordion routes still match', () => {
+  const grading = NAVIGATION_ITEMS.find(item => item.name === 'grading')
+  const [module] = desktopModulesFromMenu([{ ...grading, children: grading.children.filter(child => ['grading-dashboard', 'grading-periods', 'grading-configuration', 'grading-professors', 'grading-student-history'].includes(child.name)) }])
+  for (const [view, expected] of [
+    ['dashboard', 'grading-dashboard'],
+    ['periods', 'grading-periods'],
+    ['configuration', 'grading-configuration'],
+    ['professors', 'grading-professors'],
+  ]) {
+    const route = { name: 'grading', path: '/grading', fullPath: `/grading?view=${view}`, query: { view, config: view === 'configuration' ? 'releases' : undefined } }
+    assert.deepEqual(module.destinations.filter(destination => destinationContainsDesktopRoute(destination, route)).map(destination => destination.name), [expected])
+  }
+  const history = { name: 'grading-student-history', path: '/grading/student-history', fullPath: '/grading/student-history', query: {} }
+  assert.deepEqual(module.destinations.filter(destination => destinationContainsDesktopRoute(destination, history)).map(destination => destination.name), ['grading-student-history'])
+  const enrollment = desktopModulesFromMenu(registrarMenu)[1]
+  assert.equal(desktopModuleContainsRoute(enrollment, { name: 'enrollment-records', path: '/enrollment/records', fullPath: '/enrollment/records', query: {} }), true)
+})
+
+test('Electron retains Admin contextual navigation while Registrar uses its authorized sidebar', async () => {
   const [layout, shell, rail, panel, header] = await Promise.all([
     read('src/layouts/DashboardLayout.vue'),
     read('src/layouts/DesktopAppShell.vue'),
@@ -63,15 +83,18 @@ test('Electron uses an icon-only rail and contextual module navigation instead o
   assert.match(shell, /focusPanel/)
   assert.match(shell, /hasContextPanel && !modulePanelOpen/)
   assert.doesNotMatch(shell, /has-context-panel/)
-  assert.doesNotMatch(shell, /watch\(\(\) => route\.fullPath/)
+  assert.match(shell, /watch\(\(\) => route\.fullPath/)
   assert.doesNotMatch(shell, /<Sidebar/)
   assert.doesNotMatch(shell, /<Navbar/)
   assert.match(rail, /aria-label="Primary workspace navigation"/)
   assert.match(rail, /desktop-rail-tooltip/)
-  assert.doesNotMatch(rail, /desktop-rail-label/)
-  assert.doesNotMatch(rail, /desktop-rail-destinations/)
-  assert.match(rail, /aria-controls="module\.destinations\.length > 1 \? 'desktop-module-navigation'/)
-  assert.match(rail, /aria-expanded="module\.destinations\.length > 1 && isActive\(module\) \? modulePanelOpen/)
+  assert.match(rail, /aria-label="Registrar workspace navigation"/)
+  assert.match(rail, /REGISTRAR WORKSPACE/)
+  assert.match(rail, /module\.destinations\.length === 1/)
+  assert.match(rail, /:aria-expanded="expandedModule === module\.name"/)
+  assert.match(rail, /drawerOpen/)
+  assert.match(shell, /auth\.currentRole === 'Registrar Staff'/)
+  assert.match(shell, /!registrarRail && activeModule && hasContextPanel && modulePanelOpen/)
   assert.match(panel, /id="desktop-module-navigation"/)
   assert.match(panel, /aria-current="active\(destination, route\) \? 'page'/)
   assert.match(panel, /aria-label="Close module navigation"/)
@@ -80,6 +103,23 @@ test('Electron uses an icon-only rail and contextual module navigation instead o
   assert.match(header, /Authenticated|desktop-header-account|auth\.currentRole/)
   assert.match(header, /aria-label="Open module navigation"/)
   assert.match(header, /defineExpose\(\{ focusModuleButton:/)
+})
+
+test('Registrar sidebar uses authorized destinations, direct links, and a permanent desktop width', async () => {
+  const modules = desktopModulesFromMenu(registrarMenu)
+  assert.equal(modules[0].destinations.length, 1)
+  assert.equal(modules[1].destinations.length, 2)
+  assert.equal(modules[2].destinations.length, 2)
+  const [rail, style] = await Promise.all([
+    read('src/components/desktop/DesktopPrimaryRail.vue'),
+    read('src/assets/styles/desktop-ui-3.css'),
+  ])
+  assert.match(rail, /v-if="module\.destinations\.length === 1"/)
+  assert.match(rail, /destinationContainsDesktopRoute\(destination, route\)/)
+  assert.match(rail, /:aria-current="destinationActive\(destination\) \? 'page'/)
+  assert.match(style, /\.desktop-workspace-shell\.registrar-workspace \{[^}]*grid-template-columns: 272px/)
+  assert.match(style, /\.desktop-workspace-shell \{[^}]*grid-template-columns: var\(--desk-rail-width\)/)
+  assert.match(style, /@media \(max-width: 1100px\)/)
 })
 
 test('Registrar dashboard is an operational queue and no longer renders Quick Actions cards', async () => {

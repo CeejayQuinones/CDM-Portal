@@ -10,7 +10,9 @@ use App\Http\Middleware\EnsureRegistrarOrAdminRole;
 use App\Http\Middleware\EnsureRegistrarStaffRole;
 use App\Http\Middleware\EnsureStudentRole;
 use App\Http\Middleware\RequireStepUpAuthentication;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -60,8 +62,18 @@ return Application::configure(basePath: dirname(__DIR__))
             if (! $request->is('api/enrollment/*') || $exception instanceof AuthenticationException || $exception instanceof ValidationException) {
                 return null;
             }
-            $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 503;
-            $message = $status >= 500 ? 'Enrollment is temporarily unavailable. Please reload and try again.' : ($status === 404 ? 'Enrollment record not found.' : $exception->getMessage());
+            $status = match (true) {
+                $exception instanceof ModelNotFoundException => 404,
+                $exception instanceof AuthorizationException => 403,
+                $exception instanceof HttpExceptionInterface => $exception->getStatusCode(),
+                default => 500,
+            };
+            $message = match (true) {
+                $status >= 500 => 'Enrollment could not be completed. Please reload and try again.',
+                $status === 404 => 'Enrollment record not found.',
+                $status === 403 && $exception->getMessage() === '' => 'You are not authorized to perform this action.',
+                default => $exception->getMessage(),
+            };
 
             return response()->json(['success' => false, 'message' => $message], $status)->header('Cache-Control', 'private, no-store');
         });

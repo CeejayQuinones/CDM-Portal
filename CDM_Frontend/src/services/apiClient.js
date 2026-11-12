@@ -4,6 +4,7 @@ import { createOfflineApiClient } from './offline/offlineApi'
 import { performanceMonitor } from './performance/performanceMonitor'
 import { resolveApiAssetUrl } from '../utils/apiAssetUrl'
 import { clientPlatform } from '../config/clientPlatform'
+import { clearJsonContentTypeForFormData } from './clearJsonContentTypeForFormData'
 
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
 const configuredTimeout = Number(import.meta.env.VITE_API_TIMEOUT_MS || 15000)
@@ -20,6 +21,7 @@ const onlineApiClient = axios.create({
 })
 
 onlineApiClient.interceptors.request.use((config) => {
+  clearJsonContentTypeForFormData(config)
   config.cdmPerformanceRequest = performanceMonitor.beginApiRequest(
     config.method,
     config.url,
@@ -53,6 +55,7 @@ onlineApiClient.interceptors.response.use(
     )
     if (error.response?.status === 401 && !error.config?.url?.includes('/login')) {
       localStorage.removeItem(AUTH_STORAGE_KEY)
+      window.dispatchEvent(new Event('cdm:auth-invalidated'))
       if (window.location.hash !== '#/login') window.location.hash = '#/login'
     }
 

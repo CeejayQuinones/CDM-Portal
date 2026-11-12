@@ -1,0 +1,114 @@
+name: Release technical gates
+
+on:
+  push:
+    branches: [fix/audit-findings]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mariadb-104:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:10.4.34
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: cdm_release_ci
+          MARIADB_USER: cdm_ci
+          MARIADB_PASSWORD: ci-test-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      DB_CONNECTION: mysql
+      DB_URL: ''
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: cdm_release_ci
+      DB_USERNAME: cdm_ci
+      DB_PASSWORD: ci-test-only
+      DB_SOCKET: ''
+      CACHE_STORE: array
+      MAIL_MAILER: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      TURNSTILE_ENABLED: 'false'
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, fileinfo, gd, intl, mbstring, pdo_mysql, xml, zip
+          coverage: none
+      - name: Install locked PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Assert disposable MariaDB 10.4 target
+        run: |
+          php -r '$pdo = new PDO("mysql:host=" . getenv("DB_HOST") . ";port=" . getenv("DB_PORT") . ";dbname=" . getenv("DB_DATABASE"), getenv("DB_USERNAME"), getenv("DB_PASSWORD")); $row = $pdo->query("SELECT VERSION(), DATABASE()")->fetch(PDO::FETCH_NUM); echo "Server: {$row[0]}; database: {$row[1]}\n"; if (!str_starts_with($row[0], "10.4.") || $row[1] !== "cdm_release_ci" || getenv("DB_HOST") !== "127.0.0.1") exit(1);'
+      - name: Run complete migration sequence
+        run: |
+          php artisan migrate --force
+          php artisan migrate:status
+      - name: Test release-critical behavior on MariaDB
+        run: >-
+          php artisan test
+          tests/Feature/HistoricalGradesTest.php
+          tests/Feature/EnrollmentAcademicTest.php
+          tests/Feature/EnrollmentWorkflowTest.php
+          tests/Feature/GradingPhaseTwoTest.php
+          tests/Feature/GradingPhaseThreeTest.php
+          tests/Feature/AuthenticationTest.php
+          tests/Feature/LoginOtpAuthenticationTest.php
+          tests/Feature/TurnstileAuthenticationTest.php
+          tests/Feature/GoogleAuthTest.php
+          tests/Feature/PlatformAccessControlTest.php
+          tests/Feature/StudentLifecycleIntegrationTest.php
+
+  composer-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Audit locked PHP dependencies
+        run: composer audit --locked --format=json --no-interaction
+
+  npm-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: CDM_Frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Audit frontend dependency lockfile
+        run: npm audit --json
+      - name: Audit production dependency subset
+        if: always()
+        run: npm audit --omit=dev --json

@@ -246,7 +246,7 @@ class EnrollmentWorkflowTest extends TestCase
     {
         $a = $this->create();
         $this->mock(EnrollmentAuditWriter::class)->shouldReceive('record')->andThrow(new \RuntimeException('private failure'));
-        $this->action($a, 'submit')->assertStatus(503)->assertDontSee('private failure');
+        $this->action($a, 'submit')->assertStatus(500)->assertDontSee('private failure');
         $this->assertDatabaseHas('enrollment_applications', ['id' => $a['id'], 'status' => 'draft', 'version' => 1, 'submitted_at' => null]);
     }
 
@@ -374,7 +374,7 @@ class EnrollmentWorkflowTest extends TestCase
         $this->getJson('/api/enrollment/applications/'.$a['id'])->assertJsonPath('data.requirements.0.preview_kind', 'pdf');
 
         $this->post('/api/enrollment/applications/'.$a['id'].'/documents', ['document_type_id' => $type->id, 'version' => 2,
-            'file' => UploadedFile::fake()->image('replacement.png')], ['Accept' => 'application/json'])->assertStatus(503);
+            'file' => UploadedFile::fake()->image('replacement.png')], ['Accept' => 'application/json'])->assertStatus(500);
 
         $document->refresh();
         $this->assertSame('original.pdf', $document->original_name);
@@ -424,7 +424,7 @@ class EnrollmentWorkflowTest extends TestCase
         $this->period->update(['document_requirements' => ['regular' => [$type->id], 'irregular' => [], 'transferee' => [], 'returnee' => []]]);
         $a = $this->create();
         $this->mock(EnrollmentAuditWriter::class)->shouldReceive('record')->andThrow(new \RuntimeException('private failure'));
-        $this->post('/api/enrollment/applications/'.$a['id'].'/documents', ['document_type_id' => $type->id, 'version' => 1, 'file' => UploadedFile::fake()->create('evidence.pdf', 5, 'application/pdf')], ['Accept' => 'application/json'])->assertStatus(503);
+        $this->post('/api/enrollment/applications/'.$a['id'].'/documents', ['document_type_id' => $type->id, 'version' => 1, 'file' => UploadedFile::fake()->create('evidence.pdf', 5, 'application/pdf')], ['Accept' => 'application/json'])->assertStatus(500);
         $this->assertCount(0, Storage::disk('local')->allFiles());
         $this->assertDatabaseCount('enrollment_documents', 0);
         $this->assertDatabaseHas('enrollment_applications', ['id' => $a['id'], 'version' => 1]);

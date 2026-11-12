@@ -5,13 +5,18 @@ namespace Tests\Feature;
 use App\Mail\DocumentRequestApprovedMail;
 use App\Models\Appointment;
 use App\Models\AppointmentBlockedDate;
+use App\Models\Cabinet;
+use App\Models\CabinetSlot;
 use App\Models\Course;
 use App\Models\Curriculum;
 use App\Models\DocumentRequest;
+use App\Models\DocumentRequestBatch;
 use App\Models\DocumentType;
+use App\Models\PhysicalRetrievalTask;
 use App\Models\RegistrarStaff;
 use App\Models\Role;
 use App\Models\Student;
+use App\Models\StudentRecordLocation;
 use App\Models\User;
 use App\Models\UserProfile;
 use Carbon\CarbonImmutable;
@@ -56,6 +61,283 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->postJson("/api/registrar/document-requests/{$id}/appointment", ['appointment_date' => '2026-09-08'])->assertForbidden();
         $this->postJson('/api/registrar/document-requests/verify-code', ['verification_code' => '123456'])->assertForbidden();
         $this->postJson("/api/document-requests/{$id}/appointments", ['appointment_date' => '2026-09-08'])->assertNotFound();
+    }
+
+    public function test_unified_registrar_student_list_counts_only_active_documents_and_preserves_submission_identity(): void
+    {
+        $student = $this->createStudent('26-12001');
+        $other = $this->createStudent('26-12002');
+        $batch = DocumentRequestBatch::create(['student_id' => $student->id, 'idempotency_key' => '00a11200-7777-4777-8777-777777777777', 'payload_hash' => str_repeat('a', 64)]);
+        $first = $this->requestFor($student);
+        $first->update(['document_request_batch_id' => $batch->id]);
+        $second = $this->requestFor($student);
+        $second->update(['document_request_batch_id' => $batch->id, 'status' => 'approved']);
+        $old = $this->requestFor($student);
+        $old->update(['status' => 'completed']);
+        $this->requestFor($other);
+
+        $this->getJson('/api/registrar/document-request-students')->assertUnauthorized();
+        Sanctum::actingAs($student->user);
+        $this->getJson('/api/registrar/document-request-students')->assertForbidden();
+        $this->getJson("/api/registrar/document-request-students/{$other->id}")->assertForbidden();
+        $this->getJson("/api/registrar/document-request-students/{$other->id}/same-location")->assertForbidden();
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->getJson('/api/registrar/document-request-students', ['X-CDM-Client' => 'web'])->assertForbidden();
+        $this->getJson('/api/registrar/document-request-students?search=REQ-'.str_pad((string) $first->id, 6, '0', STR_PAD_LEFT))
+            ->assertOk()->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.active_requests_count', 2)
+            ->assertJsonPath('data.data.0.pending_requests_count', 1);
+        $this->getJson('/api/registrar/document-request-students?status=approved')
+            ->assertOk()->assertJsonPath('data.total', 1);
+        $detail = $this->getJson("/api/registrar/document-request-students/{$student->id}")
+            ->assertOk()->assertJsonPath('data.requests.total', 2)
+            ->assertJsonPath('data.requests.data.0.batch.group_reference', $batch->group_reference);
+        $this->assertStringNotContainsString('completed', $detail->getContent());
+        $this->assertStringNotContainsString('verification_code_hash', $detail->getContent());
+        $this->getJson('/api/registrar/document-request-students/999999')->assertNotFound();
+    }
+
+    public function test_same_location_lookup_matches_exact_drawer_and_distinct_active_students_without_writes(): void
+    {
+        $source = $this->createStudent('26-12101');
+        $same = $this->createStudent('26-12102');
+        $otherSlot = $this->createStudent('26-12103');
+        $historical = $this->createStudent('26-12104');
+        $cabinet = Cabinet::create(['cabinet_code' => 'LOOKUP', 'rows' => 1, 'columns' => 2]);
+        $firstSlot = CabinetSlot::create(['cabinet_id' => $cabinet->id, 'slot_code' => 'L1']);
+        $secondSlot = CabinetSlot::create(['cabinet_id' => $cabinet->id, 'slot_code' => 'L2']);
+        foreach ([[$source, $firstSlot], [$same, $firstSlot], [$otherSlot, $secondSlot], [$historical, $firstSlot]] as [$student, $slot]) {
+            StudentRecordLocation::create(['student_id' => $student->id, 'cabinet_slot_id' => $slot->id, 'assigned_at' => now()]);
+        }
+        $this->requestFor($source);
+        $retrievalRequest = $this->requestFor($same);
+        $this->requestFor($same);
+        $retrievalTask = PhysicalRetrievalTask::create(['student_id' => $same->id, 'active_student_id' => $same->id, 'status' => 'awaiting']);
+        $retrievalTask->documentRequests()->attach($retrievalRequest->id);
+        $this->requestFor($otherSlot);
+        $this->requestFor($historical)->update(['status' => 'cancelled']);
+        $this->requestFor($historical)->update(['status' => 'completed']);
+        $before = DocumentRequest::count();
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->getJson("/api/registrar/document-request-students/{$source->id}/same-location")
+            ->assertOk()->assertJsonPath('data.location.cabinet', 'LOOKUP')
+            ->assertJsonPath('data.location.drawer', 'L1')
+            ->assertJsonPath('data.students.total', 1)
+            ->assertJsonPath('data.students.data.0.id', $same->id)
+            ->assertJsonPath('data.students.data.0.active_requests_count', 2)
+            ->assertJsonPath('data.students.data.0.retrieval_required_count', 1);
+        $this->assertSame($before, DocumentRequest::count());
+        $this->assertDatabaseCount('physical_retrieval_tasks', 1);
+        $same->physicalRecordLocation->update(['cabinet_slot_id' => $secondSlot->id]);
+        $this->getJson("/api/registrar/document-request-students/{$source->id}/same-location")
+            ->assertOk()->assertJsonPath('data.students.total', 0);
+    }
+
+    public function test_unified_workspace_handles_missing_location_and_retrieved_task_without_active_requests(): void
+    {
+        $student = $this->createStudent('26-12201');
+        $request = $this->requestFor($student);
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->getJson("/api/registrar/document-request-students/{$student->id}/same-location")->assertUnprocessable();
+        $this->getJson("/api/registrar/document-request-students/{$student->id}")
+            ->assertOk()->assertJsonPath('data.student.physical_record_location', null);
+
+        $request->update(['status' => 'completed']);
+        $task = PhysicalRetrievalTask::create(['student_id' => $student->id, 'active_student_id' => $student->id, 'status' => 'retrieved', 'cabinet_code_snapshot' => 'A', 'slot_code_snapshot' => 'A1']);
+        $this->getJson("/api/registrar/document-request-students/{$student->id}")
+            ->assertOk()->assertJsonPath('data.requests.total', 0)
+            ->assertJsonPath('data.retrieval_task.id', $task->id);
+        $this->getJson("/api/registrar/document-request-students/{$student->id}/same-location")->assertNotFound();
+    }
+
+    public function test_unified_student_list_is_paginated_without_loading_all_active_requests(): void
+    {
+        for ($index = 1; $index <= 16; $index++) {
+            $this->requestFor($this->createStudent(sprintf('26-123%02d', $index)));
+        }
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->getJson('/api/registrar/document-request-students')->assertOk()
+            ->assertJsonPath('data.total', 16)->assertJsonCount(15, 'data.data');
+        $this->getJson('/api/registrar/document-request-students?page=2')->assertOk()
+            ->assertJsonPath('data.current_page', 2)->assertJsonCount(1, 'data.data');
+    }
+
+    public function test_student_submits_multiple_documents_atomically_and_retry_is_idempotent(): void
+    {
+        $student = $this->createStudent('26-11001');
+        $first = $this->type();
+        $second = DocumentType::create(['document_name' => 'Certificate of Enrollment', 'processing_fee' => 50, 'processing_days' => 2, 'status' => 'active']);
+        Sanctum::actingAs($student->user);
+        $payload = [
+            'idempotency_key' => '00a11200-1111-4111-8111-111111111111',
+            'items' => [
+                ['document_type_id' => $first->id, 'quantity' => 2, 'purpose_category' => 'Scholarship'],
+                ['document_type_id' => $second->id, 'quantity' => 1, 'purpose_category' => 'Others', 'purpose_details' => '  Enrollment verification  '],
+            ],
+        ];
+
+        $response = $this->postJson('/api/document-request-batches', $payload)->assertCreated()
+            ->assertJsonCount(2, 'data.document_requests');
+        $this->assertStringNotContainsString('requires_physical_retrieval', $response->getContent());
+        $batchId = $response->json('data.id');
+        $this->assertSame('GROUP-'.str_pad((string) $batchId, 6, '0', STR_PAD_LEFT), $response->json('data.group_reference'));
+        $this->assertDatabaseCount('document_requests', 2);
+        $this->assertDatabaseHas('document_requests', ['document_request_batch_id' => $batchId, 'document_type_id' => $second->id, 'purpose_details' => 'Enrollment verification']);
+
+        $this->postJson('/api/document-request-batches', $payload)->assertOk()->assertJsonPath('data.id', $batchId);
+        $this->assertDatabaseCount('document_requests', 2);
+        $payload['items'][0]['quantity'] = 3;
+        $this->postJson('/api/document-request-batches', $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('document_requests', 2);
+        $this->getJson('/api/document-requests')->assertOk()->assertJsonPath('data.0.batch.group_reference', $response->json('data.group_reference'));
+    }
+
+    public function test_batch_rejects_duplicate_unavailable_and_invalid_items_without_partial_writes(): void
+    {
+        $student = $this->createStudent('26-11002');
+        $first = $this->type();
+        $inactive = DocumentType::create(['document_name' => 'Unavailable document', 'status' => 'inactive']);
+        Sanctum::actingAs($student->user);
+        $key = '00a11200-2222-4222-8222-222222222222';
+
+        $this->postJson('/api/document-request-batches', ['idempotency_key' => $key, 'items' => [
+            ['document_type_id' => $first->id, 'quantity' => 1, 'purpose_category' => 'Scholarship'],
+            ['document_type_id' => $first->id, 'quantity' => 1, 'purpose_category' => 'Evaluation'],
+        ]])->assertUnprocessable()->assertJsonValidationErrors('items.1.document_type_id');
+        $this->postJson('/api/document-request-batches', ['idempotency_key' => $key, 'items' => [
+            ['document_type_id' => $first->id, 'quantity' => 1, 'purpose_category' => 'Scholarship'],
+            ['document_type_id' => $inactive->id, 'quantity' => 1, 'purpose_category' => 'Others', 'purpose_details' => ' '],
+        ]])->assertUnprocessable()->assertJsonValidationErrors('items.1.purpose_details');
+        $this->postJson('/api/document-request-batches', ['idempotency_key' => $key, 'items' => [
+            ['document_type_id' => $first->id, 'quantity' => 1, 'purpose_category' => 'Others'],
+        ]])->assertUnprocessable()->assertJsonValidationErrors('items.0.purpose_details');
+        $this->postJson('/api/document-request-batches', ['idempotency_key' => $key, 'items' => [
+            ['document_type_id' => $first->id, 'quantity' => 1, 'purpose_category' => 'Scholarship'],
+            ['document_type_id' => $inactive->id, 'quantity' => 1, 'purpose_category' => 'Evaluation'],
+        ]])->assertUnprocessable();
+        $this->assertDatabaseCount('document_request_batches', 0);
+        $this->assertDatabaseCount('document_requests', 0);
+    }
+
+    public function test_batch_rolls_back_all_documents_when_one_insert_fails(): void
+    {
+        $student = $this->createStudent('26-11006');
+        $first = $this->type();
+        $second = DocumentType::create(['document_name' => 'Enrollment Certificate', 'status' => 'active']);
+        Sanctum::actingAs($student->user);
+        DB::statement("CREATE TRIGGER fail_second_batch_item BEFORE INSERT ON document_requests WHEN NEW.document_type_id = {$second->id} BEGIN SELECT RAISE(ABORT, 'forced item failure'); END");
+        $this->postJson('/api/document-request-batches', [
+            'idempotency_key' => '00a11200-6666-4666-8666-666666666666',
+            'items' => [
+                ['document_type_id' => $first->id, 'quantity' => 1, 'purpose_category' => 'Scholarship'],
+                ['document_type_id' => $second->id, 'quantity' => 1, 'purpose_category' => 'Evaluation'],
+            ],
+        ])->assertServerError();
+        $this->assertDatabaseCount('document_requests', 0);
+        $this->assertDatabaseCount('document_request_batches', 0);
+        DB::statement('DROP TRIGGER fail_second_batch_item');
+    }
+
+    public function test_registrar_can_configure_retrieval_for_new_requests_only_and_queue_deduplicates_student_folder(): void
+    {
+        $student = $this->createStudent('26-11003');
+        $first = $this->type();
+        $second = DocumentType::create(['document_name' => 'Good Moral Copy', 'processing_fee' => 25, 'status' => 'active']);
+        $cabinet = Cabinet::create(['cabinet_code' => 'QA', 'rows' => 1, 'columns' => 1]);
+        $slot = CabinetSlot::create(['cabinet_id' => $cabinet->id, 'slot_code' => 'QA1']);
+        StudentRecordLocation::create(['student_id' => $student->id, 'cabinet_slot_id' => $slot->id, 'assigned_at' => now()]);
+
+        Sanctum::actingAs($student->user);
+        $old = $this->postJson('/api/document-requests', ['document_type_id' => $first->id, 'purpose_category' => 'Scholarship'])->assertCreated();
+        $this->assertDatabaseCount('physical_retrieval_tasks', 0);
+        $this->getJson('/api/registrar/physical-retrieval')->assertForbidden();
+        $this->patchJson("/api/registrar/document-types/{$first->id}", ['requires_physical_retrieval' => true])->assertForbidden();
+
+        $staff = $this->createRegistrar();
+        Sanctum::actingAs($staff->user);
+        $this->patchJson("/api/registrar/document-types/{$first->id}", ['requires_physical_retrieval' => true])->assertOk();
+        $this->patchJson("/api/registrar/document-types/{$second->id}", ['requires_physical_retrieval' => true])->assertOk();
+        $this->assertDatabaseCount('physical_retrieval_tasks', 0);
+
+        Sanctum::actingAs($student->user);
+        $batch = $this->postJson('/api/document-request-batches', [
+            'idempotency_key' => '00a11200-3333-4333-8333-333333333333',
+            'items' => [
+                ['document_type_id' => $first->id, 'quantity' => 1, 'purpose_category' => 'Scholarship'],
+                ['document_type_id' => $second->id, 'quantity' => 1, 'purpose_category' => 'Evaluation'],
+            ],
+        ])->assertCreated();
+        $this->assertDatabaseCount('physical_retrieval_tasks', 1);
+        $this->assertDatabaseCount('physical_retrieval_request', 2);
+        $this->assertDatabaseMissing('physical_retrieval_request', ['document_request_id' => $old->json('data.id')]);
+        $this->postJson('/api/document-requests', ['document_type_id' => $first->id, 'purpose_category' => 'Evaluation'])->assertCreated();
+        $this->assertDatabaseCount('physical_retrieval_tasks', 1);
+        $this->assertDatabaseCount('physical_retrieval_request', 3);
+
+        Sanctum::actingAs($staff->user);
+        $this->getJson('/api/registrar/document-request-batches?search='.$batch->json('data.group_reference'))
+            ->assertOk()->assertJsonPath('data.total', 1)->assertJsonCount(2, 'data.data.0.document_requests');
+        $queue = $this->getJson('/api/registrar/physical-retrieval')->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.student.physical_record_location.cabinet_slot.cabinet.cabinet_code', 'QA');
+        $taskId = $queue->json('data.data.0.id');
+        $this->getJson('/api/registrar/physical-retrieval')->assertOk();
+        $this->assertDatabaseCount('physical_retrieval_events', 1);
+        $this->patchJson("/api/registrar/physical-retrieval/{$taskId}", ['action' => 'retrieve'])
+            ->assertOk()->assertJsonPath('data.status', 'retrieved');
+        $this->patchJson("/api/registrar/physical-retrieval/{$taskId}", ['action' => 'retrieve'])->assertUnprocessable();
+        $this->patchJson("/api/registrar/physical-retrieval/{$taskId}", ['action' => 'return'])
+            ->assertOk()->assertJsonPath('data.status', 'returned');
+        $this->assertDatabaseHas('physical_retrieval_tasks', ['id' => $taskId, 'cabinet_code_snapshot' => 'QA', 'slot_code_snapshot' => 'QA1', 'active_student_id' => null]);
+        $this->assertDatabaseCount('physical_retrieval_events', 3);
+        $this->postJson('/api/registrar/physical-retrieval/'.$taskId.'/return')->assertNotFound();
+    }
+
+    public function test_retrieval_without_location_is_visible_but_cannot_be_marked_retrieved(): void
+    {
+        $student = $this->createStudent('26-11004');
+        $type = $this->type();
+        $type->update(['requires_physical_retrieval' => true]);
+        Sanctum::actingAs($student->user);
+        $this->postJson('/api/document-requests', ['document_type_id' => $type->id, 'purpose_category' => 'Scholarship'])->assertCreated();
+        $task = PhysicalRetrievalTask::firstOrFail();
+        $this->getJson('/api/registrar/physical-retrieval')->assertForbidden();
+
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->getJson('/api/registrar/physical-retrieval')->assertOk()->assertJsonPath('data.total', 1);
+        $this->patchJson("/api/registrar/physical-retrieval/{$task->id}", ['action' => 'retrieve'])->assertUnprocessable();
+        $this->assertSame('awaiting', $task->fresh()->status);
+    }
+
+    public function test_bulk_rejection_is_registrar_only_all_or_nothing_and_audited(): void
+    {
+        $student = $this->createStudent('26-11005');
+        $first = $this->requestFor($student);
+        $second = $this->requestFor($student);
+        $endpoint = '/api/registrar/document-requests/bulk-reject';
+        $payload = ['request_ids' => [$first->id, $second->id], 'reason' => 'Incomplete requirements'];
+
+        Sanctum::actingAs($student->user);
+        $this->postJson($endpoint, $payload)->assertForbidden();
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $second->update(['status' => 'approved']);
+        $this->postJson($endpoint, $payload)->assertUnprocessable();
+        $this->assertSame('pending', $first->fresh()->status);
+        $second->update(['status' => 'pending']);
+
+        DB::statement("CREATE TRIGGER fail_second_bulk_rejection BEFORE UPDATE ON document_requests WHEN OLD.id = {$second->id} AND NEW.status = 'rejected' BEGIN SELECT RAISE(ABORT, 'forced bulk failure'); END");
+        $this->postJson($endpoint, $payload)->assertServerError();
+        $this->assertSame('pending', $first->fresh()->status);
+        $this->assertDatabaseMissing('document_request_status_changes', ['document_request_id' => $first->id, 'action' => 'rejected']);
+        DB::statement('DROP TRIGGER fail_second_bulk_rejection');
+
+        $this->postJson($endpoint, $payload)->assertOk()->assertJsonPath('data.request_ids.0', $first->id);
+        $this->assertSame('rejected', $first->fresh()->status);
+        $this->assertSame('rejected', $second->fresh()->status);
+        $this->assertDatabaseHas('document_request_status_changes', ['document_request_id' => $first->id, 'action' => 'rejected']);
+        $this->assertDatabaseHas('document_request_status_changes', ['document_request_id' => $second->id, 'action' => 'rejected']);
     }
 
     public function test_purpose_is_conditionally_validated_stored_and_visible_to_student_and_registrar(): void

@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Http\Requests\BulkUpdateStudentsRequest;
-use App\Models\Admission\AdmissionApplicant;
 use App\Models\CabinetSlot;
 use App\Models\Course;
 use App\Models\Student;
@@ -11,6 +10,7 @@ use App\Models\StudentDocument;
 use App\Models\StudentRecordLocation;
 use App\Models\User;
 use App\Models\UserProfile;
+use App\Services\StudentRecords\StudentAdmissionLinkResolver;
 use App\Services\StudentRecords\StudentRecordAuditWriter;
 use App\Services\StudentRecords\StudentRecordCompletenessService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -23,6 +23,7 @@ class StudentService
     public function __construct(
         private readonly StudentRecordAuditWriter $audit,
         private readonly StudentRecordCompletenessService $completeness,
+        private readonly StudentAdmissionLinkResolver $admissionLinks,
     ) {}
 
     /** @param array<string, mixed> $filters */
@@ -30,11 +31,7 @@ class StudentService
     {
         return $this->withCurrentEnrollment(Student::query())
             ->with(['user', 'userProfile', 'course', 'curriculum'])
-            ->addSelect(['has_admission_record' => AdmissionApplicant::query()
-                ->selectRaw('1')
-                ->whereColumn('admission_applicants.user_id', 'students.user_id')
-                ->whereColumn('admission_applicants.converted_student_id', 'students.id')
-                ->limit(1)])
+            ->addSelect(['has_admission_record' => $this->admissionLinks->availabilitySubquery()])
             ->withExists('enrollmentApplications as has_enrollment_application')
             ->withExists('physicalRecordLocation as has_physical_record')
             ->when($filters['search'] ?? null, fn (Builder $query, string $search) => $this->applySearch($query, $search))
@@ -85,6 +82,7 @@ class StudentService
     public function find(int $studentId): Student
     {
         $student = $this->withCurrentEnrollment(Student::query(), true)
+            ->addSelect(['has_admission_record' => $this->admissionLinks->availabilitySubquery()])
             ->with([
                 'user.role',
                 'userProfile',

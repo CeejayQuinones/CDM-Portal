@@ -137,6 +137,7 @@ class StudentRecordProductivityService
                     $digital === 'needs_resubmission' ? 'needs_resubmission' : null,
                     $physical === 'required' ? 'hard_copy_required' : null,
                 ])->filter()->values();
+
                 return [
                     'key' => $student->id.':'.$type->id,
                     'document_id' => $document?->id,

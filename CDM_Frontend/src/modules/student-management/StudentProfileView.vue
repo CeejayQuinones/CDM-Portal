@@ -8,6 +8,7 @@ import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAut
 import { documentRequestReturnContext } from '../document-request/documentRequestNavigation'
 import { physicalRecordsService } from './physicalRecordsService'
 import StudentAcademicHistory from './StudentAcademicHistory.vue'
+import HistoricalGradesPanel from './HistoricalGradesPanel.vue'
 import { profilePhotoUrl } from '../../utils/profilePhoto'
 
 const route = useRoute()
@@ -625,6 +626,7 @@ onMounted(loadProfile)
     <div id="academic-history">
       <StudentAcademicHistory ref="historyPanel" :student-id="student.id" />
     </div>
+    <HistoricalGradesPanel v-if="canManagePhysicalRecords" :student-id="student.id" :student-number="student.student_number" />
 
     <section class="record-card">
       <h2>Recent Document Requests</h2>

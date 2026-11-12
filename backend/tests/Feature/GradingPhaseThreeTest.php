@@ -164,4 +164,16 @@ class GradingPhaseThreeTest extends TestCase
         $this->withHeader('X-CDM-Client', 'mobile')->getJson('/api/grading/student/grades')->assertOk();
         $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/grading/student/grades')->assertForbidden();
     }
+
+    public function test_student_cannot_change_grade_scores_or_submit_a_grade_sheet(): void
+    {
+        $scoreCount = GradeScore::count();
+        $this->student();
+
+        $this->putJson('/api/grading/sheets/'.$this->sheet->id.'/scores', ['scores' => []])->assertForbidden();
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/submit', ['version' => $this->sheet->version])->assertForbidden();
+
+        $this->assertSame($scoreCount, GradeScore::count());
+        $this->assertSame('draft', $this->sheet->fresh()->status);
+    }
 }

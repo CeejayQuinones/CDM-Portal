@@ -2,10 +2,13 @@
 
 namespace Tests;
 
+use App\Mail\LoginVerificationCodeMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\ClientPlatform;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\PersonalAccessToken;
 
 abstract class TestCase extends BaseTestCase
@@ -32,6 +35,34 @@ abstract class TestCase extends BaseTestCase
         $this->injectClientPlatformHeader = false;
 
         return $this;
+    }
+
+    protected function loginAndCompleteOtp(User $user, string $client, string $password = 'Password123!'): TestResponse
+    {
+        if ($client === ClientPlatform::DESKTOP) {
+            return $this->postJson('/api/login', [
+                'username' => $user->username,
+                'password' => $password,
+            ], [ClientPlatform::HEADER => $client]);
+        }
+
+        config(['mail.default' => 'smtp']);
+        Mail::fake();
+        $challenge = $this->postJson('/api/login', [
+            'username' => $user->username,
+            'password' => $password,
+        ], [ClientPlatform::HEADER => $client])->assertAccepted();
+        $code = null;
+        Mail::assertSent(LoginVerificationCodeMail::class, function (LoginVerificationCodeMail $mail) use (&$code): bool {
+            $code = $mail->code;
+
+            return true;
+        });
+
+        return $this->postJson('/api/auth/login/otp/verify', [
+            'challenge_id' => $challenge->json('data.challenge_id'),
+            'code' => $code,
+        ], [ClientPlatform::HEADER => $client]);
     }
 
     private function defaultClientPlatform(string $uri, ?string $content): string

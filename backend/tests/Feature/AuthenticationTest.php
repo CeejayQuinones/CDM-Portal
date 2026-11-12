@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Mail\LoginVerificationCodeMail;
 use App\Mail\RegistrationVerificationCodeMail;
 use App\Models\RegistrationEmailVerification;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -20,10 +22,7 @@ class AuthenticationTest extends TestCase
     {
         $user = $this->createActiveUser();
 
-        $loginResponse = $this->postJson('/api/login', [
-            'username' => $user->username,
-            'password' => 'Password123!',
-        ]);
+        $loginResponse = $this->loginAndCompleteOtp($user, 'web');
 
         $loginResponse
             ->assertOk()
@@ -52,10 +51,7 @@ class AuthenticationTest extends TestCase
     {
         $user = $this->createActiveUser();
 
-        $token = $this->postJson('/api/login', [
-            'username' => $user->username,
-            'password' => 'Password123!',
-        ])->json('data.token');
+        $token = $this->loginAndCompleteOtp($user, 'web')->json('data.token');
 
         $this->withToken($token)
             ->postJson('/api/change-password', [
@@ -71,6 +67,100 @@ class AuthenticationTest extends TestCase
 
         $this->assertFalse($user->is_first_login);
         $this->assertTrue(Hash::check('NewPassword123!', $user->password));
+        $this->assertSame(0, $user->tokens()->count());
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/me')->assertUnauthorized();
+    }
+
+    public function test_password_change_revokes_every_active_token_for_the_account(): void
+    {
+        $user = $this->createActiveUser();
+        $first = $this->loginAndCompleteOtp($user, 'web')->assertOk()->json('data.token');
+        $second = $this->loginAndCompleteOtp($user, 'web')->assertOk()->json('data.token');
+
+        $this->withToken($first)->postJson('/api/change-password', [
+            'current_password' => 'Password123!',
+            'password' => 'NewPassword123!',
+            'password_confirmation' => 'NewPassword123!',
+        ])->assertOk();
+
+        $this->assertSame(0, $user->tokens()->count());
+        $this->app['auth']->forgetGuards();
+        $this->withToken($first)->getJson('/api/me')->assertUnauthorized();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($second)->getJson('/api/me')->assertUnauthorized();
+    }
+
+    public function test_login_tokens_expire_after_twenty_four_hours(): void
+    {
+        $user = $this->createActiveUser();
+        $token = $this->loginAndCompleteOtp($user, 'web')->assertOk()->json('data.token');
+        $storedToken = PersonalAccessToken::findToken($token);
+
+        $this->assertSame(1440, config('sanctum.expiration'));
+        $this->assertNotNull($storedToken?->expires_at);
+        $this->withToken($token)->getJson('/api/me')->assertOk();
+
+        $this->travel(1441)->minutes();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/me')->assertUnauthorized();
+    }
+
+    public function test_cached_expiration_configuration_controls_issued_and_authenticated_tokens(): void
+    {
+        config()->set('sanctum.expiration', '30');
+        $user = $this->createActiveUser();
+        $token = $this->loginAndCompleteOtp($user, 'web')->assertOk()->json('data.token');
+
+        $this->assertEqualsWithDelta(30, now()->diffInMinutes(PersonalAccessToken::findToken($token)->expires_at), 0.1);
+        $this->withToken($token)->getJson('/api/me')->assertOk();
+        $this->travel(31)->minutes();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/me')->assertUnauthorized();
+    }
+
+    public function test_invalid_cached_expiration_rejects_issuance_without_changing_account(): void
+    {
+        $user = $this->createActiveUser();
+        config()->set('sanctum.expiration', 'invalid');
+
+        config(['mail.default' => 'smtp']);
+        Mail::fake();
+        $challenge = $this->postJson('/api/login', [
+            'username' => $user->username,
+            'password' => 'Password123!',
+        ])->assertAccepted();
+        $code = null;
+        Mail::assertSent(LoginVerificationCodeMail::class, function ($mail) use (&$code): bool {
+            $code = $mail->code;
+
+            return true;
+        });
+        $this->postJson('/api/auth/login/otp/verify', [
+            'challenge_id' => $challenge->json('data.challenge_id'),
+            'code' => $code,
+        ])->assertStatus(500);
+        $this->assertSame(0, $user->tokens()->count());
+        $this->assertNull($user->fresh()->last_login);
+    }
+
+    public function test_password_change_rolls_back_when_token_revocation_fails(): void
+    {
+        $user = $this->createActiveUser();
+        $token = $this->loginAndCompleteOtp($user, 'web')->assertOk()->json('data.token');
+        DB::statement("CREATE TRIGGER deny_token_delete BEFORE DELETE ON personal_access_tokens BEGIN SELECT RAISE(ABORT, 'token deletion failed'); END");
+
+        $this->withToken($token)->postJson('/api/change-password', [
+            'current_password' => 'Password123!',
+            'password' => 'NewPassword123!',
+            'password_confirmation' => 'NewPassword123!',
+        ])->assertStatus(500);
+
+        $this->assertTrue(Hash::check('Password123!', $user->fresh()->password));
+        $this->assertTrue($user->fresh()->is_first_login);
+        $this->assertSame(1, $user->tokens()->count());
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/me')->assertOk();
     }
 
     public function test_invalid_credentials_use_the_authentication_error_envelope(): void
@@ -103,10 +193,8 @@ class AuthenticationTest extends TestCase
             RegistrationEmailVerification::query()->where('email', 'guest@example.com')->value('consumed_at'),
         );
 
-        $this->postJson('/api/login', [
-            'username' => 'guest-user',
-            'password' => 'Password123!',
-        ])
+        $registered = User::query()->where('username', 'guest-user')->firstOrFail();
+        $this->loginAndCompleteOtp($registered, 'web')
             ->assertOk()
             ->assertJsonPath('data.user.role.role_name', Role::GUEST);
     }
@@ -180,7 +268,7 @@ class AuthenticationTest extends TestCase
     public function test_guest_registration_returns_validation_errors_for_duplicate_identity_fields(): void
     {
         $user = $this->createActiveUser();
-        $user->profile()->create([
+        $user->profile()->update([
             'first_name' => 'Existing',
             'last_name' => 'User',
             'gender' => 'Prefer not to say',
@@ -207,12 +295,20 @@ class AuthenticationTest extends TestCase
             'description' => 'Guest role for authentication tests.',
         ]);
 
-        return User::factory()->create([
+        $user = User::factory()->create([
             'role_id' => $role->id,
             'password' => Hash::make('Password123!'),
             'status' => 'active',
             'is_first_login' => true,
         ]);
+        $user->profile()->create([
+            'first_name' => 'Authentication',
+            'last_name' => 'User',
+            'gender' => 'Prefer not to say',
+            'email' => 'auth-'.$user->id.'@example.com',
+        ]);
+
+        return $user->fresh('profile');
     }
 
     /** @param array<string, mixed> $overrides */

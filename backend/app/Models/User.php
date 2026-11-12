@@ -93,6 +93,11 @@ class User extends Authenticatable
         return $this->hasMany(AdmissionApplicant::class);
     }
 
+    public function loginOtpChallenges(): HasMany
+    {
+        return $this->hasMany(LoginOtpChallenge::class);
+    }
+
     public function student(): HasOne
     {
         return $this->hasOne(Student::class);

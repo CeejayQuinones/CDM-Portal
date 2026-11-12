@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Exceptions\ClientPlatformException;
+use App\Mail\LoginVerificationCodeMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\GoogleIdentityService;
@@ -12,6 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class GoogleAuthTest extends TestCase
@@ -104,17 +106,28 @@ class GoogleAuthTest extends TestCase
         app(GoogleIdentityService::class)->authenticate('subject', 'student@example.com', true, ClientPlatform::DESKTOP);
     }
 
-    public function test_one_time_handoff_exchanges_for_the_existing_sanctum_format(): void
+    public function test_one_time_handoff_requires_email_otp_before_issuing_sanctum_token(): void
     {
         $user = $this->user(Role::STUDENT, 'student@example.com');
+        config(['mail.default' => 'smtp']);
+        Mail::fake();
         $code = str_repeat('a', 64);
         Cache::put('google-auth-handoff:'.hash('sha256', $code), ['user_id' => $user->id, 'client' => ClientPlatform::WEB], now()->addMinute());
 
         $response = $this->postJson('/api/auth/google/exchange', ['code' => $code])
-            ->assertOk()
-            ->assertJsonPath('data.user.id', $user->id)
-            ->assertJsonPath('data.token_type', 'Bearer');
-        $this->assertNotEmpty($response->json('data.token'));
+            ->assertAccepted()
+            ->assertJsonPath('data.requires_otp', true)
+            ->assertJsonMissingPath('data.token');
+        $otp = null;
+        Mail::assertSent(LoginVerificationCodeMail::class, function ($mail) use (&$otp): bool {
+            $otp = $mail->code;
+
+            return true;
+        });
+        $this->postJson('/api/auth/login/otp/verify', [
+            'challenge_id' => $response->json('data.challenge_id'),
+            'code' => $otp,
+        ])->assertOk()->assertJsonPath('data.user.id', $user->id);
         $this->postJson('/api/auth/google/exchange', ['code' => $code])->assertUnauthorized();
     }
 
@@ -131,7 +144,7 @@ class GoogleAuthTest extends TestCase
     public function test_professor_supports_password_login_and_rejects_an_incorrect_password(): void
     {
         $professor = $this->user(Role::PROFESSOR, 'professor-password@example.com');
-        $this->postJson('/api/login', ['username' => $professor->username, 'password' => 'Password123!'])
+        $this->loginAndCompleteOtp($professor, ClientPlatform::WEB)
             ->assertOk()
             ->assertJsonPath('data.user.id', $professor->id);
         $this->postJson('/api/login', ['username' => $professor->username, 'password' => 'WrongPassword123!'])
@@ -142,7 +155,7 @@ class GoogleAuthTest extends TestCase
     public function test_student_supports_password_login_and_rejects_an_incorrect_password(): void
     {
         $student = $this->user(Role::STUDENT, 'student-password@example.com');
-        $this->postJson('/api/login', ['username' => $student->username, 'password' => 'Password123!'])
+        $this->loginAndCompleteOtp($student, ClientPlatform::WEB)
             ->assertOk()
             ->assertJsonPath('data.user.id', $student->id);
         $this->postJson('/api/login', ['username' => $student->username, 'password' => 'WrongPassword123!'])
@@ -155,7 +168,7 @@ class GoogleAuthTest extends TestCase
         foreach ([Role::ADMIN, Role::REGISTRAR_STAFF, Role::GUEST] as $role) {
             $user = $this->user($role, strtolower(str_replace(' ', '-', $role)).'@example.com');
             $client = in_array($role, [Role::ADMIN, Role::REGISTRAR_STAFF], true) ? ClientPlatform::DESKTOP : ClientPlatform::WEB;
-            $this->postJson('/api/login', ['username' => $user->username, 'password' => 'Password123!'], ['X-CDM-Client' => $client])->assertOk();
+            $this->loginAndCompleteOtp($user, $client)->assertOk();
         }
     }
 

@@ -3,11 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\GoogleIdentityException;
-use App\Http\Resources\AuthResource;
 use App\Models\User;
-use App\Services\AuthenticationService;
 use App\Services\ClientPlatformAccessService;
 use App\Services\GoogleIdentityService;
+use App\Services\LoginOtpService;
+use App\Services\TurnstileVerificationService;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,8 +22,9 @@ class GoogleAuthController extends Controller
 {
     public function __construct(
         private readonly GoogleIdentityService $identities,
-        private readonly AuthenticationService $authentication,
         private readonly ClientPlatformAccessService $clientAccess,
+        private readonly LoginOtpService $loginOtp,
+        private readonly TurnstileVerificationService $turnstile,
     ) {}
 
     public function redirect(Request $request): RedirectResponse
@@ -76,7 +77,16 @@ class GoogleAuthController extends Controller
     public function exchange(Request $request): JsonResponse
     {
         $client = $this->clientAccess->clientFrom($request);
-        $code = $request->validate(['code' => 'required|string|size:64'])['code'];
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'size:64'],
+            'turnstile_token' => ['nullable', 'string', 'max:2048'],
+        ]);
+        $this->turnstile->verify(
+            $validated['turnstile_token'] ?? null,
+            'authentication',
+            (string) $request->ip(),
+        );
+        $code = $validated['code'];
         $handoff = Cache::pull('google-auth-handoff:'.hash('sha256', $code));
         if (! is_array($handoff) || ! hash_equals((string) ($handoff['client'] ?? ''), $client)) {
             throw new AuthenticationException('The Google sign-in session expired. Please try again.');
@@ -84,12 +94,12 @@ class GoogleAuthController extends Controller
 
         $user = User::query()->with(['role', 'profile'])->findOrFail($handoff['user_id']);
         $this->clientAccess->ensureUserMayUse($user, $client);
-        $authenticated = $this->authentication->issueToken($user, $client);
+        $challenge = $this->loginOtp->create($user, $client, (string) $request->ip());
 
-        return response()->json(['success' => true, 'message' => 'Login successful.', 'data' => [
-            'user' => new AuthResource($authenticated['user']),
-            'token' => $authenticated['token'],
-            'token_type' => 'Bearer',
-        ]]);
+        return response()->json([
+            'success' => true,
+            'message' => 'A verification code was sent to your registered email address.',
+            'data' => $challenge,
+        ], 202);
     }
 }

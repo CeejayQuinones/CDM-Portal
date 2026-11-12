@@ -80,6 +80,27 @@ test('real login pending state covers authentication and the awaited redirect', 
   assert.deepEqual(loading, [true, false])
 })
 
+test('OTP challenge completion stops credential loading without authenticated redirect', async () => {
+  const loading = []
+  let redirects = 0
+  const challenge = {
+    requiresOtp: true,
+    challenge: { challenge_id: '11111111-1111-4111-8111-111111111111' },
+  }
+
+  const result = await runLoginRequest({
+    credentials: { username: 'student', password: 'not-logged' },
+    login: async () => challenge,
+    redirect: async () => { redirects += 1 },
+    onError: () => assert.fail('OTP challenge should not fail'),
+    setLoading: value => loading.push(value),
+  })
+
+  assert.equal(result, challenge)
+  assert.equal(redirects, 0)
+  assert.deepEqual(loading, [true, false])
+})
+
 test('invalid credentials and network failures remove the loader and retain actionable errors', async () => {
   for (const failure of [
     Object.assign(new Error('invalid'), { response: { status: 422, data: { message: 'Invalid credentials.' } } }),
@@ -124,7 +145,8 @@ test('loader is carried only by the compile-time website homepage path', async (
   ])
 
   assert.match(login, /import\.meta\.env\.VITE_CDM_CLIENT === 'web'[\s\S]*import\('\.\.\/components\/public\/WebsitePublicHome\.vue'\)/)
-  assert.match(login, /<WebsitePublicHome v-if="clientPlatform === 'web'"[\s\S]*:authenticating="isLoading"/)
+  assert.match(login, /<WebsitePublicHome v-if="clientPlatform === 'web'"[\s\S]*:authenticating="showPostLoginLoading"/)
+  assert.match(login, /const navigateAfterAuthentication = async \(\) => \{[\s\S]*showPostLoginLoading\.value = true[\s\S]*await router\.replace\(destination\)/)
   assert.match(homepage, /import WebsiteLoginLoading from '\.\.\/website\/WebsiteLoginLoading\.vue'/)
   assert.match(homepage, /<WebsiteLoginLoading v-if="authenticating"/)
   assert.doesNotMatch(login.match(/<div v-else class="public-page">[\s\S]*?<\/template>/)?.[0] || '', /WebsiteLoginLoading/)

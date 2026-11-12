@@ -4,7 +4,7 @@ import test from 'node:test'
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 const active = read('../src/modules/document-request/RegistrarDocumentRequestView.vue')
-const queue = read('../src/modules/document-request/RegistrarRequestQueue.vue')
+const unified = read('../src/modules/document-request/RegistrarStudentRequests.vue')
 const history = read('../src/modules/document-request/RegistrarDocumentRequestHistoryView.vue')
 const student = read('../src/modules/document-request/StudentDocumentRequestView.vue')
 const types = read('../src/modules/document-request/DocumentTypesManagementView.vue')
@@ -31,12 +31,13 @@ test('document request pages share headers, status badges, tables, and dialogs',
   assert.match(dialog, /trigger\.focus/)
 })
 
-test('registrar active requests use operational filters and one formal queue table', () => {
-  for (const label of ['Search', 'Document Type', 'Date Range', 'Reset']) assert.match(active, new RegExp(label))
-  for (const column of ['Request ID', 'Student', 'Document', 'Requested', 'Status', 'Updated', 'Action']) {
-    assert.match(queue, new RegExp(`<th scope="col">${column}`))
-  }
-  assert.match(queue, /View \/ Process/)
+test('registrar active requests use one student-centered list and inline details', () => {
+  assert.match(active, /RegistrarStudentRequests/)
+  assert.doesNotMatch(active, /dr-workspace-tabs/)
+  for (const label of ['Find student or request', 'Status', 'Clear', 'View request', 'Process']) assert.match(unified, new RegExp(label))
+  assert.match(unified, /active_requests_count/)
+  assert.match(unified, /groupStudentSubmissions/)
+  assert.match(unified, /PaginationControls/)
 })
 
 test('student requests provide creation, filtering, request records, real status history, and details', () => {
@@ -83,8 +84,8 @@ test('all document request routes retain content and explicit loading, empty, or
   assert.match(types, /v-if="error"/)
   assert.match(types, /No document types match your search\./)
   assert.match(active, /v-if="error"/)
-  assert.match(active, /No pending document requests\./)
-  assert.match(active, /No approved document requests\./)
+  assert.match(unified, /No active document requests/)
+  assert.match(unified, /No matching active requests/)
   assert.match(appointments, /v-if="error"[^>]*role="alert"/)
   assert.match(appointments, /No approved appointments scheduled today\./)
   assert.match(history, /v-if="error"/)
@@ -98,7 +99,8 @@ test('shared skeletons match redesigned tables and appointments without legacy l
   assert.match(tableSkeleton, /dr-skeleton-table-header/)
   assert.match(tableSkeleton, /dr-skeleton-table-row/)
   assert.match(appointmentSkeleton, /dr-appointment-skeleton-row/)
-  for (const source of [active, history, types, student, queue]) assert.match(source, /DocumentRequestTableSkeleton/)
+  for (const source of [history, types, student]) assert.match(source, /DocumentRequestTableSkeleton/)
+  assert.match(unified, /Loading student requests/)
   assert.match(appointments, /DocumentRequestAppointmentSkeleton/)
   assert.match(recentActivity, /DocumentRequestSkeleton/)
   for (const source of [active, history, types, student, appointments, recentActivity]) {

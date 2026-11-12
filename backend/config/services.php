@@ -28,6 +28,19 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
+    'turnstile' => [
+        'enabled' => filter_var(env('TURNSTILE_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'site_key' => env('TURNSTILE_SITE_KEY'),
+        'secret_key' => env('TURNSTILE_SECRET_KEY'),
+        'expected_hostnames' => array_values(array_filter(array_map(
+            static fn (string $hostname): string => strtolower(trim($hostname)),
+            explode(',', (string) env('TURNSTILE_EXPECTED_HOSTNAMES', '')),
+        ))),
+        'endpoint' => 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+        'connect_timeout' => 3,
+        'timeout' => 6,
+    ],
+
     'ses' => [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),

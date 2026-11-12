@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { apiClient } from '../services/apiClient'
 import { clientPlatform } from '../config/clientPlatform'
 import { ROLES } from '../config/accessControl'
@@ -12,7 +13,9 @@ import WebsiteModuleHeader from '../components/website/WebsiteModuleHeader.vue'
 const isWebsitePresentation=clientPlatform==='web'
 
 const props = defineProps({ staffMode: { type: Boolean, default: false } })
+const router = useRouter()
 const authStore = useAuthStore()
+const isRegistrarDesktop = computed(() => props.staffMode && clientPlatform === 'desktop' && authStore.currentRole === ROLES.REGISTRAR_STAFF)
 const studentProfile = useStudentProfileStore()
 const studentUserId = computed(() => authStore.currentUser?.id)
 const isProfessor = computed(() => !props.staffMode && authStore.currentRole === ROLES.PROFESSOR)
@@ -27,7 +30,7 @@ const sections = computed(() => {
 const active = ref('Profile'), open = ref(false), data = ref(null), error = ref(''), success = ref(''), loading = ref(true), saving = ref(false), saved = ref('')
 const form = ref({ first_name: '', middle_name: '', last_name: '', suffix: '', preferred_display_name: '', bio: '', email: '', contact_number: '', address: '', notification_preferences: {}, appearance: 'system', current_password: '', password: '', password_confirmation: '' })
 const editableSections = computed(() => isProfessor.value ? ['Appearance'] : ['Profile', 'Contact Information', 'Appearance', ...(!props.staffMode ? ['Notifications'] : [])])
-const dirty = computed(() => editableSections.value.includes(active.value) && saved.value !== JSON.stringify(form.value))
+const dirty = computed(() => editableSections.value.includes(active.value) && !(isRegistrarDesktop.value && active.value === 'Appearance') && saved.value !== JSON.stringify(form.value))
 const status = computed(() => data.value?.student_status || {})
 const avatarInput = ref(null), avatarFailed = ref(false)
 const requirementSaving = ref(null)
@@ -102,6 +105,18 @@ const messageFor = (err, fallback) => {
   return fields || response?.message || fallback
 }
 const applyAppearance = () => previewPortalAppearance(form.value.appearance)
+const selectAppearance = () => {
+  applyAppearance()
+  if (!isRegistrarDesktop.value) return
+  applyPortalAppearance(form.value.appearance, authStore.currentRole, accountId.value)
+  if (saved.value) {
+    const snapshot = JSON.parse(saved.value)
+    snapshot.appearance = form.value.appearance
+    saved.value = JSON.stringify(snapshot)
+  }
+  error.value = ''
+  success.value = 'Appearance saved.'
+}
 const load = async () => {
   loading.value = true
   error.value = ''
@@ -174,7 +189,7 @@ const savePreferences = async () => {
   }
 }
 const saveActive = () => ({ Profile: saveProfile, 'Contact Information': saveContact, Notifications: savePreferences, Appearance: savePreferences }[active.value]?.())
-const changePassword = async () => { saving.value = true; error.value = success.value = ''; try { await apiClient.post('/change-password', { current_password: form.value.current_password, password: form.value.password, password_confirmation: form.value.password_confirmation }); success.value = 'Password changed.'; form.value.current_password = form.value.password = form.value.password_confirmation = '' } catch (err) { error.value = messageFor(err, 'Unable to change password.') } finally { saving.value = false } }
+const changePassword = async () => { saving.value = true; error.value = success.value = ''; try { await authStore.changePassword({ current_password: form.value.current_password, password: form.value.password, password_confirmation: form.value.password_confirmation }); form.value.current_password = form.value.password = form.value.password_confirmation = ''; await router.replace({ name: 'login', query: { passwordChanged: '1' } }) } catch (err) { error.value = err?.message || 'Unable to change password.' } finally { saving.value = false } }
 const upload = async (event) => {
   const file = event.target.files?.[0]
   if (!file) return
@@ -246,11 +261,11 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="settings" :class="{ 'website-settings-workspace': isWebsitePresentation }">
+  <main class="settings" :class="{ 'website-settings-workspace': isWebsitePresentation, 'registrar-settings-workspace': isRegistrarDesktop }">
     <WebsiteModuleHeader v-if="isWebsitePresentation" :eyebrow="isProfessor ? 'Professor Settings' : 'Student Settings'" title="Settings workspace" :description="isProfessor ? 'Review your faculty identity, secure your account, and choose your website appearance.' : 'Manage your profile, academic preferences, records, notifications, and account security.'" compact />
     <AcademicPageHeader v-else :eyebrow="staffMode ? 'Registrar Settings' : 'Student Settings'" title="Your account and preferences" variant="settings"><template #leading><button class="menu" type="button" @click="open = true">Settings menu</button></template></AcademicPageHeader>
 
-    <section v-if="isWebsitePresentation" class="settings-profile-banner" aria-label="Current account">
+    <section v-if="isWebsitePresentation || isRegistrarDesktop" class="settings-profile-banner" aria-label="Current account">
       <div class="avatar">
         <img v-if="avatarUrl && !avatarFailed" :key="avatarUrl" :src="avatarUrl" alt="Profile picture" @error="avatarFailed = true" />
         <span v-else class="avatar-initials" role="img" aria-label="Profile picture initials">{{ initials }}</span>
@@ -275,7 +290,7 @@ onMounted(load)
 
     <div class="layout">
       <aside :class="{ open }" :role="isWebsitePresentation ? 'navigation' : undefined" aria-label="Settings categories">
-        <div v-if="isWebsitePresentation" class="settings-category-intro"><strong>Categories</strong><span>Choose an area to review or update.</span></div>
+        <div v-if="isWebsitePresentation || isRegistrarDesktop" class="settings-category-intro"><strong>Categories</strong><span>Choose an area to review or update.</span></div>
         <strong v-else>Settings</strong>
         <button
           v-for="option in sectionOptions"
@@ -285,8 +300,8 @@ onMounted(load)
           :aria-current="isWebsitePresentation && active === option.label ? 'page' : undefined"
           @click="active = option.label; open = false"
         >
-          <svg v-if="isWebsitePresentation" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="option.icon" /></svg>
-          <span><strong>{{ option.label }}</strong><small v-if="isWebsitePresentation">{{ option.group }}</small></span>
+          <svg v-if="isWebsitePresentation || isRegistrarDesktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="option.icon" /></svg>
+          <span><strong>{{ option.label }}</strong><small v-if="isWebsitePresentation || isRegistrarDesktop">{{ option.group }}</small></span>
         </button>
       </aside>
       <div v-if="open && !isWebsitePresentation" class="backdrop" @click="open = false" />
@@ -303,7 +318,7 @@ onMounted(load)
           </header>
 
         <template v-if="active === 'Profile'">
-          <div v-if="!isWebsitePresentation" class="profile-photo">
+          <div v-if="!isWebsitePresentation && !isRegistrarDesktop" class="profile-photo">
             <div class="avatar">
               <img v-if="avatarUrl && !avatarFailed" :key="avatarUrl" :src="avatarUrl" alt="Profile picture" @error="avatarFailed = true" />
               <span v-else class="avatar-initials" role="img" aria-label="Profile picture initials">{{ initials }}</span>
@@ -348,10 +363,11 @@ onMounted(load)
         <template v-else-if="active === 'Appearance'">
           <fieldset class="appearance-options">
             <legend>Choose a theme</legend>
+            <p v-if="isRegistrarDesktop" class="registrar-appearance-help">Your choice applies now and is saved to this account for future visits.</p>
             <div class="appearance-grid">
               <label v-for="option in appearances" :key="option.value" class="appearance-card" :class="{ selected: form.appearance === option.value }">
                 <span class="theme-preview" :data-preview="option.value" aria-hidden="true"><span class="preview-sidebar" /><span class="preview-content"><span /><span /></span></span>
-                <span class="appearance-choice"><input v-model="form.appearance" name="portal-appearance" type="radio" :value="option.value" :aria-label="option.label" :aria-describedby="`theme-${option.value}-description`" @change="applyAppearance" /> {{ option.label }}</span>
+                <span class="appearance-choice"><input v-model="form.appearance" name="portal-appearance" type="radio" :value="option.value" :aria-label="option.label" :aria-describedby="`theme-${option.value}-description`" @change="selectAppearance" /> {{ option.label }}</span>
                 <span :id="`theme-${option.value}-description`" class="muted appearance-description">{{ option.description }}</span>
               </label>
             </div>
@@ -740,5 +756,90 @@ article > button { justify-self: start; padding: 7px 10px; font-size: .85rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
+}
+
+/* Registrar-only Electron treatment. The existing form, APIs, and password flow are shared. */
+.settings.registrar-settings-workspace {
+  --settings-page: var(--desk-canvas);
+  --settings-surface: var(--desk-surface);
+  --settings-field: var(--desk-surface-muted);
+  --settings-text: var(--desk-ink);
+  --settings-muted: var(--desk-muted);
+  --settings-border: var(--desk-line);
+  --settings-accent: var(--desk-green-700);
+  --settings-selected: var(--desk-green-100);
+  --settings-primary: var(--desk-action);
+  --settings-on-primary: #fff;
+  --settings-focus: var(--desk-green-700);
+  --settings-save: var(--desk-surface-muted);
+  --settings-success: var(--desk-green-100);
+  --settings-color-scheme: var(--student-color-scheme);
+  max-width: 1160px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.registrar-settings-workspace > :deep(.page-header) { margin-bottom: 18px; }
+.registrar-settings-workspace .settings-profile-banner { min-height: 126px; padding: 22px 26px; border: 1px solid var(--desk-line); border-radius: 9px; background: var(--desk-surface); box-shadow: none; color: var(--desk-ink); }
+.registrar-settings-workspace .settings-profile-banner::after { display: none; }
+.registrar-settings-workspace .settings-profile-banner .avatar { width: 72px; height: 72px; flex-basis: 72px; border: 1px solid var(--desk-line-strong); background: var(--desk-green-100); color: var(--desk-green-700); }
+.registrar-settings-workspace .settings-banner-copy > span { color: var(--desk-green-700); font-size: .68rem; }
+.registrar-settings-workspace .settings-banner-copy h2 { color: var(--desk-ink); font-size: 1.35rem; }
+.registrar-settings-workspace .settings-banner-copy p,.registrar-settings-workspace .settings-banner-photo-actions > p { color: var(--desk-muted); }
+.registrar-settings-workspace .settings-banner-photo-actions .photo-change { border-color: var(--desk-line); background: var(--desk-surface-muted); color: var(--desk-ink); }
+.registrar-settings-workspace .settings-banner-photo-actions .photo-remove { border-color: var(--settings-danger-border); background: var(--settings-danger-bg); color: var(--settings-danger); }
+.registrar-settings-workspace .layout { grid-template-columns: 220px minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.registrar-settings-workspace aside,.registrar-settings-workspace article { border-radius: 9px; box-shadow: none; }
+.registrar-settings-workspace aside { gap: 3px; padding: 14px 10px; }
+.registrar-settings-workspace .settings-category-intro { display: grid; gap: 3px; margin-bottom: 9px; padding: 0 9px; }
+.registrar-settings-workspace .settings-category-intro strong { color: var(--desk-ink); font-size: .82rem; }
+.registrar-settings-workspace .settings-category-intro span { color: var(--desk-muted); font-size: .72rem; }
+.registrar-settings-workspace aside button { align-items: center; display: grid; grid-template-columns: 19px minmax(0, 1fr); gap: 10px; min-height: 44px; border-left: 2px solid transparent; border-radius: 4px; color: var(--desk-ink-secondary); font-size: .82rem; font-weight: 600; }
+.registrar-settings-workspace aside button svg { width: 18px; height: 18px; }
+.registrar-settings-workspace aside button > span { display: grid; gap: 2px; }
+.registrar-settings-workspace aside button strong { color: inherit; font-size: .78rem; }
+.registrar-settings-workspace aside button small { color: var(--desk-muted); font-size: .66rem; }
+.registrar-settings-workspace aside button.active { border-left-color: var(--desk-green-700); }
+.registrar-settings-workspace article { gap: 19px; min-height: 420px; padding: 26px; }
+.registrar-settings-workspace .settings-content-heading { padding-bottom: 17px; }
+.registrar-settings-workspace .settings-content-heading > div > span { color: var(--desk-green-700); font-size: .68rem; letter-spacing: .09em; }
+.registrar-settings-workspace .settings-content-heading h2 { color: var(--desk-ink); font-size: 1.42rem; }
+.registrar-settings-workspace .settings-content-heading p { color: var(--desk-muted); font-size: .83rem; }
+.registrar-settings-workspace .readonly-badge { border-color: var(--desk-line); background: var(--desk-surface-muted); color: var(--desk-muted); }
+.registrar-settings-workspace .subsection-heading h3 { color: var(--desk-ink); }
+.registrar-settings-workspace .subsection-heading p,.registrar-settings-workspace .subsection-heading > span,.registrar-settings-workspace .field-label small { color: var(--desk-muted); }
+.registrar-settings-workspace .profile-fields,.registrar-settings-workspace .settings-form-grid,.registrar-settings-workspace .security-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.registrar-settings-workspace .settings-form-grid .full-field { grid-column: 1 / -1; }
+.registrar-settings-workspace .content label { color: var(--desk-ink-secondary); font-size: .8rem; }
+.registrar-settings-workspace .official-info,.registrar-settings-workspace .summary-info { grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); }
+.registrar-settings-workspace .official-info > div,.registrar-settings-workspace .summary-info > div { padding: 12px 13px; border: 1px solid var(--desk-line); border-radius: 6px; background: var(--desk-surface-muted); }
+.registrar-settings-workspace .official-info dt,.registrar-settings-workspace .summary-info dt { margin: 0 0 4px; color: var(--desk-muted); font-size: .68rem; }
+.registrar-settings-workspace .official-info dd,.registrar-settings-workspace .summary-info dd { margin: 0; color: var(--desk-ink); font-size: .86rem; }
+.registrar-settings-workspace .appearance-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.registrar-settings-workspace .appearance-card { gap: 9px; border-radius: 7px; }
+.registrar-settings-workspace .theme-preview { height: 76px; }
+.registrar-settings-workspace .security-guidance { border-color: var(--desk-line); background: var(--desk-surface-muted); border-radius: 7px; }
+.registrar-settings-workspace .security-guidance strong { color: var(--desk-ink); }
+.registrar-settings-workspace .security-guidance p { color: var(--desk-muted); }
+.registrar-settings-workspace .settings-loading { border-color: var(--desk-line); background: var(--desk-surface); color: var(--desk-muted); }
+.registrar-settings-workspace .settings-loading span { border-color: var(--desk-line); border-top-color: var(--desk-green-700); }
+.registrar-appearance-help { color: var(--desk-muted); font-size: .78rem; margin: 0 0 14px; }
+@media (max-width: 850px) {
+  .settings.registrar-settings-workspace .layout { display: grid; grid-template-columns: minmax(0,1fr); }
+  .settings.registrar-settings-workspace aside { display: flex; gap: 7px; overflow-x: auto; position: static; transform: none; width: 100%; }
+  .registrar-settings-workspace .settings-category-intro { display: none; }
+  .registrar-settings-workspace aside button { flex: 0 0 auto; min-width: 135px; }
+  .registrar-settings-workspace .backdrop { display: none; }
+  .settings.registrar-settings-workspace .menu { display: none; }
+}
+@media (max-width: 600px) {
+  .registrar-settings-workspace .settings-profile-banner { grid-template-columns: auto minmax(0,1fr); gap: 12px; padding: 16px; }
+  .registrar-settings-workspace .settings-profile-banner .avatar { width: 60px; height: 60px; flex-basis: 60px; }
+  .registrar-settings-workspace .settings-banner-copy h2 { font-size: 1.1rem; }
+  .registrar-settings-workspace .settings-banner-copy p { display: none; }
+  .registrar-settings-workspace .settings-banner-photo-actions { grid-column: 1 / -1; justify-items: start; text-align: left; }
+  .registrar-settings-workspace article { min-height: 0; padding: 17px; }
+  .registrar-settings-workspace .profile-fields,.registrar-settings-workspace .settings-form-grid,.registrar-settings-workspace .security-fields,.registrar-settings-workspace .appearance-grid { grid-template-columns: minmax(0,1fr); }
+  .registrar-settings-workspace .settings-form-grid .full-field { grid-column: auto; }
 }
 </style>

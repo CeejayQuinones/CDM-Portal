@@ -39,7 +39,7 @@ test('reference adaptation keeps draft details separate and never fabricates cou
 
 test('document and submission controls retain server-authoritative state protection', async () => {
   const view = await read('src/modules/enrollment/EnrollmentStudent.vue')
-  assert.match(view, /:disabled="busy \|\| classification!==application\.classification"[^>]*@change="upload\(d\.id,\$event\)"/)
+  assert.match(view, /:disabled="busy\|\|uploadStatusPending\|\|classification!==application\.classification"[^>]*@change="upload\(d\.id,\$event\)"/)
   assert.match(view, /requirements\.some\(d=>d\.required&&!d\.attached&&!d\.reusable\)/)
   assert.match(view, /Save your classification, then return to Student info to review the refreshed document requirements before submitting/)
   assert.match(view, /version:application\.value\.version/)

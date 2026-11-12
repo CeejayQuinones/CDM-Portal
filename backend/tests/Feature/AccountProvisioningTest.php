@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Department;
+use App\Models\LoginOtpChallenge;
 use App\Models\Professor;
 use App\Models\RegistrarStaff;
 use App\Models\Role;
@@ -10,6 +11,7 @@ use App\Models\User;
 use App\Services\AccountAuditWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
@@ -175,6 +177,15 @@ class AccountProvisioningTest extends TestCase
         $registrar = $this->user(Role::REGISTRAR_STAFF);
         Sanctum::actingAs($registrar);
         $created = $this->postJson('/api/registrar/professors', $this->professorPayload())->assertCreated()->json('data.account');
+        $professorUser = User::query()->findOrFail($created['user_id']);
+        $challenge = LoginOtpChallenge::query()->create([
+            'public_id' => (string) Str::uuid(),
+            'user_id' => $professorUser->id,
+            'client' => 'web',
+            'code_hash' => Hash::make('123456'),
+            'expires_at' => now()->addMinutes(5),
+            'resend_available_at' => now()->addMinute(),
+        ]);
 
         $this->getJson('/api/registrar/professors?search=FAC-NEW-001')
             ->assertOk()->assertJsonPath('data.accounts.total', 1);
@@ -195,7 +206,51 @@ class AccountProvisioningTest extends TestCase
 
         $user = User::query()->findOrFail($created['user_id']);
         $this->assertSame(Role::PROFESSOR, $user->role->role_name);
+        $this->assertNotNull($challenge->fresh()->superseded_at);
         $this->assertDatabaseHas('professors', ['id' => $created['id'], 'user_id' => $created['user_id'], 'status' => 'inactive']);
+    }
+
+    public function test_staff_password_reset_revokes_all_existing_account_tokens(): void
+    {
+        $registrar = $this->user(Role::REGISTRAR_STAFF);
+        Sanctum::actingAs($registrar);
+        $created = $this->postJson('/api/registrar/professors', $this->professorPayload())->assertCreated()->json('data.account');
+        $professorUser = User::query()->findOrFail($created['user_id']);
+        $webToken = $professorUser->createToken('web session', ['client:web'])->plainTextToken;
+        $mobileToken = $professorUser->createToken('mobile session', ['client:mobile'])->plainTextToken;
+        $challenge = LoginOtpChallenge::query()->create([
+            'public_id' => (string) Str::uuid(),
+            'user_id' => $professorUser->id,
+            'client' => 'web',
+            'code_hash' => Hash::make('123456'),
+            'expires_at' => now()->addMinutes(5),
+            'resend_available_at' => now()->addMinute(),
+        ]);
+        $this->app['auth']->forgetGuards();
+        $webResponse = $this->withHeader('X-CDM-Client', 'web')->withToken($webToken)->getJson('/api/me');
+        $this->assertSame(200, $webResponse->status(), 'Web professor token: '.$webResponse->getContent());
+        $this->app['auth']->forgetGuards();
+        $mobileResponse = $this->withHeader('X-CDM-Client', 'mobile')->withToken($mobileToken)->getJson('/api/me');
+        $this->assertSame(200, $mobileResponse->status(), 'Mobile professor token: '.$mobileResponse->getContent());
+        $this->app['auth']->forgetGuards();
+        $registrarToken = $registrar->createToken('desktop session', ['client:desktop'])->plainTextToken;
+        $this->withHeader('X-CDM-Client', 'desktop')->withToken($registrarToken);
+
+        $payload = $this->professorPayload([
+            'password' => 'ReplacementPass123!',
+            'password_confirmation' => 'ReplacementPass123!',
+        ]);
+        unset($payload['status']);
+
+        $this->putJson('/api/registrar/professors/'.$created['id'], $payload)->assertOk();
+
+        $this->assertSame(0, $professorUser->tokens()->count());
+        $this->assertTrue(Hash::check('ReplacementPass123!', $professorUser->fresh()->password));
+        $this->assertNotNull($challenge->fresh()->superseded_at);
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('X-CDM-Client', 'web')->withToken($webToken)->getJson('/api/me')->assertUnauthorized();
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('X-CDM-Client', 'mobile')->withToken($mobileToken)->getJson('/api/me')->assertUnauthorized();
     }
 
     public function test_public_signup_rejects_privileged_role_fields(): void

@@ -1,15 +1,59 @@
 <script setup>
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { destinationContainsDesktopRoute } from '../../config/desktopNavigation'
+import { persistPortalAppearance } from '../../composables/portalAppearance'
 import logoUrl from '../../assets/styles/images/cdm-seal.png'
 
 const props = defineProps({
   modules: { type: Array, default: () => [] },
   activeModule: { type: Object, default: null },
   modulePanelOpen: { type: Boolean, default: false },
+  registrarPresentation: { type: Boolean, default: false },
+  mobileDrawer: { type: Boolean, default: false },
+  drawerOpen: { type: Boolean, default: false },
+  appearanceAccount: { type: [String, Number], default: null },
 })
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'close'])
 const router = useRouter()
+const route = useRoute()
+const expandedModule = ref(null)
+const drawerClose = ref(null)
+const sidebar = ref(null)
+const selectedTheme = ref('system')
+const systemDark = ref(false)
+const effectiveDark = computed(() => selectedTheme.value === 'dark' || (selectedTheme.value === 'system' && systemDark.value))
+const themeAction = computed(() => effectiveDark.value ? 'Switch to Light Mode' : 'Switch to Dark Mode')
+let themeObserver
+let themeMedia
+
+function syncTheme() {
+  if (typeof document !== 'undefined') selectedTheme.value = document.documentElement.dataset.studentTheme || 'system'
+}
+
+function syncSystemTheme(event) { systemDark.value = event.matches }
+
+function toggleTheme() {
+  if (!props.registrarPresentation) return
+  selectedTheme.value = persistPortalAppearance(effectiveDark.value ? 'light' : 'dark', 'Registrar Staff', props.appearanceAccount) || selectedTheme.value
+}
+
+onMounted(() => {
+  if (!props.registrarPresentation || typeof document === 'undefined') return
+  syncTheme()
+  themeObserver = new MutationObserver(syncTheme)
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-student-theme'] })
+  themeMedia = window.matchMedia?.('(prefers-color-scheme: dark)')
+  if (themeMedia) {
+    systemDark.value = themeMedia.matches
+    themeMedia.addEventListener?.('change', syncSystemTheme)
+  }
+})
+
+onBeforeUnmount(() => {
+  themeObserver?.disconnect()
+  themeMedia?.removeEventListener?.('change', syncSystemTheme)
+})
 
 const icons = {
   'registrar-dashboard': 'M4 13h6V4H4v9Zm10 7h6v-9h-6v9ZM4 20h6v-3H4v3Zm10-13h6V4h-6v3Z',
@@ -26,54 +70,87 @@ const icons = {
 }
 const iconFor = name => icons[name] || 'M5 5h14v14H5z'
 const isActive = module => props.activeModule?.name === module.name
+const destinationActive = destination => destinationContainsDesktopRoute(destination, route)
+const primaryModules = computed(() => props.modules.filter(module => !['settings', 'registrar-settings'].includes(module.name)))
+const utilityModules = computed(() => props.modules.filter(module => ['settings', 'registrar-settings'].includes(module.name)))
+
+watch(() => [props.activeModule?.name, route.fullPath], () => {
+  if (props.registrarPresentation) expandedModule.value = props.activeModule?.destinations.length > 1 ? props.activeModule.name : null
+}, { immediate: true })
 
 function select(module) {
   emit('select', module)
   if (module.destinations.length === 1) router.push(module.destinations[0].path)
 }
 
-const primaryModules = computed(() => props.modules.filter(module => !['settings', 'registrar-settings'].includes(module.name)))
-const utilityModules = computed(() => props.modules.filter(module => ['settings', 'registrar-settings'].includes(module.name)))
+function closeDrawer() {
+  if (props.mobileDrawer) emit('close')
+}
+
+function trapDrawerFocus(event) {
+  if (!props.mobileDrawer || !props.drawerOpen || event.key !== 'Tab') return
+  const targets = [...(sidebar.value?.querySelectorAll('a[href], button:not([disabled])') || [])]
+    .filter(element => element.getClientRects().length)
+  if (!targets.length) return
+  const first = targets[0]
+  const last = targets[targets.length - 1]
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+}
+
+defineExpose({ focusDrawerClose: () => nextTick(() => drawerClose.value?.focus()) })
 </script>
 
 <template>
-  <aside class="desktop-primary-rail" aria-label="Primary workspace navigation">
-    <div class="desktop-rail-brand">
+  <aside v-if="registrarPresentation" id="desktop-registrar-navigation" ref="sidebar" class="desktop-registrar-sidebar" :class="{ 'drawer-open': drawerOpen }" :role="mobileDrawer && drawerOpen ? 'dialog' : undefined" :aria-modal="mobileDrawer && drawerOpen ? 'true' : undefined" aria-label="Registrar workspace navigation" @keydown="trapDrawerFocus">
+    <header class="registrar-sidebar-brand">
       <img :src="logoUrl" alt="Colegio de Montalban seal" />
-    </div>
+      <div><strong>CDM Portal</strong><span>REGISTRAR WORKSPACE</span></div>
+      <button ref="drawerClose" type="button" class="registrar-sidebar-close" aria-label="Close Registrar navigation" @click="closeDrawer">×</button>
+    </header>
+    <nav class="registrar-sidebar-nav" aria-label="Registrar pages">
+      <p class="registrar-sidebar-section">WORKSPACE</p>
+      <template v-for="module in primaryModules" :key="module.name">
+        <RouterLink v-if="module.destinations.length === 1" :to="module.destinations[0].path" class="registrar-sidebar-entry" :class="{ active: isActive(module) }" :aria-current="isActive(module) ? 'page' : undefined" @click="closeDrawer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          <span>{{ module.label }}</span>
+        </RouterLink>
+        <template v-else>
+          <button type="button" class="registrar-sidebar-entry registrar-sidebar-parent" :class="{ active: isActive(module) }" :aria-expanded="expandedModule === module.name" :aria-controls="`registrar-destinations-${module.name}`" @click="expandedModule = expandedModule === module.name ? null : module.name">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            <span>{{ module.label }}</span>
+            <svg class="registrar-sidebar-chevron" :class="{ open: expandedModule === module.name }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <div :id="`registrar-destinations-${module.name}`" class="registrar-sidebar-children" :class="{ open: expandedModule === module.name }" :inert="expandedModule !== module.name">
+            <div>
+              <RouterLink v-for="destination in module.destinations" :key="destination.name" :to="destination.path" :class="{ active: destinationActive(destination) }" :aria-current="destinationActive(destination) ? 'page' : undefined" @click="closeDrawer">{{ destination.label }}</RouterLink>
+            </div>
+          </div>
+        </template>
+      </template>
+    </nav>
+    <nav v-if="utilityModules.length" class="registrar-sidebar-footer" aria-label="Registrar account">
+      <p class="registrar-sidebar-section">ACCOUNT</p>
+      <button class="registrar-sidebar-entry registrar-theme-shortcut" type="button" :aria-label="themeAction" :title="themeAction" @click="toggleTheme">
+        <svg v-if="effectiveDark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></svg>
+        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z" /></svg>
+        <span>{{ themeAction }}</span>
+      </button>
+      <RouterLink v-for="module in utilityModules" :key="module.name" :to="module.destinations[0].path" class="registrar-sidebar-entry" :class="{ active: isActive(module) }" :aria-current="isActive(module) ? 'page' : undefined" @click="closeDrawer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" /></svg><span>{{ module.label }}</span>
+      </RouterLink>
+    </nav>
+  </aside>
+  <aside v-else class="desktop-primary-rail" aria-label="Primary workspace navigation">
+    <div class="desktop-rail-brand"><img :src="logoUrl" alt="Colegio de Montalban seal" /></div>
     <nav class="desktop-rail-modules">
-      <button
-        v-for="module in primaryModules"
-        :key="module.name"
-        type="button"
-        class="desktop-rail-action"
-        :class="{ active: isActive(module) }"
-        :aria-label="module.label"
-        :aria-current="isActive(module) ? 'page' : undefined"
-        :aria-controls="module.destinations.length > 1 ? 'desktop-module-navigation' : undefined"
-        :aria-expanded="module.destinations.length > 1 && isActive(module) ? modulePanelOpen : undefined"
-        :title="module.label"
-        @click="select(module)"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-          <path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        <span class="desktop-rail-tooltip" role="tooltip">{{ module.label }}</span>
+      <button v-for="module in primaryModules" :key="module.name" type="button" class="desktop-rail-action" :class="{ active: isActive(module) }" :aria-label="module.label" :aria-current="isActive(module) ? 'page' : undefined" :aria-controls="module.destinations.length > 1 ? 'desktop-module-navigation' : undefined" :aria-expanded="module.destinations.length > 1 && isActive(module) ? modulePanelOpen : undefined" :title="module.label" @click="select(module)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" /></svg><span class="desktop-rail-tooltip" role="tooltip">{{ module.label }}</span>
       </button>
     </nav>
     <nav v-if="utilityModules.length" class="desktop-rail-utilities" aria-label="Workspace settings">
-      <button
-        v-for="module in utilityModules"
-        :key="module.name"
-        type="button"
-        class="desktop-rail-action"
-        :class="{ active: isActive(module) }"
-        :aria-label="module.label"
-        :title="module.label"
-        @click="select(module)"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" /></svg>
-        <span class="desktop-rail-tooltip" role="tooltip">{{ module.label }}</span>
+      <button v-for="module in utilityModules" :key="module.name" type="button" class="desktop-rail-action" :class="{ active: isActive(module) }" :aria-label="module.label" :title="module.label" @click="select(module)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" /></svg><span class="desktop-rail-tooltip" role="tooltip">{{ module.label }}</span>
       </button>
     </nav>
   </aside>

@@ -15,6 +15,10 @@ test('Student published grade experience exposes term history, completion, unava
   assert.match(service, /\/grading\/student\/grades/)
   assert.match(service, /responseType: 'blob'/)
   assert.doesNotMatch(student, /Passed|Failed|Dean's List|Probation/)
+  assert.match(student, /VIEWING PURPOSES ONLY/)
+  assert.match(student, /aria-label="Viewing purposes only: published grades cannot be changed here"/)
+  assert.match(student, /\.student-grade-table::after \{[^}]*opacity: \.06/)
+  assert.doesNotMatch(student, /type="file"|contenteditable|Save Grades|Edit Grades/)
 })
 
 test('Student and Professor grading no longer expose grading messages', () => {
@@ -46,6 +50,8 @@ test('Student My Grades uses shared light and dark semantic surfaces', () => {
     assert.match(css, new RegExp(selector))
   }
   assert.match(student, /student-grades-skeleton/)
+  assert.match(student, /student-grades-title \{[^}]*flex-wrap: wrap/)
+  assert.match(student, /student-readonly-badge \{[^}]*text-align: center/)
   assert.doesNotMatch(css, /#[fF]{3,6}|#f8f8f8|#f1f1f1/)
   assert.match(css, /\.grading-page :is\(input, select, textarea\)/)
   assert.match(css, /\.grading-modal > header/)

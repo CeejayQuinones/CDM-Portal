@@ -3,12 +3,13 @@
 namespace App\Services\Enrollment;
 
 use App\Models\Enrollment\EnrollmentApplication;
-use App\Models\EnrollmentSubject;
 use App\Models\Subject;
 use Illuminate\Support\Collection;
 
 class EnrollmentSubjectPolicy
 {
+    public function __construct(private readonly CompletedSubjectResolver $completedSubjects) {}
+
     public function candidates(EnrollmentApplication $a, bool $lock = false): Collection
     {
         return Subject::where('curriculum_id', $a->curriculum_id)->where('semester_id', $a->semester_id)->where('status', 'active')->orderBy('subject_code')->when($lock, fn ($q) => $q->lockForUpdate())->get();
@@ -16,11 +17,7 @@ class EnrollmentSubjectPolicy
 
     public function completed(EnrollmentApplication $a, bool $lock = false): array
     {
-        if (! $a->student_id) {
-            return [];
-        }
-
-        return EnrollmentSubject::join('enrollments', 'enrollments.id', '=', 'enrollment_subjects.enrollment_id')->where('enrollments.student_id', $a->student_id)->whereIn('enrollments.status', ['enrolled', 'completed'])->where('enrollment_subjects.subject_status', 'completed')->where('enrollment_subjects.remarks', 'Passed')->when($lock, fn ($q) => $q->lockForUpdate())->pluck('enrollment_subjects.subject_id')->all();
+        return $this->completedSubjects->forApplication($a, $lock);
     }
 
     public function proposal(EnrollmentApplication $a): array

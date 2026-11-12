@@ -20,6 +20,7 @@ const form = reactive({
   description: '',
   workflow_category: 'official_issuance',
   requires_appointment: false,
+  requires_physical_retrieval: false,
   student_requestable: true,
   student_uploadable: false,
   processing_fee: 0,
@@ -44,6 +45,7 @@ function clearForm() {
     description: '',
     workflow_category: 'official_issuance',
     requires_appointment: false,
+    requires_physical_retrieval: false,
     student_requestable: true,
     student_uploadable: false,
     processing_fee: 0,
@@ -63,6 +65,7 @@ function edit(type) {
     description: type.description || '',
     workflow_category: type.workflow_category,
     requires_appointment: Boolean(type.requires_appointment),
+    requires_physical_retrieval: Boolean(type.requires_physical_retrieval),
     student_requestable: Boolean(type.student_requestable),
     student_uploadable: Boolean(type.student_uploadable),
     processing_fee: type.processing_fee,
@@ -175,7 +178,7 @@ onMounted(refresh)
             <td><strong>{{ type.document_name }}</strong><small>₱{{ Number(type.processing_fee || 0).toFixed(2) }} fee</small></td>
             <td>{{ type.description || 'No description provided.' }}</td>
             <td><strong>{{ type.workflow_category === 'supporting_record' ? 'Supporting record' : 'Official issuance' }}</strong><small>{{ type.student_requestable ? 'Student request enabled' : 'Not requestable' }} · {{ type.student_uploadable ? 'Student upload enabled' : 'No student upload' }}</small></td>
-            <td>{{ type.requires_appointment ? 'Appointment required' : 'No appointment required' }}</td>
+            <td>{{ type.requires_appointment ? 'Appointment required' : 'No appointment required' }}<small>{{ type.requires_physical_retrieval ? 'Physical folder retrieval' : 'No physical retrieval' }}</small></td>
             <td>{{ type.processing_days }} business day{{ Number(type.processing_days) === 1 ? '' : 's' }}</td>
             <td><span class="dr-type-status" :class="type.status">{{ type.status === 'active' ? 'Active' : 'Inactive' }}</span></td>
             <td>
@@ -219,6 +222,8 @@ onMounted(refresh)
         <label>Processing fee<input v-model="form.processing_fee" type="number" min="0" step="0.01" required /></label>
         <label>Processing days<input v-model="form.processing_days" type="number" min="1" max="255" required /></label>
         <label class="checkbox wide"><input v-model="form.requires_appointment" type="checkbox" /> Appointment required</label>
+        <label class="checkbox wide"><input v-model="form.requires_physical_retrieval" type="checkbox" /> Requires Physical Record Retrieval for new requests</label>
+        <p class="wide document-type-policy-note">Existing requests are not added to the retrieval queue when this setting changes.</p>
         <label class="checkbox wide"><input v-model="form.student_requestable" type="checkbox" /> Students may request this document from the Registrar</label>
         <label v-if="form.workflow_category === 'supporting_record'" class="checkbox wide"><input v-model="form.student_uploadable" type="checkbox" /> Students may upload this supporting record</label>
         <p v-else class="wide document-type-policy-note">Official documents cannot be uploaded or issued by Students.</p>

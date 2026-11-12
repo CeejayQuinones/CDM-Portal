@@ -17,7 +17,7 @@ The local validation database was checked on 2026-10-03 and contains one active 
 
 - Email/username: __________
 - Role: Admin/System Admin
-- Platform: Web and Electron desktop
+- Platform: Electron desktop only
 - Purpose: Admission, authorized Enrollment/system management, settings, and cross-module platform verification
 - Credential owner/contact: __________
 - Reset completed/date: __________
@@ -47,7 +47,7 @@ The local validation database was checked on 2026-10-03 and contains one active 
 
 - Email/username: __________
 - Role: Guest
-- Platform: Web only
+- Platform: Web and Capacitor mobile
 - Purpose: Registration/login, own Admission application/exam/result history, and negative staff/academic-route tests
 - Admission cycle/application: __________
 - Credential owner/contact: __________
@@ -56,7 +56,7 @@ The local validation database was checked on 2026-10-03 and contains one active 
 ## Account preparation rules
 
 1. Confirm the account is active and has exactly the expected role before distributing credentials.
-2. Confirm Registrar desktop-only, Admin web/desktop, Student web/mobile, Professor web/mobile, and Guest web-only behavior before workflow testing.
+2. Confirm Registrar/Admin desktop-only and Student/Professor/Guest web/mobile behavior before workflow testing.
 3. Use separate eligible and ineligible Students only when the local validation database intentionally provisions them. Do not alter a legitimate Student merely to force a negative case.
 4. Restore any password or status changed for negative testing immediately after recording the result.
 5. Never share bearer tokens, password hashes, verification codes, or database connection values.
@@ -76,9 +76,9 @@ The repository contains local seed definitions under `backend/database/seeders`.
 | Check | Result | Notes |
 | --- | --- | --- |
 | Registrar account active and desktop login verified | ☐ Pass ☐ Fail | __________ |
-| Admin account active and web/desktop login verified | ☐ Pass ☐ Fail | __________ |
+| Admin account active and desktop login verified | ☐ Pass ☐ Fail | __________ |
 | Student account active, academically linked, and web/mobile login verified | ☐ Pass ☐ Fail | __________ |
 | Professor account active and web/mobile login verified | ☐ Pass ☐ Fail | __________ |
-| Guest account active and web login/Admission access verified | ☐ Pass ☐ Fail | __________ |
+| Guest account active and web/mobile login/Admission access verified | ☐ Pass ☐ Fail | __________ |
 | Passwords stored outside Git and shared only with validators | ☐ Pass ☐ Fail | __________ |
 | Negative-test status/password changes restored | ☐ Pass ☐ Fail | __________ |

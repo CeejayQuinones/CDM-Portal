@@ -2,6 +2,8 @@
 import { defineAsyncComponent, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import RegistrationWizard from '../components/RegistrationWizard.vue'
+import LoginOtpVerification from '../components/LoginOtpVerification.vue'
+import TurnstileVerification from '../components/TurnstileVerification.vue'
 import { useAuthStore } from '../stores/authStore'
 import { dashboardForRole } from '../utils/roleDashboard'
 import { runLoginRequest } from '../utils/loginFlow'
@@ -24,21 +26,38 @@ const formError = ref(route.query.platformDenied === '1'
   ? 'This account cannot use this CDM Portal application. Sign in through an authorized platform.'
   : '')
 const isLoading = ref(false)
+const showPostLoginLoading = ref(false)
 const showPassword = ref(false)
 const showRegistration = ref(route.query.signup === '1')
 const registrationSuccess = ref(Boolean(route.query.registered))
 const mobileMenuOpen = ref(false)
+const otpError = ref('')
+const turnstileToken = ref('')
+const turnstileError = ref('')
+const turnstileWidget = ref(null)
 let viewActive = true
 let googleMessageHandler = null
 let googlePopup = null
+let googlePopupMonitor = null
 
 const setLoginLoading = (loading) => {
   if (viewActive) isLoading.value = loading
 }
 
+const navigateAfterAuthentication = async () => {
+  if (viewActive && clientPlatform === 'web') showPostLoginLoading.value = true
+  try {
+    const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
+    await router.replace(destination)
+  } finally {
+    if (viewActive) showPostLoginLoading.value = false
+  }
+}
+
 onBeforeUnmount(() => {
   viewActive = false
   if (googleMessageHandler) window.removeEventListener('message', googleMessageHandler)
+  if (googlePopupMonitor) clearInterval(googlePopupMonitor)
   googlePopup?.close()
 })
 
@@ -61,28 +80,40 @@ const submit = async () => {
   formError.value = ''
   if (!form.username.trim()) errors.value.username = 'Username is required.'
   if (!form.password) errors.value.password = 'Password is required.'
+  if (clientPlatform !== 'desktop' && !turnstileToken.value) turnstileError.value = 'Complete the human verification check to continue.'
   if (Object.keys(errors.value).length) return
+  if (clientPlatform !== 'desktop' && !turnstileToken.value) return
 
-  await runLoginRequest({
-    credentials: { username: form.username.trim(), password: form.password },
+  const result = await runLoginRequest({
+    credentials: {
+      username: form.username.trim(),
+      password: form.password,
+      ...(clientPlatform !== 'desktop' ? { turnstile_token: turnstileToken.value } : {}),
+    },
     login: authStore.login,
     setLoading: setLoginLoading,
-    redirect: async () => {
-      const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
-      await router.replace(destination)
-    },
+    redirect: navigateAfterAuthentication,
     onError: (error, message) => {
       if (!viewActive) return
       const backendErrors = error.response?.data?.errors
       errors.value = Object.fromEntries(Object.entries(backendErrors || {}).map(([field, messages]) => [field, messages[0]]))
+      turnstileError.value = backendErrors?.turnstile_token?.[0] || ''
       formError.value = message
     },
   })
+  if (clientPlatform !== 'desktop') {
+    turnstileToken.value = ''
+    if (!result?.requiresOtp) turnstileWidget.value?.reset()
+  }
 }
 
 const googleSignIn = () => {
   if (isLoading.value || googlePopup) return
   formError.value = ''
+  if (!turnstileToken.value) {
+    turnstileError.value = 'Complete the human verification check before continuing with Google.'
+    return
+  }
   const base = new URL(apiClient.defaults.baseURL || '/api', window.location.origin)
   const backendOrigin = base.pathname.replace(/\/api\/?$/, '')
   googlePopup = window.open(`${base.origin}${backendOrigin}/auth/google/redirect?client=${encodeURIComponent(clientPlatform)}`, 'cdm-google-auth', 'popup,width=520,height=700')
@@ -90,29 +121,98 @@ const googleSignIn = () => {
     formError.value = 'Allow pop-ups to continue with Google.'
     return
   }
+  googlePopupMonitor = window.setInterval(() => {
+    if (!googlePopup?.closed) return
+    clearInterval(googlePopupMonitor)
+    googlePopupMonitor = null
+    googlePopup = null
+    if (googleMessageHandler) window.removeEventListener('message', googleMessageHandler)
+    googleMessageHandler = null
+    turnstileToken.value = ''
+    turnstileWidget.value?.reset()
+  }, 400)
   googleMessageHandler = async (event) => {
     if (event.origin !== base.origin || event.data?.type !== 'cdm-google-auth') return
     window.removeEventListener('message', googleMessageHandler)
     googleMessageHandler = null
+    if (googlePopupMonitor) clearInterval(googlePopupMonitor)
+    googlePopupMonitor = null
     googlePopup.close()
     googlePopup = null
     if (!viewActive) return
     if (event.data.error) {
       formError.value = event.data.error
+      turnstileToken.value = ''
+      turnstileWidget.value?.reset()
       return
     }
     setLoginLoading(true)
     try {
-      await authStore.exchangeGoogleCode(event.data.code)
-      const destination = typeof route.query.redirect === 'string' ? route.query.redirect : dashboardForRole(authStore.currentRole)
-      await router.replace(destination)
+      const result = await authStore.exchangeGoogleCode(event.data.code, turnstileToken.value)
+      turnstileToken.value = ''
+      if (result?.requiresOtp) return
+      await navigateAfterAuthentication()
     } catch (error) {
-      if (viewActive) formError.value = error.response?.data?.message || 'Google sign-in could not be completed. Please try again.'
+      if (viewActive) {
+        turnstileError.value = error.response?.data?.errors?.turnstile_token?.[0] || ''
+        formError.value = error.response?.data?.message || 'Google sign-in could not be completed. Please try again.'
+        turnstileToken.value = ''
+        turnstileWidget.value?.reset()
+      }
     } finally {
       setLoginLoading(false)
     }
   }
   window.addEventListener('message', googleMessageHandler)
+}
+
+const verifyLoginOtp = async (code) => {
+  if (isLoading.value) return
+  otpError.value = ''
+  setLoginLoading(true)
+  try {
+    await authStore.verifyLoginOtp(code)
+    await navigateAfterAuthentication()
+  } catch (error) {
+    otpError.value = error.response?.data?.errors?.code?.[0]
+      || error.response?.data?.errors?.challenge_id?.[0]
+      || error.response?.data?.message
+      || error.message
+      || 'Unable to verify the code. Please try again.'
+  } finally {
+    setLoginLoading(false)
+  }
+}
+
+const resendLoginOtp = async () => {
+  if (isLoading.value) return
+  otpError.value = ''
+  setLoginLoading(true)
+  try {
+    await authStore.resendLoginOtp()
+  } catch (error) {
+    otpError.value = error.response?.data?.errors?.challenge_id?.[0]
+      || error.response?.data?.message
+      || error.message
+      || 'Unable to resend the code. Please try again.'
+  } finally {
+    setLoginLoading(false)
+  }
+}
+
+const cancelLoginOtp = () => {
+  authStore.cancelLoginOtp()
+  otpError.value = ''
+  form.password = ''
+}
+
+const acceptTurnstileToken = (token) => {
+  turnstileToken.value = token
+  if (token) turnstileError.value = ''
+}
+
+const expireTurnstileToken = () => {
+  turnstileToken.value = ''
 }
 
 const registrationComplete = () => {
@@ -123,7 +223,7 @@ const registrationComplete = () => {
 </script>
 
 <template>
-  <WebsitePublicHome v-if="clientPlatform === 'web'" :logo-url="logoUrl" :authenticating="isLoading" @start-admission="showRegistration = true">
+  <WebsitePublicHome v-if="clientPlatform === 'web'" :logo-url="logoUrl" :authenticating="showPostLoginLoading" @start-admission="showRegistration = true">
     <template #login>
       <aside id="login" class="login-card" aria-labelledby="website-login-title">
         <div class="card-brand"><img :src="logoUrl" alt="" width="1254" height="1254" /><span>CDM <strong>PORTAL</strong></span></div>
@@ -131,7 +231,16 @@ const registrationComplete = () => {
         <h2 id="website-login-title">Welcome back</h2>
         <p class="login-intro">Sign in with your campus credentials.</p>
         <p v-if="registrationSuccess" class="registration-success" role="status">Account created successfully. You can now sign in.</p>
-        <form novalidate @submit.prevent="submit">
+        <LoginOtpVerification
+          v-if="authStore.pendingLoginChallenge && clientPlatform !== 'desktop'"
+          :challenge="authStore.pendingLoginChallenge"
+          :busy="isLoading"
+          :error="otpError"
+          @verify="verifyLoginOtp"
+          @resend="resendLoginOtp"
+          @back="cancelLoginOtp"
+        />
+        <form v-else novalidate @submit.prevent="submit">
           <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
           <label for="website-username">Username</label>
           <div class="input-with-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" /></svg><input id="website-username" v-model="form.username" autocomplete="username" placeholder="Enter your username" :aria-invalid="Boolean(errors.username)" /></div>
@@ -139,6 +248,7 @@ const registrationComplete = () => {
           <label for="website-password">Password</label>
           <div class="input-with-icon password-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="website-password" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Enter your password" :aria-invalid="Boolean(errors.password)" /><button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Hide' : 'Show' }}</button></div>
           <p v-if="errors.password" class="field-error">{{ errors.password }}</p>
+          <TurnstileVerification ref="turnstileWidget" action="authentication" :error="turnstileError" @verified="acceptTurnstileToken" @expired="expireTurnstileToken" @error="turnstileError = $event" />
           <button class="sign-in-button" type="submit" :disabled="isLoading">{{ isLoading ? 'Signing in…' : 'Sign in to portal' }} <span>→</span></button>
           <div class="google-auth-option">
             <div class="divider google-divider"><span>Professor or Student?</span></div>
@@ -261,7 +371,16 @@ const registrationComplete = () => {
             <h2 id="login-title">Welcome back</h2>
             <p class="login-intro">Sign in with your campus credentials.</p>
             <p v-if="registrationSuccess" class="registration-success" role="status">Account created successfully. You can now sign in.</p>
-            <form novalidate @submit.prevent="submit">
+            <LoginOtpVerification
+              v-if="authStore.pendingLoginChallenge && clientPlatform !== 'desktop'"
+              :challenge="authStore.pendingLoginChallenge"
+              :busy="isLoading"
+              :error="otpError"
+              @verify="verifyLoginOtp"
+              @resend="resendLoginOtp"
+              @back="cancelLoginOtp"
+            />
+            <form v-else novalidate @submit.prevent="submit">
               <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
               <label for="username">Username</label>
               <div class="input-with-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" /></svg><input id="username" v-model="form.username" autocomplete="username" placeholder="Enter your username" :aria-invalid="Boolean(errors.username)" /></div>
@@ -269,6 +388,7 @@ const registrationComplete = () => {
               <label for="password">Password</label>
               <div class="input-with-icon password-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="password" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Enter your password" :aria-invalid="Boolean(errors.password)" /><button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Hide' : 'Show' }}</button></div>
               <p v-if="errors.password" class="field-error">{{ errors.password }}</p>
+              <TurnstileVerification ref="turnstileWidget" action="authentication" :error="turnstileError" @verified="acceptTurnstileToken" @expired="expireTurnstileToken" @error="turnstileError = $event" />
               <button class="sign-in-button" type="submit" :disabled="isLoading">{{ isLoading ? 'Signing in…' : 'Sign in to portal' }} <span>→</span></button>
               <template v-if="clientPlatform === 'web'">
                 <div class="google-auth-option">

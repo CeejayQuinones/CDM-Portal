@@ -14,13 +14,16 @@ test('student workflow is request-only and explains registrar-assigned appointme
   assert.match(student, /Registrar-assigned appointment workflow/)
   assert.match(student, /Appointment[\s\S]*Not assigned yet/)
   assert.match(student, /Check your registered email for your verification code/)
-  assert.match(student, /const canBookSelectedRequest = computed\(\(\) => \{\s*return false/)
+  assert.doesNotMatch(student, /Book Appointment|Cancel Appointment/)
+  assert.doesNotMatch(student, /api\.(?:book|slots|cancelAppointment|appointmentAvailability)/)
+  assert.doesNotMatch(service, /appointment-availability(?:'|"|`)/)
 })
 
-test('registrar assigns a date before approval and receives approved queue data', () => {
+test('registrar assigns a date before approval and approval refreshes the unified request list', () => {
   assert.match(registrar, /api\.assignAppointment/)
   assert.match(registrar, /modalActionBusy \|\| !currentAppointment/)
-  assert.match(registrar, /queues\.approved\.data/)
+  assert.match(registrar, /unifiedWorkspace\.value\?\.refresh\(\)/)
+  assert.match(service, /registrarRequestStudents:/)
   assert.match(service, /document-requests\/\$\{id\}\/appointment/)
 })
 

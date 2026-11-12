@@ -6,6 +6,7 @@ const wrap = (data, status=200) => ({ data:{ data }, status, headers:{}, config:
 const fail = (message, status=422) => { throw Object.assign(new Error(message), { response:{ status, data:{ message } }, config:{} }) }
 const today = () => new Date().toISOString().slice(0,10)
 const paginator = (data) => ({ data, current_page:1, last_page:1, per_page:data.length || 15, total:data.length })
+const paged = (rows, page, size) => { const current=Math.max(1,Number(page)||1);return {data:rows.slice((current-1)*size,current*size),current_page:current,last_page:Math.max(1,Math.ceil(rows.length/size)),per_page:size,total:rows.length} }
 async function hydrate(studentId = null) {
   const [requests, appointments, types, students] = await Promise.all([
     studentId ? offlineDb.allByIndex('document_requests', 'student_id', studentId) : offlineDb.all('document_requests'),
@@ -47,6 +48,12 @@ async function dispatch(method, rawUrl, body={}, config={}) {
   if(method==='patch'&&match) fail('Only Registrar Staff can manage appointment dates.',403)
   if(!registrar) fail('Forbidden.',403)
   if(method==='get'&&path==='/registrar/document-requests'){let rows=data.hydratedRequests;if(params.status)rows=rows.filter(r=>r.status===params.status);if(params.document_type_id)rows=rows.filter(r=>r.document_type_id===Number(params.document_type_id));if(params.view==='work_queues')return wrap({pending:paginator(rows.filter(r=>r.status==='pending')),approved:paginator(rows.filter(r=>r.status==='approved'))});return wrap(paginator(rows))}
+  const activeRequests=data.hydratedRequests.filter(r=>['pending','approved'].includes(r.status))
+  const studentRows=()=>{const byStudent=new Map();for(const r of activeRequests){if(!byStudent.has(r.student_id))byStudent.set(r.student_id,{...r.student,active_requests_count:0,pending_requests_count:0,approved_requests_count:0});const row=byStudent.get(r.student_id);row.active_requests_count++;row[`${r.status}_requests_count`]++}return [...byStudent.values()].sort((a,b)=>a.id-b.id)}
+  if(method==='get'&&path==='/registrar/document-request-students'){let rows=studentRows();if(params.status)rows=rows.filter(s=>activeRequests.some(r=>r.student_id===s.id&&r.status===params.status));if(params.search){const term=String(params.search).toLowerCase();rows=rows.filter(s=>[s.student_number,s.user?.profile?.first_name,s.user?.profile?.last_name,...activeRequests.filter(r=>r.student_id===s.id).map(r=>r.request_reference)].some(v=>String(v||'').toLowerCase().includes(term)))}return wrap(paged(rows,params.page,15))}
+  match=path.match(/^\/registrar\/document-request-students\/(\d+)(\/same-location)?$/)
+  if(method==='get'&&match){const studentId=Number(match[1]),source=studentRows().find(s=>s.id===studentId),requests=activeRequests.filter(r=>r.student_id===studentId);if(!source)fail('Student requests not found.',404);if(match[2]){const slot=source.physical_record_location?.cabinet_slot;if(!slot?.cabinet?.cabinet_code||!slot.slot_code)fail('This student has no assigned cabinet and drawer/slot.');const rows=studentRows().filter(s=>s.id!==studentId&&s.physical_record_location?.cabinet_slot?.cabinet?.cabinet_code===slot.cabinet.cabinet_code&&s.physical_record_location?.cabinet_slot?.slot_code===slot.slot_code).map(s=>({...s,retrieval_required_count:0}));return wrap({location:{cabinet:slot.cabinet.cabinet_code,drawer:slot.slot_code},students:paged(rows,params.page,10)})}return wrap({student:source,requests:paged(requests.sort((a,b)=>b.id-a.id),params.page,20),retrieval_task:null,retrieval_request_ids:[]})}
+  if(method==='get'&&path==='/registrar/physical-retrieval')return wrap(paged([],params.page,20))
   if(method==='get'&&path==='/registrar/document-requests/history'){
     let requestRows=data.hydratedRequests.filter(r=>['completed','rejected','cancelled'].includes(r.status))
     let appointmentRows=data.hydratedAppointments.filter(a=>['completed','cancelled','no_show'].includes(a.status))

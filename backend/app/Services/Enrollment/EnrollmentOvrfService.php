@@ -6,7 +6,9 @@ use App\Models\Enrollment;
 use App\Models\Role;
 use App\Models\SectionSubject;
 use App\Models\User;
+use Dompdf\Canvas;
 use Dompdf\Dompdf;
+use Dompdf\FontMetrics;
 use Dompdf\Options;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Symfony\Component\HttpFoundation\Response;
@@ -29,11 +31,11 @@ class EnrollmentOvrfService
 
         $enrollment = $query->with([
             'student.userProfile',
-            'student.course',
-            'section.course',
+            'student.course.department',
+            'section.course.department',
             'academicYear',
             'semester',
-            'application.course',
+            'application.course.department',
             'enrollmentSubjects.subject',
         ])->find($enrollmentId);
 
@@ -61,13 +63,18 @@ class EnrollmentOvrfService
         $classification = $enrollment->application?->classification;
         $subjects = $enrollment->enrollmentSubjects->map(function ($enrollmentSubject) use ($schedules, $enrollment): array {
             $schedule = $schedules->get($enrollmentSubject->subject_id);
-            $meetings = $schedule?->meetings?->map(fn ($meeting): array => [
-                'day' => $meeting->day,
-                'start_time' => $this->time($meeting->start_time),
-                'end_time' => $this->time($meeting->end_time),
-                'room' => $meeting->room,
-            ])->all() ?? [];
-            if ($meetings === [] && $schedule?->day && $schedule?->start_time && $schedule?->end_time) {
+            $meetings = $schedule?->meetings
+                ?->filter(fn ($meeting): bool => filled($meeting->day)
+                    && filled($meeting->start_time)
+                    && filled($meeting->end_time)
+                    && trim((string) $meeting->room) !== '')
+                ->map(fn ($meeting): array => [
+                    'day' => $meeting->day,
+                    'start_time' => $this->time($meeting->start_time),
+                    'end_time' => $this->time($meeting->end_time),
+                    'room' => trim((string) $meeting->room),
+                ])->values()->all() ?? [];
+            if ($meetings === [] && $schedule?->day && $schedule?->start_time && $schedule?->end_time && trim((string) $schedule?->room) !== '') {
                 $meetings[] = [
                     'day' => $schedule->day,
                     'start_time' => $this->time($schedule->start_time),
@@ -83,6 +90,8 @@ class EnrollmentOvrfService
                 'title' => $enrollmentSubject->subject->subject_name,
                 'section' => $enrollment->section->section_name,
                 'units' => (float) $enrollmentSubject->subject->units,
+                'lecture_hours' => $enrollmentSubject->subject->lecture_hours,
+                'laboratory_hours' => $enrollmentSubject->subject->laboratory_hours,
                 'meetings' => $meetings,
                 'professor' => $professorProfile
                     ? trim($professorProfile->first_name.' '.$professorProfile->last_name)
@@ -91,13 +100,14 @@ class EnrollmentOvrfService
         })->values();
 
         $seal = $this->sealDataUri();
-        $html = view('enrollment.ovrf', [
+        $html = view('enrollment.ovrf-default', [
             'document' => [
                 'record_id' => $enrollment->id,
                 'student_number' => $enrollment->student->student_number,
                 'student_name' => $name,
                 'program' => $course?->course_name,
                 'program_code' => $course?->course_code,
+                'institute' => $course?->department?->department_name,
                 'year_level' => $enrollment->application?->year_level ?? $enrollment->section?->year_level ?? $enrollment->student->year_level,
                 'classification' => $classification,
                 'academic_year' => $enrollment->academicYear->school_year,
@@ -107,7 +117,7 @@ class EnrollmentOvrfService
                 'subjects' => $subjects,
                 'total_units' => $subjects->sum('units'),
                 'generated_at' => now(),
-                'financial_status' => 'Unavailable — no verified fee assessment or payment record is connected to this enrollment.',
+                'financial_status' => 'Not yet assessed — no verified fee assessment or payment record is connected to this enrollment.',
             ],
             'seal' => $seal,
         ])->render();
@@ -117,9 +127,20 @@ class EnrollmentOvrfService
         $options->set('isHtml5ParserEnabled', true);
         $dompdf = new Dompdf($options);
         $dompdf->loadHtml($html, 'UTF-8');
-        $dompdf->setPaper('a4', 'portrait');
+        $dompdf->setPaper('letter', 'portrait');
         $dompdf->render();
         $canvas = $dompdf->getCanvas();
+        if (! $staff && $disposition === 'inline') {
+            $canvas->page_script(static function (int $pageNumber, int $pageCount, Canvas $page, FontMetrics $fonts): void {
+                $label = 'VIEWING PURPOSES ONLY';
+                $font = $fonts->getFont('Helvetica', 'bold');
+                $size = 34;
+                $width = $page->get_text_width($label, $font, $size);
+                $page->set_opacity(0.17);
+                $page->text(($page->get_width() - $width) / 2, $page->get_height() / 2, $label, $font, $size, [0.7, 0.08, 0.08], angle: 32);
+                $page->set_opacity(1);
+            });
+        }
         $canvas->page_text($canvas->get_width() - 105, $canvas->get_height() - 24, 'Page {PAGE_NUM} of {PAGE_COUNT}', null, 8, [0.25, 0.31, 0.28]);
 
         $filename = 'OVRF-'.$this->filenamePart($enrollment->student->student_number).'-'.$this->filenamePart($enrollment->academicYear->school_year).'.pdf';
@@ -146,7 +167,7 @@ class EnrollmentOvrfService
 
     private function sealDataUri(): ?string
     {
-        $path = realpath(base_path('../CDM_Frontend/src/assets/styles/images/cdm-seal.png'));
+        $path = realpath(resource_path('images/cdm-seal.png'));
         if (! $path || ! is_readable($path)) {
             return null;
         }

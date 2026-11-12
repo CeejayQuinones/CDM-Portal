@@ -19,7 +19,7 @@ test('UI 4 Phase A keeps the academic journey Website Student-only', async () =>
   assert.match(routes, /ROLES\.STUDENT/)
   assert.match(records, /WebsiteAcademicRecordCard/)
   assert.match(records, /\/enrollment\/academic\/records/)
-  assert.match(grades, /Read-only record/)
+  assert.match(grades, /VIEWING PURPOSES ONLY/)
   assert.match(grades, /gradingService\.studentGrades/)
 })
 

@@ -54,9 +54,40 @@ export const apiBaseUrlForMode = (mode, env, command = 'serve') => {
   return configured || (desktop ? 'http://127.0.0.1:8000/api' : undefined)
 }
 
+export const contentSecurityPolicyForMode = (mode, apiBaseUrl, command = 'serve') => {
+  const sources = new Set(["'self'"])
+  if (apiBaseUrl) sources.add(new URL(apiBaseUrl, 'https://cdm.local').origin)
+  if (command === 'serve' || developmentBuildModes.has(mode)) {
+    sources.add('http://localhost:*')
+    sources.add('http://127.0.0.1:*')
+    sources.add('ws://localhost:*')
+    sources.add('ws://127.0.0.1:*')
+  }
+  const turnstileOrigin = 'https://challenges.cloudflare.com'
+  const connections = [...sources, turnstileOrigin].join(' ')
+  const images = [...new Set(["'self'", 'data:', 'blob:', ...[...sources].filter((source) => source !== "'self'")])].join(' ')
+
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    `script-src 'self' ${turnstileOrigin}`,
+    "style-src 'self' 'unsafe-inline'",
+    `img-src ${images}`,
+    "font-src 'self' data:",
+    `connect-src ${connections}`,
+    "worker-src 'self' blob:",
+    "manifest-src 'self'",
+    "media-src 'self' data: blob:",
+    `frame-src 'self' blob: ${turnstileOrigin}`,
+    "object-src 'self' blob:",
+  ].join('; ')
+}
+
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_')
   const apiBaseUrl = apiBaseUrlForMode(mode, env, command)
+  const contentSecurityPolicy = contentSecurityPolicyForMode(mode, apiBaseUrl, command)
 
   return {
     base: './',
@@ -83,6 +114,10 @@ export default defineConfig(({ command, mode }) => {
     },
 
     plugins: [
+      {
+        name: 'cdm-content-security-policy',
+        transformIndexHtml: (html) => html.replace('__CDM_CSP__', contentSecurityPolicy),
+      },
       vue(),
       VitePWA({
       registerType: 'autoUpdate',

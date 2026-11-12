@@ -19,6 +19,7 @@ class SendEmailVerificationRequest extends ApiFormRequest
     {
         return [
             'email' => ['required', 'string', 'email', 'max:255', 'unique:user_profiles,email'],
+            'turnstile_token' => ['nullable', 'string', 'max:2048'],
         ];
     }
 }

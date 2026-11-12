@@ -7,12 +7,15 @@ use App\Http\Requests\CancelStudentAppointmentRequest;
 use App\Http\Requests\CancelStudentDocumentRequest;
 use App\Http\Requests\StoreAppointmentRequest;
 use App\Http\Requests\StoreDocumentRequest;
+use App\Http\Requests\StoreDocumentRequestBatch;
 use App\Models\Appointment;
 use App\Models\DocumentRequest;
 use App\Models\DocumentType;
 use App\Models\Student;
 use App\Rules\AppointmentDateAvailable;
 use App\Services\AppointmentSlotService;
+use App\Services\DocumentRequestBatchService;
+use App\Services\PhysicalRetrievalService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,7 +23,11 @@ use Illuminate\Support\Facades\DB;
 
 class StudentDocumentRequestController extends Controller
 {
-    public function __construct(private readonly AppointmentSlotService $appointmentSlots) {}
+    public function __construct(
+        private readonly AppointmentSlotService $appointmentSlots,
+        private readonly DocumentRequestBatchService $batches,
+        private readonly PhysicalRetrievalService $retrieval,
+    ) {}
 
     public function documentTypes(): JsonResponse
     {
@@ -31,8 +38,9 @@ class StudentDocumentRequestController extends Controller
     {
         $student = $this->studentFor($request);
         $items = $student->documentRequests()
-            ->select(['id', 'student_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'purpose_details', 'status', 'request_date', 'release_date', 'remarks', 'cancellation_reason', 'cancelled_at', 'approved_at', 'completed_at', 'rejected_at', 'created_at'])
+            ->select(['id', 'student_id', 'document_request_batch_id', 'document_type_id', 'quantity', 'total_fee', 'purpose', 'purpose_details', 'status', 'request_date', 'release_date', 'remarks', 'cancellation_reason', 'cancelled_at', 'approved_at', 'completed_at', 'rejected_at', 'created_at'])
             ->with([
+                'batch:id,student_id',
                 'documentType:id,document_name,requires_appointment',
                 'appointments:id,document_request_id,appointment_date,appointment_time,status,remarks',
             ])
@@ -42,21 +50,43 @@ class StudentDocumentRequestController extends Controller
         return $this->ok($items, 'Your document requests retrieved successfully.');
     }
 
+    public function storeBatch(StoreDocumentRequestBatch $request): JsonResponse
+    {
+        $result = $this->batches->submit(
+            $this->studentFor($request),
+            $request->validated('idempotency_key'),
+            $request->validated('items'),
+        );
+
+        return $this->ok(
+            $result['batch'],
+            $result['created'] ? 'Document requests submitted successfully.' : 'Previous submission retrieved successfully.',
+            $result['created'] ? 201 : 200,
+        );
+    }
+
     public function store(StoreDocumentRequest $request): JsonResponse
     {
         $student = $this->studentFor($request);
         $documentType = DocumentType::query()->where('status', 'active')->where('student_requestable', true)->findOrFail($request->integer('document_type_id'));
         $quantity = $request->integer('quantity', 1);
-        $item = DocumentRequest::create([
-            'student_id' => $student->id,
-            'document_type_id' => $documentType->id,
-            'quantity' => $quantity,
-            'total_fee' => $documentType->processing_fee * $quantity,
-            'purpose' => $request->string('purpose_category')->toString(),
-            'purpose_details' => $request->input('purpose_details'),
-            'status' => 'pending',
-            'request_date' => today(),
-        ]);
+        $item = DB::transaction(function () use ($student, $documentType, $quantity, $request): DocumentRequest {
+            Student::query()->whereKey($student->id)->lockForUpdate()->firstOrFail();
+            $created = DocumentRequest::create([
+                'student_id' => $student->id,
+                'document_type_id' => $documentType->id,
+                'quantity' => $quantity,
+                'total_fee' => $documentType->processing_fee * $quantity,
+                'purpose' => $request->string('purpose_category')->toString(),
+                'purpose_details' => $request->input('purpose_details'),
+                'status' => 'pending',
+                'request_date' => today(),
+            ]);
+            $created->setRelation('documentType', $documentType);
+            $this->retrieval->attachNewRequest($created);
+
+            return $created;
+        }, 3);
 
         return $this->ok($item->load(['documentType:id,document_name,requires_appointment', 'appointments:id,document_request_id,appointment_date,appointment_time,status,remarks']), 'Document request submitted successfully.', 201);
     }

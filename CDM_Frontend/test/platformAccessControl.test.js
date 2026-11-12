@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { apiBaseUrlForMode, assertProductionApiBaseUrl, clientPlatformForMode } from '../vite.config.js'
+import { apiBaseUrlForMode, assertProductionApiBaseUrl, clientPlatformForMode, contentSecurityPolicyForMode } from '../vite.config.js'
 import { isRoleAllowedOnClient } from '../src/config/clientPlatform.js'
 import { loginErrorMessage, runLoginRequest } from '../src/utils/loginFlow.js'
 
@@ -108,6 +108,38 @@ test('router blocks persisted cross-platform roles and clears their local sessio
   assert.match(router, /!isRoleAllowedOnClient\(authStore\.currentRole\)/)
   assert.match(router, /authStore\.clearAuth\(\)/)
   assert.match(router, /platformDenied: '1'/)
+})
+
+test('protected routes fail closed when role metadata is absent', async () => {
+  const router = await readFile(new URL('../src/router/index.js', import.meta.url), 'utf8')
+
+  assert.match(router, /!Array\.isArray\(to\.meta\.roles\)/)
+  assert.doesNotMatch(router, /ALL_ROLES/)
+})
+
+test('expired API sessions clear live and persisted authentication state', async () => {
+  const [client, store] = await Promise.all([
+    readFile(new URL('../src/services/apiClient.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/stores/authStore.js', import.meta.url), 'utf8'),
+  ])
+
+  assert.match(client, /cdm:auth-invalidated/)
+  assert.match(store, /addEventListener\('cdm:auth-invalidated'/)
+  assert.match(store, /const changePassword[\s\S]*clearAuth\(\)/)
+})
+
+test('builds receive a restrictive client-aware content security policy', async () => {
+  const production = contentSecurityPolicyForMode('production', 'https://api.cdmportal.xyz/api', 'build')
+  const desktopDevelopment = contentSecurityPolicyForMode('desktop-development', 'http://127.0.0.1:8000/api', 'build')
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8')
+
+  assert.match(production, /default-src 'self'/)
+  assert.match(production, /connect-src 'self' https:\/\/api\.cdmportal\.xyz/)
+  assert.doesNotMatch(production, /localhost|127\.0\.0\.1/)
+  assert.match(desktopDevelopment, /http:\/\/127\.0\.0\.1:8000/)
+  assert.match(desktopDevelopment, /ws:\/\/127\.0\.0\.1:\*/)
+  assert.match(html, /Content-Security-Policy/)
+  assert.match(html, /__CDM_CSP__/)
 })
 
 test('Guest mobile uses the Guest dashboard without module-specific platform exceptions', async () => {

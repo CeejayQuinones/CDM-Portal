@@ -26,6 +26,9 @@ export const documentRequestSourceQuery = ({
   timeFilter,
   pendingPage,
   processingPage,
+  studentSearch,
+  studentStatus,
+  studentPage,
 }) => ({
   from: 'document-request',
   request_id: positiveId(requestId) || undefined,
@@ -34,6 +37,9 @@ export const documentRequestSourceQuery = ({
   request_time_filter: queryText(timeFilter),
   request_pending_page: positiveId(pendingPage) || undefined,
   request_processing_page: positiveId(processingPage) || undefined,
+  ...(queryText(studentSearch) ? { student_search: queryText(studentSearch) } : {}),
+  ...(['pending', 'approved'].includes(studentStatus) ? { student_status: studentStatus } : {}),
+  ...(positiveId(studentPage) ? { student_page: positiveId(studentPage) } : {}),
 })
 
 export const documentRequestProfileQuery = documentRequestSourceQuery
@@ -79,6 +85,10 @@ export const documentRequestReturnContext = (query) => {
         time_filter: queryText(query.request_time_filter),
         pending_page: positiveId(query.request_pending_page) || undefined,
         processing_page: positiveId(query.request_processing_page) || undefined,
+        ...(queryText(query.student_search) ? { student_search: queryText(query.student_search) } : {}),
+        ...(['pending', 'approved'].includes(queryValue(query.student_status)) ? { student_status: queryValue(query.student_status) } : {}),
+        ...(positiveId(query.student_page) ? { student_page: positiveId(query.student_page) } : {}),
+        ...(positiveId(query.student_id) ? { student_id: positiveId(query.student_id) } : {}),
       },
     },
   }
