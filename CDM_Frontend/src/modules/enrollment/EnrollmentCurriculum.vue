@@ -5,7 +5,6 @@ import WebsiteEmptyState from '../../components/website/WebsiteEmptyState.vue'
 import WebsiteLoadingState from '../../components/website/WebsiteLoadingState.vue'
 import WebsitePageHeading from '../../components/website/WebsitePageHeading.vue'
 import WebsiteWorkspace from '../../components/website/WebsiteWorkspace.vue'
-import WebsiteAcademicJourneyNav from '../../components/website/WebsiteAcademicJourneyNav.vue'
 import { curriculumGroups, getEnrollmentCatalog } from './enrollmentCatalog'
 
 const route = useRoute()
@@ -38,7 +37,6 @@ onMounted(loadCurriculum)
   <WebsiteWorkspace class="enrollment-curriculum-workspace">
     <RouterLink class="enrollment-back-link" :to="{ name: 'enrollment-courses' }">← Back to Courses Offered</RouterLink>
     <WebsitePageHeading eyebrow="Verified curriculum" :title="program?.title || 'Program curriculum'" :description="program ? `${program.code} · ${program.department || 'Department not configured'}` : 'Review the active curriculum configured for this academic program.'" />
-    <WebsiteAcademicJourneyNav />
     <div v-if="error" class="enrollment-catalog-error" role="alert"><span>{{ error }}</span><button type="button" @click="loadCurriculum">Try again</button></div>
     <WebsiteLoadingState v-if="loading" label="Loading curriculum" />
     <WebsiteEmptyState v-else-if="!program" title="Program unavailable" message="This active academic program could not be found. Return to Courses Offered and select an available program." />

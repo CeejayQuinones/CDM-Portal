@@ -7,6 +7,7 @@ use App\Models\HistoricalGradeRecord;
 use App\Models\Subject;
 use App\Services\Enrollment\EnrollmentSubjectPolicy;
 use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
@@ -19,13 +20,13 @@ use Tests\TestCase;
 
 class HistoricalGradesTest extends TestCase
 {
+    use RefreshDatabase;
+
     private array $f;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
-        $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
         $this->f = EnrollmentAcademicFixture::create('history');
         Sanctum::actingAs($this->f['registrar']);
     }
@@ -201,6 +202,9 @@ class HistoricalGradesTest extends TestCase
 
     public function test_confirmation_rolls_back_every_record_when_a_later_insert_fails(): void
     {
+        if (DB::getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('SQLite trigger syntax is covered by the isolated SQLite suite.');
+        }
         $preview = $this->post('/api/registrar/historical-grades/preview', ['file' => $this->workbook([
             $this->row(), $this->row(['subject_code' => 'AC2']),
         ])])->assertOk()->json('data');

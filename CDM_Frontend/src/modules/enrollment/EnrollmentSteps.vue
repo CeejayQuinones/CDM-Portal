@@ -1,7 +1,6 @@
 <script setup>
 import WebsitePageHeading from '../../components/website/WebsitePageHeading.vue'
 import WebsiteWorkspace from '../../components/website/WebsiteWorkspace.vue'
-import WebsiteAcademicJourneyNav from '../../components/website/WebsiteAcademicJourneyNav.vue'
 
 const stages = [
   { number: '01', icon: 'DOC', title: 'Document Submission', description: 'Provide only the documents configured by the Registrar for your active period and classification.', note: 'Requirements vary by student type.', to: { name: 'enrollment-status' } },
@@ -9,14 +8,13 @@ const stages = [
   { number: '03', icon: 'REV', title: 'Registrar Review', description: 'The Registrar reviews the submitted application and may request corrections or additional verified information.', note: 'No general interview is scheduled by this page.', to: { name: 'enrollment-status' } },
   { number: '04', icon: 'CUR', title: 'Course Qualification', description: 'Your verified program, curriculum, year level, and proposed subjects are checked against the academic record.', note: 'Students cannot self-assign a program or section.', to: { name: 'enrollment-courses' } },
   { number: '05', icon: 'APP', title: 'Enrollment Approval', description: 'Approved applications proceed to staff-controlled subject preparation, section assignment, and final review.', note: 'CDM Portal has no tuition payment workflow.', to: { name: 'enrollment-subjects' } },
-  { number: '06', icon: 'COR', title: 'Final Registration', description: 'After authorized finalization, your official subject load and Certificate of Registration become available. Class times appear when Scheduling completes them.', note: 'COR is unavailable until finalization.', to: { name: 'enrollment-cor' } },
+  { number: '06', icon: 'COR', title: 'Final Registration', description: 'After authorized finalization, open Registration Documents for your COR and OVRF. Class times appear when Scheduling completes them.', note: 'Registration documents are available after finalization.', to: { name: 'enrollment-cor' } },
 ]
 </script>
 
 <template>
   <WebsiteWorkspace class="enrollment-journey-workspace">
     <WebsitePageHeading eyebrow="Enrollment guide" title="The Enrollment Journey" description="Follow the verified CDM Portal process from configured requirements to an official finalized enrollment." />
-    <WebsiteAcademicJourneyNav />
     <p class="enrollment-journey-intro">This six-stage guide explains the broader process. It is separate from the three-step Online Enrollment form used to prepare and submit an application.</p>
     <ol class="enrollment-journey-grid">
       <li v-for="stage in stages" :key="stage.number" class="enrollment-journey-card">

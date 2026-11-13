@@ -2,7 +2,9 @@ name: Release technical gates
 
 on:
   push:
-    branches: [fix/audit-findings]
+    branches: [fix/audit-findings, main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -76,6 +78,10 @@ jobs:
           tests/Feature/GoogleAuthTest.php
           tests/Feature/PlatformAccessControlTest.php
           tests/Feature/StudentLifecycleIntegrationTest.php
+          tests/Feature/StudentAccountActivationTest.php
+          tests/Feature/StudentAccountVisitTest.php
+          tests/Feature/StudentRosterImportTest.php
+          tests/Feature/EnrollmentYearLevelTest.php
 
   composer-audit:
     runs-on: ubuntu-24.04

@@ -27,6 +27,7 @@ use App\Services\Admission\AdmissionCompletionService;
 use App\Services\Enrollment\EnrollmentEligibilityService;
 use App\Services\Enrollment\EnrollmentWorkflowService;
 use App\Services\Enrollment\StudentNumberAllocator;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -37,13 +38,13 @@ use Tests\TestCase;
 
 class EnrollmentAcademicTest extends TestCase
 {
+    use RefreshDatabase;
+
     private array $f;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
-        $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
         $this->f = EnrollmentAcademicFixture::create('academic');
         Sanctum::actingAs($this->f['registrar']);
     }
@@ -520,7 +521,10 @@ class EnrollmentAcademicTest extends TestCase
         }
         Sanctum::actingAs($this->f['user']);
         $this->getJson($this->base().'/records/'.$a['enrollment_id'])->assertOk()->assertJsonPath('data.total_units', 6)->assertJsonCount(2, 'data.subjects')->assertJsonPath('data.student_number', $this->f['student']->student_number);
-        $this->getJson($this->base().'/notifications')->assertOk()->assertJsonPath('data.total', 3);
+        $notifications = $this->getJson($this->base().'/notifications')->assertOk()->assertJsonPath('data.total', 3)->json('data.data');
+        $this->patchJson($this->base().'/notifications/'.$notifications[0]['id'].'/read')->assertOk();
+        $this->getJson($this->base().'/notifications')->assertOk()->assertJsonPath('data.total', 2);
+        $this->assertDatabaseMissing('notifications', ['id' => $notifications[0]['id'], 'read_at' => null]);
     }
 
     public function test_enrollment_finalizes_without_teaching_assignments_or_schedule_meetings(): void
@@ -629,7 +633,7 @@ class EnrollmentAcademicTest extends TestCase
             ->get($this->base().'/records/'.$enrollmentId.'/ovrf?disposition=attachment')
             ->assertOk()
             ->assertHeader('Content-Disposition', 'attachment; filename="OVRF-'.$this->f['student']->student_number.'-'.$this->f['year']->school_year.'.pdf"');
-        $this->assertStringNotContainsString('VIEWING PURPOSES ONLY', $pdfStreams($studentDownload->getContent()));
+        $this->assertStringContainsString('VIEWING PURPOSES ONLY', $pdfStreams($studentDownload->getContent()));
         $this->getJson($this->base().'/records/'.$enrollmentId)
             ->assertOk()
             ->assertJsonPath('data.subjects.0.schedule_status', 'pending');

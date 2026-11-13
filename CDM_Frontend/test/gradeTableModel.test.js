@@ -1,27 +1,37 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { buildGradeTableModel, GRADE_COLUMN_WIDTHS } from '../src/modules/grading/gradeTableModel.js'
+import {
+  buildGradeTableModel,
+  compareFinalGradeResults,
+  compareGradeStudents,
+  GRADE_ASSESSMENT_CATEGORIES,
+  GRADE_COLUMN_WIDTHS,
+} from '../src/modules/grading/gradeTableModel.js'
 
 const assessment = (id, category, label = `${category} ${id}`, status = 'active') => ({ id, category, label, status, max_score: 100 })
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
-test('empty gradesheets retain only identity, total, and supported result columns', () => {
+test('empty period gradesheets retain the requested four category placeholders', () => {
   const model = buildGradeTableModel([])
 
-  assert.equal(model.assessmentGroups.length, 0)
+  assert.deepEqual(model.assessmentGroups.map(group => group.label), GRADE_ASSESSMENT_CATEGORIES)
   assert.equal(model.assessmentColumns.length, 0)
-  assert.equal(model.columnCount, 9)
+  assert.equal(model.periodColumns.length, 4)
+  assert.ok(model.periodColumns.every(column => column.kind === 'assessment-placeholder'))
+  assert.equal(model.periodResultColumn.label, 'Midterm')
+  assert.equal(model.columnCount, 8)
   assert.equal(model.columns.length, model.columnCount)
 })
 
-test('one assessment produces one matching group, header leaf, and body column', () => {
+test('one assessment replaces only its category placeholder', () => {
   const model = buildGradeTableModel([assessment(1, 'Quiz')])
 
-  assert.equal(model.assessmentGroups.length, 1)
+  assert.equal(model.assessmentGroups.length, 4)
   assert.equal(model.assessmentGroups[0].columns.length, 1)
   assert.equal(model.assessmentColumns.length, 1)
-  assert.equal(model.columnCount, 10)
+  assert.equal(model.periodColumns.length, 4)
+  assert.equal(model.columnCount, 8)
 })
 
 test('multiple categories normalize into one shared ordered assessment model', () => {
@@ -72,15 +82,18 @@ test('all identity columns share one non-sticky Student Information group', () =
   assert.ok(model.identityColumns.every(column => !Object.hasOwn(column, 'sticky') && !Object.hasOwn(column, 'stickyLeft')))
 })
 
-test('calculated results have the same five columns in model and rendered table', async () => {
+test('period sheets expose only the active period result while Final Grade keeps the full summary', async () => {
   const [view, model] = await Promise.all([
     read('src/modules/grading/GradingView.vue'),
     Promise.resolve(buildGradeTableModel([])),
   ])
 
   assert.deepEqual(model.resultColumns.map(column => column.field), ['midterm_grade', 'finals_grade', 'final_grade', 'grade_point', 'remarks'])
-  assert.match(view, /:colspan="gradeTableModel\.resultColumns\.length"/)
-  assert.match(view, /v-for="column in gradeTableModel\.resultColumns"/)
+  assert.equal(buildGradeTableModel([], 'midterm').periodResultColumn.field, 'midterm_grade')
+  assert.equal(buildGradeTableModel([], 'finals').periodResultColumn.field, 'finals_grade')
+  assert.match(view, /gradeTableModel\.periodResultColumn\.label/)
+  assert.match(view, /resultFor\(s\)\[gradeTableModel\.periodResultColumn\.field\]/)
+  assert.match(view, /<th>No\.<\/th><th>Student No\.<\/th><th>Student Name<\/th><th>Midterm<\/th><th>Finals<\/th><th>Final Grade<\/th><th>Grade Point<\/th><th>Remarks<\/th>/)
 })
 
 test('the rendered table uses one colgroup model for header, body, and width styles', async () => {
@@ -91,8 +104,9 @@ test('the rendered table uses one colgroup model for header, body, and width sty
   assert.match(view, /gradeColumnStyle\(gradeTableModel\.identityColumns\[0\]\)/)
   assert.match(view, /:colspan="gradeTableModel\.studentInformationColumns\.length"/)
   assert.match(view, /v-for="column in gradeTableModel\.studentInformationColumns"/)
-  assert.match(view, /v-for="column in gradeTableModel\.assessmentColumns"/)
-  assert.match(view, /v-for="\(column,j\) in gradeTableModel\.assessmentColumns"/)
+  assert.match(view, /v-for="column in gradeTableModel\.periodColumns"/)
+  assert.match(view, /<template v-for="column in gradeTableModel\.periodColumns"/)
+  assert.match(view, /column\.scoreIndex/)
   assert.match(view, /--grade-table-width/)
 })
 
@@ -100,8 +114,26 @@ test('period changes rebuild the model from the currently filtered assessment re
   const view = await read('src/modules/grading/GradingView.vue')
 
   assert.match(view, /assessments=computed\(\(\)=>workspace\.value\?\.sheet\.assessments\.filter\(a=>a\.period===activePeriod\.value\)/)
-  assert.match(view, /gradeTableModel=computed\(\(\)=>buildGradeTableModel\(gridAssessments\.value\)\)/)
+  assert.match(view, /gradeTableModel=computed\(\(\)=>buildGradeTableModel\(gridAssessments\.value,activePeriod\.value\)\)/)
   assert.match(view, /activePeriod\.value=period/)
+})
+
+test('student rows and final-grade rows sort alphabetically without mutating source arrays', () => {
+  const roster = [
+    { last_name: 'Zulu', first_name: 'Amy', student_number: '2' },
+    { last_name: 'Alonzo', first_name: 'Ben', student_number: '3' },
+    { last_name: 'Alonzo', first_name: 'Ana', student_number: '1' },
+  ]
+  const results = [
+    { student_name: 'Zulu, Amy', student_number: '2' },
+    { student_name: 'Alonzo, Ben', student_number: '3' },
+    { student_name: 'Alonzo, Ana', student_number: '1' },
+  ]
+
+  assert.deepEqual([...roster].sort(compareGradeStudents).map(row => row.student_number), ['1', '3', '2'])
+  assert.deepEqual([...results].sort(compareFinalGradeResults).map(row => row.student_number), ['1', '3', '2'])
+  assert.deepEqual(roster.map(row => row.student_number), ['2', '3', '1'])
+  assert.deepEqual(results.map(row => row.student_number), ['2', '3', '1'])
 })
 
 test('authoritative table geometry remains website-only', async () => {

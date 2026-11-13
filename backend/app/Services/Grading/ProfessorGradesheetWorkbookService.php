@@ -312,7 +312,8 @@ class ProfessorGradesheetWorkbookService
         $readiness = $this->workflow->readiness($actor, $sheet);
         $results = collect($readiness['results'] ?? [])->keyBy(fn ($row) => $this->stringify($row['enrollment_subject_id']));
         $state = $workspace['schedule'][$period.'_state'] ?? ['state' => 'Unavailable', 'editable' => false];
-        $editable = in_array($sheet->status, ['draft', 'returned'], true) && ($sheet->status === 'returned' || ($state['editable'] ?? false));
+        $hasLateAccess = (bool) ($workspace['late_submission_extension']['is_active'] ?? false);
+        $editable = in_array($sheet->status, ['draft', 'returned'], true) && ($sheet->status === 'returned' || $hasLateAccess || ($state['editable'] ?? false));
 
         return [
             'sheet' => $workspace['sheet'],
@@ -325,7 +326,7 @@ class ProfessorGradesheetWorkbookService
             'academic_year_id' => (int) $assignment->section->academic_year_id,
             'semester_id' => (int) $assignment->section->semester_id,
             'editable' => $editable,
-            'locked_message' => $sheet->status === 'returned' || ($state['editable'] ?? false)
+            'locked_message' => $sheet->status === 'returned' || $hasLateAccess || ($state['editable'] ?? false)
                 ? 'This grade sheet is locked for review or publication.'
                 : ucfirst($period).' grade entry is '.($state['state'] ?? 'Unavailable').'.',
             'schedule' => $workspace['schedule'],

@@ -20,7 +20,7 @@ test('website Grade Entry renders an institutional gradesheet header from verifi
   assert.match(header, /Not an officially released record/)
 })
 
-test('Registrar-inspired spreadsheet has multi-level identity, assessment, and result headers', async () => {
+test('Registrar-inspired spreadsheet has the requested identity, period, and assessment headers', async () => {
   const [view, model] = await Promise.all([
     read('src/modules/grading/GradingView.vue'),
     read('src/modules/grading/gradeTableModel.js'),
@@ -29,11 +29,11 @@ test('Registrar-inspired spreadsheet has multi-level identity, assessment, and r
   assert.match(view, /class="professor-grade-sheet grouped-grade-sheet registrar-inspired-grid"/)
   assert.match(view, /scope="colgroup">Student Information/)
   assert.match(view, /scope="colgroup"><span>\{\{group\.label\}\}<\/span>/)
-  assert.match(view, /scope="colgroup">Calculated Results · Read Only/)
+  assert.match(view, /gradeTableModel\.periodResultColumn\.label/)
   assert.match(view, /gradeTableModel\.studentInformationColumns/)
   assert.match(model, /label: 'Student No\.'/)
   assert.match(model, /label: 'Student Name'/)
-  for (const field of ['Midterm', 'Finals', 'Final Grade', 'Equivalent', 'Remarks']) assert.match(model, new RegExp(`label: '${field}'`))
+  for (const field of ['Quiz', 'Activity', 'Recitation', 'Major Exam', 'Midterm', 'Finals', 'Final Grade', 'Grade Point', 'Remarks']) assert.match(model, new RegExp(`['\"]${field}['\"]|label: '${field}'`))
 })
 
 test('assessment groups and score columns remain generated from real workspace records', async () => {
@@ -42,25 +42,25 @@ test('assessment groups and score columns remain generated from real workspace r
     read('src/modules/grading/gradeTableModel.js'),
   ])
 
-  assert.match(view, /gradeTableModel=computed\(\(\)=>buildGradeTableModel\(gridAssessments\.value\)\)/)
+  assert.match(view, /gradeTableModel=computed\(\(\)=>buildGradeTableModel\(gridAssessments\.value,activePeriod\.value\)\)/)
   assert.match(view, /v-for="group in gradeTableModel\.assessmentGroups"/)
-  assert.match(view, /v-for="column in gradeTableModel\.assessmentColumns"/)
-  assert.match(view, /v-for="\(column,j\) in gradeTableModel\.assessmentColumns"/)
+  assert.match(view, /v-for="column in gradeTableModel\.periodColumns"/)
+  assert.match(view, /<template v-for="column in gradeTableModel\.periodColumns"/)
   assert.match(view, /:max="column\.assessment\.max_score"/)
   assert.match(view, /@input="updateScore/)
   assert.match(model, /group\.columns\.push/)
 })
 
-test('calculated result cells use supported readiness fields and remain visibly read-only', async () => {
+test('period and final summary cells use supported readiness fields and remain visibly read-only', async () => {
   const [view, model] = await Promise.all([
     read('src/modules/grading/GradingView.vue'),
     read('src/modules/grading/gradeTableModel.js'),
   ])
 
   for (const field of ['midterm_grade', 'finals_grade', 'final_grade', 'grade_point', 'remarks']) assert.match(model, new RegExp(`field: '${field}'`))
-  assert.match(view, /resultFor\(s\)\[column\.field\]/)
+  assert.match(view, /resultFor\(s\)\[gradeTableModel\.periodResultColumn\.field\]/)
   assert.match(view, /data-readonly="true"/)
-  assert.match(view, /Read-only \$\{column\.label\} result/)
+  assert.match(view, /Read-only \$\{gradeTableModel\.periodResultColumn\.label\} result/)
   assert.doesNotMatch(view, /preliminary_grade/)
   assert.doesNotMatch(view, /rounded_grade/)
 })

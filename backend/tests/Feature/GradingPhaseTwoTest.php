@@ -6,6 +6,7 @@ use App\Models\Enrollment;
 use App\Models\EnrollmentSubject;
 use App\Models\GradeAssessment;
 use App\Models\GradeAuditEvent;
+use App\Models\GradeLateSubmissionExtension;
 use App\Models\GradePeriodSchedule;
 use App\Models\GradeReleaseSchedule;
 use App\Models\GradeScore;
@@ -18,6 +19,7 @@ use App\Models\Student;
 use App\Models\User;
 use App\Services\Enrollment\EnrollmentSubjectPolicy;
 use App\Services\Grading\GradingWorkflowService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -26,6 +28,8 @@ use Tests\TestCase;
 
 class GradingPhaseTwoTest extends TestCase
 {
+    use RefreshDatabase;
+
     private array $f;
 
     private GradeSheet $sheet;
@@ -35,7 +39,6 @@ class GradingPhaseTwoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
         $this->f = EnrollmentAcademicFixture::create('grading-two');
         $assignment = SectionSubject::create(['section_id' => $this->f['section']->id, 'subject_id' => $this->f['subjects'][0]->id, 'professor_id' => $this->f['professor']->id]);
         $enrollment = Enrollment::create(['student_id' => $this->f['student']->id, 'section_id' => $this->f['section']->id, 'academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'enrollment_date' => now()->toDateString(), 'status' => 'enrolled']);
@@ -192,6 +195,86 @@ class GradingPhaseTwoTest extends TestCase
         $this->assertDatabaseCount('grade_submission_attempts', 0);
     }
 
+    public function test_targeted_late_access_unlocks_one_sheet_and_is_consumed_by_submission(): void
+    {
+        $period = GradePeriodSchedule::query()->firstOrFail();
+        $period->update(['status' => 'archived', 'finals_deadline' => now()->subSecond()]);
+        $assessment = GradeAssessment::where('period', 'finals')->firstOrFail();
+        $score = GradeScore::where('grade_assessment_id', $assessment->id)->firstOrFail();
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->putJson('/api/grading/sheets/'.$this->sheet->id.'/scores', [
+            'assessment_id' => $assessment->id,
+            'scores' => [['enrollment_subject_id' => $this->enrollmentSubject->id, 'score' => $score->score, 'version' => $score->version]],
+        ])->assertConflict()->assertJsonPath('message', 'No active grading schedule is configured for this term.');
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/submit', ['version' => $this->sheet->version])
+            ->assertConflict()->assertJsonPath('message', 'Grade submission is not open yet.');
+
+        Sanctum::actingAs($this->f['registrar']);
+        $this->withHeader('X-CDM-Client', 'desktop')->getJson('/api/grading/periods/'.$period->id.'/late-extensions')
+            ->assertOk()
+            ->assertJsonPath('data.sheets.0.id', $this->sheet->id)
+            ->assertJsonPath('data.sheets.0.eligible', true);
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/periods/'.$period->id.'/late-extensions/'.$this->sheet->id, [
+            'reason' => 'Professor submitted the verified grades after the institutional deadline.',
+            'expires_at' => now()->addDay()->toIso8601String(),
+        ])->assertStatus(428);
+        $this->registrarStepUp();
+        $extension = $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/periods/'.$period->id.'/late-extensions/'.$this->sheet->id, [
+            'reason' => 'Professor submitted the verified grades after the institutional deadline.',
+            'expires_at' => now()->addDay()->toIso8601String(),
+        ])->assertCreated()->assertJsonPath('data.status', 'active')->assertJsonPath('data.is_active', true)->json('data');
+        $this->assertDatabaseHas('grade_audit_events', ['action' => 'grade_late_extension.granted', 'grade_sheet_id' => $this->sheet->id]);
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->withHeader('X-CDM-Client', 'web');
+        $this->postJson('/api/grading/classes/'.$this->sheet->sectionSubject->id.'/workspace')
+            ->assertOk()
+            ->assertJsonPath('data.late_submission_extension.id', $extension['id'])
+            ->assertJsonPath('data.late_submission_extension.is_active', true);
+        $this->putJson('/api/grading/sheets/'.$this->sheet->id.'/scores', [
+            'assessment_id' => $assessment->id,
+            'scores' => [['enrollment_subject_id' => $this->enrollmentSubject->id, 'score' => $score->score, 'version' => $score->version]],
+        ])->assertOk();
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/submit', ['version' => $this->sheet->fresh()->version])->assertOk();
+
+        $this->assertDatabaseHas('grade_late_submission_extensions', ['id' => $extension['id'], 'status' => 'used']);
+        $this->assertNotNull(GradeLateSubmissionExtension::findOrFail($extension['id'])->used_at);
+        $this->assertDatabaseHas('grade_audit_events', ['action' => 'grade_late_extension.used', 'grade_sheet_id' => $this->sheet->id]);
+    }
+
+    public function test_late_access_requires_future_expiry_and_can_be_revoked(): void
+    {
+        $period = GradePeriodSchedule::query()->firstOrFail();
+        $period->update(['status' => 'archived', 'finals_deadline' => now()->subSecond()]);
+        $this->registrarStepUp();
+        $url = '/api/grading/periods/'.$period->id.'/late-extensions/'.$this->sheet->id;
+
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson($url, ['reason' => 'Late', 'expires_at' => now()->subMinute()->toIso8601String()])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.reason.0', 'The reason must contain at least 5 characters.')
+            ->assertJsonPath('errors.expires_at.0', 'The expiration must be in the future.');
+        $extension = $this->withHeader('X-CDM-Client', 'desktop')->postJson($url, [
+            'reason' => 'Documented late submission authorization.',
+            'expires_at' => now()->addHour()->toIso8601String(),
+        ])->assertCreated()->json('data');
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson($url, [
+            'reason' => 'Duplicate authorization must not be allowed.',
+            'expires_at' => now()->addHours(2)->toIso8601String(),
+        ])->assertConflict();
+        $this->withHeader('X-CDM-Client', 'desktop')->patchJson('/api/grading/late-extensions/'.$extension['id'].'/revoke', ['version' => 99])->assertConflict();
+        $this->withHeader('X-CDM-Client', 'desktop')->patchJson('/api/grading/late-extensions/'.$extension['id'].'/revoke', ['version' => $extension['version']])
+            ->assertOk()->assertJsonPath('data.status', 'revoked')->assertJsonPath('data.is_active', false);
+        $this->assertDatabaseHas('grade_audit_events', ['action' => 'grade_late_extension.revoked', 'grade_sheet_id' => $this->sheet->id]);
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->withHeader('X-CDM-Client', 'web');
+        $this->postJson('/api/grading/classes/'.$this->sheet->sectionSubject->id.'/workspace')
+            ->assertOk()->assertJsonPath('data.late_submission_extension', null);
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/submit', ['version' => $this->sheet->fresh()->version])
+            ->assertConflict()->assertJsonPath('message', 'Grade submission is not open yet.');
+    }
+
     public function test_return_requires_reason_unlocks_edits_and_resubmission_preserves_history(): void
     {
         $submitted = $this->submit();
@@ -230,7 +313,15 @@ class GradingPhaseTwoTest extends TestCase
         $this->assertSame($this->f['registrar']->id, $approved['reviewed_by']);
         $this->assertNotNull($approved['reviewed_at']);
         $this->assertDatabaseHas('grade_audit_events', ['action' => 'grade_sheet.approved']);
-        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/return', ['version' => $approved['version'], 'reason' => 'Too late'])->assertConflict();
+        $returned = $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/return', [
+            'version' => $approved['version'],
+            'reason' => 'Correct the approved grading criteria before publication.',
+        ])->assertOk()->json('data');
+        $this->assertSame('returned', $returned['status']);
+        $this->assertDatabaseHas('grade_audit_events', [
+            'action' => 'grade_sheet.approved_returned_for_correction',
+            'grade_sheet_id' => $this->sheet->id,
+        ]);
     }
 
     public function test_foreign_professor_student_guest_and_registrar_web_are_blocked(): void
@@ -260,6 +351,24 @@ class GradingPhaseTwoTest extends TestCase
         $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/approve', ['version' => $submitted['version']])->assertStatus(428);
         $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
         $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/approve', ['version' => $submitted['version']])->assertOk();
+    }
+
+    public function test_approved_sheet_in_scheduled_release_cannot_be_returned_for_correction(): void
+    {
+        $approved = $this->approve();
+        $payload = [
+            'academic_year_id' => $this->f['year']->id,
+            'semester_id' => $this->f['semester']->id,
+            'release_at' => now()->addDay()->toIso8601String(),
+            'grade_sheet_ids' => [$this->sheet->id],
+        ];
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/releases', $payload)->assertCreated();
+
+        $this->withHeader('X-CDM-Client', 'desktop')->postJson('/api/grading/reviews/'.$this->sheet->id.'/return', [
+            'version' => $approved['version'],
+            'reason' => 'Attempt to change a sheet already queued for release.',
+        ])->assertConflict()->assertJsonPath('message', 'This approved grade sheet is already in a scheduled release. Remove it from that release before returning it for correction.');
+        $this->assertSame('approved', $this->sheet->fresh()->status);
     }
 
     public function test_approved_sheet_can_be_scheduled_and_future_release_is_not_automatic_early(): void

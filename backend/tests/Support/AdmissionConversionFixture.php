@@ -50,7 +50,7 @@ class AdmissionConversionFixture
         }
         $registrar = User::factory()->create(['username' => 'cv-'.$nonce.'-registrar', 'role_id' => Role::where('role_name', Role::REGISTRAR_STAFF)->value('id')]);
         $year = AcademicYear::create(['school_year' => 'CV-'.$nonce, 'start_date' => now()->startOfYear(), 'end_date' => now()->endOfYear(), 'status' => 'active']);
-        $department = Department::create(['department_code' => 'C'.$nonce, 'department_name' => 'Conversion test only', 'status' => 'active']);
+        $department = Department::create(['department_code' => 'C'.substr(hash('sha256', $nonce), 0, 9), 'department_name' => 'Conversion test only', 'status' => 'active']);
         $course = Course::create(['department_id' => $department->id, 'course_code' => 'CV-'.$nonce, 'course_name' => 'Conversion test only', 'years' => 4, 'status' => 'active']);
         $curriculum = Curriculum::create(['course_id' => $course->id, 'curriculum_code' => 'CV-'.$nonce, 'curriculum_name' => 'Conversion test only', 'effective_year' => now()->year, 'status' => 'active']);
         $cycle = AdmissionCycle::create(['code' => 'CV-'.$nonce, 'name' => 'Conversion test only', 'academic_year_id' => $year->id, 'status' => 'open', 'opens_at' => now()->subDay(), 'closes_at' => now()->addDay(), 'confirmation_closes_at' => now()->addDays(2), 'created_by_user_id' => $registrar->id, 'updated_by_user_id' => $registrar->id]);

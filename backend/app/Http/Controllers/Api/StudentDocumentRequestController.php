@@ -15,6 +15,7 @@ use App\Models\Student;
 use App\Rules\AppointmentDateAvailable;
 use App\Services\AppointmentSlotService;
 use App\Services\DocumentRequestBatchService;
+use App\Services\DocumentRequestFeeService;
 use App\Services\PhysicalRetrievalService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -26,12 +27,24 @@ class StudentDocumentRequestController extends Controller
     public function __construct(
         private readonly AppointmentSlotService $appointmentSlots,
         private readonly DocumentRequestBatchService $batches,
+        private readonly DocumentRequestFeeService $fees,
         private readonly PhysicalRetrievalService $retrieval,
     ) {}
 
-    public function documentTypes(): JsonResponse
+    public function documentTypes(Request $request): JsonResponse
     {
-        return $this->ok(DocumentType::query()->where('status', 'active')->where('student_requestable', true)->orderBy('document_name')->get(['id', 'document_name', 'description', 'processing_fee', 'processing_days', 'requires_appointment']), 'Document types retrieved successfully.');
+        $student = $this->studentFor($request);
+        $date = $this->fees->requestDate();
+        $types = DocumentType::query()->where('status', 'active')->where('student_requestable', true)
+            ->orderBy('document_name')->get(['id', 'document_name', 'description', 'processing_fee', 'processing_days', 'requires_appointment']);
+        $requestedIds = DocumentRequest::query()->where('student_id', $student->id)
+            ->whereDate('request_date', $date)->distinct()->pluck('document_type_id')
+            ->map(fn (mixed $id): int => (int) $id)->all();
+
+        return $this->ok($types->map(fn (DocumentType $type) => [
+            ...$type->toArray(),
+            'first_request_free_today' => ! in_array($type->id, $requestedIds, true),
+        ]), 'Document types retrieved successfully.')->header('Cache-Control', 'private, no-store');
     }
 
     public function index(Request $request): JsonResponse
@@ -72,15 +85,18 @@ class StudentDocumentRequestController extends Controller
         $quantity = $request->integer('quantity', 1);
         $item = DB::transaction(function () use ($student, $documentType, $quantity, $request): DocumentRequest {
             Student::query()->whereKey($student->id)->lockForUpdate()->firstOrFail();
+            $requestDate = $this->fees->requestDate();
             $created = DocumentRequest::create([
                 'student_id' => $student->id,
                 'document_type_id' => $documentType->id,
                 'quantity' => $quantity,
-                'total_fee' => $documentType->processing_fee * $quantity,
+                'total_fee' => $this->fees->hasRequestedToday($student->id, $documentType->id, $requestDate)
+                    ? $documentType->processing_fee * $quantity
+                    : 0,
                 'purpose' => $request->string('purpose_category')->toString(),
                 'purpose_details' => $request->input('purpose_details'),
                 'status' => 'pending',
-                'request_date' => today(),
+                'request_date' => $requestDate,
             ]);
             $created->setRelation('documentType', $documentType);
             $this->retrieval->attachNewRequest($created);

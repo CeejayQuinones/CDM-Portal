@@ -39,7 +39,8 @@ test('Registrar grade-period load is isolated and validation errors are field-le
 
 test('Registrar can edit the existing grade period and safely request deletion', () => {
   for (const text of ['Edit Grade Period', 'Delete Grade Period', 'Delete unused period', 'Existing grading history will never be removed']) assert.match(view, new RegExp(text, 'i'))
-  assert.match(view, /@click="editPeriod\(item\)"/)
+  assert.match(view, /@change="handlePeriodAction\(item,\$event\)"/)
+  assert.match(view, /<option value="edit">Edit schedule<\/option>/)
   assert.match(view, /editingPeriod\.value\?await gradingService\.updatePeriod/)
   assert.match(view, /gradingService\.deletePeriod\(periodToDelete\.value\.id,periodToDelete\.value\.version\)/)
   assert.match(service, /deletePeriod: \(id, version\) => apiClient\.delete\(`\/grading\/periods\/\$\{id\}`/)
@@ -78,7 +79,19 @@ test('Grade Period staff tabs expose loading, error, empty, and row actions', ()
   assert.match(view, /role="alert">\{\{error\}\}/)
   assert.match(view, /<template v-if="!loading"><nav v-if="!professor&&!isDesktopPresentation"/)
   assert.match(view, /<template v-if="professor">/)
-  for (const action of ['Edit', 'Archive', 'Delete']) assert.match(view, new RegExp(`>${action}<`))
+  for (const action of ['Edit schedule', 'Late submission access', 'Archive period', 'Delete unused period']) assert.match(view, new RegExp(`>${action}<`))
+  assert.match(view, /aria-label="Grade period action"/)
+  assert.doesNotMatch(view, /<button type="button" @click="editPeriod\(item\)">Edit<\/button>/)
+})
+
+test('Registrar grants and revokes one-sheet late access from a compact manager', () => {
+  for (const text of ['Late Submission Access', 'Professor and class', 'Expires', 'Reason', 'Grant access', 'Revoke access']) assert.match(view, new RegExp(text, 'i'))
+  assert.match(view, /gradingService\.lateExtensions\(item\.id\)/)
+  assert.match(view, /gradingService\.grantLateExtension/)
+  assert.match(view, /gradingService\.revokeLateExtension/)
+  assert.match(service, /lateExtensions: \(period\) => apiClient\.get/)
+  assert.match(service, /grantLateExtension: \(period, sheet, payload\) => apiClient\.post/)
+  assert.match(service, /revokeLateExtension: \(id, version\) => apiClient\.patch/)
 })
 
 test('Grade Period response parser rejects an invalid payload with a visible message', () => {

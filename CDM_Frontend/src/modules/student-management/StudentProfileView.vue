@@ -23,6 +23,10 @@ const saving = ref(false)
 const success = ref('')
 const validationErrors = ref({})
 const photoFailed = ref(false)
+const activation = ref(null)
+const activationBusy = ref(false)
+const activationError = ref('')
+const activationForm = reactive({ record_reference: '', email_checked_against_record: false, email: '', identity_check_reference: '', physical_school_id_checked: false })
 const form = reactive({})
 const cabinets = ref([])
 const locationEditing = ref(false)
@@ -77,6 +81,15 @@ async function loadProfile() {
   try {
     const { data } = await apiClient.get(`/students/${route.params.id}`)
     student.value = data.data
+    if (canManagePhysicalRecords.value) {
+      try {
+        const activationResponse = await apiClient.get(`/students/${route.params.id}/account-activation`)
+        activation.value = activationResponse.data.data
+        activationForm.email = activation.value.email || ''
+      } catch {
+        activation.value = null
+      }
+    }
   } catch (requestError) {
     error.value =
       requestError.response?.status === 404
@@ -84,6 +97,46 @@ async function loadProfile() {
         : requestError.response?.data?.message || 'Unable to load the student profile.'
   } finally {
     loading.value = false
+  }
+}
+
+async function prepareActivation() {
+  activationBusy.value = true
+  activationError.value = ''
+  try {
+    await runWithStepUp(() => apiClient.post(`/students/${route.params.id}/account-activation`, {
+      record_reference: activationForm.record_reference,
+      email_checked_against_record: activationForm.email_checked_against_record,
+    }))
+    activation.value.prepared = true
+    activation.value.eligible_to_prepare = false
+    success.value = 'Account prepared for student activation.'
+  } catch (requestError) {
+    if (!isStepUpCancelled(requestError)) activationError.value = requestError.response?.data?.errors?.student?.[0] || requestError.response?.data?.message || 'Unable to prepare the account.'
+  } finally {
+    activationBusy.value = false
+  }
+}
+
+async function correctActivationEmail() {
+  activationBusy.value = true
+  activationError.value = ''
+  try {
+    await runWithStepUp(() => apiClient.patch(`/students/${route.params.id}/activation-email`, {
+      email: activationForm.email,
+      identity_check_reference: activationForm.identity_check_reference,
+      physical_school_id_checked: activationForm.physical_school_id_checked,
+    }))
+    activation.value.email = activationForm.email.trim().toLowerCase()
+    activation.value.prepared = true
+    activation.value.eligible_to_prepare = false
+    success.value = 'Email corrected. The student must verify it during activation.'
+    activationForm.identity_check_reference = ''
+    activationForm.physical_school_id_checked = false
+  } catch (requestError) {
+    if (!isStepUpCancelled(requestError)) activationError.value = requestError.response?.data?.errors?.email?.[0] || requestError.response?.data?.message || 'Unable to correct the email.'
+  } finally {
+    activationBusy.value = false
   }
 }
 
@@ -308,6 +361,26 @@ onMounted(loadProfile)
         <li v-for="issue in student.record_completeness.issues" :key="issue.key">{{ issue.label }}</li>
       </ul>
       <p v-else>All tracked Student Records information is complete.</p>
+    </section>
+
+    <section v-if="canManagePhysicalRecords && activation && (activation.prepared || activation.eligible_to_prepare)" class="record-card account-activation-card" aria-label="Student account activation">
+      <h2>Account activation</h2>
+      <p>Only inactive, never-used student accounts can be prepared. Verify the enrollment email against the original school record first.</p>
+      <p v-if="activationError" role="alert" class="save-error">{{ activationError }}</p>
+      <div v-if="activation.eligible_to_prepare" class="account-activation-actions">
+        <label>Enrollment record reference <input v-model.trim="activationForm.record_reference" maxlength="120" placeholder="Record or file reference" /></label>
+        <label><input v-model="activationForm.email_checked_against_record" type="checkbox" /> I checked the recorded email against the original enrollment record.</label>
+        <button type="button" :disabled="activationBusy || !activationForm.record_reference || !activationForm.email_checked_against_record" @click="prepareActivation">Prepare account</button>
+      </div>
+      <div v-if="!activation.claimed" class="account-activation-actions">
+        <p>Recorded email: <strong>{{ activation.email }}</strong></p>
+        <p>If the student cannot use that email, inspect their physical school ID and confirm their name and student number before updating it.</p>
+        <label>Corrected email <input v-model.trim="activationForm.email" type="email" autocomplete="off" /></label>
+        <label>ID check reference <input v-model.trim="activationForm.identity_check_reference" maxlength="120" placeholder="Appointment or verification reference" /></label>
+        <label><input v-model="activationForm.physical_school_id_checked" type="checkbox" /> I personally checked the physical school ID, name, and student number.</label>
+        <button type="button" :disabled="activationBusy || !activationForm.physical_school_id_checked || !activationForm.identity_check_reference || !activationForm.email || activationForm.email === activation.email" @click="correctActivationEmail">Save corrected email</button>
+      </div>
+      <p v-else>This record has already been activated. Use the normal account recovery process for any later email change.</p>
     </section>
 
     <section v-if="student.duplicate_warnings?.length" class="duplicate-warning" role="status">
@@ -656,6 +729,7 @@ onMounted(loadProfile)
 </template>
 
 <style scoped>
+.account-activation-card{display:grid;gap:12px}.account-activation-card>p{margin:0;color:var(--color-muted);line-height:1.5}.account-activation-actions{display:grid;gap:10px;max-width:620px;padding:14px;border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface)}.account-activation-actions p{margin:0;line-height:1.45}.account-activation-actions label{display:grid;gap:5px;font-size:.82rem;font-weight:700}.account-activation-actions label:has(input[type=checkbox]){display:flex;align-items:start;gap:8px;font-weight:500;line-height:1.4}.account-activation-actions input:not([type=checkbox]){width:100%;min-height:39px;padding:8px 10px;border:1px solid var(--color-border);border-radius:7px;background:var(--color-surface)}.account-activation-actions button{justify-self:start;min-height:38px;padding:7px 13px;border:1px solid var(--color-border);border-radius:7px;background:var(--color-dartmouth-green);color:#fff;font-weight:700;cursor:pointer}.account-activation-actions button:disabled{opacity:.55;cursor:not-allowed}
 .contextual-back {
   align-items: center;
   align-self: flex-start;

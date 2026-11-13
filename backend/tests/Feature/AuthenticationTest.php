@@ -146,6 +146,9 @@ class AuthenticationTest extends TestCase
 
     public function test_password_change_rolls_back_when_token_revocation_fails(): void
     {
+        if (DB::getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('SQLite trigger syntax is covered by the isolated SQLite suite.');
+        }
         $user = $this->createActiveUser();
         $token = $this->loginAndCompleteOtp($user, 'web')->assertOk()->json('data.token');
         DB::statement("CREATE TRIGGER deny_token_delete BEFORE DELETE ON personal_access_tokens BEGIN SELECT RAISE(ABORT, 'token deletion failed'); END");

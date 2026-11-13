@@ -15,13 +15,18 @@ test('Grade Entry follows the compact reference layout with real grouped assessm
   assert.match(view, /\+ Add Assessment/)
   assert.match(view, />Edit Columns</)
   assert.match(view, />Bulk Entry</)
-  assert.match(view, />Criteria</)
+  assert.match(view, /\{\{criteriaOpen\?'Hide criteria':'Show criteria'\}\}/)
+  assert.match(view, /criteriaOpen=ref\(false\)/)
   assert.match(view, /buildGradeTableModel/)
   assert.match(view, /:colspan="group\.columns\.length"/)
-  assert.match(view, /class="grade-entry-workspace-grid"/)
+  assert.match(view, /class="grade-entry-workspace-grid" :class="\{'is-criteria-collapsed':!criteriaOpen\}"/)
   assert.match(view, /class="grade-entry-sheet"/)
   assert.match(view, /class="grade-entry-criteria"/)
   assert.match(styles, /\.website-professor-grading \.grade-entry-workspace-grid \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(270px, 310px\)/)
+  assert.match(styles, /\.website-professor-grading \.grade-entry-workspace-grid\.is-criteria-collapsed \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/)
+  assert.match(view, /v-show="criteriaOpen" id="grading-criteria-panel"/)
+  assert.match(view, /aria-label="Close grading criteria" @click="closeCriteria"/)
+  assert.match(view, /aria-controls="grading-criteria-panel" :aria-expanded="criteriaOpen" @click="toggleCriteria"/)
 })
 
 test('Grade Entry preserves score validation, one save action, column management, and navigation protection', async () => {
@@ -61,6 +66,9 @@ test('Grade Submission uses existing readiness, weights, and submit APIs with co
   assert.match(submission, /Final grade weights/)
   assert.match(service, /saveFinalWeights: \(sheet, payload\) => apiClient\.put/)
   assert.match(service, /submit: \(sheet, version\) => apiClient\.post/)
+  assert.match(submission, /late_submission_extension\?\.is_active/)
+  assert.match(submission, /Registrar-authorized late access/)
+  assert.match(submission, /\['Open','Late access'\]\.includes\(submissionWindow\.value\)/)
 })
 
 test('Grading 3.0 uses semantic tokens and contained responsive overflow', async () => {

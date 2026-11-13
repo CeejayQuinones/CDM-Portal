@@ -14,12 +14,15 @@ use App\Models\Section;
 use App\Models\SectionSubject;
 use App\Models\Student;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\EnrollmentAcademicFixture;
 use Tests\TestCase;
 
 class GradingPhaseThreeTest extends TestCase
 {
+    use RefreshDatabase;
+
     private array $f;
 
     private GradeSheet $sheet;
@@ -29,7 +32,6 @@ class GradingPhaseThreeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
         $this->f = EnrollmentAcademicFixture::create('grading-three');
         $assignment = SectionSubject::create(['section_id' => $this->f['section']->id, 'subject_id' => $this->f['subjects'][0]->id, 'professor_id' => $this->f['professor']->id]);
         $this->enrollment = Enrollment::create(['student_id' => $this->f['student']->id, 'section_id' => $this->f['section']->id, 'academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id, 'enrollment_date' => today(), 'status' => 'enrolled']);

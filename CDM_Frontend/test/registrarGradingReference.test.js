@@ -81,6 +81,8 @@ test('Electron Registrar Grading follows the approved four-workspace architectur
   assert.match(css, /\.registrar-institute-grid/)
   assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/)
   assert.match(css, /\.registrar-review-filters/)
+  assert.match(css, /\.registrar-review-filters summary \{ box-sizing: border-box; height: 40px; min-height: 40px; \}/)
+  assert.match(css, /\.institute-grade-sheets \.registrar-review-search input \{[\s\S]*min-width: 0;[\s\S]*width: 100%;/)
   assert.match(css, /\.desktop-registrar-grading \.grading-scale-form/)
   assert.match(css, /font-size: 13px/)
 })

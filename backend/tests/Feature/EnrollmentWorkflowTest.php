@@ -13,6 +13,7 @@ use App\Models\StudentDocument;
 use App\Models\User;
 use App\Services\Enrollment\EnrollmentAuditWriter;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -22,6 +23,8 @@ use Tests\TestCase;
 
 class EnrollmentWorkflowTest extends TestCase
 {
+    use RefreshDatabase;
+
     private array $fixture;
 
     private User $user;
@@ -33,8 +36,6 @@ class EnrollmentWorkflowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
-        $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
         $this->fixture = AdmissionConversionFixture::create('workflow');
         $case = $this->fixture['cases'][0];
         AdmissionConversionFixture::legacyStudent($this->fixture, $case, 'LEGACY-WORKFLOW');

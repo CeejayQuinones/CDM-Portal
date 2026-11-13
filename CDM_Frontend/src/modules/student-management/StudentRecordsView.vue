@@ -8,6 +8,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { profilePhotoUrl } from '../../utils/profilePhoto'
 import StudentDocumentRequirementsMatrix from './StudentDocumentRequirementsMatrix.vue'
 import HistoricalGradesPanel from './HistoricalGradesPanel.vue'
+import StudentAccountVisitQueue from './StudentAccountVisitQueue.vue'
 import { ROLES } from '../../config/accessControl'
 import { invalidateStudentRecordsCache, readStudentRecordsCache, studentRecordsCacheScope, writeStudentRecordsCache } from './studentRecordsCache'
 
@@ -443,7 +444,11 @@ onBeforeUnmount(() => {
     <h1 class="page-title">Student Management</h1>
     <p class="page-description">Search, review, and manage official student information.</p>
   </section>
-  <HistoricalGradesPanel v-if="auth.currentRole === ROLES.REGISTRAR_STAFF" />
+  <div v-if="auth.currentRole === ROLES.REGISTRAR_STAFF" class="student-records-tools">
+    <router-link class="button button-primary" to="/student-management/import">Import students and alumni</router-link>
+    <details><summary>Account visit requests</summary><StudentAccountVisitQueue /></details>
+    <details><summary>Historical grades</summary><HistoricalGradesPanel /></details>
+  </div>
 
   <section class="student-metrics" aria-label="Student record summary">
     <article v-for="metric in studentMetrics" :key="metric.label"><span aria-hidden="true">{{ metric.icon }}</span><div><small>{{ metric.label }}</small><strong>{{ Number(metric.value || 0).toLocaleString() }}</strong></div></article>
@@ -736,6 +741,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .student-records-workspace{display:grid;gap:14px;min-width:0}.student-records-workspace>.page-header{margin-bottom:0}.student-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.student-metrics article{display:flex;align-items:center;gap:10px;min-width:0;padding:12px 14px;border:1px solid var(--color-border);border-radius:11px;background:var(--color-surface);box-shadow:var(--shadow-soft)}.student-metrics article>span{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:9px;background:var(--color-green-tint);color:var(--color-dartmouth-green);font-size:.72rem;font-weight:900}.student-metrics article:last-child>span{background:color-mix(in srgb,var(--color-warning,#c58a15) 16%,var(--color-surface));color:var(--color-warning,#946200)}.student-metrics div{display:grid;gap:1px;min-width:0}.student-metrics small{overflow:hidden;color:var(--color-muted);font-size:.7rem;text-overflow:ellipsis;white-space:nowrap}.student-metrics strong{color:var(--color-eerie-black);font-size:1.25rem}.student-directory-layout{display:grid;grid-template-columns:minmax(220px,255px) minmax(0,1fr);align-items:start;gap:12px;min-width:0}.student-records-insights,.student-directory-main{min-width:0}.student-records-insights{position:sticky;top:14px}.student-directory-main{display:grid;gap:12px}.student-directory-main .student-records-panel{margin:0}.directory-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px;padding-bottom:10px;border-bottom:1px solid var(--color-border)}.directory-title h2{margin:2px 0 0;color:var(--color-eerie-black);font-size:1rem}.directory-title>span{color:var(--color-muted);font-size:.76rem;font-weight:700}.student-records-insights .productivity-grid{display:grid;grid-template-areas:none!important;grid-template-columns:1fr;gap:9px;margin:0}.student-records-insights .productivity-card{grid-area:auto!important;padding:12px;border-radius:10px}.student-records-insights .document-requirements-card{padding:0}.student-records-insights .document-requirements-button{min-height:72px;padding:10px}.student-records-insights .productivity-card h2{font-size:.92rem}.student-records-insights .card-heading{align-items:center}.student-records-insights .card-heading>span{color:var(--color-muted);font-size:.69rem}.student-records-insights .compact-records{max-height:210px;margin-top:7px}.student-records-insights .compact-records button{padding:8px}.student-records-insights .compact-records strong{font-size:.75rem}.student-records-insights .compact-records span{font-size:.69rem;line-height:1.35}.student-records-insights .activity-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.student-records-insights .empty-state{padding:15px 6px;font-size:.78rem}
+.student-records-tools{display:flex;align-items:start;gap:10px;flex-wrap:wrap}.student-records-tools>a{display:inline-flex;align-items:center;text-decoration:none;min-height:38px}.student-records-tools details{background:var(--color-surface);border:1px solid var(--color-border);border-radius:9px;min-width:175px}.student-records-tools details[open]{flex-basis:100%;padding:0 12px 12px}.student-records-tools summary{cursor:pointer;font-size:.82rem;font-weight:700;padding:10px 12px}.student-records-tools details[open] summary{padding-left:0}
 .quick-search-panel,
 .productivity-card {
   background: var(--color-surface);

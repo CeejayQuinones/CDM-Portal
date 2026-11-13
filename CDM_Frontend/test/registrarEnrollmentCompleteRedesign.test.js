@@ -42,6 +42,8 @@ test('Registrar Enrollment recreates the approved four-screen Electron architect
   assert.match(schedule, /isDesktopPresentation/)
   assert.match(schedule, /ref\(isDesktopPresentation \? 'timetable' : 'cards'\)/)
   assert.match(schedule, /en-weekly-timetable/)
+  assert.match(schedule, /'--schedule-days': visibleDays\.length/)
+  assert.doesNotMatch(schedule, /minmax\(120px, 1fr\)/)
   assert.match(schedule, /class="\{ active: view===option \}"/)
   assert.match(schedule, /Weekly overview/)
   assert.match(schedule, /blockStyle/)
@@ -66,6 +68,12 @@ test('Registrar Enrollment recreates the approved four-screen Electron architect
   assert.match(css, /\.en-records-workspace \{[^}]*display: grid;/)
   assert.match(css, /height: 40px; min-height: 40px;/)
   assert.match(css, /\.en-timetable-block \.en-schedule-row-actions \{ display: none;/)
+  assert.match(css, /\.en-weekly-timetable \{[^}]*min-width: 0;[^}]*width: 100%;/)
+  assert.match(css, /grid-template-columns: 52px repeat\(var\(--schedule-days, 5\), minmax\(0, 1fr\)\);/)
+  assert.match(css, /:is\(\.en-section-catalog-toolbar,\.en-subject-toolbar\) :is\(input,select\),[\s\S]*height: 40px;[\s\S]*min-height: 40px;/)
+  assert.match(css, /:is\(\.en-section-catalog-toolbar,\.en-subject-toolbar\) \.en-toolbar-actions \{ align-self: end; \}/)
+  assert.match(css, /\.en-modern-toolbar label,[\s\S]*\.en-record-filters label,[\s\S]*\.en-professor-assignment-list > label \{[\s\S]*margin: 0;/)
+  assert.match(css, /\.en-modern-toolbar input,[\s\S]*\.en-modern-form-grid select \{[\s\S]*box-sizing: border-box;[\s\S]*max-width: 100%;[\s\S]*min-width: 0;[\s\S]*width: 100%;/)
 })
 
 test('desktop scheduling is data-derived and contains no drag-and-drop or synthetic meetings', async () => {

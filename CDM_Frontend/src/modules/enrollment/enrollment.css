@@ -40,6 +40,17 @@
 .enrollment-workspace .en-progress { display:flex; gap:12px; padding:0; list-style:none; flex-wrap:wrap; }
 .enrollment-workspace .en-progress li { border-bottom:3px solid var(--border-color,#dce5df); padding:12px 4px; }
 .enrollment-workspace .en-progress [aria-current=step] { border-color:#d7b32c; font-weight:700; }
+.enrollment-workspace .enrollment-year-selection { display:grid; gap:14px; }
+.enrollment-workspace .enrollment-year-selection small { color:var(--text-secondary,#526159); }
+.enrollment-workspace .enrollment-year-selection h2 { margin:2px 0; }
+.enrollment-workspace .enrollment-year-selection p { margin:0; color:var(--text-secondary,#526159); }
+.enrollment-workspace .enrollment-year-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr)); gap:10px; }
+.enrollment-workspace .enrollment-year-options label { flex-direction:row; align-items:center; gap:12px; margin:0; padding:14px; border:1px solid var(--color-border,#dce5df); border-radius:12px; background:var(--surface-2,#f4f7f5); cursor:pointer; }
+.enrollment-workspace .enrollment-year-options label.selected { border-color:var(--accent,#006b3f); background:var(--bg-hover,#e7f2e9); }
+.enrollment-workspace .enrollment-year-options input { flex:none; width:18px; height:18px; min-height:18px; padding:0; accent-color:var(--accent,#006b3f); }
+.enrollment-workspace .enrollment-year-options span { display:grid; gap:2px; }
+.enrollment-workspace .enrollment-year-options strong { color:var(--text-primary,inherit); }
+.enrollment-workspace .enrollment-year-hint { font-size:.88rem; }
 .enrollment-workspace dt { color:var(--color-muted,#5f6c64); font-size:.85rem; }
 .enrollment-workspace dd { margin:6px 0 16px; font-weight:600; }
 .enrollment-workspace .en-table { overflow-x:auto; }

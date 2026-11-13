@@ -40,6 +40,11 @@ class GradeSheet extends Model
         return $this->hasMany(GradeSubmissionAttempt::class);
     }
 
+    public function lateSubmissionExtensions()
+    {
+        return $this->hasMany(GradeLateSubmissionExtension::class);
+    }
+
     public function latestSubmission()
     {
         return $this->hasOne(GradeSubmissionAttempt::class)->latestOfMany('attempt_number');

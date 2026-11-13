@@ -7,7 +7,6 @@ import WebsiteEmptyState from '../../components/website/WebsiteEmptyState.vue'
 import WebsiteFilterToolbar from '../../components/website/WebsiteFilterToolbar.vue'
 import WebsiteLoadingState from '../../components/website/WebsiteLoadingState.vue'
 import WebsiteModuleHeader from '../../components/website/WebsiteModuleHeader.vue'
-import WebsiteAcademicJourneyNav from '../../components/website/WebsiteAcademicJourneyNav.vue'
 const isWebsitePresentation=clientPlatform==='web'
 
 const loading=ref(true),exporting=ref(false),error=ref(''),data=ref(null),year=ref(''),semester=ref('')
@@ -27,7 +26,6 @@ onMounted(load)
       <template #title><span class="student-grades-title"><span>My Grades</span><span class="student-readonly-badge" aria-label="Viewing purposes only: published grades cannot be changed here">VIEWING PURPOSES ONLY</span></span></template>
       <template #actions><button class="grading-button primary" :disabled="exporting||!data?.grades?.length" @click="download">{{exporting?'Preparing…':'Export Grade Report'}}</button></template>
     </WebsiteModuleHeader>
-    <WebsiteAcademicJourneyNav v-if="isWebsitePresentation" />
     <header v-else class="grading-hero"><div><p class="grading-eyebrow">Published academic record</p><h1 class="student-grades-title"><span>My Grades</span><span class="student-readonly-badge" aria-label="Viewing purposes only: published grades cannot be changed here">VIEWING PURPOSES ONLY</span></h1><p>View official grades released by the Registrar and contact the Professor for a published subject.</p></div><button class="grading-button primary" :disabled="exporting||!data?.grades?.length" @click="download">{{exporting?'Preparing…':'Export Grade Report'}}</button></header>
     <p v-if="error" class="grading-alert error" role="alert">{{error}}</p>
     <WebsiteLoadingState v-if="isWebsitePresentation&&loading" label="Loading published grades" />

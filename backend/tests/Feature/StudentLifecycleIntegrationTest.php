@@ -30,12 +30,15 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Services\Admission\ProgramMatcher;
 use App\Services\Grading\GradingWorkflowService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class StudentLifecycleIntegrationTest extends TestCase
 {
+    use RefreshDatabase;
+
     private User $admin;
 
     private User $registrar;
@@ -67,10 +70,7 @@ class StudentLifecycleIntegrationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->assertSame('sqlite', config('database.default'));
-        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
         $this->withoutMiddleware(ThrottleRequests::class);
-        $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
 
         foreach ([Role::ADMIN, Role::REGISTRAR_STAFF, Role::GUEST, Role::STUDENT, Role::PROFESSOR] as $role) {
             Role::firstOrCreate(['role_name' => $role]);

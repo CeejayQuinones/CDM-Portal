@@ -1,7 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import WebsiteWorkspace from '../../components/website/WebsiteWorkspace.vue'
-import WebsiteAcademicJourneyNav from '../../components/website/WebsiteAcademicJourneyNav.vue'
 import CdmButton from '../../design-system/CdmButton.vue'
 import CdmCard from '../../design-system/CdmCard.vue'
 import CdmEmptyState from '../../design-system/CdmEmptyState.vue'
@@ -39,7 +38,6 @@ onMounted(loadCatalog)
       </template>
     </CdmPageHeader>
 
-    <WebsiteAcademicJourneyNav />
 
     <div v-if="error" class="enrollment-catalog-error" role="alert"><span>{{ error }}</span><button type="button" @click="loadCatalog">Try again</button></div>
     <CdmLoadingState v-if="loading" label="Loading academic programs" />

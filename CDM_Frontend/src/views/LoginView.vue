@@ -2,6 +2,7 @@
 import { defineAsyncComponent, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import RegistrationWizard from '../components/RegistrationWizard.vue'
+import StudentAccountActivation from '../components/StudentAccountActivation.vue'
 import LoginOtpVerification from '../components/LoginOtpVerification.vue'
 import TurnstileVerification from '../components/TurnstileVerification.vue'
 import { useAuthStore } from '../stores/authStore'
@@ -29,6 +30,7 @@ const isLoading = ref(false)
 const showPostLoginLoading = ref(false)
 const showPassword = ref(false)
 const showRegistration = ref(route.query.signup === '1')
+const showStudentActivation = ref(false)
 const registrationSuccess = ref(Boolean(route.query.registered))
 const mobileMenuOpen = ref(false)
 const otpError = ref('')
@@ -265,6 +267,7 @@ const registrationComplete = () => {
           </div>
           <div class="divider guest-divider"><span>New to CDM Portal?</span></div>
           <button class="sign-up-button" type="button" @click="showRegistration = true">Create a Guest account</button>
+          <button class="sign-up-button" type="button" @click="showStudentActivation = true">Activate student or alumni account</button>
         </form>
         <p class="legal-links"><RouterLink to="/terms">Terms & Conditions</RouterLink><span>·</span><RouterLink to="/privacy">Privacy Policy</RouterLink></p>
       </aside>
@@ -457,6 +460,7 @@ const registrationComplete = () => {
   </div>
 
   <RegistrationWizard v-if="clientPlatform === 'web' && showRegistration" @close="showRegistration = false" @registered="registrationComplete" />
+  <StudentAccountActivation v-if="clientPlatform === 'web' && showStudentActivation" @close="showStudentActivation = false" @activated="showStudentActivation = false; registrationSuccess = true" />
 </template>
 
 <style scoped src="../assets/styles/public-home.css"></style>

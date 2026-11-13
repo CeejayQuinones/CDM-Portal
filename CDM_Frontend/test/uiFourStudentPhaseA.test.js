@@ -4,18 +4,16 @@ import test from 'node:test'
 
 const read = file => readFile(new URL(`../src/${file}`, import.meta.url), 'utf8')
 
-test('UI 4 Phase A keeps the academic journey Website Student-only', async () => {
+test('Student academic pages use sidebar navigation without a duplicate journey strip', async () => {
   const [journey, routes, records, grades] = await Promise.all([
     read('components/website/WebsiteAcademicJourneyNav.vue'),
     read('config/accessControl.js'),
     read('modules/enrollment/EnrollmentAcademicStudent.vue'),
     read('modules/grading/StudentGradesView.vue'),
   ])
-  assert.match(journey, /clientPlatform === 'web' && auth\.isAuthenticated && auth\.currentRole === ROLES\.STUDENT/)
-  for (const name of ['enrollment-status', 'enrollment-courses', 'enrollment-steps', 'enrollment-subjects', 'enrollment-schedule', 'enrollment-cor', 'grading']) {
-    assert.ok(journey.includes(`name: '${name}'`), `${name} is missing from the journey`)
-  }
-  assert.match(journey, /:aria-current=/)
+  assert.doesNotMatch(records, /WebsiteAcademicJourneyNav/)
+  assert.doesNotMatch(grades, /WebsiteAcademicJourneyNav/)
+  assert.match(routes, /label: 'Registration Documents'/)
   assert.match(routes, /ROLES\.STUDENT/)
   assert.match(records, /WebsiteAcademicRecordCard/)
   assert.match(records, /\/enrollment\/academic\/records/)

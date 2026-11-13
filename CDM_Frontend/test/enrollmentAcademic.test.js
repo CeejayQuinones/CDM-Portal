@@ -87,10 +87,11 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
     const unscheduled={id:2,section_id:1,subject_id:11,professor_id:1,subject:unscheduledSubject,professor,day:null,start_time:null,end_time:null,room:null,version:1}
     const academicRecord={id:42,student_number:'26-ACADEMIC',name:'Academic Student',course:'Computing',year_level:1,academic_year:'2026–2027',semester:'First',section:'CS-1A',enrollment_date:'2026-09-27',subjects:[{...subject,schedule_status:'scheduled',schedule},{...unscheduledSubject,schedule_status:'pending',schedule:null}],total_units:6}
     const recordRow={...period,id:42,status:'enrolled',section,student:{student_number:'26-ACADEMIC',user_profile:{first_name:'Academic',last_name:'Student'},course:section.course},application:{classification:'regular'}}
-    let classification='regular',selected=[],scheduleFailure=null,validationErrors=null,availabilityFailure=null,availabilityResponse=null,availabilityHandler=null,ovrfFailure=null
+    let classification='regular',selected=[],scheduleFailure=null,validationErrors=null,availabilityFailure=null,availabilityResponse=null,availabilityHandler=null,ovrfFailure=null,enrollmentNotices=[],notificationPatch=null
     const application=()=>({id:1,period,status:'approved',classification,version:1,student:recordRow.student})
     const handler=async(method,url,payload)=>{
-      if(url==='/enrollment/academic/notifications')return response(pagination([]))
+      if(url==='/enrollment/academic/notifications')return response(pagination(enrollmentNotices))
+      if(/^\/enrollment\/academic\/notifications\/[^/]+\/read$/.test(url)&&method==='patch')return notificationPatch?notificationPatch():response(null)
       if(url==='/enrollment/applications/mine')return response(pagination([application()]))
       if(url==='/enrollment/academic/applications/1')return response({application:application(),load:{candidates:[subject],standard_subject_ids:[10],selected_subject_ids:selected},sections:pagination([section])})
       if(url==='/enrollment/academic/applications/1/subjects'){selected=payload.subject_ids;return response(application())}
@@ -139,7 +140,7 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
           await router.push('/');await router.push('/enrollment/'+name);assert.equal(router.currentRoute.value.name==='unauthorized',!allowed)
         }
       }
-      assert.deepEqual(navigation.menuItemsForRole(ROLES.STUDENT).find(n=>n.name==='enrollment').children.map(n=>n.label),['Status','Courses Offered','Enrollment Guide','Subjects','My Schedule','COR'])
+      assert.deepEqual(navigation.menuItemsForRole(ROLES.STUDENT).find(n=>n.name==='enrollment').children.map(n=>n.label),['Status','Courses Offered','Enrollment Guide','Subjects','My Schedule','Registration Documents'])
       assert.deepEqual(navigation.menuItemsForRole(ROLES.ADMIN).find(n=>n.name==='enrollment').children,navigation.menuItemsForRole(ROLES.REGISTRAR_STAFF).find(n=>n.name==='enrollment').children)
     })
     await t.test('Regular load is read-only; Irregular selection saves controlled subject IDs',async()=>{
@@ -274,13 +275,48 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
     await t.test('Student sees real schedule and printable COR; Professor sees assigned roster',async()=>{
       auth.currentRole=ROLES.STUDENT;apiState.handler=handler;await router.push('/enrollment/schedule');const mounted=mount()
       try{await settle();assert.match(textOf(mounted.root),/Section CS-1A/);await click(mounted.root,'View schedule');assert.equal(apiState.calls.at(-1).url,'/enrollment/academic/records/42');assert.match(textOf(mounted.root),/Programming/);assert.match(textOf(mounted.root),/09:00–10:00/);assert.match(textOf(mounted.root),/Lab 1/);assert.match(textOf(mounted.root),/Computer Programming 1/);assert.match(textOf(mounted.root),/Schedule pending/);assert.ok(button(mounted.root,'Close record'));await click(mounted.root,'Close record');assert.doesNotMatch(textOf(mounted.root),/Viewing 2026/)}finally{mounted.app.unmount()}
-      await router.push('/enrollment/cor');const cor=mount();try{await settle();await click(cor.root,'View COR');assert.match(textOf(cor.root),/26-ACADEMIC/);assert.match(textOf(cor.root),/Total units/);assert.match(textOf(cor.root),/To be announced/);assert.match(textOf(cor.root),/Financial assessment and official signatures are not included/);await click(cor.root,'Print COR');assert.equal(prints,1);await click(cor.root,'Preview OVRF');assert.equal(apiState.calls.at(-1).url,'/enrollment/academic/records/42/ovrf');assert.equal(apiState.calls.at(-1).payload.params.disposition,'inline');assert.match(textOf(cor.root),/Physical verification required/);const viewOnly=all(cor.root,'span').find(node=>textOf(node).trim()==='VIEWING PURPOSES ONLY');assert.ok(viewOnly);assert.match(viewOnly.props['aria-label'],/official enrollment records cannot be changed/);assert.equal(all(cor.root,'input').some(node=>node.props.type==='file'),false);const closePreview=all(cor.root,'button').find(node=>node.props['aria-label']==='Close OVRF preview');await closePreview.props.onClick();await settle();await click(cor.root,'Download OVRF');assert.equal(apiState.calls.at(-1).payload.params.disposition,'attachment');assert.equal(downloads,1);await click(cor.root,'Print OVRF');assert.equal(pdfPrints,1)}finally{cor.app.unmount()}
+      await router.push('/enrollment/cor');const cor=mount();try{
+        await settle();assert.match(textOf(cor.root),/Registration Documents/);assert.match(textOf(cor.root),/26-ACADEMIC/);assert.match(textOf(cor.root),/Total units/);assert.match(textOf(cor.root),/To be announced/);assert.match(textOf(cor.root),/Financial assessment and official signatures are not included/)
+        await click(cor.root,'Print COR');assert.equal(prints,1)
+        await click(cor.root,'OVRF Verification Registration Form');assert.equal(router.currentRoute.value.query.document,'ovrf');assert.equal(apiState.calls.at(-1).url,'/enrollment/academic/records/42/ovrf');assert.equal(apiState.calls.at(-1).payload.params.disposition,'inline');assert.match(textOf(cor.root),/VIEWING PURPOSES ONLY/)
+        assert.equal(all(cor.root,'input').some(node=>node.props.type==='file'),false)
+        const actions=all(cor.root,'select').find(node=>node.props['aria-label']==='OVRF document actions')
+        await actions.props.onChange({target:{value:'download'}});await settle();assert.equal(apiState.calls.at(-1).payload.params.disposition,'attachment');assert.equal(downloads,1)
+        await actions.props.onChange({target:{value:'print'}});await settle();assert.equal(pdfPrints,1)
+      }finally{cor.app.unmount()}
       auth.currentRole=ROLES.PROFESSOR;await router.push('/enrollment/teaching');const prof=mount();try{await settle();await click(prof.root,'View enrolled Students');assert.match(textOf(prof.root),/Academic Student/);assert.equal(button(prof.root,'Create section'),undefined)}finally{prof.app.unmount()}
+    })
+    await t.test('read enrollment updates stay hidden and marking unread removes it before the request settles',async()=>{
+      auth.currentRole=ROLES.STUDENT;enrollmentNotices=[
+        {id:'unread-1',read_at:null,data:{message:'Your section schedule has changed.'}},
+        {id:'read-1',read_at:'2026-11-14T01:00:00Z',data:{message:'Already read enrollment update.'}},
+      ];let finishPatch;notificationPatch=()=>new Promise(resolve=>{finishPatch=()=>resolve(response(null))});apiState.handler=handler
+      await router.push('/');await router.push('/enrollment/schedule');const notices=mount()
+      try{await settle();assert.match(textOf(notices.root),/Your section schedule has changed/);assert.doesNotMatch(textOf(notices.root),/Already read enrollment update/);const pending=button(notices.root,'Mark read').props.onClick();await nextTick();assert.doesNotMatch(textOf(notices.root),/Your section schedule has changed/);finishPatch();await pending;await settle()}finally{notices.app.unmount();enrollmentNotices=[];notificationPatch=null}
+    })
+    await t.test('Registration Documents opens OVRF directly and preserves document selection when switching older terms',async()=>{
+      auth.currentRole=ROLES.STUDENT
+      apiState.handler=async(method,url,payload)=>{
+        if(url==='/enrollment/academic/records')return response({...pagination([payload.params.page===2?{...recordRow,id:43}:recordRow]),last_page:2})
+        if(url==='/enrollment/academic/records/43')return response({...academicRecord,id:43,semester:'Second'})
+        if(url==='/enrollment/academic/records/43/ovrf')return {data:new Blob(['%PDF-older-term'],{type:'application/pdf'}),headers:{}}
+        return handler(method,url,payload)
+      }
+      await router.push('/');await router.push('/enrollment/registration-documents?record=43&document=ovrf');apiState.calls=[]
+      const documents=mount()
+      try{
+        await settle();assert.equal(router.currentRoute.value.name,'enrollment-cor');assert.match(textOf(documents.root),/VIEWING PURPOSES ONLY/);assert.equal(button(documents.root,'Print COR'),undefined)
+        assert.ok(apiState.calls.some(call=>call.url==='/enrollment/academic/records/43/ovrf'))
+        const selector=all(documents.root,'select').find(node=>node.props.onChange&&node.props['aria-label']!=='OVRF document actions')
+        assert.equal(all(selector,'option').length,2)
+        await selector.props.onChange({target:{value:'42'}});await settle();assert.equal(router.currentRoute.value.query.document,'ovrf');assert.equal(router.currentRoute.value.query.record,'42');assert.ok(apiState.calls.some(call=>call.url==='/enrollment/academic/records/42/ovrf'))
+        await click(documents.root,'COR Certificate of Registration');assert.ok(button(documents.root,'Print COR'));assert.equal(all(documents.root,'iframe').length,0)
+      }finally{documents.app.unmount();apiState.handler=handler}
     })
     await t.test('OVRF preview reports retrieval failures, retries, and fits one bounded PDF region',async()=>{
       auth.currentRole=ROLES.STUDENT;apiState.handler=handler;await router.push('/');await router.push('/enrollment/cor');const cor=mount()
       try{
-        await settle();await click(cor.root,'View COR');ovrfFailure={status:404,data:{message:'Enrollment record not found.'}};await click(cor.root,'Preview OVRF')
+        await settle();ovrfFailure={status:404,data:{message:'Enrollment record not found.'}};await click(cor.root,'OVRF Verification Registration Form')
         assert.match(textOf(cor.root),/Enrollment record not found/);assert.ok(button(cor.root,'Try again'));assert.equal(all(cor.root,'iframe').length,0)
         ovrfFailure=null;await click(cor.root,'Try again');const preview=all(cor.root,'iframe')[0];assert.ok(preview);assert.match(preview.props.src,/zoom=page-width/)
         const source=await readFile(path.join(frontend,'src/modules/enrollment/EnrollmentOvrfActions.vue'),'utf8')
@@ -298,7 +334,7 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
         return handler(method,url,payload)
       }
       const cor=mount()
-      try{await settle();await click(cor.root,'View COR');assert.match(textOf(cor.root),/Monday 09:00–10:00 · Lab 1/);assert.match(textOf(cor.root),/Wednesday 13:00–15:00 · Lab 2/)}finally{cor.app.unmount();apiState.handler=handler}
+      try{await settle();assert.match(textOf(cor.root),/Monday 09:00–10:00 · Lab 1/);assert.match(textOf(cor.root),/Wednesday 13:00–15:00 · Lab 2/)}finally{cor.app.unmount();apiState.handler=handler}
     })
     await t.test('COR handles incomplete optional schedules without hiding invalid academic records',async()=>{
       auth.currentRole=ROLES.STUDENT;await router.push('/enrollment/cor')
@@ -307,7 +343,7 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
         return handler(method,url,payload)
       }
       const incompleteSchedule=mount()
-      try{await settle();await click(incompleteSchedule.root,'View COR');assert.match(textOf(incompleteSchedule.root),/To be announced/);assert.ok(button(incompleteSchedule.root,'Print COR'))}finally{incompleteSchedule.app.unmount()}
+      try{await settle();assert.match(textOf(incompleteSchedule.root),/To be announced/);assert.ok(button(incompleteSchedule.root,'Print COR'))}finally{incompleteSchedule.app.unmount()}
 
       apiState.handler=async(method,url,payload)=>{
         if(url==='/enrollment/academic/records/42')return response({...academicRecord,subjects:null})
@@ -315,7 +351,7 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
       }
       await router.push('/');await router.push('/enrollment/cor')
       const invalidRecord=mount()
-      try{await settle();await click(invalidRecord.root,'View COR');assert.match(textOf(invalidRecord.root),/subject load is unavailable/);assert.equal(button(invalidRecord.root,'Print COR'),undefined)}finally{invalidRecord.app.unmount();apiState.handler=handler}
+      try{await settle();assert.match(textOf(invalidRecord.root),/subject load is unavailable/);assert.equal(button(invalidRecord.root,'Print COR'),undefined)}finally{invalidRecord.app.unmount();apiState.handler=handler}
     })
   }finally{globalThis.document=priorDocument;globalThis.Document=priorDocumentClass;globalThis.requestAnimationFrame=priorFrame;globalThis.window=priorWindow;globalThis.URL.createObjectURL=priorCreateObjectUrl;globalThis.URL.revokeObjectURL=priorRevokeObjectUrl;await rm(temporary,{recursive:true,force:true})}
 })

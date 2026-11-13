@@ -12,13 +12,14 @@ use App\Models\Role;
 use App\Models\Semester;
 use App\Services\Enrollment\EnrollmentAccess;
 use App\Services\Enrollment\EnrollmentWorkflowService;
+use App\Services\Enrollment\EnrollmentYearLevelReview;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class EnrollmentWorkflowController extends Controller
 {
-    public function __construct(private EnrollmentWorkflowService $workflow) {}
+    public function __construct(private EnrollmentWorkflowService $workflow, private EnrollmentYearLevelReview $yearLevels) {}
 
     private function ok($data, int $status = 200)
     {
@@ -102,7 +103,7 @@ class EnrollmentWorkflowController extends Controller
     public function create(Request $r)
     {
         EnrollmentAccess::require($r->user());
-        $input = $r->validate(['period_id' => 'required|integer|exists:enrollment_periods,id', 'classification' => $this->classification()]);
+        $input = $r->validate(['period_id' => 'required|integer|exists:enrollment_periods,id', 'classification' => $this->classification(), 'year_level' => 'sometimes|integer|min:1|max:12']);
 
         return $this->ok($this->workflow->create($r->user(), $input), 201);
     }
@@ -148,7 +149,7 @@ class EnrollmentWorkflowController extends Controller
             $a->setAttribute('personal_details', $this->workflow->personalDetailsFor($a));
         }
 
-        return $this->ok(['application' => $a, 'requirements' => $this->workflow->requirements($a)]);
+        return $this->ok(['application' => $a, 'requirements' => $this->workflow->requirements($a), 'year_level_review' => $this->yearLevels->review($a)]);
     }
 
     public function action(Request $r, int $id, string $action)
@@ -158,6 +159,7 @@ class EnrollmentWorkflowController extends Controller
         $rules = ['version' => 'required|integer|min:1'];
         if ($action === 'save') {
             $rules['classification'] = $this->classification();
+            $rules['year_level'] = 'sometimes|integer|min:1|max:12';
             $rules += [
                 'personal_details' => 'required|array:first_name,middle_name,last_name,birth_date,gender,contact_number,email,address',
                 'personal_details.first_name' => 'required|string|max:100',

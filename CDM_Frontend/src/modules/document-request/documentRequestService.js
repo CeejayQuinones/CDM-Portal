@@ -1,39 +1,20 @@
 import { apiClient } from '../../services/apiClient'
 
 const unwrap = async (request) => (await request).data.data
-const DOCUMENT_TYPES_TTL_MS = 5 * 60 * 1_000
-let cachedDocumentTypes = null
-let documentTypesExpiresAt = 0
-let documentTypesRequest = null
-
-async function documentTypes() {
-  if (cachedDocumentTypes && Date.now() < documentTypesExpiresAt) return cachedDocumentTypes
-  if (documentTypesRequest) return documentTypesRequest
-
-  documentTypesRequest = unwrap(apiClient.get('/document-types'))
-  try {
-    cachedDocumentTypes = await documentTypesRequest
-    documentTypesExpiresAt = Date.now() + DOCUMENT_TYPES_TTL_MS
-    return cachedDocumentTypes
-  } finally {
-    documentTypesRequest = null
-  }
-}
-
-function invalidateDocumentTypes() {
-  cachedDocumentTypes = null
-  documentTypesExpiresAt = 0
-}
+const documentTypes = () => unwrap(apiClient.get('/document-types'))
 
 async function createDocumentType(payload) {
   const result = await unwrap(apiClient.post('/registrar/document-types', payload))
-  invalidateDocumentTypes()
   return result
 }
 
 async function updateDocumentType(id, payload) {
   const result = await unwrap(apiClient.patch(`/registrar/document-types/${id}`, payload))
-  invalidateDocumentTypes()
+  return result
+}
+
+async function deleteDocumentType(id) {
+  const result = await unwrap(apiClient.delete(`/registrar/document-types/${id}`))
   return result
 }
 
@@ -76,4 +57,5 @@ export const documentRequestService = {
   registrarDocumentTypes: () => unwrap(apiClient.get('/registrar/document-types')),
   createDocumentType,
   updateDocumentType,
+  deleteDocumentType,
 }

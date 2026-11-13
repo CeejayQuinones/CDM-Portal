@@ -134,6 +134,19 @@ html.cdm-desktop-client .en-modern-form-grid label {
   letter-spacing: .02em;
 }
 
+/* enrollment.css gives every legacy label a bottom margin. Modern desktop
+   toolbars use container gaps instead; remove the inherited margin so fields
+   and their neighboring action buttons share the same baseline. */
+html.cdm-desktop-client .en-modern-toolbar label,
+html.cdm-desktop-client .en-modern-filters label,
+html.cdm-desktop-client .en-scheduling-controls label,
+html.cdm-desktop-client .en-browser-search,
+html.cdm-desktop-client .en-subject-search label,
+html.cdm-desktop-client .en-record-filters label,
+html.cdm-desktop-client .en-professor-assignment-list > label {
+  margin: 0;
+}
+
 html.cdm-desktop-client .en-modern-toolbar input,
 html.cdm-desktop-client .en-modern-toolbar select,
 html.cdm-desktop-client .en-modern-filters input,
@@ -145,10 +158,14 @@ html.cdm-desktop-client .en-modern-form-grid select {
   background: var(--desk-surface, #fff);
   border: 1px solid var(--en-line);
   border-radius: 8px;
+  box-sizing: border-box;
   color: var(--desk-text, #17211b);
   font: inherit;
+  max-width: 100%;
   min-height: 36px;
+  min-width: 0;
   padding: 6px 10px;
+  width: 100%;
 }
 
 html.cdm-desktop-client .en-modern-search { flex: 1 1 340px; }
@@ -282,20 +299,21 @@ html.cdm-desktop-client .en-desktop-class-card header { align-items: start; disp
 html.cdm-desktop-client .en-desktop-class-card h3 { font-size: 14px; margin: 0; }
 html.cdm-desktop-client .en-desktop-class-card p { color: var(--en-muted); margin: 0; }
 
-html.cdm-desktop-client .en-weekly-timetable { border: 1px solid var(--en-line); border-radius: 10px; min-width: 760px; overflow: hidden; }
+html.cdm-desktop-client .en-weekly-timetable { border: 1px solid var(--en-line); border-radius: 10px; min-width: 0; overflow: hidden; width: 100%; }
 html.cdm-desktop-client .en-weekly-head,
-html.cdm-desktop-client .en-weekly-body { display: grid; grid-template-columns: 64px repeat(var(--schedule-days, 5), minmax(130px, 1fr)); }
+html.cdm-desktop-client .en-weekly-body { display: grid; grid-template-columns: 52px repeat(var(--schedule-days, 5), minmax(0, 1fr)); min-width: 0; }
 html.cdm-desktop-client .en-weekly-head { background: var(--en-green-soft); }
-html.cdm-desktop-client .en-weekly-head > * { border-right: 1px solid var(--en-line); font-size: 11px; font-weight: 800; padding: 9px; text-align: center; }
+html.cdm-desktop-client .en-weekly-head > * { border-right: 1px solid var(--en-line); font-size: 10px; font-weight: 800; min-width: 0; overflow: hidden; padding: 9px 4px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 html.cdm-desktop-client .en-weekly-body { position: relative; }
 html.cdm-desktop-client .en-time-axis { background: color-mix(in srgb, var(--en-line) 18%, transparent); position: relative; }
-html.cdm-desktop-client .en-time-axis span { color: var(--en-muted); font-size: 10px; position: absolute; right: 8px; transform: translateY(-50%); }
-html.cdm-desktop-client .en-day-column { border-left: 1px solid var(--en-line); position: relative; }
+html.cdm-desktop-client .en-time-axis span { color: var(--en-muted); font-size: 9px; position: absolute; right: 6px; transform: translateY(-50%); }
+html.cdm-desktop-client .en-day-column { border-left: 1px solid var(--en-line); min-width: 0; position: relative; }
 html.cdm-desktop-client .en-day-column::before { background: repeating-linear-gradient(to bottom, transparent 0, transparent 59px, var(--en-line) 60px); content: ""; inset: 0; pointer-events: none; position: absolute; }
-html.cdm-desktop-client .en-timetable-block { background: var(--en-green-soft); border: 1px solid color-mix(in srgb, var(--en-green) 30%, var(--en-line)); border-left: 3px solid var(--en-green); border-radius: 7px; display: grid; font-size: 10px; gap: 2px; left: 5px; overflow: hidden; padding: 6px; position: absolute; right: 5px; z-index: 1; }
+html.cdm-desktop-client .en-timetable-block { background: var(--en-green-soft); border: 1px solid color-mix(in srgb, var(--en-green) 30%, var(--en-line)); border-left: 3px solid var(--en-green); border-radius: 7px; display: grid; font-size: 9px; gap: 2px; left: 3px; min-width: 0; overflow: hidden; padding: 5px; position: absolute; right: 3px; z-index: 1; }
 html.cdm-desktop-client .en-timetable-block.has-overlap { border-color: #b54708; box-shadow: inset 3px 0 #f79009; }
-html.cdm-desktop-client .en-timetable-block strong { font-size: 11px; }
-html.cdm-desktop-client .en-timetable-block span { color: var(--en-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-timetable-block strong { font-size: 10px; }
+html.cdm-desktop-client .en-timetable-block :is(strong, span, small) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cdm-desktop-client .en-timetable-block span { color: var(--en-muted); }
 html.cdm-desktop-client .en-timetable-block .en-schedule-row-actions { display: none; }
 html.cdm-desktop-client .en-unscheduled-list { border-top: 1px solid var(--en-line); display: grid; gap: 8px; margin-top: 14px; padding-top: 13px; }
 html.cdm-desktop-client .en-schedule-list { border: 1px solid var(--en-line); border-radius: 9px; overflow-x: auto; }
@@ -585,9 +603,8 @@ html.cdm-desktop-client .en-section-overview progress { accent-color: var(--en-g
 html.cdm-desktop-client .en-section-overview > small { color: var(--en-green); text-align: right; }
 
 html.cdm-desktop-client .en-timetable-workspace { min-height: 520px; }
-html.cdm-desktop-client .en-timetable-workspace .en-desktop-schedule { overflow-x: auto; padding: 9px; }
-html.cdm-desktop-client .en-timetable-workspace .schedule-view-switcher { position: sticky; left: 0; }
-html.cdm-desktop-client .en-timetable-workspace .en-weekly-timetable { min-width: 720px; }
+html.cdm-desktop-client .en-timetable-workspace .en-desktop-schedule { min-width: 0; overflow-x: hidden; padding: 9px; }
+html.cdm-desktop-client .en-timetable-workspace .schedule-view-switcher { max-width: 100%; }
 
 html.cdm-desktop-client .en-subject-search { align-items: end; border-bottom: 1px solid var(--en-line); display: grid; grid-template-columns: 1fr auto; }
 html.cdm-desktop-client .en-subject-search label { padding-right: 4px; }
@@ -609,8 +626,16 @@ html.cdm-desktop-client .en-scheduled-subject .en-schedule-row-actions { gap: 3p
 html.cdm-desktop-client .en-scheduled-subject .en-schedule-row-actions button { font-size: 9px; min-height: 27px; padding: 4px 7px; }
 
 html.cdm-desktop-client .en-section-catalog-toolbar,
-html.cdm-desktop-client .en-subject-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(140px, 180px)) auto; }
+html.cdm-desktop-client .en-subject-toolbar { align-items: end; display: grid; grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(140px, 180px)) auto; }
 html.cdm-desktop-client .en-subject-toolbar { grid-template-columns: minmax(220px, 1fr) minmax(150px, 200px) minmax(170px, 220px) auto; }
+html.cdm-desktop-client :is(.en-section-catalog-toolbar,.en-subject-toolbar) > label { min-width: 0; width: 100%; }
+html.cdm-desktop-client :is(.en-section-catalog-toolbar,.en-subject-toolbar) :is(input,select),
+html.cdm-desktop-client :is(.en-section-catalog-toolbar,.en-subject-toolbar) .en-toolbar-actions > button {
+  box-sizing: border-box;
+  height: 40px;
+  min-height: 40px;
+}
+html.cdm-desktop-client :is(.en-section-catalog-toolbar,.en-subject-toolbar) .en-toolbar-actions { align-self: end; }
 html.cdm-desktop-client .en-section-card-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 10px; }
 html.cdm-desktop-client .en-section-card {
   background: var(--desk-surface, #fff);

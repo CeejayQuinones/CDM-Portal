@@ -99,7 +99,7 @@ test('website Professor UI exposes automatic naming and a dedicated accessible s
   assert.match(submission, /Review \{\{group\.label\}\} assessments/)
   assert.match(submission, /@click="saveFinalWeights"/)
   assert.match(submission, /:disabled="saving\|\|!canSubmit"/)
-  assert.match(submission, /readiness\.value\?\.ready&&submissionWindow\.value==='Open'/)
+  assert.match(submission, /readiness\.value\?\.ready&&\['Open','Late access'\]\.includes\(submissionWindow\.value\)/)
   assert.match(submission, /window\.confirm/)
 
   assert.match(css, /\.submission-readiness-panel/)

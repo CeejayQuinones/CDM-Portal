@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import DocumentRequestDialog from './DocumentRequestDialog.vue'
 import DocumentRequestEmptyState from './DocumentRequestEmptyState.vue'
 import DocumentRequestPageHeader from './DocumentRequestPageHeader.vue'
@@ -12,9 +12,14 @@ const modalOpen = ref(false)
 const loading = ref(false)
 const saving = ref(false)
 const togglingId = ref(null)
+const deletingId = ref(null)
+const deletedType = ref(null)
+const undoing = ref(false)
 const search = ref('')
 const message = ref('')
 const error = ref('')
+let messageTimer = null
+let errorTimer = null
 const form = reactive({
   document_name: '',
   description: '',
@@ -26,7 +31,7 @@ const form = reactive({
   processing_fee: 0,
   processing_days: 1,
 })
-const errorMessage = (err) => err.response?.data?.message || 'The document type could not be saved.'
+const errorMessage = (err) => err.response?.data?.message || 'The document type action could not be completed.'
 const filteredTypes = computed(() => {
   const term = search.value.trim().toLowerCase()
   if (!term) return types.value
@@ -37,6 +42,36 @@ const filteredTypes = computed(() => {
     ),
   )
 })
+
+function clearMessage() {
+  if (messageTimer) window.clearTimeout(messageTimer)
+  messageTimer = null
+  message.value = ''
+}
+
+function showMessage(value) {
+  clearMessage()
+  message.value = value
+  messageTimer = window.setTimeout(() => {
+    message.value = ''
+    messageTimer = null
+  }, 4000)
+}
+
+function clearError() {
+  if (errorTimer) window.clearTimeout(errorTimer)
+  errorTimer = null
+  error.value = ''
+}
+
+function showError(err) {
+  clearError()
+  error.value = errorMessage(err)
+  errorTimer = window.setTimeout(() => {
+    error.value = ''
+    errorTimer = null
+  }, 7000)
+}
 
 function clearForm() {
   editing.value = null
@@ -57,6 +92,19 @@ function openCreate() {
   clearForm()
   modalOpen.value = true
 }
+
+const restorablePayload = (type) => ({
+  document_name: type.document_name,
+  description: type.description || '',
+  workflow_category: type.workflow_category,
+  requires_appointment: Boolean(type.requires_appointment),
+  requires_physical_retrieval: Boolean(type.requires_physical_retrieval),
+  student_requestable: Boolean(type.student_requestable),
+  student_uploadable: Boolean(type.student_uploadable),
+  processing_fee: Number(type.processing_fee),
+  processing_days: Number(type.processing_days),
+  status: type.status,
+})
 
 function edit(type) {
   editing.value = type
@@ -82,11 +130,11 @@ function closeModal() {
 
 async function refresh() {
   loading.value = true
-  error.value = ''
+  clearError()
   try {
     types.value = await api.registrarDocumentTypes()
   } catch (err) {
-    error.value = errorMessage(err)
+    showError(err)
   } finally {
     loading.value = false
   }
@@ -95,8 +143,8 @@ async function refresh() {
 async function save() {
   if (saving.value) return
   saving.value = true
-  message.value = ''
-  error.value = ''
+  clearMessage()
+  clearError()
   try {
     const payload = {
       ...form,
@@ -106,37 +154,84 @@ async function save() {
     }
     if (editing.value) await api.updateDocumentType(editing.value.id, payload)
     else await api.createDocumentType(payload)
-    message.value = editing.value ? 'Document type updated.' : 'Document type added.'
+    showMessage(editing.value ? 'Document type updated.' : 'Document type added.')
     modalOpen.value = false
     clearForm()
     await refresh()
   } catch (err) {
-    error.value = errorMessage(err)
+    showError(err)
   } finally {
     saving.value = false
   }
 }
 
-async function toggle(type) {
-  const enabling = type.status !== 'active'
-  if (!enabling && !window.confirm(`Disable “${type.document_name}”? Students will no longer be able to request it.`))
-    return
-
-  togglingId.value = type.id
-  message.value = ''
-  error.value = ''
+async function remove(type) {
+  if (!window.confirm(`Delete “${type.document_name}”? Only unused document types can be deleted. You can undo immediately afterward.`)) return
+  deletingId.value = type.id
+  clearMessage()
+  clearError()
   try {
-    await api.updateDocumentType(type.id, { status: enabling ? 'active' : 'inactive' })
-    message.value = `Document type ${enabling ? 'enabled' : 'disabled'}.`
+    deletedType.value = await api.deleteDocumentType(type.id)
+    showMessage(`“${type.document_name}” was deleted.`)
     await refresh()
   } catch (err) {
-    error.value = errorMessage(err)
+    showError(err)
+  } finally {
+    deletingId.value = null
+  }
+}
+
+async function undoDelete() {
+  if (!deletedType.value || undoing.value) return
+  const snapshot = { ...deletedType.value }
+  undoing.value = true
+  clearError()
+  try {
+    await api.createDocumentType(restorablePayload(snapshot))
+    deletedType.value = null
+    showMessage(`“${snapshot.document_name}” was restored.`)
+    await refresh()
+  } catch (err) {
+    showError(err)
+  } finally {
+    undoing.value = false
+  }
+}
+
+async function toggle(type, event) {
+  const enabling = type.status !== 'active'
+  if (!enabling && !window.confirm(`Disable “${type.document_name}”? Students will no longer be able to request it.`)) {
+    if (event?.target) event.target.checked = true
+    return
+  }
+
+  togglingId.value = type.id
+  clearMessage()
+  clearError()
+  try {
+    await api.updateDocumentType(type.id, { status: enabling ? 'active' : 'inactive' })
+    showMessage(`Document type ${enabling ? 'enabled' : 'disabled'}.`)
+    await refresh()
+  } catch (err) {
+    if (event?.target) event.target.checked = !enabling
+    showError(err)
   } finally {
     togglingId.value = null
   }
 }
 
+function handleRowAction(type, event) {
+  const action = event.target.value
+  event.target.value = ''
+  if (action === 'edit') edit(type)
+  if (action === 'delete') remove(type)
+}
+
 onMounted(refresh)
+onBeforeUnmount(() => {
+  if (messageTimer) window.clearTimeout(messageTimer)
+  if (errorTimer) window.clearTimeout(errorTimer)
+})
 </script>
 
 <template>
@@ -150,8 +245,13 @@ onMounted(refresh)
     </template>
   </DocumentRequestPageHeader>
 
-  <p v-if="message" class="notice success" role="status">{{ message }}</p>
-  <p v-if="error" class="notice error" role="alert">{{ error }}</p>
+  <div class="document-type-toast-region" aria-live="polite" aria-atomic="true">
+    <Transition name="document-type-toast"><p v-if="message" class="notice success" role="status">{{ message }}</p></Transition>
+    <Transition name="document-type-toast"><p v-if="error" class="notice error" role="alert">{{ error }}</p></Transition>
+  </div>
+  <div class="document-type-undo-dock">
+    <button type="button" class="dr-button dr-button--secondary" :disabled="!deletedType || undoing" :title="deletedType ? `Restore ${deletedType.document_name}` : 'No deleted document type to restore'" @click="undoDelete">{{ undoing ? 'Restoring…' : '↶ Undo delete' }}</button>
+  </div>
 
   <section class="dr-filter-bar document-type-filter" aria-label="Document type filters">
     <label>
@@ -180,20 +280,9 @@ onMounted(refresh)
             <td><strong>{{ type.workflow_category === 'supporting_record' ? 'Supporting record' : 'Official issuance' }}</strong><small>{{ type.student_requestable ? 'Student request enabled' : 'Not requestable' }} · {{ type.student_uploadable ? 'Student upload enabled' : 'No student upload' }}</small></td>
             <td>{{ type.requires_appointment ? 'Appointment required' : 'No appointment required' }}<small>{{ type.requires_physical_retrieval ? 'Physical folder retrieval' : 'No physical retrieval' }}</small></td>
             <td>{{ type.processing_days }} business day{{ Number(type.processing_days) === 1 ? '' : 's' }}</td>
-            <td><span class="dr-type-status" :class="type.status">{{ type.status === 'active' ? 'Active' : 'Inactive' }}</span></td>
+            <td><label class="dr-status-switch"><input type="checkbox" :checked="type.status === 'active'" :disabled="togglingId === type.id" :aria-label="`${type.status === 'active' ? 'Disable' : 'Enable'} ${type.document_name}`" @change="toggle(type, $event)"><span class="dr-status-switch-track" aria-hidden="true"></span><span>{{ togglingId === type.id ? 'Updating…' : type.status === 'active' ? 'Active' : 'Inactive' }}</span></label></td>
             <td>
-              <div class="dr-table-actions">
-                <button type="button" class="dr-button dr-button--secondary" @click="edit(type)">Edit</button>
-                <button
-                  type="button"
-                  class="dr-button"
-                  :class="type.status === 'active' ? 'dr-button--danger' : 'dr-button--secondary'"
-                  :disabled="togglingId === type.id"
-                  @click="toggle(type)"
-                >
-                  {{ togglingId === type.id ? 'Updating…' : type.status === 'active' ? 'Disable' : 'Enable' }}
-                </button>
-              </div>
+              <select class="dr-row-action-select" :disabled="deletingId === type.id" :aria-label="`Actions for ${type.document_name}`" @change="handleRowAction(type, $event)"><option value="">{{ deletingId === type.id ? 'Deleting…' : 'Actions' }}</option><option value="edit">Edit</option><option value="delete">Delete</option></select>
             </td>
           </tr>
         </tbody>

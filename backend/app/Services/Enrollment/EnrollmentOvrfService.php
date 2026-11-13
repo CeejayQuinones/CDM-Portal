@@ -130,7 +130,7 @@ class EnrollmentOvrfService
         $dompdf->setPaper('letter', 'portrait');
         $dompdf->render();
         $canvas = $dompdf->getCanvas();
-        if (! $staff && $disposition === 'inline') {
+        if (! $staff) {
             $canvas->page_script(static function (int $pageNumber, int $pageCount, Canvas $page, FontMetrics $fonts): void {
                 $label = 'VIEWING PURPOSES ONLY';
                 $font = $fonts->getFont('Helvetica', 'bold');

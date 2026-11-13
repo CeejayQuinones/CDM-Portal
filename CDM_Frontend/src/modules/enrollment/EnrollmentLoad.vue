@@ -281,7 +281,7 @@ onBeforeUnmount(() => { epoch++ })
       <div class="en-actions"><button v-if="data.application.status === 'approved' && (staff || canSelect)" :disabled="busy || !selected.length" @click="act('subjects')">{{ staff ? 'Prepare / approve subject load' : 'Save selected subjects' }}</button></div>
       <template v-if="staff && data.application.status === 'approved'"><label>Assign section<select v-model="section" :disabled="busy"><option value="">Choose section</option><option v-for="item in data.sections.data" :key="item.id" :value="item.id">{{ item.section_name }} — {{ item.enrolled_count + item.reserved_count }}/{{ item.capacity }} seats</option></select></label><div v-if="data.sections.last_page > 1" class="en-actions"><button :disabled="busy || sectionPage <= 1" @click="sectionPage--; load()">Previous sections</button><button :disabled="busy || sectionPage >= data.sections.last_page" @click="sectionPage++; load()">More sections</button></div><div class="en-actions"><button :disabled="busy || !section" @click="act('assign')">Assign section</button><button :disabled="!canFinalize" @click="openConfirmation">Finalize academic enrollment</button></div></template>
       <p v-if="data.application.section">Assigned section: {{ data.application.section.section_name }}</p>
-      <p v-if="data.application.enrollment_id">Academically enrolled. <RouterLink v-if="!staff" :to="`/enrollment/cor?record=${data.application.enrollment_id}`">View COR</RouterLink></p>
+      <p v-if="data.application.enrollment_id">Academically enrolled. <RouterLink v-if="!staff" :to="{name:'enrollment-cor',query:{record:data.application.enrollment_id}}">Open registration documents</RouterLink></p>
     </template>
   </section>
 

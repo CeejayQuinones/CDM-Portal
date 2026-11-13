@@ -184,6 +184,41 @@ class StudentRecordRequirementTest extends TestCase
         ])->assertOk()->assertJsonPath('data.student_uploadable', false);
     }
 
+    public function test_registrar_can_delete_and_recreate_an_unused_document_type_but_cannot_delete_historical_types(): void
+    {
+        Sanctum::actingAs($this->user(Role::REGISTRAR_STAFF));
+        $unused = DocumentType::query()->create([
+            'document_name' => 'GIGO',
+            'description' => 'Disposable test document type.',
+            'workflow_category' => 'official_issuance',
+            'student_requestable' => true,
+            'student_uploadable' => false,
+            'processing_fee' => 25,
+            'processing_days' => 1,
+            'status' => 'inactive',
+        ]);
+
+        $snapshot = $this->deleteJson('/api/registrar/document-types/'.$unused->id)
+            ->assertOk()
+            ->assertJsonPath('data.document_name', 'GIGO')
+            ->assertJsonPath('data.status', 'inactive')
+            ->json('data');
+        $this->assertDatabaseMissing('document_types', ['id' => $unused->id]);
+
+        $this->postJson('/api/registrar/document-types', $snapshot)
+            ->assertCreated()
+            ->assertJsonPath('data.document_name', 'GIGO')
+            ->assertJsonPath('data.status', 'inactive');
+
+        $student = $this->student('26-10007', 'Protected');
+        $used = DocumentType::query()->where('document_name', 'Form 137')->firstOrFail();
+        StudentDocument::query()->create(['student_id' => $student->id, 'document_type_id' => $used->id]);
+        $this->deleteJson('/api/registrar/document-types/'.$used->id)
+            ->assertConflict()
+            ->assertJsonPath('message', 'This document type is already used by student or Enrollment records. Disable it instead so historical records remain intact.');
+        $this->assertDatabaseHas('document_types', ['id' => $used->id]);
+    }
+
     private function student(string $number, string $first): Student
     {
         $user = $this->user(Role::STUDENT);

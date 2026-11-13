@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
 use App\Models\Course;
 use App\Models\GradeAssessment;
+use App\Models\GradeLateSubmissionExtension;
 use App\Models\GradePeriodSchedule;
 use App\Models\GradeReleaseSchedule;
 use App\Models\GradeSheet;
@@ -122,6 +123,35 @@ class GradingController extends Controller
         });
 
         return $this->ok($this->grading->scheduleData($period));
+    }
+
+    public function lateExtensions(GradePeriodSchedule $gradePeriodSchedule)
+    {
+        return $this->ok($this->grading->periodLateExtensions($gradePeriodSchedule));
+    }
+
+    public function storeLateExtension(Request $request, GradePeriodSchedule $gradePeriodSchedule, GradeSheet $gradeSheet)
+    {
+        $input = $request->validate(
+            ['reason' => 'required|string|min:5|max:1000', 'expires_at' => 'required|date|after:now'],
+            [
+                'reason.required' => 'Explain why late-submission access is being granted.',
+                'reason.min' => 'The reason must contain at least 5 characters.',
+                'expires_at.required' => 'Select when late-submission access expires.',
+                'expires_at.after' => 'The expiration must be in the future.',
+            ],
+        );
+        $extension = $this->grading->grantLateExtension($request->user(), $gradePeriodSchedule, $gradeSheet, $input);
+
+        return $this->ok($this->grading->lateExtensionData($extension), 201);
+    }
+
+    public function revokeLateExtension(Request $request, GradeLateSubmissionExtension $gradeLateSubmissionExtension)
+    {
+        $input = $request->validate(['version' => 'required|integer|min:1']);
+        $extension = $this->grading->revokeLateExtension($request->user(), $gradeLateSubmissionExtension, (int) $input['version']);
+
+        return $this->ok($this->grading->lateExtensionData($extension));
     }
 
     public function classes(Request $request)

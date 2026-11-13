@@ -11,7 +11,10 @@ use Illuminate\Validation\ValidationException;
 
 class DocumentRequestBatchService
 {
-    public function __construct(private readonly PhysicalRetrievalService $retrieval) {}
+    public function __construct(
+        private readonly PhysicalRetrievalService $retrieval,
+        private readonly DocumentRequestFeeService $fees,
+    ) {}
 
     /** @param array<int, array<string, mixed>> $items */
     public function submit(Student $student, string $key, array $items): array
@@ -42,6 +45,7 @@ class DocumentRequestBatchService
                 }
             }
 
+            $requestDate = $this->fees->requestDate();
             $batch = DocumentRequestBatch::query()->create([
                 'student_id' => $student->id,
                 'idempotency_key' => $key,
@@ -55,11 +59,13 @@ class DocumentRequestBatchService
                     'document_request_batch_id' => $batch->id,
                     'document_type_id' => $type->id,
                     'quantity' => $item['quantity'],
-                    'total_fee' => $type->processing_fee * $item['quantity'],
+                    'total_fee' => $this->fees->hasRequestedToday($student->id, $type->id, $requestDate)
+                        ? $type->processing_fee * $item['quantity']
+                        : 0,
                     'purpose' => $item['purpose_category'],
                     'purpose_details' => $item['purpose_details'] ?? null,
                     'status' => 'pending',
-                    'request_date' => today(),
+                    'request_date' => $requestDate,
                 ]);
                 $documentRequest->setRelation('documentType', $type);
                 $this->retrieval->attachNewRequest($documentRequest);

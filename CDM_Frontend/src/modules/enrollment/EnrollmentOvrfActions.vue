@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { apiClient } from '../../services/apiClient'
 import { clientPlatform } from '../../config/clientPlatform'
 import EnrollmentDialog from './EnrollmentDialog.vue'
@@ -9,6 +9,7 @@ const props = defineProps({
   studentName: { type: String, default: 'Student' },
   academicTerm: { type: String, default: 'Finalized academic term' },
   readOnlyIndicator: { type: Boolean, default: false },
+  embedded: { type: Boolean, default: false },
 })
 
 const open = ref(false)
@@ -151,19 +152,34 @@ function close() {
   printWhenReady.value = false
 }
 
+function documentAction(event) {
+  const action = event.target.value
+  event.target.value = ''
+  if (action === 'download') download()
+  if (action === 'print') printPreview()
+}
+onMounted(() => { if (props.embedded) loadPreview() })
+
 onBeforeUnmount(() => {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
 })
 </script>
 
 <template>
-  <div class="en-ovrf-actions en-no-print" aria-label="Official Verification Registration Form actions">
+  <section v-if="embedded" class="en-ovrf-inline en-no-print" aria-label="OVRF document">
+    <header class="en-ovrf-inline-header"><div><p>REGISTRATION DOCUMENT</p><h2>Official Verification Registration Form</h2><span>{{ studentName }} · {{ academicTerm }}</span></div><label class="en-ovrf-inline-menu">Document actions<select aria-label="OVRF document actions" :disabled="busy || !previewUrl || !!error" value="" @change="documentAction"><option value="" disabled>Download / Print…</option><option value="download">Download OVRF</option><option value="print">Print OVRF</option></select></label></header>
+    <p class="en-ovrf-validation-note"><strong>VIEWING PURPOSES ONLY.</strong> This marking appears on your downloaded and printed copies. Physical Registrar verification, signatures, and stamping are still required.</p>
+    <p v-if="busy" class="en-ovrf-state" role="status">Loading your OVRF…</p>
+    <div v-else-if="error" class="en-ovrf-state en-ovrf-error" role="alert"><p>{{ error }}</p><button type="button" class="en-modern-outline" @click="loadPreview()">Try again</button></div>
+    <div v-else-if="previewUrl" class="en-ovrf-inline-document"><iframe ref="frame" class="en-ovrf-preview" :src="previewSource" title="Official Verification Registration Form PDF preview" @load="onPreviewLoaded" /><button v-if="clientPlatform === 'mobile'" type="button" class="en-ovrf-open-link" @click="printPreview">Open PDF in the device viewer</button><a v-else class="en-ovrf-open-link" :href="previewSource" target="_blank" rel="noopener">Open PDF in a new window</a></div>
+  </section>
+  <div v-else class="en-ovrf-actions en-no-print" aria-label="Official Verification Registration Form actions">
     <button type="button" class="en-modern-outline" :disabled="busy" @click="loadPreview()">Preview OVRF</button>
     <button type="button" class="en-modern-outline" :disabled="busy" @click="download">Download OVRF</button>
     <button type="button" class="en-modern-primary" :disabled="busy" @click="loadPreview({ print: true })">Print OVRF</button>
   </div>
 
-  <EnrollmentDialog v-if="open" class="en-ovrf-overlay" labelledby="en-ovrf-title" :busy="busy" wide @cancel="close">
+  <EnrollmentDialog v-if="open && !embedded" class="en-ovrf-overlay" labelledby="en-ovrf-title" :busy="busy" wide @cancel="close">
     <section class="en-ovrf-dialog" :class="{ 'has-preview': previewUrl && !busy && !error, compact: !previewUrl || busy || error }">
       <header>
         <div>
@@ -199,6 +215,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.en-ovrf-inline { display:grid;gap:14px;min-width:0;padding:20px;border:1px solid var(--website-border,var(--desktop-border,#d8e2dd));border-radius:14px;background:var(--website-card,var(--desktop-surface,#fff));color:var(--website-ink,var(--desktop-text,#173128)); }
+.en-ovrf-inline-header { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px; }
+.en-ovrf-inline-header p { margin:0 0 5px;font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--website-muted,var(--desktop-muted,#64766f)); }
+.en-ovrf-inline-header h2 { margin:0 0 6px;font-size:19px; }.en-ovrf-inline-header span { font-size:12px;color:var(--website-muted,var(--desktop-muted,#64766f)); }
+.en-ovrf-inline-menu { display:grid;gap:5px;font-size:11px;font-weight:700; }.en-ovrf-inline-menu select { min-height:40px;padding:8px 12px;border:1px solid var(--website-border,var(--desktop-border,#d8e2dd));border-radius:8px;background:var(--website-card,var(--desktop-surface,#fff));color:inherit;font:inherit; }
+.en-ovrf-inline-document { display:grid;grid-template-rows:minmax(0,1fr) auto;gap:10px;min-width:0;height:clamp(440px,72vh,900px); }
+.en-ovrf-inline .en-ovrf-validation-note { margin:0; }.en-ovrf-inline-menu select:focus-visible { outline:3px solid var(--website-focus,#d4a72c);outline-offset:3px; }
 .en-ovrf-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .en-ovrf-actions button { min-height: 40px; }
 :global(.enrollment-workspace .en-overlay.en-ovrf-overlay > .en-dialog) { width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: hidden; padding: 0; }

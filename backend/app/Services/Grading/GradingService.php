@@ -6,6 +6,7 @@ use App\Models\EnrollmentSubject;
 use App\Models\GradeAssessment;
 use App\Models\GradeAuditEvent;
 use App\Models\GradeCategoryWeight;
+use App\Models\GradeLateSubmissionExtension;
 use App\Models\GradePeriodSchedule;
 use App\Models\GradeScore;
 use App\Models\GradeSheet;
@@ -251,6 +252,141 @@ class GradingService
         return ['state' => $state, 'editable' => $state === 'Open', 'opens_at' => $open?->toIso8601String(), 'deadline' => $deadline?->toIso8601String()];
     }
 
+    public function activeLateExtension(GradeSheet $sheet, bool $lockForUpdate = false): ?GradeLateSubmissionExtension
+    {
+        $query = GradeLateSubmissionExtension::query()
+            ->where('grade_sheet_id', $sheet->id)
+            ->where('status', 'active')
+            ->where('expires_at', '>', now())
+            ->latest('id');
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    public function lateExtensionData(?GradeLateSubmissionExtension $extension): ?array
+    {
+        if (! $extension) {
+            return null;
+        }
+        $extension->loadMissing(['authorizedBy.profile', 'revokedBy.profile']);
+        $effectiveStatus = $extension->status === 'active' && $extension->expires_at->lessThanOrEqualTo(now()) ? 'expired' : $extension->status;
+        $name = fn (?User $user) => $user?->profile
+            ? trim($user->profile->first_name.' '.$user->profile->last_name)
+            : $user?->username;
+
+        return [
+            'id' => $extension->id,
+            'grade_sheet_id' => $extension->grade_sheet_id,
+            'reason' => $extension->reason,
+            'expires_at' => $extension->expires_at->toIso8601String(),
+            'status' => $effectiveStatus,
+            'is_active' => $effectiveStatus === 'active',
+            'authorized_by' => ['id' => $extension->authorized_by, 'name' => $name($extension->authorizedBy)],
+            'revoked_by' => $extension->revoked_by ? ['id' => $extension->revoked_by, 'name' => $name($extension->revokedBy)] : null,
+            'used_at' => $extension->used_at?->toIso8601String(),
+            'revoked_at' => $extension->revoked_at?->toIso8601String(),
+            'version' => $extension->version,
+            'created_at' => $extension->created_at?->toIso8601String(),
+        ];
+    }
+
+    public function periodLateExtensions(GradePeriodSchedule $period): array
+    {
+        $sheets = GradeSheet::query()
+            ->whereHas('sectionSubject.section', fn ($query) => $query
+                ->where('academic_year_id', $period->academic_year_id)
+                ->where('semester_id', $period->semester_id))
+            ->with([
+                'sectionSubject.subject',
+                'sectionSubject.section.course',
+                'professor.user.profile',
+                'lateSubmissionExtensions' => fn ($query) => $query->with(['authorizedBy.profile', 'revokedBy.profile'])->latest('id'),
+            ])
+            ->get()
+            ->sortBy(fn (GradeSheet $sheet) => sprintf(
+                '%s|%s|%s|%s',
+                $sheet->professor?->user?->profile?->last_name,
+                $sheet->professor?->user?->profile?->first_name,
+                $sheet->sectionSubject?->subject?->subject_code,
+                $sheet->sectionSubject?->section?->section_name,
+            ), SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->map(function (GradeSheet $sheet) {
+                $profile = $sheet->professor?->user?->profile;
+                $extensions = $sheet->lateSubmissionExtensions->map(fn ($extension) => $this->lateExtensionData($extension))->values()->all();
+
+                return [
+                    'id' => $sheet->id,
+                    'status' => $sheet->status,
+                    'professor' => ['id' => $sheet->professor_id, 'name' => trim(($profile?->first_name ?? '').' '.($profile?->last_name ?? ''))],
+                    'class' => [
+                        'subject_code' => $sheet->sectionSubject?->subject?->subject_code,
+                        'subject_name' => $sheet->sectionSubject?->subject?->subject_name,
+                        'section' => $sheet->sectionSubject?->section?->section_name,
+                        'program' => $sheet->sectionSubject?->section?->course?->course_code,
+                    ],
+                    'eligible' => in_array($sheet->status, ['draft', 'returned'], true),
+                    'active_extension' => collect($extensions)->firstWhere('is_active', true),
+                    'extensions' => $extensions,
+                ];
+            })->all();
+
+        return ['period' => $this->scheduleData($period->loadMissing(['academicYear', 'semester'])), 'sheets' => $sheets];
+    }
+
+    public function grantLateExtension(User $actor, GradePeriodSchedule $period, GradeSheet $sheet, array $input): GradeLateSubmissionExtension
+    {
+        return DB::transaction(function () use ($actor, $period, $sheet, $input) {
+            $locked = GradeSheet::query()->lockForUpdate()->with('sectionSubject.section')->findOrFail($sheet->id);
+            $section = $locked->sectionSubject->section;
+            abort_unless((int) $section->academic_year_id === (int) $period->academic_year_id && (int) $section->semester_id === (int) $period->semester_id, 404, 'Grade sheet does not belong to this grade period.');
+            abort_unless(in_array($locked->status, ['draft', 'returned'], true), 409, 'Late access can only be granted to Draft or Returned grade sheets.');
+            abort_if($this->activeLateExtension($locked, true), 409, 'This grade sheet already has active late-submission access.');
+
+            $extension = GradeLateSubmissionExtension::create([
+                'grade_sheet_id' => $locked->id,
+                'reason' => trim($input['reason']),
+                'expires_at' => $input['expires_at'],
+                'authorized_by' => $actor->id,
+            ]);
+            $this->audit($actor, 'grade_late_extension.granted', $locked, $period, [
+                'extension_id' => $extension->id,
+                'professor_id' => $locked->professor_id,
+                'section_subject_id' => $locked->section_subject_id,
+                'reason' => $extension->reason,
+                'expires_at' => $extension->expires_at->toIso8601String(),
+            ]);
+
+            return $extension->load(['authorizedBy.profile']);
+        });
+    }
+
+    public function revokeLateExtension(User $actor, GradeLateSubmissionExtension $extension, int $version): GradeLateSubmissionExtension
+    {
+        return DB::transaction(function () use ($actor, $extension, $version) {
+            $locked = GradeLateSubmissionExtension::query()->lockForUpdate()->findOrFail($extension->id);
+            abort_unless($locked->version === $version, 409, 'This late-submission access changed. Reload before continuing.');
+            abort_unless($locked->status === 'active', 409, 'Only active late-submission access can be revoked.');
+            $locked->forceFill(['status' => 'revoked', 'revoked_by' => $actor->id, 'revoked_at' => now(), 'version' => $locked->version + 1])->save();
+            $sheet = GradeSheet::with('sectionSubject.section')->findOrFail($locked->grade_sheet_id);
+            $section = $sheet->sectionSubject->section;
+            $period = GradePeriodSchedule::where(['academic_year_id' => $section->academic_year_id, 'semester_id' => $section->semester_id])->first();
+            $this->audit($actor, 'grade_late_extension.revoked', $sheet, $period, ['extension_id' => $locked->id]);
+
+            return $locked->fresh(['authorizedBy.profile', 'revokedBy.profile']);
+        });
+    }
+
+    public function consumeLateExtension(User $actor, GradeSheet $sheet, ?GradePeriodSchedule $period, GradeLateSubmissionExtension $extension): void
+    {
+        abort_unless($extension->status === 'active' && $extension->expires_at->isFuture(), 409, 'Late-submission access has expired or is no longer active.');
+        $extension->forceFill(['status' => 'used', 'used_at' => now(), 'version' => $extension->version + 1])->save();
+        $this->audit($actor, 'grade_late_extension.used', $sheet, $period, ['extension_id' => $extension->id]);
+    }
+
     public function scheduleData(?GradePeriodSchedule $schedule): ?array
     {
         if (! $schedule) {
@@ -300,6 +436,9 @@ class GradingService
         if ($sheet->status === 'returned') {
             return;
         }
+        if ($this->activeLateExtension($sheet)) {
+            return;
+        }
         $section = $sheet->sectionSubject()->with('section')->firstOrFail()->section;
         $schedule = GradePeriodSchedule::where(['academic_year_id' => $section->academic_year_id, 'semester_id' => $section->semester_id, 'status' => 'active'])->first();
         abort_unless($schedule, 409, 'No active grading schedule is configured for this term.');
@@ -325,7 +464,7 @@ class GradingService
         $sheet->load(['assessments.scores', 'weights']);
         $schedule = GradePeriodSchedule::where(['academic_year_id' => $assignment->section->academic_year_id, 'semester_id' => $assignment->section->semester_id])->first();
 
-        return ['class' => $this->classData($assignment, $roster->count(), $schedule), 'sheet' => $sheet, 'roster' => $roster, 'schedule' => $this->scheduleData($schedule), 'categories' => self::CATEGORIES];
+        return ['class' => $this->classData($assignment, $roster->count(), $schedule), 'sheet' => $sheet, 'roster' => $roster, 'schedule' => $this->scheduleData($schedule), 'late_submission_extension' => $this->lateExtensionData($this->activeLateExtension($sheet)), 'categories' => self::CATEGORIES];
     }
 
     private function classData(SectionSubject $assignment, ?int $count = null, ?GradePeriodSchedule $schedule = null): array

@@ -6,15 +6,13 @@ import { apiClient } from '../../services/apiClient'
 import { clientPlatform } from '../../config/clientPlatform'
 import { label, termLabel, safeError } from './enrollment'
 import EnrollmentLoad from './EnrollmentLoad.vue'
-import EnrollmentCor from './EnrollmentCor.vue'
-import EnrollmentOvrfActions from './EnrollmentOvrfActions.vue'
 import EnrollmentSchedule from './EnrollmentSchedule.vue'
 import WebsiteEmptyState from '../../components/website/WebsiteEmptyState.vue'
 import WebsiteLoadingState from '../../components/website/WebsiteLoadingState.vue'
 import WebsiteModuleHeader from '../../components/website/WebsiteModuleHeader.vue'
 import WebsiteSectionPanel from '../../components/website/WebsiteSectionPanel.vue'
-import WebsiteAcademicJourneyNav from '../../components/website/WebsiteAcademicJourneyNav.vue'
 import WebsiteAcademicRecordCard from '../../components/website/WebsiteAcademicRecordCard.vue'
+import EnrollmentRegistrationDocuments from './EnrollmentRegistrationDocuments.vue'
 const isWebsitePresentation=clientPlatform==='web'
 const route=useRoute(),auth=useAuthStore(),data=ref(null),record=ref(null),application=ref(null),busy=ref(false),error=ref(''),page=ref(1)
 const subjects=computed(()=>route.name==='enrollment-subjects'),cor=computed(()=>route.name==='enrollment-cor')
@@ -25,11 +23,12 @@ const scheduleRows=computed(()=>(record.value?.subjects||[]).map(subject=>subjec
 let epoch=0
 async function load(){const v=++epoch;busy.value=true;error.value='';record.value=null;application.value=null;try{const r=await apiClient.get(subjects.value?'/enrollment/applications/mine':'/enrollment/academic/records',{params:{page:page.value}});if(v!==epoch)return;data.value=r.data.data;if(!subjects.value && route.query.record)await openRecord(Number(route.query.record))}catch(e){if(v===epoch)error.value=safeError(e)}finally{if(v===epoch)busy.value=false}}
 async function openRecord(id){const v=++epoch;busy.value=true;error.value='';try{const r=await apiClient.get(`/enrollment/academic/records/${id}`);if(v===epoch)record.value=r.data.data}catch(e){if(v===epoch)error.value=safeError(e)}finally{if(v===epoch)busy.value=false}}
-watch(()=>[route.name,auth.currentUser?.id],()=>{data.value=null;page.value=1;load()},{immediate:true});onBeforeUnmount(()=>{epoch++})
+watch(()=>[route.name,auth.currentUser?.id],()=>{data.value=null;page.value=1;if(!cor.value)load();else epoch++},{immediate:true});onBeforeUnmount(()=>{epoch++})
 </script>
 <template>
+  <EnrollmentRegistrationDocuments v-if="cor" />
+  <template v-else>
   <WebsiteModuleHeader v-if="isWebsitePresentation" eyebrow="Enrollment" :title="pageTitle" :description="pageDescription" />
-  <WebsiteAcademicJourneyNav v-if="isWebsitePresentation" />
   <header v-else class="page-header"><p class="page-kicker">Enrollment</p><h1 class="page-title">{{ pageTitle }}</h1></header>
   <p v-if="error" class="en-card" role="alert">{{ error }} <button @click="load">Reload</button></p>
   <WebsiteLoadingState v-if="isWebsitePresentation && busy && !data" :label="`Loading ${pageTitle}`" />
@@ -51,10 +50,9 @@ watch(()=>[route.name,auth.currentUser?.id],()=>{data.value=null;page.value=1;lo
   <div v-if="application && isWebsitePresentation" class="ui4-selected-record"><span>Viewing approved subject load</span><button type="button" @click="application=null">Close subject load</button></div>
   <EnrollmentLoad v-if="application" :application-id="application"/>
   <div v-if="record && isWebsitePresentation" class="ui4-selected-record"><span>Viewing {{ termLabel(record) }}</span><button type="button" @click="record=null">Close record</button></div>
-  <EnrollmentCor v-if="record && cor" :record="record"/>
-  <EnrollmentOvrfActions v-if="record && cor" :enrollment-id="record.id" :student-name="record.name" :academic-term="`${record.academic_year} · ${record.semester}`" read-only-indicator />
-  <WebsiteSectionPanel v-else-if="record && isWebsitePresentation" :title="`${record.section} · ${record.academic_year}`" :description="record.semester"><EnrollmentSchedule :schedules="scheduleRows"/></WebsiteSectionPanel>
+  <WebsiteSectionPanel v-if="record && isWebsitePresentation" :title="`${record.section} · ${record.academic_year}`" :description="record.semester"><EnrollmentSchedule :schedules="scheduleRows"/></WebsiteSectionPanel>
   <div v-else-if="record" class="en-card"><h2>{{ record.section }} · {{ record.academic_year }} · {{ record.semester }}</h2><EnrollmentSchedule :schedules="scheduleRows"/></div>
+  </template>
 </template>
 <style scoped>
 .ui4-record-list { display: grid; gap: 10px; }

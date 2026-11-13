@@ -88,7 +88,7 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
     const button=(root,text)=>all(root,'button').find(n=>textOf(n).trim()===text)
     const click=async(root,text)=>{const b=button(root,text);assert.ok(b,'Missing button '+text);assert.ok(!b.props.disabled,'Disabled '+text);await b.props.onClick();await settle()}
     const period={id:1,academic_year_id:1,semester_id:1,academic_year:'2026–2027',semester:'First',state:'open',enabled:false,opens_at:'2026-01-01T00:00:00Z',closes_at:'2027-01-01T00:00:00Z'}
-    const state={academic_ready:true,eligible:true,reason:null,applications_enabled:true,period,enrollments:[],student:{id:7,name:'Converted Student',student_number:'26-001',year_level:1,course:{course_name:'Computing'},curriculum:{curriculum_name:'Computing 2026'}}}
+    const state={academic_ready:true,eligible:true,reason:null,applications_enabled:true,period,enrollments:[],student:{id:7,name:'Converted Student',student_number:'26-001',year_level:1,course:{course_name:'Computing',years:4},curriculum:{curriculum_name:'Computing 2026'}}}
     const response=data=>({data:{success:true,data}})
     const pagination=data=>({data,current_page:1,last_page:1,total:data.length})
     let record=null
@@ -97,9 +97,9 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       if(url==='/enrollment/academic/applications/1')return response({application:{...record},load:{candidates:[],standard_subject_ids:[],selected_subject_ids:[]},sections:pagination([])})
       if(url==='/enrollment/status')return response(state)
       if(url==='/enrollment/applications/mine')return response(pagination(record?[record]:[]))
-      if(url==='/enrollment/applications'&&method==='post'){record={id:1,period_id:1,period,classification:payload.classification,status:'draft',version:1};return response({...record})}
+      if(url==='/enrollment/applications'&&method==='post'){record={id:1,period_id:1,period,classification:payload.classification,year_level:1,status:'draft',version:1};return response({...record})}
       if(url==='/enrollment/applications/1')return response({application:{...record},requirements:[]})
-      if(url.endsWith('/save')){record={...record,classification:payload.classification,version:record.version+1};return response({...record})}
+      if(url.endsWith('/save')){record={...record,classification:payload.classification,year_level:payload.year_level,version:record.version+1};return response({...record})}
       if(url.endsWith('/submit')){record={...record,status:'submitted',version:record.version+1};return response({...record})}
       if(['/review','/approve','/reject'].some(s=>url.endsWith(s))){record={...record,status:url.endsWith('/review')?'under_review':url.endsWith('/approve')?'approved':'rejected',review_notes:payload.notes,version:record.version+1};return response({...record})}
       if(url==='/enrollment/applications')return response({applications:pagination(record?[record]:[]),courses:[],periods:[period]})
@@ -115,6 +115,7 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
         await settle();assert.match(textOf(root),/26-001/);await click(root,'Start New Enrollment Application');assert.match(textOf(root),/Personal details/)
         await click(root,'Continue');const irregular=all(root,'input').find(n=>n.props.value==='irregular');irregular.props['onUpdate:modelValue']('irregular');await settle()
         await click(root,'Save draft');assert.equal(record.classification,'irregular');await click(root,'Continue');assert.match(textOf(root),/Customized subject load/);assert.match(textOf(root),/Final review/)
+        const nextYear=all(root,'input').find(node=>node.props.name==='year-level'&&node.props.value===2);assert.ok(nextYear);nextYear.props['onUpdate:modelValue'](2);await settle();assert.ok(button(root,'Submit application').props.disabled);await click(root,'Save draft');assert.equal(record.year_level,2);assert.equal(state.student.year_level,1)
         await click(root,'Submit application');assert.ok(all(root,'div').some(n=>n.props.role==='dialog'));assert.equal(apiState.calls.filter(c=>c.url.endsWith('/submit')).length,0)
         await click(root,'Go back');await click(root,'Submit application');await click(root,'Confirm submit');assert.match(textOf(root),/awaiting staff review/);assert.equal(apiState.calls.filter(c=>c.url.endsWith('/submit')).length,1)
       }finally{app.unmount()}
@@ -223,11 +224,11 @@ test('Enrollment workflow preserves role boundaries, identity and controlled UI 
       auth.currentRole=ROLES.REGISTRAR_STAFF;await router.push('/enrollment/periods');apiState.handler=handler;apiState.calls=[]
       const {root,app}=mount();try{await settle();await click(root,'Manage window');const checkbox=all(root,'input').find(node=>node.props.type==='checkbox');assert.ok(checkbox);checkbox.props['onUpdate:modelValue'](true);await settle();const periodForm=all(root,'form').find(node=>/Save period/.test(textOf(node)));await periodForm.props.onSubmit({preventDefault(){}});await settle();assert.match(textOf(root),/Open this enrollment window/);assert.equal(apiState.calls.filter(call=>call.method==='put').length,0);await click(root,'Confirm period change');assert.equal(apiState.calls.filter(call=>call.url==='/enrollment/periods/1'&&call.method==='put').length,1)}finally{app.unmount()}
     })
-    await t.test('both staff roles confirm review and approval, with rejection notes required',async()=>{
+    await t.test('both staff roles confirm review and approval through the compact decision control',async()=>{
       for(const role of [ROLES.ADMIN,ROLES.REGISTRAR_STAFF]){
         auth.currentRole=role;await router.push('/enrollment/applications');apiState.handler=handler
         record={id:1,period_id:1,period,status:'submitted',classification:'regular',version:2,student:{student_number:'26-001'},course:{course_name:'Computing'}}
-        const {root,app}=mount();try{await settle();await click(root,'Review');let dialogs=all(root,'div').filter(n=>n.props.role==='dialog');assert.equal(dialogs.length,1);assert.match(textOf(dialogs[0]),/Application #1/);assert.match(textOf(dialogs[0]),/26-001/);assert.equal(all(root,'div').filter(n=>n.props.class==='en-card' && /Application #1/.test(textOf(n))).length,0);await click(root,'Close');assert.equal(all(root,'div').filter(n=>n.props.role==='dialog').length,0);assert.doesNotMatch(textOf(root),/Application #1/);await click(root,'Review');assert.ok(button(root,'Reject').props.disabled);await click(root,'Start Review');assert.equal(record.status,'submitted');await click(root,'Confirm');assert.equal(record.status,'under_review');await click(root,'Approve');await click(root,'Confirm');assert.equal(record.status,'approved');assert.equal(button(root,'Reject'),undefined)}finally{app.unmount()}
+        const {root,app}=mount();try{await settle();await click(root,'Review');let dialogs=all(root,'div').filter(n=>n.props.role==='dialog');assert.equal(dialogs.length,1);assert.match(textOf(dialogs[0]),/Application #1/);assert.match(textOf(dialogs[0]),/26-001/);assert.equal(all(root,'div').filter(n=>n.props.class==='en-card' && /Application #1/.test(textOf(n))).length,0);await click(root,'Close');assert.equal(all(root,'div').filter(n=>n.props.role==='dialog').length,0);assert.doesNotMatch(textOf(root),/Application #1/);await click(root,'Review');await click(root,'Start review');assert.equal(record.status,'submitted');await click(root,'Confirm');assert.equal(record.status,'under_review');assert.match(textOf(root),/Approve application/);assert.match(textOf(root),/Reject application/);await click(root,'Continue');await click(root,'Confirm');assert.equal(record.status,'approved');assert.equal(button(root,'Continue'),undefined)}finally{app.unmount()}
       }
     })
     await t.test('errors stay safe and changing account discards old Student responses',async()=>{

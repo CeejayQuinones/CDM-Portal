@@ -77,7 +77,7 @@ class EnrollmentEligibilityService
             'email' => $profile->email, 'contact_number' => $profile->contact_number,
             'student_number' => $student->student_number, 'year_level' => $student->year_level,
             'student_status' => $student->student_status,
-            'course' => $student->course->only(['id', 'course_code', 'course_name']),
+            'course' => $student->course->only(['id', 'course_code', 'course_name', 'years']),
             'curriculum' => $student->curriculum->only(['id', 'curriculum_code', 'curriculum_name']),
         ];
         $state['enrollments'] = $student->enrollments()->with(['academicYear', 'semester'])->latest('enrollment_date')->latest('id')->limit(10)->get()

@@ -52,7 +52,7 @@ test('submission page retains authoritative details and submission controls', as
   assert.match(view, /@click="saveFinalWeights"/)
   assert.match(view, /:disabled="saving\|\|!canSubmit"/)
   assert.match(view, /@click="submitSheet"/)
-  assert.match(view, /canSubmit=computed\(\(\)=>readiness\.value\?\.ready&&submissionWindow\.value==='Open'/)
+  assert.match(view, /canSubmit=computed\(\(\)=>readiness\.value\?\.ready&&\['Open','Late access'\]\.includes\(submissionWindow\.value\)/)
 })
 
 test('submission layout is stable and respects reduced motion', async () => {

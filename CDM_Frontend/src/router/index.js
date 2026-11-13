@@ -33,6 +33,7 @@ const RegistrarAppointmentsView = () => import('../modules/document-request/Regi
 const RegistrarDocumentRequestHistoryView = () =>
   import('../modules/document-request/RegistrarDocumentRequestHistoryView.vue')
 const StudentRecordsView = () => import('../modules/student-management/StudentRecordsView.vue')
+const StudentRosterImportView = () => import('../modules/student-management/StudentRosterImportView.vue')
 const StudentProfileView = () => import('../modules/student-management/StudentProfileView.vue')
 const StudentDocumentsView = () => import('../modules/student-management/StudentDocumentsView.vue')
 const PhysicalRecordsView = () => import('../modules/student-management/PhysicalRecordsView.vue')
@@ -165,7 +166,7 @@ const routes = [
       protectedRoute({ path: 'enrollment/records', name: 'enrollment-records', component: EnrollmentAcademicView, meta: { title: 'Enrollment Records', roles: ROUTE_ROLES['enrollment-records'] } }),
       protectedRoute({ path: 'enrollment/subjects', name: 'enrollment-subjects', component: EnrollmentAcademicView, meta: { title: 'Subjects', roles: ROUTE_ROLES['enrollment-subjects'] } }),
       protectedRoute({ path: 'enrollment/schedule', name: 'enrollment-schedule', component: EnrollmentAcademicView, meta: { title: 'My Schedule', roles: ROUTE_ROLES['enrollment-schedule'] } }),
-      protectedRoute({ path: 'enrollment/cor', name: 'enrollment-cor', component: EnrollmentAcademicView, meta: { title: 'COR', roles: ROUTE_ROLES['enrollment-cor'] } }),
+      protectedRoute({ path: 'enrollment/registration-documents', alias: 'enrollment/cor', name: 'enrollment-cor', component: EnrollmentAcademicView, meta: { title: 'Registration Documents', roles: ROUTE_ROLES['enrollment-cor'] } }),
       protectedRoute({ path: 'enrollment/teaching', name: 'enrollment-teaching', component: EnrollmentAcademicView, meta: { title: 'My Teaching Assignments', roles: ROUTE_ROLES['enrollment-teaching'] } }),
       protectedRoute({ path: 'enrollment/courses', name: 'enrollment-courses', component: EnrollmentCourses, meta: { title: 'Courses Offered', roles: ROUTE_ROLES['enrollment-courses'], platforms: ['web'] } }),
       protectedRoute({ path: 'enrollment/courses/:courseId/curriculum', name: 'enrollment-curriculum', component: EnrollmentCurriculum, meta: { title: 'Program Curriculum', roles: ROUTE_ROLES['enrollment-curriculum'], platforms: ['web'] } }),
@@ -277,6 +278,12 @@ const routes = [
           title: 'Student Management',
           roles: ROUTE_ROLES['student-management'],
         },
+      }),
+      protectedRoute({
+        path: 'student-management/import',
+        name: 'student-roster-import',
+        component: StudentRosterImportView,
+        meta: { title: 'Import Student Roster', roles: ROUTE_ROLES['student-roster-import'] },
       }),
       protectedRoute({
         path: 'student-management/reports',

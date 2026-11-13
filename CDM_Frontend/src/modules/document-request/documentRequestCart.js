@@ -6,6 +6,16 @@ export function addCartDocument(cart, type) {
     overridePurpose: false, purposeCategory: '', purposeDetails: '' }]
 }
 
+export function estimatedItemFee(item) {
+  return item.type.first_request_free_today
+    ? 0
+    : Number(item.type.processing_fee || 0) * Number(item.quantity || 0)
+}
+
+export function estimatedCartFee(cart) {
+  return cart.reduce((total, item) => total + estimatedItemFee(item), 0)
+}
+
 export function cartIsComplete(cart, sharedCategory, sharedDetails) {
   if (!cart.length || !DOCUMENT_REQUEST_PURPOSES.includes(sharedCategory)) return false
   if (sharedCategory === 'Others' && (!sharedDetails.trim() || sharedDetails.trim().length > 500)) return false

@@ -57,6 +57,13 @@ test('document types use search, a records table, and modal create or edit flow'
     assert.match(types, new RegExp(`<th scope="col">${column}`))
   }
   assert.match(types, /document-type-dialog-title/)
+  assert.match(types, /@change="handleRowAction\(type, \$event\)"/)
+  assert.match(types, /@click="undoDelete"/)
+  assert.match(types, /Only unused document types can be deleted/)
+  assert.match(types, /class="dr-status-switch"/)
+  assert.match(types, /:disabled="!deletedType \|\| undoing"/)
+  assert.match(styles, /\.document-type-toast-region \{[\s\S]*position: fixed;/)
+  assert.match(styles, /\.document-type-undo-dock \{[\s\S]*position: fixed;/)
 })
 
 test('shared tokens, modal motion, route motion, and menu motion respect reduced motion', () => {

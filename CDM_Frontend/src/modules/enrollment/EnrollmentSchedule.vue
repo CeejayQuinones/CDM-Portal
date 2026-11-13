@@ -72,9 +72,9 @@ const print = () => window.print()
     </div>
 
     <template v-else-if="view==='timetable'">
-      <div v-if="isDesktopPresentation && scheduled.length" class="en-weekly-timetable" role="region" aria-label="Weekly section timetable" tabindex="0">
-        <div class="en-weekly-head" :style="{ gridTemplateColumns: `64px repeat(${visibleDays.length}, minmax(120px, 1fr))` }"><span>Time</span><strong v-for="day in visibleDays" :key="day">{{ day }}</strong></div>
-        <div class="en-weekly-body" :style="{ gridTemplateColumns: `64px repeat(${visibleDays.length}, minmax(120px, 1fr))`, height: `${timetableHeight}px` }">
+      <div v-if="isDesktopPresentation && scheduled.length" class="en-weekly-timetable" role="region" aria-label="Weekly section timetable" tabindex="0" :style="{ '--schedule-days': visibleDays.length }">
+        <div class="en-weekly-head"><span>Time</span><strong v-for="day in visibleDays" :key="day">{{ day }}</strong></div>
+        <div class="en-weekly-body" :style="{ height: `${timetableHeight}px` }">
           <div class="en-time-axis"><span v-for="minute in timeLabels" :key="minute" :style="{ top: `${(minute-rangeStart)*(52/60)}px` }">{{ timeLabel(minute) }}</span></div>
           <div v-for="day in visibleDays" :key="day" class="en-day-column"><article v-for="schedule in scheduled.filter(item=>item.day===day)" :key="schedule.id" class="en-timetable-block" :class="{ 'has-overlap': overlapKeys.has(scheduleKey(schedule)) }" :style="blockStyle(schedule)"><strong>{{ schedule.subject?.subject_code }}</strong><span>{{ schedule.start_time.slice(0,5) }}–{{ schedule.end_time.slice(0,5) }}</span><small>{{ schedule.room }} · {{ professorName(schedule) }}</small><slot name="actions" :schedule="schedule"/></article></div>
         </div>

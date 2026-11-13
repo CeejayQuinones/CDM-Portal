@@ -68,6 +68,7 @@ export const ROUTE_ROLES = Object.freeze({
   'grading-submission': [ROLES.PROFESSOR],
   'grading-student-history': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'student-management': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
+  'student-roster-import': [ROLES.REGISTRAR_STAFF],
   'student-record-reports': [ROLES.REGISTRAR_STAFF, ROLES.ADMIN],
   'physical-records': [ROLES.REGISTRAR_STAFF],
 })
@@ -251,7 +252,7 @@ export const NAVIGATION_ITEMS = Object.freeze([
       { name: 'enrollment-records', label: 'Enrollment Records', path: '/enrollment/records', roles: ROUTE_ROLES['enrollment-records'] },
       { name: 'enrollment-subjects', label: 'Subjects', path: '/enrollment/subjects', roles: ROUTE_ROLES['enrollment-subjects'] },
       { name: 'enrollment-schedule', label: 'My Schedule', path: '/enrollment/schedule', roles: ROUTE_ROLES['enrollment-schedule'] },
-      { name: 'enrollment-cor', label: 'COR', path: '/enrollment/cor', roles: ROUTE_ROLES['enrollment-cor'] },
+      { name: 'enrollment-cor', label: 'Registration Documents', path: '/enrollment/registration-documents', roles: ROUTE_ROLES['enrollment-cor'] },
       { name: 'enrollment-teaching', label: 'My Teaching Assignments', path: '/enrollment/teaching', roles: ROUTE_ROLES['enrollment-teaching'] },
 
     ],
@@ -285,6 +286,12 @@ export const NAVIGATION_ITEMS = Object.freeze([
         path: '/student-management',
         activeRoutes: ['student-management', 'student-details', 'student-documents'],
         roles: ROUTE_ROLES['student-management'],
+      },
+      {
+        name: 'student-roster-import',
+        label: 'Import roster',
+        path: '/student-management/import',
+        roles: ROUTE_ROLES['student-roster-import'],
       },
       {
         name: 'physical-records',

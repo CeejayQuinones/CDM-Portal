@@ -120,11 +120,14 @@ class GradingWorkflowService
             abort_unless(in_array($locked->status, ['draft', 'returned'], true), 409, 'Only Draft or Returned grade sheets can be submitted.');
             abort_unless($locked->version === $version, 409, 'This grade sheet changed. Reload before submitting.');
             $section = $locked->sectionSubject()->with('section')->firstOrFail()->section;
-            $schedule = GradePeriodSchedule::where(['academic_year_id' => $section->academic_year_id, 'semester_id' => $section->semester_id, 'status' => 'active'])->first();
-            abort_unless($schedule, 409, 'Grade submission is not open yet.');
-            $submissionWindow = $this->grading->periodState($schedule, 'finals');
-            abort_if($submissionWindow['state'] === 'Upcoming', 409, 'Grade submission is not open yet.');
-            abort_if($submissionWindow['state'] === 'Closed', 409, 'Grade submission period has closed.');
+            $schedule = GradePeriodSchedule::where(['academic_year_id' => $section->academic_year_id, 'semester_id' => $section->semester_id])->first();
+            $lateExtension = $this->grading->activeLateExtension($locked, true);
+            if (! $lateExtension) {
+                abort_unless($schedule?->status === 'active', 409, 'Grade submission is not open yet.');
+                $submissionWindow = $this->grading->periodState($schedule, 'finals');
+                abort_if($submissionWindow['state'] === 'Upcoming', 409, 'Grade submission is not open yet.');
+                abort_if($submissionWindow['state'] === 'Closed', 409, 'Grade submission period has closed.');
+            }
             $computed = $this->compute($locked);
             abort_unless($computed['ready'], 422, implode(' ', $computed['errors']));
             $attemptNumber = (int) GradeSubmissionAttempt::where('grade_sheet_id', $locked->id)->lockForUpdate()->max('attempt_number') + 1;
@@ -134,6 +137,9 @@ class GradingWorkflowService
             }
             $oldStatus = $locked->status;
             $locked->forceFill(['status' => 'submitted', 'submitted_at' => now(), 'submitted_by' => $actor->id, 'reviewed_at' => null, 'reviewed_by' => null, 'returned_at' => null, 'returned_by' => null, 'return_reason' => null, 'version' => $locked->version + 1])->save();
+            if ($lateExtension) {
+                $this->grading->consumeLateExtension($actor, $locked, $schedule, $lateExtension);
+            }
             $this->grading->audit($actor, $attemptNumber > 1 ? 'grade_sheet.resubmitted' : 'grade_sheet.submitted', $locked, null, ['old_status' => $oldStatus, 'new_status' => 'submitted', 'attempt_number' => $attemptNumber, 'version' => $locked->version]);
 
             return $locked->fresh(['latestSubmission.students']);
@@ -202,19 +208,31 @@ class GradingWorkflowService
     {
         return DB::transaction(function () use ($actor, $sheet, $action, $version, $reason) {
             $locked = GradeSheet::lockForUpdate()->findOrFail($sheet->id);
-            abort_unless($locked->status === 'submitted', 409, 'Only Submitted grade sheets can be reviewed.');
             abort_unless($locked->version === $version, 409, 'This grade sheet changed. Reload before reviewing.');
+            $oldStatus = $locked->status;
+            if ($action === 'return') {
+                abort_unless(in_array($oldStatus, ['submitted', 'approved'], true), 409, 'Only Submitted or Approved unpublished grade sheets can be returned.');
+                if ($oldStatus === 'approved') {
+                    $scheduledForRelease = GradeReleaseItem::query()
+                        ->join('grade_release_schedules', 'grade_release_schedules.id', '=', 'grade_release_items.grade_release_schedule_id')
+                        ->where('grade_release_items.grade_sheet_id', $locked->id)
+                        ->where('grade_release_schedules.status', 'scheduled')
+                        ->exists();
+                    abort_if($scheduledForRelease, 409, 'This approved grade sheet is already in a scheduled release. Remove it from that release before returning it for correction.');
+                }
+            } else {
+                abort_unless($action === 'approve' && $oldStatus === 'submitted', 409, 'Only Submitted grade sheets can be approved.');
+            }
             $this->assertSnapshotValid($locked);
             if ($action === 'return') {
                 abort_unless(trim((string) $reason) !== '', 422, 'A return reason is required.');
                 $locked->forceFill(['status' => 'returned', 'returned_at' => now(), 'returned_by' => $actor->id, 'return_reason' => trim($reason), 'reviewed_at' => now(), 'reviewed_by' => $actor->id, 'version' => $locked->version + 1])->save();
-                $event = 'grade_sheet.returned';
+                $event = $oldStatus === 'approved' ? 'grade_sheet.approved_returned_for_correction' : 'grade_sheet.returned';
             } else {
-                abort_unless($action === 'approve', 404);
                 $locked->forceFill(['status' => 'approved', 'reviewed_at' => now(), 'reviewed_by' => $actor->id, 'version' => $locked->version + 1])->save();
                 $event = 'grade_sheet.approved';
             }
-            $this->grading->audit($actor, $event, $locked, null, ['old_status' => 'submitted', 'new_status' => $locked->status, 'reason' => $reason, 'version' => $locked->version]);
+            $this->grading->audit($actor, $event, $locked, null, ['old_status' => $oldStatus, 'new_status' => $locked->status, 'reason' => $reason, 'version' => $locked->version]);
 
             return $locked->fresh(['latestSubmission.students']);
         });

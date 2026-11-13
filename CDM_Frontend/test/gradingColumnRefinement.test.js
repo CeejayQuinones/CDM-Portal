@@ -65,7 +65,8 @@ test('borderless score cells retain accessible focus and keyboard editing', asyn
     read('src/modules/grading/grading.css'),
   ])
 
-  assert.match(view, /v-for="\(column,j\) in gradeTableModel\.assessmentColumns"/)
+  assert.match(view, /<template v-for="column in gradeTableModel\.periodColumns"/)
+  assert.match(view, /column\.scoreIndex/)
   assert.match(view, /@keydown="handleScoreKeydown"/)
   assert.match(view, /if\(event\.key==='Enter'\)[\s\S]*moveScoreSelection\(1,0\)/)
   assert.match(view, /:disabled="!editable\|\|editingColumns\|\|recoveryPending"/)

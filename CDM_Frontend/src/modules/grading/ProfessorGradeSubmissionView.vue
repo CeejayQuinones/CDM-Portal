@@ -9,13 +9,14 @@ import './grading.css'
 const route=useRoute(),router=useRouter()
 const loading=ref(true),saving=ref(false),error=ref(''),notice=ref(''),classes=ref([]),workspace=ref(null),readiness=ref(null)
 const selectedClassId=ref(route.query.class?String(route.query.class):'')
-const submissionWindow=computed(()=>{const state=workspace.value?.schedule?.finals_state?.state;return state==='Open'?'Open':state==='Closed'?'Closed':'Not Open'})
+const hasLateAccess=computed(()=>Boolean(workspace.value?.late_submission_extension?.is_active))
+const submissionWindow=computed(()=>{if(hasLateAccess.value)return'Late access';const state=workspace.value?.schedule?.finals_state?.state;return state==='Open'?'Open':state==='Closed'?'Closed':'Not Open'})
 const issueGroups=computed(()=>groupReadinessIssues(readiness.value?.errors||[],workspace.value?.sheet?.assessments||[]))
 const issueSummary=computed(()=>summarizeReadinessGroups(issueGroups.value))
 const finalWeightTotal=computed(()=>Number(workspace.value?.sheet?.midterm_weight||0)+Number(workspace.value?.sheet?.finals_weight||0))
-const editable=computed(()=>!saving.value&&['draft','returned'].includes(workspace.value?.sheet?.status)&&(workspace.value?.sheet?.status==='returned'||workspace.value?.schedule?.finals_state?.editable))
-const canSubmit=computed(()=>readiness.value?.ready&&submissionWindow.value==='Open'&&['draft','returned'].includes(workspace.value?.sheet?.status))
-const blockedReason=computed(()=>{if(canSubmit.value)return 'All grading requirements are complete and the submission window is open.';if(!readiness.value?.ready)return `Resolve ${issueSummary.value.total} ${issueSummary.value.total===1?'requirement':'requirements'} before submitting.`;if(submissionWindow.value!=='Open')return `Submission is unavailable because the submission window is ${submissionWindow.value.toLowerCase()}.`;return 'This grade sheet cannot be submitted in its current status.'})
+const editable=computed(()=>!saving.value&&['draft','returned'].includes(workspace.value?.sheet?.status)&&(workspace.value?.sheet?.status==='returned'||workspace.value?.schedule?.finals_state?.editable||hasLateAccess.value))
+const canSubmit=computed(()=>readiness.value?.ready&&['Open','Late access'].includes(submissionWindow.value)&&['draft','returned'].includes(workspace.value?.sheet?.status))
+const blockedReason=computed(()=>{if(canSubmit.value)return hasLateAccess.value?'All grading requirements are complete and Registrar-authorized late access is active.':'All grading requirements are complete and the submission window is open.';if(!readiness.value?.ready)return `Resolve ${issueSummary.value.total} ${issueSummary.value.total===1?'requirement':'requirements'} before submitting.`;if(!['Open','Late access'].includes(submissionWindow.value))return `Submission is unavailable because the submission window is ${submissionWindow.value.toLowerCase()}.`;return 'This grade sheet cannot be submitted in its current status.'})
 const fmt=value=>value?new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'Not configured'
 
 async function loadWorkspace(classId){if(!classId){workspace.value=null;readiness.value=null;return}loading.value=true;error.value='';try{const assigned=classes.value.find(item=>String(item.id)===String(classId));if(!assigned)throw new Error('Select one of your assigned classes.');workspace.value=await gradingService.workspace(assigned.id);readiness.value=await gradingService.readiness(workspace.value.sheet.id);selectedClassId.value=String(assigned.id);await router.replace({name:'grading-submission',query:{class:assigned.id}})}catch(exception){workspace.value=null;readiness.value=null;error.value=gradingError(exception)}finally{loading.value=false}}
@@ -57,6 +58,7 @@ onMounted(load)
           <div><p>{{workspace.class.subject_code}} · {{workspace.class.section}}</p><h2 id="submission-subject-title">{{workspace.class.subject_name}}</h2><span>{{workspace.class.academic_year}} · {{workspace.class.semester}}</span></div>
           <dl><div><dt>Grade sheet</dt><dd>{{workspace.sheet.status}}</dd></div><div><dt>Students</dt><dd>{{workspace.roster.length}}</dd></div><div><dt>Finals deadline</dt><dd>{{fmt(workspace.schedule?.finals_state?.deadline)}}</dd></div></dl>
         </section>
+        <p v-if="hasLateAccess" class="grading-alert success late-access-notice" role="status"><strong>Registrar-authorized late access</strong><span>Submit by {{fmt(workspace.late_submission_extension.expires_at)}} · {{workspace.late_submission_extension.reason}}</span></p>
 
         <section class="submission-readiness-panel expanded" aria-labelledby="submission-readiness-title">
           <header class="submission-readiness-header">

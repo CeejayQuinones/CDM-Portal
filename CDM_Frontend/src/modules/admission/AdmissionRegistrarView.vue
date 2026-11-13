@@ -169,7 +169,10 @@ onMounted(async () => {
 .admission-status-tabs button.active { border-bottom-color: var(--cdm-primary); color: var(--cdm-primary); }
 .admission-status-tabs button:focus-visible { outline: 2px solid var(--cdm-focus); outline-offset: -2px; }
 .admission-record-toolbar :deep(.cdm-card__content) { display: grid; gap: 12px; }
-.admission-search-form { display: grid; grid-template-columns: minmax(240px,1fr) auto auto; align-items: end; gap: 8px; }
+.admission-search-form { align-items: end; display: grid; gap: 8px; grid-template-columns: minmax(0,1fr) repeat(2,max-content); }
+.admission-search-form > :deep(.cdm-field) { margin: 0; min-width: 0; width: 100%; }
+.admission-search-form > :deep(.cdm-field__control),
+.admission-search-form > :deep(.cdm-button) { box-sizing: border-box; height: var(--cdm-control-md); min-height: var(--cdm-control-md); }
 .filter-count { min-width: 19px; min-height: 19px; display: inline-grid; place-items: center; border-radius: 999px; background: var(--cdm-primary); color: var(--cdm-on-primary); font-size: 10px; }
 .admission-filter-grid { display: grid; grid-template-columns: repeat(3,minmax(150px,1fr)) auto auto; align-items: end; gap: 10px; padding-top: 12px; border-top: 1px solid var(--cdm-border); }
 .admission-check { min-height: var(--cdm-control-md); display: flex; align-items: center; gap: 8px; color: var(--cdm-text-secondary); font-size: 12px; font-weight: 700; }
@@ -185,7 +188,7 @@ onMounted(async () => {
 .admission-record-layout :deep(td strong),.admission-record-layout :deep(td small) { display: block; }
 .admission-record-layout :deep(td small) { margin-top: 4px; color: var(--cdm-text-muted); font-size: 10px; }
 .admission-record-layout :deep(tr.selected td) { background: var(--cdm-primary-soft); }
-.admission-row-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.admission-row-actions { display: flex; align-items: center; flex-wrap: nowrap; gap: 5px; justify-content: space-between; min-width: 0; width: 100%; }
 .admission-row-actions details { position: relative; }
 .admission-row-actions summary { cursor: pointer; color: var(--cdm-primary); font-size: 11px; font-weight: 700; }
 .admission-row-actions details button { display: block; width: 100%; padding: 7px; border: 0; background: transparent; color: var(--cdm-text); text-align: left; }
@@ -207,6 +210,7 @@ onMounted(async () => {
 .admission-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; color: var(--cdm-text-muted); font-size: 11px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 1180px) { .admission-record-layout.has-detail { grid-template-columns: 1fr; } .admission-record-detail { position: static; max-height: none; } }
-@media (max-width: 760px) { .admission-search-form { grid-template-columns: 1fr 1fr; } .admission-search-form :deep(.cdm-field) { grid-column: 1 / -1; } .admission-filter-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) { .admission-search-form { grid-template-columns: 1fr 1fr; } .admission-search-form :deep(.cdm-field) { grid-column: 1 / -1; } .admission-search-form > :deep(.cdm-button) { width: 100%; } .admission-filter-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .admission-row-actions { flex-wrap: wrap; justify-content: flex-start; } }
 @media (max-width: 480px) { .admission-search-form,.admission-filter-grid { grid-template-columns: 1fr; } .admission-batch-bar :deep(.cdm-card__content) { align-items: stretch; flex-direction: column; } .admission-pagination { justify-content: space-between; } }
 </style>

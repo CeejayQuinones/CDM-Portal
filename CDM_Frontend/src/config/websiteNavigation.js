@@ -20,7 +20,7 @@ const CHILD_DESCRIPTIONS = Object.freeze({
   'enrollment-status': 'Track the current enrollment application',
   'enrollment-subjects': 'Review subjects in the finalized enrollment',
   'enrollment-schedule': 'See class times and assigned rooms',
-  'enrollment-cor': 'View the Certificate of Registration',
+  'enrollment-cor': 'Open COR and OVRF for a finalized enrollment term',
   'enrollment-teaching': 'Review assigned sections and subjects',
   'grading-student': 'View officially published grades',
   'grading-professor': 'Open class grade sheets and assessments',

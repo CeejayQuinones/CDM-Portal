@@ -495,7 +495,7 @@ class EnrollmentAcademicController extends Controller
     {
         $actor = EnrollmentAccess::require($r->user());
 
-        return $this->ok($actor->notifications()->where('type', EnrollmentNotice::class)->latest()->paginate(20));
+        return $this->ok($actor->unreadNotifications()->where('type', EnrollmentNotice::class)->latest()->paginate(20));
     }
 
     public function readNotice(Request $r, string $id)

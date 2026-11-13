@@ -27,6 +27,7 @@ class EnrollmentWorkflowService
         private EnrollmentEligibilityService $eligibility,
         private EnrollmentAuditWriter $audit,
         private AdmissionHandoffService $handoff,
+        private EnrollmentYearLevelReview $yearLevels,
     ) {}
 
     public function period(User $user, array $input, ?int $id = null): EnrollmentPeriod
@@ -133,7 +134,8 @@ class EnrollmentWorkflowService
                 $this->eligibleStudent($actor, $student, $p);
                 $courseId = $student->course_id;
                 $curriculumId = $student->curriculum_id;
-                $yearLevel = $student->year_level;
+                $yearLevel = (int) ($input['year_level'] ?? $student->year_level);
+                $this->yearLevels->assertSelectable($student, $yearLevel);
             }
             $existing = EnrollmentApplication::ownedBy($actor)->whereNotNull('blocking_owner_user_id')->where('academic_year_id', $p->academic_year_id)
                 ->where('semester_id', $p->semester_id)->lockForUpdate()->first();
@@ -209,6 +211,11 @@ class EnrollmentWorkflowService
             if ($action === 'save') {
                 $a->classification = $input['classification'];
                 $a->personal_details = $input['personal_details'];
+                if ($student) {
+                    $requestedYear = (int) ($input['year_level'] ?? $a->year_level);
+                    $this->yearLevels->assertSelectable($student, $requestedYear);
+                    $a->year_level = $requestedYear;
+                }
             }
             if ($action === 'submit') {
                 $this->personalDetailsComplete($a);
@@ -216,7 +223,7 @@ class EnrollmentWorkflowService
                     $this->eligibleStudent($owner, $student, $p);
                     $a->course_id = $student->course_id;
                     $a->curriculum_id = $student->curriculum_id;
-                    $a->year_level = $student->year_level;
+                    $this->yearLevels->assertSelectable($student, (int) $a->year_level);
                 } else {
                     $admission = $this->eligibleGuest($owner, $p);
                     abort_unless($a->admission_applicant_id === $admission['applicant']->id
@@ -231,6 +238,9 @@ class EnrollmentWorkflowService
                 // Approval is an application decision only, never an academic enrollment.
                 if ($action === 'approve') {
                     $this->documentsComplete($a, $p);
+                    $review = $this->yearLevels->assertEligible($a, true);
+                    abort_if($review['requires_promotion'] && ! filled($input['notes'] ?? null), 422,
+                        'Record the Registrar review reason before approving year-level advancement.');
                 }
                 $a->reviewed_by = $actor->id;
                 $a->reviewed_at = now();
@@ -243,7 +253,12 @@ class EnrollmentWorkflowService
                 $owner->notify(new EnrollmentNotice('rejected', 'Your enrollment application was rejected. Review the staff notes.', $a->id));
             }
             $event = ['save' => 'draft_saved', 'submit' => 'submitted', 'cancel' => 'cancelled', 'review' => 'review_started', 'approve' => 'approved', 'reject' => 'rejected'][$action];
-            $this->audit->record($actor, $event, 'application', $a->id, ['status' => $a->status, 'version' => $a->version]);
+            $metadata = ['status' => $a->status, 'version' => $a->version];
+            if ($action === 'approve' && ($review['requires_promotion'] ?? false)) {
+                $metadata['previous_year_level'] = $review['current_year_level'];
+                $metadata['year_level'] = $review['requested_year_level'];
+            }
+            $this->audit->record($actor, $event, 'application', $a->id, $metadata);
 
             return $a;
         }, 3);

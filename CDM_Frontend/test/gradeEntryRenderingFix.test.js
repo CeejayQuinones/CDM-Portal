@@ -14,18 +14,17 @@ const assessment = (id, category = 'A deliberately long assessment category name
 
 test('gradesheet geometry remains deterministic from zero through twenty assessments', () => {
   for (const count of [0, 1, 5, 10, 20]) {
-    const model = buildGradeTableModel(Array.from({ length: count }, (_, index) => assessment(index + 1)))
+    const model = buildGradeTableModel(Array.from({ length: count }, (_, index) => assessment(index + 1, 'Quiz')))
+    const renderedAssessmentWidth = (Math.max(count, 1) + 3) * GRADE_COLUMN_WIDTHS.assessment
     const fixedWidth = GRADE_COLUMN_WIDTHS.sequence
       + GRADE_COLUMN_WIDTHS.studentNumber
       + GRADE_COLUMN_WIDTHS.studentName
-      + GRADE_COLUMN_WIDTHS.rawTotal
-      + (GRADE_COLUMN_WIDTHS.result * 4)
-      + GRADE_COLUMN_WIDTHS.remarks
+      + GRADE_COLUMN_WIDTHS.result
 
     assert.equal(model.assessmentColumns.length, count)
-    assert.equal(model.columnCount, count + 9)
-    assert.equal(model.totalWidth, fixedWidth + (count * GRADE_COLUMN_WIDTHS.assessment))
-    assert.equal(model.assessmentGroups.reduce((total, group) => total + group.columns.length, 0), count)
+    assert.equal(model.columnCount, 4 + Math.max(count, 1) + 3)
+    assert.equal(model.totalWidth, fixedWidth + renderedAssessmentWidth)
+    assert.equal(model.assessmentGroups.reduce((total, group) => total + group.columns.length, 0), model.periodColumns.length)
   }
 })
 

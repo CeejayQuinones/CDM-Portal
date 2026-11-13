@@ -11,6 +11,11 @@ class StudentRecordAuditWriter
     private const ACTIONS = [
         'student_profile_updated',
         'student_status_changed',
+        'student_year_level_promoted',
+        'student_account_activation_prepared',
+        'student_account_activation_email_corrected',
+        'student_account_activated',
+        'student_roster_record_imported',
         'physical_record_location_changed',
         'document_availability_changed',
         'document_file_uploaded',

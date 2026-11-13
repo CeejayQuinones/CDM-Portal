@@ -9,7 +9,7 @@ import DocumentRequestStatusBadge from './DocumentRequestStatusBadge.vue'
 import DocumentRequestTableSkeleton from './DocumentRequestTableSkeleton.vue'
 import { formatExactDateTime, requestReference } from './documentRequestPresentation'
 import { DOCUMENT_REQUEST_PURPOSES, documentRequestPurpose } from './documentRequestPurpose'
-import { addCartDocument, cartIsComplete, cartSubmissionPayload } from './documentRequestCart'
+import { addCartDocument, cartIsComplete, cartSubmissionPayload, estimatedCartFee, estimatedItemFee } from './documentRequestCart'
 import { documentRequestService as api } from './documentRequestService'
 
 const route = useRoute()
@@ -34,7 +34,6 @@ const showRequestForm = ref(false)
 const requestFormLoading = ref(false)
 const requestSubmitting = ref(false)
 const requestFormError = ref('')
-const selectedTypeId = ref('')
 const documentTypeSearch = ref('')
 const cart = ref([])
 const batchKey = ref('')
@@ -104,11 +103,13 @@ const selectedRequestAppointment = computed(() => {
 const detailTransitionKey = computed(
   () => `${selectedPanel.value}-${selectedPanel.value === 'request' ? selectedRequest.value?.id || 'empty' : selectedAppointment.value?.id || 'empty'}`,
 )
-const selectedType = computed(() => documentTypes.value.find((item) => item.id === Number(selectedTypeId.value)))
 const filteredDocumentTypes = computed(() => documentTypes.value.filter((type) =>
-  type.document_name.toLowerCase().includes(documentTypeSearch.value.trim().toLowerCase()),
+  `${type.document_name} ${type.description || ''}`.toLowerCase().includes(documentTypeSearch.value.trim().toLowerCase()),
 ))
 const cartIsValid = computed(() => cartIsComplete(cart.value, purposeCategory.value, purposeDetails.value))
+const cartEstimatedFee = computed(() => estimatedCartFee(cart.value))
+const cartCopyCount = computed(() => cart.value.reduce((total, item) => total + Number(item.quantity || 0), 0))
+const cartGuidance = computed(() => !cart.value.length ? 'Choose at least one document to get started.' : !purposeCategory.value ? 'Choose a shared purpose for your request.' : !cartIsValid.value ? 'Complete the copy counts and any required purpose details.' : 'Everything is ready. Review your items, then submit.')
 const requestGroups = computed(() => {
   const groups = new Map()
   for (const item of requests.value) {
@@ -194,12 +195,6 @@ function formatMoney(value) {
 
 function formatStatus(value) {
   return String(value || 'unknown').replaceAll('_', ' ')
-}
-
-function documentTypeLabel(type) {
-  return Number(type.processing_fee) > 0
-    ? `${type.document_name} — ₱${formatMoney(type.processing_fee)}`
-    : type.document_name
 }
 
 function syncSelections() {
@@ -289,12 +284,12 @@ async function openRequestForm() {
   showRequestForm.value = true
   requestFormError.value = ''
   if (!batchKey.value) batchKey.value = newSubmissionKey()
-  if (documentTypes.value.length) return
-
   requestFormLoading.value = true
+  documentTypes.value = []
   try {
     documentTypes.value = await api.documentTypes()
   } catch (err) {
+    documentTypes.value = []
     requestFormError.value = requestError(err)
   } finally {
     requestFormLoading.value = false
@@ -305,7 +300,6 @@ function closeRequestForm(force = false) {
   if (requestSubmitting.value && !force) return
   showRequestForm.value = false
   requestFormError.value = ''
-  selectedTypeId.value = ''
   documentTypeSearch.value = ''
   cart.value = []
   batchKey.value = ''
@@ -323,9 +317,9 @@ function newSubmissionKey() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-function addToCart() {
-  cart.value = addCartDocument(cart.value, selectedType.value)
-  selectedTypeId.value = ''
+function addToCart(type) {
+  if (requestSubmitting.value || requestFormLoading.value) return
+  cart.value = addCartDocument(cart.value, type)
   requestFormError.value = ''
 }
 
@@ -558,15 +552,15 @@ onMounted(refresh)
   <DocumentRequestDialog
     v-if="showRequestForm"
     labelledby="student-request-modal-title"
-    panel-class="student-request-modal"
+    panel-class="student-request-modal request-composer"
     :busy="requestSubmitting"
     @cancel="closeRequestForm"
   >
-          <header class="appointment-details-header student-modal-header">
+          <header class="appointment-details-header student-modal-header request-composer-header">
             <div>
               <p class="page-kicker">Student document request</p>
               <h2 id="student-request-modal-title">New Document Request</h2>
-              <p>Add documents to one cart, review each item, then submit them together.</p>
+              <p>Choose your documents, set a purpose, and review everything before submitting.</p>
             </div>
             <button
               type="button"
@@ -580,56 +574,48 @@ onMounted(refresh)
           </header>
 
           <form class="student-modal-form" @submit.prevent="submitRequest">
-            <div class="appointment-details-body student-request-modal-body">
-              <div class="form-grid student-request-form-grid">
-                <label class="wide">
-                  Search documents
-                  <input v-model="documentTypeSearch" type="search" placeholder="Find an official document" :disabled="requestFormLoading || requestSubmitting" />
-                </label>
-                <label class="wide">
-                  Document type
-                  <select v-model="selectedTypeId" :disabled="requestFormLoading || requestSubmitting">
-                    <option value="" disabled>{{ requestFormLoading && !documentTypes.length ? 'Loading documents…' : 'Select a document' }}</option>
-                    <option v-for="type in filteredDocumentTypes" :key="type.id" :value="type.id" :disabled="cart.some((item) => item.document_type_id === type.id)">{{ documentTypeLabel(type) }}</option>
-                  </select>
-                </label>
-                <button type="button" class="dr-button dr-button--secondary wide" :disabled="!selectedType || requestSubmitting || cart.some((item) => item.document_type_id === selectedType?.id)" @click="addToCart">Add to cart</button>
-                <label class="wide">
-                  Shared Reason / Purpose of Request
-                  <select v-model="purposeCategory" :disabled="requestSubmitting" required>
-                    <option value="" disabled>Select a purpose</option>
-                    <option v-for="option in DOCUMENT_REQUEST_PURPOSES" :key="option" :value="option">{{ option }}</option>
-                  </select>
-                </label>
-                <Transition name="purpose-field">
-                  <label v-if="purposeCategory === 'Others'" class="wide document-purpose-details">
-                    Please specify your purpose
-                    <textarea
-                      v-model="purposeDetails"
-                      rows="4"
-                      maxlength="500"
-                      :disabled="requestSubmitting"
-                      required
-                      placeholder="Explain why you need this document."
-                    ></textarea>
-                    <small>{{ purposeDetails.length }} / 500</small>
+            <ol class="request-composer-progress" aria-label="Request checklist">
+              <li :class="{done: cart.length}"><span aria-hidden="true">{{ cart.length ? '✓' : '1' }}</span> Choose documents</li>
+              <li :class="{done: purposeCategory && (purposeCategory !== 'Others' || purposeDetails.trim())}"><span aria-hidden="true">{{ purposeCategory && (purposeCategory !== 'Others' || purposeDetails.trim()) ? '✓' : '2' }}</span> Set your purpose</li>
+              <li :class="{done: cartIsValid}"><span aria-hidden="true">{{ cartIsValid ? '✓' : '3' }}</span> Review &amp; submit</li>
+            </ol>
+            <div class="appointment-details-body student-request-modal-body request-composer-body">
+              <section class="request-catalog" aria-labelledby="request-catalog-title">
+                <div class="request-section-heading"><div><span class="request-section-number">01 / DOCUMENTS</span><h3 id="request-catalog-title">What do you need?</h3><p>Select a document to add it to your cart.</p></div><span class="request-count" aria-live="polite">{{ cart.length }} selected</span></div>
+                <label class="request-document-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><span class="request-sr-only">Find a document</span><input v-model="documentTypeSearch" type="search" placeholder="Find a document by name or description…" :disabled="requestFormLoading || requestSubmitting" /></label>
+                <p class="request-match-count" role="status">{{ requestFormLoading ? 'Loading available documents…' : `${filteredDocumentTypes.length} document${filteredDocumentTypes.length === 1 ? '' : 's'} ${documentTypeSearch.trim() ? 'found' : 'available'}` }}</p>
+                <div v-if="!requestFormLoading && !filteredDocumentTypes.length" class="request-catalog-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 13h6m-6 4h4"/></svg><strong>{{ documentTypeSearch.trim() ? 'No matching documents' : 'No documents available' }}</strong><p>{{ documentTypeSearch.trim() ? 'Try another name or clear your search.' : 'There are no requestable documents to select right now.' }}</p><button v-if="documentTypeSearch" type="button" :disabled="requestSubmitting" @click="documentTypeSearch = ''">Clear search</button></div>
+                <fieldset v-else class="request-document-options" :disabled="requestFormLoading || requestSubmitting"><legend class="request-sr-only">Available documents</legend>
+                  <label v-for="type in filteredDocumentTypes" :key="type.id" class="request-document-option" :class="{selected: cart.some(item => item.document_type_id === type.id)}">
+                    <input type="checkbox" :aria-label="`Select ${type.document_name}`" :checked="cart.some(item => item.document_type_id === type.id)" @change="$event.target.checked ? addToCart(type) : removeFromCart(type.id)" />
+                    <span class="request-document-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 13h6m-6 4h4"/></svg></span>
+                    <span class="request-document-copy"><strong>{{ type.document_name }}</strong><span v-if="type.description" class="request-document-description">{{ type.description }}</span><span class="request-document-meta">{{ type.processing_days }} processing day(s)<span aria-hidden="true"> · </span>{{ type.requires_appointment ? 'Appointment required' : 'No appointment required' }}</span></span>
+                    <span class="request-document-price"><strong>{{ type.first_request_free_today ? 'FREE' : `₱${formatMoney(type.processing_fee)}` }}</strong><small>{{ type.first_request_free_today ? 'first request today' : 'per copy today' }}</small></span>
                   </label>
-                </Transition>
-              </div>
+                </fieldset>
+                <p class="request-catalog-note"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg>Each document's first request of the day is free. Repeat requests for the same document use the regular fee.</p>
+              </section>
 
-              <section class="student-request-cart" aria-labelledby="request-cart-title">
-                <h3 id="request-cart-title">Review cart · {{ cart.length }} document{{ cart.length === 1 ? '' : 's' }}</h3>
-                <p v-if="!cart.length" class="student-request-cart-empty">No documents added yet.</p>
+              <section class="request-review-column" aria-label="Purpose and request review">
+                <section class="request-purpose-panel student-request-form-grid" aria-labelledby="request-purpose-title"><div class="request-section-heading"><div><span class="request-section-number">02 / PURPOSE</span><h3 id="request-purpose-title">Why are you requesting?</h3><p>Applies to all selected documents unless you override it.</p></div></div>
+                  <label>Shared Reason / Purpose of Request<select v-model="purposeCategory" :disabled="requestSubmitting" required><option value="" disabled>Select a purpose</option><option v-for="option in DOCUMENT_REQUEST_PURPOSES" :key="option" :value="option">{{ option }}</option></select></label>
+                  <Transition name="purpose-field"><label v-if="purposeCategory === 'Others'" class="document-purpose-details">Please specify your purpose<textarea v-model="purposeDetails" rows="3" maxlength="500" :disabled="requestSubmitting" required placeholder="Tell us what you need the documents for."></textarea><small>{{ purposeDetails.length }} / 500</small></label></Transition>
+                </section>
+
+              <section class="student-request-cart request-cart-panel" aria-labelledby="request-cart-title">
+                <div class="request-section-heading"><div><span class="request-section-number">03 / REVIEW</span><h3 id="request-cart-title">Your request cart</h3></div><span class="request-count" aria-live="polite">{{ cart.length }} document{{ cart.length === 1 ? '' : 's' }}</span></div>
+                <div v-if="!cart.length" class="request-cart-empty"><span aria-hidden="true">+</span><strong>Your cart is waiting</strong><p>No documents added yet. Select a document to start your request.</p></div>
+                <TransitionGroup name="request-cart-item" tag="div" class="request-selected-items">
                 <article v-for="item in cart" :key="item.document_type_id" class="student-request-cart-item">
                   <div class="student-request-cart-heading">
                     <strong>{{ item.type.document_name }}</strong>
-                    <button type="button" class="dr-button dr-button--secondary" :disabled="requestSubmitting" :aria-label="`Remove ${item.type.document_name}`" @click="removeFromCart(item.document_type_id)">Remove</button>
+                    <button type="button" class="request-remove-item" :disabled="requestSubmitting" :aria-label="`Remove ${item.type.document_name}`" @click="removeFromCart(item.document_type_id)">×</button>
                   </div>
                   <p>{{ item.type.processing_days }} processing day(s) · {{ item.type.requires_appointment ? 'Registrar appointment required' : 'No appointment required' }}</p>
                   <p v-if="item.type.description">{{ item.type.description }}</p>
                   <div class="student-request-cart-fields">
-                    <label>Copies<input v-model.number="item.quantity" type="number" min="1" max="10" :disabled="requestSubmitting" required /></label>
-                    <span>Estimated fee: ₱{{ formatMoney(Number(item.type.processing_fee) * Number(item.quantity || 0)) }}</span>
+                    <label>Copies<input v-model.number="item.quantity" type="number" min="1" max="10" :disabled="requestSubmitting" :aria-label="`Copies of ${item.type.document_name}`" required /></label>
+                    <span>{{ item.type.first_request_free_today ? 'First request today: free' : `Estimated fee: ₱${formatMoney(estimatedItemFee(item))}` }}</span>
                   </div>
                   <label class="student-request-override"><input v-model="item.overridePurpose" type="checkbox" :disabled="requestSubmitting" /> Use a different purpose for this document</label>
                   <div v-if="item.overridePurpose" class="student-request-cart-fields">
@@ -637,12 +623,17 @@ onMounted(refresh)
                     <label v-if="item.purposeCategory === 'Others'">Please specify your purpose<textarea v-model="item.purposeDetails" maxlength="500" :disabled="requestSubmitting" required></textarea></label>
                   </div>
                 </article>
+                </TransitionGroup>
+                <div v-if="cart.length" class="request-cart-totals" aria-live="polite"><span>Estimated total <small>{{ cartCopyCount }} {{ cartCopyCount === 1 ? 'copy' : 'copies' }}</small></span><strong>₱{{ formatMoney(cartEstimatedFee) }}</strong></div>
+                <p class="request-cart-guidance" :class="{ready: cartIsValid}" role="status"><span aria-hidden="true">{{ cartIsValid ? '✓' : 'i' }}</span>{{ cartGuidance }}</p>
+              </section>
               </section>
 
               <p v-if="requestFormError" class="notice error" role="alert">{{ requestFormError }}</p>
             </div>
 
-            <footer class="appointment-details-footer">
+            <footer class="appointment-details-footer request-composer-footer">
+              <div class="request-footer-summary"><strong>{{ cart.length }} document{{ cart.length === 1 ? '' : 's' }} selected</strong><span>{{ cart.length ? `Estimated total: ₱${formatMoney(cartEstimatedFee)}` : 'Your selections will appear here.' }}</span></div>
               <button type="button" class="appointment-close-action" :disabled="requestSubmitting" @click="closeRequestForm">Cancel</button>
               <button type="submit" :disabled="requestFormLoading || requestSubmitting || !cartIsValid">
                 {{ requestSubmitting ? 'Submitting…' : `Submit ${cart.length} Request${cart.length === 1 ? '' : 's'}` }}
@@ -697,3 +688,4 @@ onMounted(refresh)
 </template>
 
 <style scoped src="./documentRequest.css"></style>
+<style scoped src="./studentRequestComposer.css"></style>

@@ -63,6 +63,77 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->postJson("/api/document-requests/{$id}/appointments", ['appointment_date' => '2026-09-08'])->assertNotFound();
     }
 
+    public function test_first_request_of_each_document_is_free_each_manila_day_and_repeat_requests_are_charged(): void
+    {
+        $student = $this->createStudent('26-10011');
+        $otherStudent = $this->createStudent('26-10012');
+        $type = DocumentType::create([
+            'document_name' => 'Good Moral Certificate', 'processing_fee' => 25, 'status' => 'active',
+        ]);
+        Sanctum::actingAs($student->user);
+
+        $this->getJson('/api/document-types')->assertOk()->assertJsonPath('data.0.first_request_free_today', true);
+        $first = $this->postJson('/api/document-requests', [
+            'document_type_id' => $type->id, 'quantity' => 2, 'purpose_category' => 'Scholarship',
+        ])->assertCreated()->assertJsonPath('data.total_fee', 0);
+        $this->assertDatabaseHas('document_requests', ['id' => $first->json('data.id'), 'total_fee' => 0]);
+        $this->assertSame('2026-09-07', DocumentRequest::findOrFail($first->json('data.id'))->request_date->toDateString());
+        $this->getJson('/api/document-types')->assertOk()->assertJsonPath('data.0.first_request_free_today', false);
+        $this->patchJson('/api/document-requests/'.$first->json('data.id').'/cancel', [
+            'reason' => 'No longer needed',
+        ])->assertOk();
+        $this->postJson('/api/document-requests', [
+            'document_type_id' => $type->id, 'quantity' => 3, 'purpose_category' => 'Evaluation',
+        ])->assertCreated()->assertJsonPath('data.total_fee', 75);
+
+        Sanctum::actingAs($otherStudent->user);
+        $this->getJson('/api/document-types')->assertOk()->assertJsonPath('data.0.first_request_free_today', true);
+        $this->postJson('/api/document-requests', [
+            'document_type_id' => $type->id, 'purpose_category' => 'Scholarship',
+        ])->assertCreated()->assertJsonPath('data.total_fee', 0);
+
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-08 00:10:00', 'Asia/Manila'));
+        Sanctum::actingAs($student->user);
+        $this->getJson('/api/document-types')->assertOk()->assertJsonPath('data.0.first_request_free_today', true);
+        $this->postJson('/api/document-requests', [
+            'document_type_id' => $type->id, 'purpose_category' => 'Scholarship',
+        ])->assertCreated()->assertJsonPath('data.total_fee', 0);
+    }
+
+    public function test_batch_requests_apply_the_same_daily_fee_rule_and_idempotent_retries_keep_the_original_fees(): void
+    {
+        $student = $this->createStudent('26-10013');
+        $firstType = $this->type();
+        $secondType = DocumentType::create([
+            'document_name' => 'Certificate of Enrollment', 'processing_fee' => 50, 'status' => 'active',
+        ]);
+        Sanctum::actingAs($student->user);
+        $firstBatch = [
+            'idempotency_key' => '00a11200-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'items' => [
+                ['document_type_id' => $firstType->id, 'quantity' => 2, 'purpose_category' => 'Scholarship'],
+                ['document_type_id' => $secondType->id, 'quantity' => 1, 'purpose_category' => 'Scholarship'],
+            ],
+        ];
+        $response = $this->postJson('/api/document-request-batches', $firstBatch)->assertCreated();
+        $this->assertEqualsCanonicalizing(['0.00', '0.00'], array_column($response->json('data.document_requests'), 'total_fee'));
+        $this->postJson('/api/document-request-batches', $firstBatch)
+            ->assertOk()->assertJsonPath('data.id', $response->json('data.id'));
+        $this->assertDatabaseCount('document_requests', 2);
+
+        $repeat = $this->postJson('/api/document-request-batches', [
+            'idempotency_key' => '00a11200-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            'items' => [
+                ['document_type_id' => $firstType->id, 'quantity' => 2, 'purpose_category' => 'Evaluation'],
+                ['document_type_id' => $secondType->id, 'quantity' => 3, 'purpose_category' => 'Evaluation'],
+            ],
+        ])->assertCreated();
+        $this->assertEqualsCanonicalizing(['300.00', '150.00'], array_column($repeat->json('data.document_requests'), 'total_fee'));
+        $this->postJson('/api/document-requests', [
+            'document_type_id' => $firstType->id, 'purpose_category' => 'Scholarship',
+        ])->assertCreated()->assertJsonPath('data.total_fee', 150);
+    }
+
     public function test_unified_registrar_student_list_counts_only_active_documents_and_preserves_submission_identity(): void
     {
         $student = $this->createStudent('26-12001');

@@ -46,11 +46,14 @@ test('website toolbar preserves one primary assessment action and structured sec
   ])
 
   assert.match(view, /class="grading-button primary"[^>]*>\+ Add Assessment/)
-  for (const label of ['Edit Columns', 'Bulk Entry', 'Criteria']) {
+  for (const label of ['Edit Columns', 'Bulk Entry']) {
     assert.match(view, new RegExp(`class="grading-button secondary"[^>]*>${label}`))
   }
-  assert.match(css, /\.website-professor-grading \.grade-sheet-toolbar \{[\s\S]*grid-template-columns: minmax\(540px, 1\.3fr\) minmax\(360px, \.7fr\);/)
+  assert.match(view, /class="grading-button secondary"[^>]*aria-controls="grading-criteria-panel"[^>]*>\{\{criteriaOpen\?'Hide criteria':'Show criteria'\}\}/)
+  assert.match(css, /\.website-professor-grading \.grade-sheet-toolbar \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(560px, auto\);/)
+  assert.match(css, /\.website-professor-grading \.grade-sheet-toolbar \.grading-toolbar-actions \{[\s\S]*grid-template-columns: repeat\(5, max-content\);/)
   assert.match(css, /@media \(max-width: 1180px\)[\s\S]*\.website-professor-grading \.grade-sheet-toolbar[\s\S]*grid-template-columns: minmax\(0, 1fr\);/)
+  assert.match(css, /@media \(max-width: 620px\)[\s\S]*\.website-professor-grading \.grade-sheet-toolbar \.grading-toolbar-actions[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*\.website-professor-grading \.grade-sheet-toolbar[\s\S]*grid-template-columns: 1fr;/)
 })
 

@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\UserProfile;
 use App\Notifications\EnrollmentNotice;
 use App\Services\Admission\AdmissionHandoffService;
+use App\Services\StudentRecords\StudentRecordAuditWriter;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -27,6 +28,8 @@ class EnrollmentAcademicService
         private AdmissionHandoffService $handoff,
         private StudentNumberAllocator $numbers,
         private EnrollmentDocumentHandoffService $documentHandoff,
+        private EnrollmentYearLevelReview $yearLevels,
+        private StudentRecordAuditWriter $studentAudit,
     ) {}
 
     public function application(User $user, int $id): EnrollmentApplication
@@ -70,7 +73,8 @@ class EnrollmentAcademicService
             abort_unless($year->status === 'active' && $semester->status === 'active', 422, 'The academic term is not active.');
             if ($student) {
                 $state = $this->eligibility->status($owner, true);
-                abort_unless($state['academic_ready'] && $student->course_id === $a->course_id && $student->curriculum_id === $a->curriculum_id && $student->year_level === $a->year_level, 422, 'The Student academic identity needs review before finalization.');
+                abort_unless($state['academic_ready'] && $student->course_id === $a->course_id && $student->curriculum_id === $a->curriculum_id, 422, 'The Student academic identity needs review before finalization.');
+                $this->yearLevels->assertEligible($a, true);
             } else {
                 $admission = $this->handoff->context($owner, true);
                 abort_unless($a->admission_applicant_id && $admission['admitted_guest']
@@ -139,6 +143,17 @@ class EnrollmentAcademicService
                 $e = Enrollment::create(['student_id' => $student->id, 'section_id' => $section->id, 'academic_year_id' => $a->academic_year_id, 'semester_id' => $a->semester_id, 'enrollment_date' => now()->toDateString(), 'status' => 'enrolled']);
                 $rows = $load->map(fn ($s) => ['enrollment_id' => $e->id, 'subject_id' => $s->id, 'professor_id' => $assignments->get($s->id)?->professor_id, 'subject_status' => 'enrolled', 'remarks' => 'In Progress', 'created_at' => now(), 'updated_at' => now()])->all();
                 EnrollmentSubject::insert($rows);
+                if ($student->year_level < $a->year_level) {
+                    $previousYear = $student->year_level;
+                    $student->year_level = $a->year_level;
+                    $student->save();
+                    $this->studentAudit->record($actor, $student->id, 'student_year_level_promoted', [
+                        'previous_year_level' => $previousYear,
+                        'year_level' => $student->year_level,
+                        'application_id' => $a->id,
+                        'enrollment_id' => $e->id,
+                    ]);
+                }
                 $a->enrollment_id = $e->id;
                 $a->status = 'enrolled';
                 $a->finalized_at = now();

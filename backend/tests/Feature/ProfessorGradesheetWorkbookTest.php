@@ -6,6 +6,7 @@ use App\Models\Enrollment;
 use App\Models\EnrollmentSubject;
 use App\Models\GradeAssessment;
 use App\Models\GradeAuditEvent;
+use App\Models\GradeLateSubmissionExtension;
 use App\Models\GradePeriodSchedule;
 use App\Models\GradeScore;
 use App\Models\GradeSheet;
@@ -205,6 +206,30 @@ class ProfessorGradesheetWorkbookTest extends TestCase
         $this->assertSame(Protection::PROTECTION_UNPROTECTED, $entry->getStyle('E12')->getProtection()->getLocked());
         $this->assertSerializedCellLocked($path, 'E11', false);
         $this->assertSerializedCellLocked($path, 'E12', false);
+
+        $workbook->disconnectWorksheets();
+        @unlink($path);
+    }
+
+    public function test_late_submission_access_unlocks_workbook_cells_after_period_closes(): void
+    {
+        GradePeriodSchedule::query()->update([
+            'status' => 'archived',
+            'midterm_deadline' => now()->subMinute(),
+        ]);
+        GradeLateSubmissionExtension::create([
+            'grade_sheet_id' => $this->sheetId,
+            'reason' => 'Authorized correction after the grading period closed.',
+            'expires_at' => now()->addHour(),
+            'authorized_by' => $this->fixture['registrar']->id,
+        ]);
+
+        $path = $this->exportedWorkbookPath();
+        $workbook = IOFactory::load($path);
+        $entry = $workbook->getSheetByName('Grade Entry');
+
+        $this->assertSame(Protection::PROTECTION_UNPROTECTED, $entry->getStyle('E11')->getProtection()->getLocked());
+        $this->assertSerializedCellLocked($path, 'E11', false);
 
         $workbook->disconnectWorksheets();
         @unlink($path);

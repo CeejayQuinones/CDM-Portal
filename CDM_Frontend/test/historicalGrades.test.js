@@ -17,9 +17,15 @@ test('Registrar historical grades panel compiles with review-before-save flows',
   assert.deepEqual(errors, [])
   compileScript(descriptor, { id: 'historical-grades-test' })
   assert.deepEqual(compileTemplate({ source: descriptor.template.content, filename: 'HistoricalGradesPanel.vue', id: 'historical-grades-test' }).errors, [])
-  for (const label of ['Download Excel template', 'Import grades', 'Add previous grades', 'Validate and preview', 'Confirm all grades', 'Cancel', 'reason', 'Source Reference']) {
+  for (const label of ['Download Excel template', 'Import grades', 'Add manually', 'Validate and preview', 'Confirm all grades', 'Cancel', 'reason', 'Source Reference']) {
     assert.match(panel, new RegExp(label, 'i'))
   }
+  for (const label of ['Download template', 'Fill workbook', 'Upload file', 'Review rows', 'Save grades', 'Student Number', 'Academic Year', 'Semester', 'Subject Code', 'Final Grade', 'Official Result', 'Credited Units']) {
+    assert.match(panel, new RegExp(label, 'i'))
+  }
+  assert.match(panel, /Start entering grade records on <strong>row 2<\/strong>/)
+  assert.match(panel, /One invalid row prevents the entire import/)
+  assert.match(panel, /validating does not create, update, or publish any grade/)
   assert.match(panel, /v-if="preview\.preview_token"[^>]*@click="confirmImport"/)
   assert.match(panel, /preview\.counts\.unknown_students/)
   assert.match(panel, /preview\.counts\.unknown_subjects/)
@@ -60,7 +66,8 @@ test('historical XLSX preview keeps the selected file bytes in multipart form da
 })
 
 test('historical grades stay contextual to Student Records and read-only in Student Grades', () => {
-  assert.match(records, /HistoricalGradesPanel v-if="auth\.currentRole === ROLES\.REGISTRAR_STAFF"/)
+  assert.match(records, /v-if="auth\.currentRole === ROLES\.REGISTRAR_STAFF"[^>]*class="student-records-tools"/)
+  assert.match(records, /<details><summary>Historical grades<\/summary><HistoricalGradesPanel \/><\/details>/)
   assert.match(profile, /HistoricalGradesPanel v-if="canManagePhysicalRecords"[^>]*:student-id="student\.id"/)
   assert.match(grades, /Verified historical grades/)
   assert.match(grades, /data\.historical_grades/)

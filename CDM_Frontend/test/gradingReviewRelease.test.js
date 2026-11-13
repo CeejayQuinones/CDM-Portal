@@ -17,7 +17,7 @@ test('Professor Phase 2 workflow exposes readiness, submission, locks, return, a
 test('Professor submission readiness separates grade completeness from the Finals submission window', () => {
   for (const text of ['Grade data:', 'Complete', 'Incomplete', 'Submission window:', 'Not Open', 'Open', 'Closed']) assert.match(view, new RegExp(text, 'i'))
   assert.match(view, /workspace\.value\?\.schedule\?\.finals_state\?\.state/)
-  assert.match(view, /readiness\.value\?\.ready&&submissionWindow\.value==='Open'/)
+  assert.match(view, /readiness\.value\?\.ready&&\['Open','Late access'\]\.includes\(submissionWindow\.value\)/)
   assert.match(view, /:disabled="saving\|\|!canSubmit"/)
 })
 

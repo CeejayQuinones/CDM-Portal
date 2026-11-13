@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { addCartDocument, cartIsComplete, cartSubmissionPayload } from '../src/modules/document-request/documentRequestCart.js'
+import { addCartDocument, cartIsComplete, cartSubmissionPayload, estimatedCartFee, estimatedItemFee } from '../src/modules/document-request/documentRequestCart.js'
 import { groupRetrievalTasks } from '../src/modules/document-request/documentRequestRetrieval.js'
 import { groupRequestStatus, groupStudentSubmissions, retrievalPageSummary } from '../src/modules/document-request/documentRequestWorkspace.js'
 
@@ -35,6 +35,18 @@ test('cart deduplicates document types and retains per-item copy and purpose inp
   cart[1].purposeDetails = 'Valid'
   cart[0].quantity = 11
   assert.equal(cartIsComplete(cart, 'Scholarship', ''), false)
+})
+
+test('cart estimates waive the first daily request for each document and charge repeat requests per copy', () => {
+  const first = addCartDocument([], { id: 11, processing_fee: 150, first_request_free_today: true })[0]
+  const repeat = addCartDocument([], { id: 12, processing_fee: 25, first_request_free_today: false })[0]
+  first.quantity = 3
+  repeat.quantity = 2
+
+  assert.equal(estimatedItemFee(first), 0)
+  assert.equal(estimatedItemFee(repeat), 50)
+  assert.equal(estimatedCartFee([first, repeat]), 50)
+  assert.deepEqual(cartSubmissionPayload([first, repeat], 'Scholarship', '', 'key').items.map((item) => item.quantity), [3, 2])
 })
 
 test('student group tracking and unified Registrar processing retain independent request actions', () => {
