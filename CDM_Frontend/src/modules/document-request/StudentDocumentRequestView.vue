@@ -581,7 +581,7 @@ onMounted(refresh)
             </ol>
             <div class="appointment-details-body student-request-modal-body request-composer-body">
               <section class="request-catalog" aria-labelledby="request-catalog-title">
-                <div class="request-section-heading"><div><span class="request-section-number">01 / DOCUMENTS</span><h3 id="request-catalog-title">What do you need?</h3><p>Select a document to add it to your cart.</p></div><span class="request-count" aria-live="polite">{{ cart.length }} selected</span></div>
+                <div class="request-section-heading"><div><span class="request-section-number">01 / DOCUMENTS</span><h3 id="request-catalog-title">What do you need?</h3><p>Select the documents you want to request.</p></div><span class="request-count" aria-live="polite">{{ cart.length }} selected</span></div>
                 <label class="request-document-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><span class="request-sr-only">Find a document</span><input v-model="documentTypeSearch" type="search" placeholder="Find a document by name or description…" :disabled="requestFormLoading || requestSubmitting" /></label>
                 <p class="request-match-count" role="status">{{ requestFormLoading ? 'Loading available documents…' : `${filteredDocumentTypes.length} document${filteredDocumentTypes.length === 1 ? '' : 's'} ${documentTypeSearch.trim() ? 'found' : 'available'}` }}</p>
                 <div v-if="!requestFormLoading && !filteredDocumentTypes.length" class="request-catalog-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 13h6m-6 4h4"/></svg><strong>{{ documentTypeSearch.trim() ? 'No matching documents' : 'No documents available' }}</strong><p>{{ documentTypeSearch.trim() ? 'Try another name or clear your search.' : 'There are no requestable documents to select right now.' }}</p><button v-if="documentTypeSearch" type="button" :disabled="requestSubmitting" @click="documentTypeSearch = ''">Clear search</button></div>
@@ -603,8 +603,8 @@ onMounted(refresh)
                 </section>
 
               <section class="student-request-cart request-cart-panel" aria-labelledby="request-cart-title">
-                <div class="request-section-heading"><div><span class="request-section-number">03 / REVIEW</span><h3 id="request-cart-title">Your request cart</h3></div><span class="request-count" aria-live="polite">{{ cart.length }} document{{ cart.length === 1 ? '' : 's' }}</span></div>
-                <div v-if="!cart.length" class="request-cart-empty"><span aria-hidden="true">+</span><strong>Your cart is waiting</strong><p>No documents added yet. Select a document to start your request.</p></div>
+                <div class="request-section-heading"><div><span class="request-section-number">03 / REVIEW</span><h3 id="request-cart-title">Selected documents</h3></div><span class="request-count" aria-live="polite">{{ cart.length }} document{{ cart.length === 1 ? '' : 's' }}</span></div>
+                <div v-if="!cart.length" class="request-cart-empty"><span aria-hidden="true">+</span><strong>No documents selected</strong><p>Select a document to start your request.</p></div>
                 <TransitionGroup name="request-cart-item" tag="div" class="request-selected-items">
                 <article v-for="item in cart" :key="item.document_type_id" class="student-request-cart-item">
                   <div class="student-request-cart-heading">
