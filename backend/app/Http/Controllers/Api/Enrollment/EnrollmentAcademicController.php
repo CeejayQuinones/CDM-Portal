@@ -511,6 +511,20 @@ class EnrollmentAcademicController extends Controller
             && trim((string) $schedule->room) !== '';
     }
 
+    public function professorTimetable(Request $r)
+    {
+        $actor = $r->user()->fresh('role');
+        abort_unless($actor->status === 'active' && $actor->role?->role_name === Role::PROFESSOR, 403, 'Active Professor access required.');
+        $professor = Professor::where('user_id', $actor->id)->where('status', 'active')->firstOrFail();
+
+        return $this->ok(SectionSubject::query()
+            ->where('professor_id', $professor->id)
+            ->with(['section.course', 'section.academicYear', 'section.semester', 'subject', 'meetings'])
+            ->orderBy('section_id')
+            ->orderBy('id')
+            ->get());
+    }
+
     public function professor(Request $r, ?int $section = null)
     {
         $actor = $r->user()->fresh('role');

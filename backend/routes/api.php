@@ -188,6 +188,7 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::get('/records/{id}/ovrf', 'ovrf')->whereNumber('id')->middleware('throttle:20,1');
         Route::get('/records/{id}', 'record')->whereNumber('id');
         Route::get('/professor', 'professor');
+        Route::get('/professor/timetable', 'professorTimetable');
         Route::get('/professor/sections/{section}', 'professor')->whereNumber('section');
         Route::get('/notifications', 'notices');
         Route::patch('/notifications/{id}/read', 'readNotice');

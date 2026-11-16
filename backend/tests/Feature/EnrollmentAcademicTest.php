@@ -1497,4 +1497,37 @@ class EnrollmentAcademicTest extends TestCase
         Sanctum::actingAs($staff);
         $this->getJson($this->base().'/sections')->assertForbidden();
     }
+
+    public function test_professor_timetable_contains_all_own_sections_and_no_other_professors_assignments(): void
+    {
+        $secondSection = $this->f['section']->replicate();
+        $secondSection->section_name = 'SECOND-YEAR';
+        $secondSection->year_level = 2;
+        $secondSection->save();
+        $own = SectionSubject::create([
+            'section_id' => $secondSection->id,
+            'subject_id' => $this->f['subjects'][0]->id,
+            'professor_id' => $this->f['professor']->id,
+            'day' => 'Tuesday', 'start_time' => '09:00:00', 'end_time' => '10:00:00', 'room' => '201',
+        ]);
+        $own->meetings()->create(['day' => 'Tuesday', 'start_time' => '09:00:00', 'end_time' => '10:00:00', 'room' => '201']);
+        $otherUser = User::factory()->create(['role_id' => Role::where('role_name', Role::PROFESSOR)->value('id')]);
+        $otherProfile = $otherUser->profile()->create(['first_name' => 'Other', 'last_name' => 'Professor', 'gender' => 'Prefer not to say']);
+        $other = Professor::create(['user_id' => $otherUser->id, 'user_profile_id' => $otherProfile->id, 'department_id' => $this->f['department']->id, 'employee_number' => 'OTHER-TIMETABLE', 'status' => 'active']);
+        $hidden = SectionSubject::create([
+            'section_id' => $this->f['section']->id,
+            'subject_id' => $this->f['subjects'][1]->id,
+            'professor_id' => $other->id,
+            'day' => 'Wednesday', 'start_time' => '10:00:00', 'end_time' => '11:00:00', 'room' => '202',
+        ]);
+
+        Sanctum::actingAs($this->f['professorUser']);
+        $this->withHeader('X-CDM-Client', 'web')->getJson($this->base().'/professor/timetable')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $own->id)
+            ->assertJsonPath('data.0.section.year_level', 2)
+            ->assertJsonPath('data.0.meetings.0.day', 'Tuesday')
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.professor_id', $this->f['professor']->id);
+    }
 }
