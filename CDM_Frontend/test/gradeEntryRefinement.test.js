@@ -73,7 +73,7 @@ test('save strip distinguishes saved, dirty, and invalid score states without ch
   assert.match(css, /\.grade-sheet-savebar\[data-state='invalid'\]/)
 })
 
-test('criteria remains editable and stacks without compressing the spreadsheet', async () => {
+test('criteria remains editable without resizing the spreadsheet', async () => {
   const [view, css] = await Promise.all([
     read('src/modules/grading/GradingView.vue'),
     read('src/modules/grading/grading.css'),
@@ -83,8 +83,8 @@ test('criteria remains editable and stacks without compressing the spreadsheet',
   assert.match(view, /item\.maximum_score/)
   assert.match(view, /item\.weight\.weight_percentage/)
   assert.match(view, /@click="saveWeights"/)
-  assert.match(css, /grid-template-columns: minmax\(0, 1fr\) minmax\(270px, 310px\);/)
-  assert.match(css, /@media \(max-width: 1180px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\);/)
+  assert.match(css, /\.website-professor-grading \.grade-entry-workspace-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\);/)
+  assert.match(css, /\.website-professor-grading \.grade-entry-workspace-grid \.grade-entry-criteria \{[^}]*position: absolute;/)
 })
 
 test('refinement stays inside the website Professor grading presentation', async () => {

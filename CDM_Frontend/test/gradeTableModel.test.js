@@ -92,7 +92,7 @@ test('period sheets expose only the active period result while Final Grade keeps
   assert.equal(buildGradeTableModel([], 'midterm').periodResultColumn.field, 'midterm_grade')
   assert.equal(buildGradeTableModel([], 'finals').periodResultColumn.field, 'finals_grade')
   assert.match(view, /gradeTableModel\.periodResultColumn\.label/)
-  assert.match(view, /resultFor\(s\)\[gradeTableModel\.periodResultColumn\.field\]/)
+  assert.match(view, /displayLiveGrade\(periodPreviewFor\(s\)\)/)
   assert.match(view, /<th>No\.<\/th><th>Student No\.<\/th><th>Student Name<\/th><th>Midterm<\/th><th>Finals<\/th><th>Final Grade<\/th><th>Grade Point<\/th><th>Remarks<\/th>/)
 })
 

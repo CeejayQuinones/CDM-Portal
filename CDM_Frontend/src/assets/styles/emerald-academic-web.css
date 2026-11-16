@@ -104,7 +104,7 @@
   width: 4px;
 }
 
-.website-academic-shell .main-content :is(.page-kicker, .grading-eyebrow, .eyebrow, .ai-eyebrow, .kicker, .plan-kicker) {
+.website-academic-shell .main-content :is(.page-kicker, .grading-eyebrow, .eyebrow, .kicker, .plan-kicker) {
   color: var(--academic-emerald-700) !important;
   font-size: .72rem;
   font-weight: 850;

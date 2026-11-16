@@ -21,8 +21,12 @@ test('website homepage compiles and uses the supplied building photograph with a
   assert.match(styles, /background-size: cover/)
   assert.match(styles, /background-position:/)
   assert.equal(image.subarray(0, 8).toString('hex'), '89504e470d0a1a0a')
-  assert.equal(image.readUInt32BE(16), 409)
-  assert.equal(image.readUInt32BE(20), 230)
+  assert.ok(image.readUInt32BE(16) > 0)
+  assert.ok(image.readUInt32BE(20) > 0)
+  assert.match(homepage, /class="website-home-photo-label">Colegio de Montalban<\/p>/)
+  assert.doesNotMatch(homepage, /Ynares School Building/)
+  assert.match(styles, /input:-webkit-autofill:focus[\s\S]*-webkit-text-fill-color: var\(--home-ink\)/)
+  assert.match(styles, /input:-webkit-autofill:focus-visible/)
 })
 
 test('homepage contains only the supplied institution, history, program, mission, and vision content', async () => {

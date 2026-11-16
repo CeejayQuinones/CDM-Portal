@@ -31,6 +31,7 @@ class StudentRecordReportRequest extends FormRequest
             'semester_id' => ['nullable', 'integer', 'exists:semesters,id'],
             'year_level' => ['nullable', 'integer', 'min:1', 'max:20'],
             'section_id' => ['nullable', 'integer', 'exists:sections,id'],
+            'enrollment_status' => ['nullable', Rule::in(['pending', 'enrolled', 'cancelled', 'completed']), Rule::prohibitedIf(! in_array($this->route('reportType'), ['master-list', 'academic-summary'], true))],
             'availability' => ['nullable', Rule::in(['available', 'unavailable'])],
             'cabinet_id' => ['nullable', 'integer', 'exists:cabinets,id'],
             'action_type' => ['nullable', 'string', 'max:80'],

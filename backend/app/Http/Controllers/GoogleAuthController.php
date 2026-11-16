@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\GoogleIdentityException;
+use App\Http\Resources\AuthResource;
+use App\Models\Role;
 use App\Models\User;
+use App\Services\AuthenticationService;
 use App\Services\ClientPlatformAccessService;
 use App\Services\GoogleIdentityService;
 use App\Services\LoginOtpService;
-use App\Services\TurnstileVerificationService;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,7 +26,7 @@ class GoogleAuthController extends Controller
         private readonly GoogleIdentityService $identities,
         private readonly ClientPlatformAccessService $clientAccess,
         private readonly LoginOtpService $loginOtp,
-        private readonly TurnstileVerificationService $turnstile,
+        private readonly AuthenticationService $authentication,
     ) {}
 
     public function redirect(Request $request): RedirectResponse
@@ -77,15 +79,7 @@ class GoogleAuthController extends Controller
     public function exchange(Request $request): JsonResponse
     {
         $client = $this->clientAccess->clientFrom($request);
-        $validated = $request->validate([
-            'code' => ['required', 'string', 'size:64'],
-            'turnstile_token' => ['nullable', 'string', 'max:2048'],
-        ]);
-        $this->turnstile->verify(
-            $validated['turnstile_token'] ?? null,
-            'authentication',
-            (string) $request->ip(),
-        );
+        $validated = $request->validate(['code' => ['required', 'string', 'size:64']]);
         $code = $validated['code'];
         $handoff = Cache::pull('google-auth-handoff:'.hash('sha256', $code));
         if (! is_array($handoff) || ! hash_equals((string) ($handoff['client'] ?? ''), $client)) {
@@ -94,6 +88,19 @@ class GoogleAuthController extends Controller
 
         $user = User::query()->with(['role', 'profile'])->findOrFail($handoff['user_id']);
         $this->clientAccess->ensureUserMayUse($user, $client);
+        if ($user->role?->role_name === Role::PROFESSOR) {
+            $authenticated = $this->authentication->issueToken($user, $client);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Login successful.',
+                'data' => [
+                    'user' => new AuthResource($authenticated['user']),
+                    'token' => $authenticated['token'],
+                    'token_type' => 'Bearer',
+                ],
+            ]);
+        }
         $challenge = $this->loginOtp->create($user, $client, (string) $request->ip());
 
         return response()->json([

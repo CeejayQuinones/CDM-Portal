@@ -13,7 +13,7 @@ import WebsiteModuleHeader from '../../components/website/WebsiteModuleHeader.vu
 import WebsiteStatusBadge from '../../components/website/WebsiteStatusBadge.vue'
 import WebsiteStepper from '../../components/website/WebsiteStepper.vue'
 import WebsiteAcademicRecordCard from '../../components/website/WebsiteAcademicRecordCard.vue'
-const isWebsitePresentation=clientPlatform==='web'
+const isWebsitePresentation=clientPlatform==='web'||clientPlatform==='mobile'
 const enrollmentSteps=isWebsitePresentation?['Student info','Enrollment','Course']:['Academic information','Classification','Academic path','Review']
 const finalDraftStep=isWebsitePresentation?2:3
 const historyPage=ref(1), historyLastPage=ref(1)

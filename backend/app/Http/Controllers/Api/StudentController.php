@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\BulkUpdateStudentsRequest;
 use App\Http\Requests\StudentIndexRequest;
+use App\Http\Requests\UpdateStudentAcademicRequest;
 use App\Http\Requests\UpdateStudentRequest;
 use App\Http\Resources\StudentDocumentResource;
 use App\Http\Resources\StudentResource;
@@ -126,11 +127,28 @@ class StudentController extends Controller
         ]);
     }
 
+    public function academicOptions(Student $student): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->studentService->academicOptions($student),
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function updateAcademic(UpdateStudentAcademicRequest $request, Student $student): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Academic information corrected successfully.',
+            'data' => new StudentResource($this->studentService->updateAcademic($request->user(), $student->id, $request->validated())),
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
     public function documents(Student $student, StudentRecordRequirementService $requirements): JsonResponse
     {
         $student = $this->studentService->find($student->id);
         $documents = $student->documents()
-            ->with(['documentType', 'aiAnalysis', 'verifiedBy.profile'])
+            ->with(['documentType', 'verifiedBy.profile'])
             ->whereHas('documentType', fn ($query) => $query->where('document_name', '!=', 'Birth Certificate'))
             ->orderByDesc('submitted_date')
             ->get();

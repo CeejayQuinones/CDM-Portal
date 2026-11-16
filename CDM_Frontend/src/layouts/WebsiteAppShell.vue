@@ -12,6 +12,7 @@ import { STUDENT_DASHBOARD_PROFILE_EVENT } from '../config/studentDashboardProfi
 import { useAuthStore } from '../stores/authStore'
 import { useNavigationStore } from '../stores/navigation'
 import { useStudentProfileStore } from '../stores/studentProfile'
+import { apiClient } from '../services/apiClient'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,6 +62,9 @@ const handleViewport = event => {
   notifyLayout()
 }
 const logout = async () => { await authStore.logout(); await router.replace({ name: 'login' }) }
+const saveStudentTheme = theme => {
+  if (authStore.currentRole === 'Student') apiClient.patch('/student/settings/preferences', { appearance: theme }).catch(() => {})
+}
 const openStudentProfile = async () => {
   if (authStore.currentRole !== 'Student') return
   accountOpen.value = false
@@ -106,6 +110,7 @@ onBeforeUnmount(() => {
         :modules="modules"
         :display-name="displayName"
         :role="authStore.currentRole"
+        :appearance-account="accountKey"
         :initials="initials"
         :avatar-url="avatarUrl"
         :avatar-revision="studentProfile.websiteAvatarRevision"
@@ -114,6 +119,7 @@ onBeforeUnmount(() => {
         @toggle-account="accountOpen = !accountOpen"
         @open-profile="openStudentProfile"
         @logout="logout"
+        @theme-change="saveStudentTheme"
       />
       <div class="website-route-stage">
         <RouterView v-slot="{ Component, route: currentRoute }">

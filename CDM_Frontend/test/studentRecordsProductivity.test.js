@@ -34,10 +34,11 @@ test('keyboard navigation and compact result states support the Electron workflo
   assert.match(records, /:focus-visible/)
 })
 
-test('profile shows completeness, read-only duplicate warnings, quick actions, and physical locator history', () => {
-  for (const label of ['Academic History', 'Physical Record', 'Documents', 'Activity History', 'Reports']) {
+test('profile organizes record sections while keeping completeness, actions, and physical locator history', () => {
+  for (const label of ['Overview', 'Academic & grades', 'Documents', 'Account & records', 'View activity', 'Open reports']) {
     assert.match(profile, new RegExp(label))
   }
+  assert.match(profile, /aria-label="Student record sections"/)
   assert.match(profile, /record_completeness/)
   assert.match(profile, /Possible duplicate identity — review only/)
   assert.match(profile, /duplicate_warnings/)

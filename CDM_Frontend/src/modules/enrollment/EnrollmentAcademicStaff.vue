@@ -20,10 +20,19 @@ const pageDescription = computed(() => mode.value === 'sections'
     ? 'Build and review section timetables using authorized subjects and teaching assignments.'
     : 'Find official student enrollment records and inspect Certificates of Registration.')
 const options = ref(null), data = ref(null), sections = ref(null), scheduleData = ref(null), sectionId = ref(''), sectionSearch = ref(''), selectedRecord = ref(null), sectionDetail = ref(null), sectionPage = ref(1), profPage = ref(1), page = ref(1), form = ref(null), record = ref(null), remove = ref(null), reassignment = ref(null), busy = ref(false), error = ref(''), notice = ref(''), formErrors = ref({}), modalError = ref(''), scheduleDialogForm = ref(null)
+const formSubjects = ref([]), formSubjectsLoading = ref(false), formSubjectsError = ref('')
+const scheduleScope = ref('section'), generalSchedule = ref(null), generalPage = ref(1)
+const generalFilters = ref({ academic_year_id: '', course_id: '', year_level: '' })
+let formSubjectsRequest = 0
 const filters = ref({ search: '', course_id: '', section_id: '', academic_year_id: '', semester_id: '', classification: '', status: '', sort: 'newest' })
 const filtersOpen = ref(false)
 const sectionCurricula = computed(() => options.value?.curriculums?.filter(curriculum => Number(curriculum.course_id) === Number(form.value?.course_id)) || [])
 const selectedSection = computed(() => sections.value?.data?.find(section => Number(section.id) === Number(sectionId.value)) || scheduleData.value?.section || null)
+const scheduleSectionOptions = computed(() => {
+  const rows = sections.value?.data || []
+  const selected = selectedSection.value
+  return selected && !rows.some(section => Number(section.id) === Number(selected.id)) ? [selected, ...rows] : rows
+})
 const visibleSections = computed(() => {
   const query = sectionSearch.value.trim().toLocaleLowerCase()
   if (!query) return sections.value?.data || []
@@ -32,10 +41,15 @@ const visibleSections = computed(() => {
 const activeFilterCount = computed(() => [filters.value.course_id, filters.value.section_id, filters.value.academic_year_id, filters.value.semester_id, filters.value.classification, filters.value.status, filters.value.sort !== 'newest' ? filters.value.sort : ''].filter(Boolean).length)
 const scheduleDays = computed(() => scheduleData.value?.days || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
 const scheduleTimesValid = computed(() => Boolean(form.value?.meetings?.length) && form.value.meetings.every(meeting => meetingTimeState(meeting).valid))
+const formSubjectValid = computed(() => formSubjects.value.some(subject => Number(subject.id) === Number(form.value?.subject_id)))
+const existingSelectedAssignment = computed(() => {
+  if (!form.value?.subject_id || form.value.id || Number(form.value.section_id) !== Number(scheduleData.value?.section?.id)) return null
+  return scheduleData.value?.schedules?.data?.find(row => Number(row.subject_id) === Number(form.value.subject_id)) || null
+})
 const totalWeeklyMinutes = computed(() => weeklyScheduleMinutes(form.value?.meetings))
 const scheduleAvailability = ref({ status: 'idle', meetings: [], message: '' })
 const availabilityReady = computed(() => mode.value === 'scheduling' && Boolean(
-  form.value?.section_id && form.value?.subject_id && form.value?.professor_id && form.value?.room?.trim() && scheduleTimesValid.value,
+  form.value?.section_id && formSubjectValid.value && !formSubjectsLoading.value && form.value?.professor_id && form.value?.room?.trim() && scheduleTimesValid.value,
 ))
 const availabilityHasConflicts = computed(() => scheduleAvailability.value.meetings.some(meeting => !meeting.available))
 const scheduleCanSave = computed(() => availabilityReady.value && scheduleAvailability.value.status === 'available' && !availabilityHasConflicts.value)
@@ -53,13 +67,14 @@ const formValidationSummary = computed(() => Object.entries(formErrors.value)
   .flatMap(([, messages]) => messages).join(' '))
 const prioritizedProfessors = computed(() => {
   const rows = options.value?.professors?.data || []
-  const subject = scheduleData.value?.subjects?.find(item => Number(item.id) === Number(form.value?.subject_id))
+  const subject = formSubjects.value.find(item => Number(item.id) === Number(form.value?.subject_id))
   const associated = new Set((subject?.professors || []).map(professor => Number(professor.id)))
   return [...rows].sort((left, right) => Number(associated.has(Number(right.id))) - Number(associated.has(Number(left.id))) || String(left.employee_number).localeCompare(String(right.employee_number)))
 })
 const capacityPercent = section => section?.capacity ? Math.min(100, Math.round(((Number(section.enrolled_count) + Number(section.reserved_count)) / Number(section.capacity)) * 100)) : 0
 const studentName = row => [row.student?.user_profile?.first_name, row.student?.user_profile?.last_name].filter(Boolean).join(' ') || 'Student name unavailable'
 const scheduleProfessorName = schedule => [schedule.professor?.user?.profile?.first_name, schedule.professor?.user?.profile?.last_name].filter(Boolean).join(' ') || 'Not assigned'
+const scheduleRooms = schedule => [...new Set((schedule.meetings || []).map(meeting => meeting.room).filter(Boolean))].join(', ') || schedule.room || '—'
 let epoch = 0
 let availabilityTimer = null
 let availabilityRequest = 0
@@ -74,7 +89,8 @@ async function load() {
     if (version !== epoch) return
     options.value = optionResponse.data.data; sections.value = sectionResponse.data.data; profPage.value = 1
     if (mode.value === 'scheduling') {
-      if (sectionId.value) await loadSchedules()
+      if (scheduleScope.value === 'all') await loadGeneralSchedules()
+      else if (sectionId.value) await loadSchedules()
       else data.value = null
     } else {
       const response = await apiClient.get(`/enrollment/academic/${mode.value}`, { params: { ...filters.value, page: page.value } })
@@ -94,6 +110,33 @@ async function loadSchedules() {
     if (version === epoch) scheduleData.value = response.data.data
   } catch (reason) { if (version === epoch) error.value = safeError(reason) }
   finally { if (version === epoch) busy.value = false }
+}
+async function loadGeneralSchedules() {
+  const version = ++epoch; busy.value = true; error.value = ''
+  try {
+    const response = await apiClient.get('/enrollment/academic/schedules/overview', { params: { ...generalFilters.value, page: generalPage.value } })
+    if (version === epoch) generalSchedule.value = response.data.data
+  } catch (reason) { if (version === epoch) error.value = safeError(reason) }
+  finally { if (version === epoch) busy.value = false }
+}
+function switchScheduleScope(scope) {
+  if (scheduleScope.value === scope) return
+  scheduleScope.value = scope
+  form.value = null
+  if (scope === 'all') loadGeneralSchedules()
+  else if (sectionId.value) loadSchedules()
+}
+function applyGeneralFilters() { generalPage.value = 1; loadGeneralSchedules() }
+function clearGeneralFilters() {
+  generalFilters.value = { academic_year_id: '', course_id: '', year_level: '' }
+  generalPage.value = 1
+  loadGeneralSchedules()
+}
+async function openOverviewSection(schedule) {
+  scheduleScope.value = 'section'
+  sectionId.value = Number(schedule.section_id)
+  page.value = 1
+  await loadSchedules()
 }
 async function moreSections(delta) {
   sectionPage.value += delta
@@ -123,8 +166,39 @@ function resetAvailability() {
   availabilityRequest++
   scheduleAvailability.value = { status: 'idle', meetings: [], message: '' }
 }
-function editSchedule(schedule, copy = false) { clearModalErrors(); resetAvailability(); notice.value = ''; form.value = schedule ? { ...schedule, id: copy ? null : schedule.id, original_professor_id: copy ? null : schedule.professor_id, meetings: scheduleMeetings(schedule) } : { section_id: Number(sectionId.value), subject_id: '', professor_id: '', meetings: [{ day: 'Monday', start_time: '', end_time: '' }], room: '' } }
-function addAssignmentSchedule(schedule) { clearModalErrors(); resetAvailability(); notice.value = ''; form.value = { assignment_id: schedule.id, section_id: schedule.section_id, subject_id: schedule.subject_id, professor_id: schedule.professor_id || '', meetings: [{ day: 'Monday', start_time: '', end_time: '' }], room: '' } }
+function prepareFormSubjects() {
+  formSubjectsRequest++
+  formSubjects.value = scheduleData.value?.subjects || []
+  formSubjectsError.value = ''
+  formSubjectsLoading.value = false
+}
+async function changeScheduleFormSection() {
+  const selectedSectionId = Number(form.value?.section_id || 0)
+  const requestId = ++formSubjectsRequest
+  form.value.subject_id = ''
+  formSubjects.value = []
+  formSubjectsError.value = ''
+  formSubjectsLoading.value = false
+  resetAvailability()
+  if (!selectedSectionId) return
+  if (selectedSectionId === Number(scheduleData.value?.section?.id)) {
+    formSubjects.value = scheduleData.value?.subjects || []
+    return
+  }
+  formSubjectsLoading.value = true
+  try {
+    const response = await apiClient.get('/enrollment/academic/schedules', { params: { section_id: selectedSectionId } })
+    if (requestId !== formSubjectsRequest || Number(form.value?.section_id) !== selectedSectionId) return
+    formSubjects.value = response.data.data.subjects || []
+    formSubjectsError.value = response.data.data.configuration_issue || ''
+  } catch (reason) {
+    if (requestId === formSubjectsRequest && Number(form.value?.section_id) === selectedSectionId) formSubjectsError.value = safeError(reason)
+  } finally {
+    if (requestId === formSubjectsRequest) formSubjectsLoading.value = false
+  }
+}
+function editSchedule(schedule, copy = false) { clearModalErrors(); resetAvailability(); prepareFormSubjects(); notice.value = ''; form.value = schedule ? { ...schedule, id: copy ? null : schedule.id, original_professor_id: copy ? null : schedule.professor_id, meetings: scheduleMeetings(schedule) } : { section_id: Number(sectionId.value), subject_id: '', professor_id: '', meetings: [{ day: 'Monday', start_time: '', end_time: '' }], room: '' } }
+function addAssignmentSchedule(schedule) { clearModalErrors(); resetAvailability(); prepareFormSubjects(); notice.value = ''; form.value = { assignment_id: schedule.id, section_id: schedule.section_id, subject_id: schedule.subject_id, professor_id: schedule.professor_id || '', meetings: [{ day: 'Monday', start_time: '', end_time: '' }], room: '' } }
 const fieldError = key => (formErrors.value[key] || []).join(' ')
 function meetingServerError(index) {
   const keys = [`meetings.${index}.day`, `meetings.${index}.start_time`, `meetings.${index}.end_time`, `meetings.${index}._schedule`]
@@ -205,7 +279,10 @@ async function save(confirmed = false) {
     const payload = { ...form.value }, originalProfessor = payload.original_professor_id
     delete payload.original_professor_id
     delete payload.day; delete payload.start_time; delete payload.end_time; delete payload.meetings_count; delete payload.professor; delete payload.subject; delete payload.section
-    if (mode.value === 'scheduling') payload.meetings = payload.meetings.map(({ day, start_time, end_time }) => ({ day, start_time, end_time }))
+    if (mode.value === 'scheduling') {
+      payload.meetings = payload.meetings.map(({ day, start_time, end_time }) => ({ day, start_time, end_time }))
+      if (!payload.id && !payload.assignment_id && existingSelectedAssignment.value && !hasSavedSchedule(existingSelectedAssignment.value)) payload.assignment_id = existingSelectedAssignment.value.id
+    }
     for (const key of ['course_id', 'curriculum_id', 'academic_year_id', 'semester_id', 'year_level', 'capacity', 'section_id', 'subject_id', 'professor_id', 'adviser_id', 'assignment_id']) if (payload[key] !== undefined) payload[key] = payload[key] ? Number(payload[key]) : null
     if (!confirmed && payload.id && originalProfessor && Number(originalProfessor) !== payload.professor_id) { reassignment.value = payload; return }
     if (payload.id) await apiClient.put(`${path}/${payload.id}`, payload)
@@ -243,7 +320,7 @@ function resetFilters() { filters.value = { search: '', course_id: '', section_i
 watch(() => form.value, () => { if (form.value && (modalError.value || Object.keys(formErrors.value).length)) clearModalErrors() }, { deep: true })
 watch(availabilitySignature, signature => queueScheduleAvailability(signature))
 watch(() => route.name, () => {
-  data.value = null; scheduleData.value = null; sectionId.value = ''; sectionSearch.value = ''; selectedRecord.value = null; sectionDetail.value = null; form.value = null; clearModalErrors(); resetAvailability(); record.value = null; remove.value = null; reassignment.value = null; filtersOpen.value = false; page.value = 1; sectionPage.value = 1
+  data.value = null; scheduleData.value = null; sectionId.value = ''; sectionSearch.value = ''; selectedRecord.value = null; sectionDetail.value = null; form.value = null; clearModalErrors(); resetAvailability(); record.value = null; remove.value = null; reassignment.value = null; filtersOpen.value = false; page.value = 1; sectionPage.value = 1; scheduleScope.value = 'section'; generalSchedule.value = null; generalPage.value = 1; generalFilters.value = { academic_year_id: '', course_id: '', year_level: '' }
   filters.value = { search: '', course_id: '', section_id: '', academic_year_id: '', semester_id: '', classification: '', status: '', sort: 'newest' }
   load()
 }, { immediate: true })
@@ -255,7 +332,7 @@ onBeforeUnmount(() => { epoch++; resetAvailability() })
     <header class="en-modern-header en-no-print">
       <div><p>Enrollment management</p><h1>{{ pageTitle }}</h1><span>{{ pageDescription }}</span></div>
       <button v-if="mode==='sections'" class="en-modern-primary" type="button" :disabled="busy" @click="editSection(null)">Create section</button>
-      <button v-else-if="mode==='scheduling' && sectionId && !scheduleData?.configuration_issue" class="en-modern-primary" type="button" :disabled="busy" @click="editSchedule(null)">Add schedule</button>
+      <button v-else-if="mode==='scheduling' && scheduleScope==='section' && sectionId && !scheduleData?.configuration_issue" class="en-modern-primary" type="button" :disabled="busy" @click="editSchedule(null)">Add schedule</button>
     </header>
 
     <div v-if="error" class="en-modern-feedback error" role="alert"><span>{{ error }}</span><button :disabled="busy" @click="load">Reload</button></div>
@@ -264,13 +341,44 @@ onBeforeUnmount(() => { epoch++; resetAvailability() })
 
     <template v-if="options">
       <template v-if="mode==='scheduling'">
+        <nav class="en-schedule-scope en-no-print" aria-label="Schedule scope">
+          <button type="button" :class="{ active: scheduleScope==='section' }" :aria-pressed="scheduleScope==='section'" @click="switchScheduleScope('section')">By section</button>
+          <button type="button" :class="{ active: scheduleScope==='all' }" :aria-pressed="scheduleScope==='all'" @click="switchScheduleScope('all')">All schedules</button>
+        </nav>
+
+        <section v-if="scheduleScope==='all'" class="en-general-schedule" aria-label="General schedule">
+          <header><div><h2>General schedule</h2><p>Review every section and subject assignment in one place. Pending rows still need a meeting.</p></div><strong v-if="generalSchedule">{{ generalSchedule.total }} assignments</strong></header>
+          <form class="en-general-filters en-no-print" @submit.prevent="applyGeneralFilters">
+            <label>Academic year<select v-model="generalFilters.academic_year_id"><option value="">All academic years</option><option v-for="year in options.schedule_years || options.academic_years" :key="year.id" :value="year.id">{{ year.school_year }}</option></select></label>
+            <label>Program<select v-model="generalFilters.course_id"><option value="">All programs</option><option v-for="course in options.schedule_courses || options.courses" :key="course.id" :value="course.id">{{ course.course_name }}</option></select></label>
+            <label>Year level<select v-model="generalFilters.year_level"><option value="">All year levels</option><option v-for="year in 20" :key="year" :value="year">Year {{ year }}</option></select></label>
+            <button class="en-modern-primary" type="submit" :disabled="busy">Apply filters</button>
+            <button class="en-modern-outline" type="button" :disabled="busy" @click="clearGeneralFilters">Clear</button>
+          </form>
+          <div v-if="generalSchedule" class="en-general-table" role="region" aria-label="All schedule assignments" tabindex="0">
+            <table><thead><tr><th>Academic context</th><th>Section</th><th>Subject</th><th>Day and time</th><th>Room</th><th>Professor</th><th class="en-no-print">Open</th></tr></thead>
+              <tbody><tr v-for="assignment in generalSchedule.data" :key="assignment.id">
+                <td><strong>{{ assignment.section?.academic_year?.school_year || '—' }}</strong><small>{{ assignment.section?.course?.course_code || assignment.section?.course?.course_name || 'Program unavailable' }} · Year {{ assignment.section?.year_level }} · {{ assignment.section?.semester?.semester_name || 'Semester' }}</small></td>
+                <td>{{ assignment.section?.section_name || '—' }}</td>
+                <td><strong>{{ assignment.subject?.subject_code || '—' }}</strong><small>{{ assignment.subject?.subject_name || '' }}</small></td>
+                <td><template v-if="hasSavedSchedule(assignment)"><span v-if="!assignment.meetings?.length" class="en-general-meeting">{{ assignment.day }} · {{ assignment.start_time?.slice(0,5) }}–{{ assignment.end_time?.slice(0,5) }}</span><span v-for="meeting in assignment.meetings" :key="meeting.id" class="en-general-meeting">{{ meeting.day }} · {{ meeting.start_time?.slice(0,5) }}–{{ meeting.end_time?.slice(0,5) }}</span></template><span v-else class="en-general-pending">Schedule pending</span></td>
+                <td>{{ hasSavedSchedule(assignment) ? scheduleRooms(assignment) : '—' }}</td>
+                <td>{{ scheduleProfessorName(assignment) }}</td>
+                <td class="en-no-print"><button type="button" class="en-modern-outline" :disabled="busy" @click="openOverviewSection(assignment)">Open section</button></td>
+              </tr></tbody>
+            </table>
+            <p v-if="!generalSchedule.data.length" class="en-panel-empty">No assignments match these filters.</p>
+          </div>
+          <nav v-if="generalSchedule?.last_page>1" class="en-browser-pagination en-no-print" aria-label="General schedule pages"><button :disabled="busy||generalPage<=1" @click="generalPage--;loadGeneralSchedules()">Previous</button><span>{{ generalPage }} / {{ generalSchedule.last_page }}</span><button :disabled="busy||generalPage>=generalSchedule.last_page" @click="generalPage++;loadGeneralSchedules()">Next</button></nav>
+        </section>
+        <template v-else>
         <section v-if="selectedSection" class="en-schedule-context-strip" aria-label="Selected schedule context"><div><small>Section</small><strong>{{ selectedSection.section_name }}</strong></div><div><small>Program</small><strong>{{ selectedSection.course?.course_name || 'Program unavailable' }}</strong></div><div><small>Academic year</small><strong>{{ selectedSection.academic_year?.school_year || 'Unavailable' }}</strong></div><div><small>Semester</small><strong>{{ selectedSection.semester?.semester_name || 'Unavailable' }}</strong></div><span class="en-badge" :data-status="selectedSection.status">{{ label(selectedSection.status) }}</span></section>
 
         <section class="en-scheduling-layout">
           <aside class="en-section-browser en-no-print" aria-label="Section browser">
             <header><div><h2>Sections</h2><span>{{ sections.total }} available</span></div></header>
             <label class="en-browser-search">Find a section<input v-model.trim="sectionSearch" type="search" maxlength="100" placeholder="Search section…"></label>
-            <label class="en-section-native-select">Active section<select v-model="sectionId" :disabled="busy" @change="selectSection(sectionId)"><option value="">Choose section</option><option v-for="section in sections.data" :key="section.id" :value="section.id">{{ section.section_name }} · {{ termLabel(section) }}</option></select></label>
+            <label class="en-section-native-select">Active section<select v-model="sectionId" :disabled="busy" @change="selectSection(sectionId)"><option value="">Choose section</option><option v-for="section in scheduleSectionOptions" :key="section.id" :value="section.id">{{ section.section_name }} · {{ termLabel(section) }}</option></select></label>
             <div class="en-section-browser-list"><button v-for="section in visibleSections" :key="section.id" type="button" :class="{ active:Number(sectionId)===Number(section.id) }" :aria-pressed="Number(sectionId)===Number(section.id)" :disabled="busy" @click="selectSection(section.id)"><span><strong>{{ section.section_name }}</strong><small>{{ termLabel(section) }}</small></span><span class="en-badge" :data-status="section.status">{{ label(section.status) }}</span></button><p v-if="!visibleSections.length" class="en-browser-empty">No matching sections.</p></div>
             <nav v-if="sections.last_page>1" class="en-browser-pagination" aria-label="Section pages"><button :disabled="busy||sectionPage<=1" @click="moreSections(-1)">Previous</button><span>{{ sectionPage }} / {{ sections.last_page }}</span><button :disabled="busy||sectionPage>=sections.last_page" @click="moreSections(1)">Next</button></nav>
             <section v-if="selectedSection" class="en-section-overview"><h3>Section overview</h3><div><span><small>Enrolled</small><strong>{{ selectedSection.enrolled_count }}</strong></span><span><small>Reserved</small><strong>{{ selectedSection.reserved_count }}</strong></span><span><small>Capacity</small><strong>{{ selectedSection.capacity }}</strong></span></div><progress :value="Number(selectedSection.enrolled_count)+Number(selectedSection.reserved_count)" :max="selectedSection.capacity">{{ capacityPercent(selectedSection) }}%</progress><small>{{ capacityPercent(selectedSection) }}% filled</small></section>
@@ -292,6 +400,7 @@ onBeforeUnmount(() => { epoch++; resetAvailability() })
             <nav v-if="scheduleData?.schedules.last_page>1" class="en-browser-pagination en-no-print"><button :disabled="busy||page<=1" @click="page--;loadSchedules()">Previous</button><span>{{ page }} / {{ scheduleData.schedules.last_page }}</span><button :disabled="busy||page>=scheduleData.schedules.last_page" @click="page++;loadSchedules()">Next</button></nav>
           </aside>
         </section>
+        </template>
       </template>
 
       <template v-else>
@@ -313,7 +422,7 @@ onBeforeUnmount(() => { epoch++; resetAvailability() })
     </template>
 
     <EnrollmentDialog v-if="form" :class="{ 'en-schedule-editor-overlay': mode==='scheduling' }" labelledby="en-academic-editor" :busy="busy" wide @cancel="form=null">
-      <form ref="scheduleDialogForm" class="en-modern-dialog" :class="{ 'en-schedule-dialog': mode==='scheduling' }" @submit.prevent="save()"><header><div><p>Enrollment management</p><h2 id="en-academic-editor">{{ form.id ? 'Edit' : mode==='sections' ? 'Create' : 'Add' }} {{ mode==='sections' ? 'section' : 'schedule' }}</h2><span>{{ mode==='sections' ? 'Configure the real academic context, capacity, state, and adviser.' : 'Assign a verified curriculum subject, Professor, meetings, and room.' }}</span></div><button type="button" aria-label="Close editor" :disabled="busy" @click="form=null">×</button></header><div class="en-modern-dialog-body"><p v-if="modalError || formValidationSummary" class="en-form-validation-summary" role="alert" tabindex="-1">{{ modalError || formValidationSummary }}</p><div class="en-modern-form-grid"><template v-if="mode==='sections'"><label>Section name<input v-model="form.section_name" required maxlength="20"></label><label>Course<select v-model="form.course_id" required @change="form.curriculum_id='' "><option value="">Choose Course</option><option v-for="course in options.courses" :key="course.id" :value="course.id">{{ course.course_name }}</option></select></label><label>Curriculum<select v-model="form.curriculum_id" required><option value="">Choose curriculum</option><option v-for="curriculum in sectionCurricula" :key="curriculum.id" :value="curriculum.id">{{ curriculum.curriculum_code }} — {{ curriculum.curriculum_name }}</option></select></label><label>Academic year<select v-model="form.academic_year_id" :disabled="!!form.id" required><option value="">Choose year</option><option v-for="year in options.academic_years" :key="year.id" :value="year.id">{{ year.school_year }}</option></select></label><label>Semester<select v-model="form.semester_id" :disabled="!!form.id" required><option value="">Choose semester</option><option v-for="semester in options.semesters" :key="semester.id" :value="semester.id">{{ semester.semester_name }}</option></select></label><label>Year level<input v-model.number="form.year_level" type="number" min="1" max="20" required></label><label>Capacity<input v-model.number="form.capacity" type="number" min="1" max="65535" required></label><label>State<select v-model="form.status"><option value="open">Open</option><option value="closed">Closed</option></select></label><label>Adviser<select v-model="form.adviser_id"><option :value="null">No adviser</option><option v-for="professor in options.professors.data" :key="professor.id" :value="professor.id">{{ professor.user?.profile?.first_name }} {{ professor.user?.profile?.last_name }} · {{ professor.employee_number }}</option></select></label></template><template v-else><label>Section / copy destination<select v-model="form.section_id" :disabled="!!form.id||!!form.assignment_id" required><option v-for="section in sections.data" :key="section.id" :value="section.id">{{ section.section_name }}</option></select><small v-if="fieldError('section_id')" class="en-field-error" role="alert">{{ fieldError('section_id') }}</small></label><label>Subject<select v-model="form.subject_id" :disabled="!!form.assignment_id" required><option value="">Choose subject</option><option v-for="subject in scheduleData?.subjects" :key="subject.id" :value="subject.id">{{ subject.subject_code }} — {{ subject.subject_name }}</option></select><small v-if="fieldError('subject_id')" class="en-field-error" role="alert">{{ fieldError('subject_id') }}</small></label><label>Professor<select v-model="form.professor_id" required><option value="">Choose Professor</option><option v-for="professor in prioritizedProfessors" :key="professor.id" :value="professor.id">{{ professor.user?.profile?.first_name }} {{ professor.user?.profile?.last_name }} · {{ professor.employee_number }}{{ scheduleData?.subjects?.find(subject=>Number(subject.id)===Number(form.subject_id))?.professors?.some(item=>Number(item.id)===Number(professor.id)) ? ' · Associated' : '' }}</option></select><small v-if="fieldError('professor_id')" class="en-field-error" role="alert">{{ fieldError('professor_id') }}</small></label><label>Room<input v-model.trim="form.room" required maxlength="50"><small v-if="fieldError('room')" class="en-field-error" role="alert">{{ fieldError('room') }}</small></label><fieldset class="en-day-picker"><legend>Meeting days</legend><button v-for="day in scheduleDays" :key="day" type="button" :aria-pressed="form.meetings.some(meeting=>meeting.day===day)" :class="{ selected: form.meetings.some(meeting=>meeting.day===day) }" @click="toggleScheduleDay(day)">{{ day.slice(0,3) }}</button></fieldset><div class="en-meeting-editor"><div v-for="(meeting, meetingIndex) in form.meetings" :key="meeting.day" class="en-meeting-row" :class="{ invalid: !meetingTimeState(meeting).valid || meetingServerError(meetingIndex) || meetingAvailability(meeting)?.available===false }"><strong>{{ meeting.day }}</strong><ScheduleTimeSelect v-model="meeting.start_time" label="Start time" :input-id="`meeting-${meeting.day.toLowerCase()}-start`" :disabled="busy"/><ScheduleTimeSelect v-model="meeting.end_time" label="End time" :input-id="`meeting-${meeting.day.toLowerCase()}-end`" :disabled="busy"/><div class="en-meeting-duration"><span>Duration</span><strong>{{ meetingTimeState(meeting).valid ? formatScheduleDuration(meetingTimeState(meeting).duration) : '—' }}</strong></div><button type="button" :disabled="busy||form.meetings.length===1" :aria-label="`Remove ${meeting.day}`" @click="toggleScheduleDay(meeting.day)">Remove</button><p v-if="!meetingTimeState(meeting).valid || meetingServerError(meetingIndex)" class="en-meeting-error" role="alert" tabindex="-1">{{ meetingTimeState(meeting).error || meetingServerError(meetingIndex) }}</p><div v-if="availabilityReady" class="en-meeting-availability" :data-status="scheduleAvailability.status==='checking'?'checking':scheduleAvailability.status==='error'?'error':meetingAvailability(meeting)?.available===false?'conflict':meetingAvailability(meeting)?.available===true?'available':'idle'" aria-live="polite"><span v-if="scheduleAvailability.status==='checking'">Checking availability…</span><span v-else-if="scheduleAvailability.status==='error'">Unable to check availability. {{ scheduleAvailability.message }}</span><span v-else-if="meetingAvailability(meeting)?.available===true">Available</span><template v-else-if="meetingAvailability(meeting)?.available===false"><strong>Conflict</strong><ul><li v-for="(conflict, conflictIndex) in meetingAvailability(meeting).conflicts" :key="conflictIndex">{{ conflictDescription(conflict) }}</li></ul></template></div></div></div><section class="en-weekly-hours" :class="{ invalid: !scheduleTimesValid }" aria-live="polite"><span>Total weekly class hours</span><strong>{{ formatScheduleDuration(totalWeeklyMinutes) }}</strong><small>{{ scheduleTimesValid ? `${form.meetings.length} meeting${form.meetings.length===1?'':'s'} configured` : 'Complete every meeting time before saving.' }}</small></section></template></div><button v-if="options.professors.current_page<options.professors.last_page" type="button" class="en-modern-outline" :disabled="busy" @click="moreProfessors">More Professors</button></div><footer><button type="button" class="en-modern-outline" :disabled="busy" @click="form=null">Cancel</button><button class="en-modern-primary" :disabled="busy||(mode==='scheduling'&&!scheduleCanSave)" type="submit">Save {{ mode==='sections' ? 'section' : 'schedule' }}</button></footer></form>
+      <form ref="scheduleDialogForm" class="en-modern-dialog" :class="{ 'en-schedule-dialog': mode==='scheduling' }" @submit.prevent="save()"><header><div><p>Enrollment management</p><h2 id="en-academic-editor">{{ form.id ? 'Edit' : mode==='sections' ? 'Create' : existingSelectedAssignment && !hasSavedSchedule(existingSelectedAssignment) ? 'Configure' : 'Add' }} {{ mode==='sections' ? 'section' : 'schedule' }}</h2><span>{{ mode==='sections' ? 'Configure the real academic context, capacity, state, and adviser.' : 'Assign a verified curriculum subject, Professor, meetings, and room.' }}</span></div><button type="button" aria-label="Close editor" :disabled="busy" @click="form=null">×</button></header><div class="en-modern-dialog-body"><p v-if="modalError || formValidationSummary" class="en-form-validation-summary" role="alert" tabindex="-1">{{ modalError || formValidationSummary }}</p><div class="en-modern-form-grid"><template v-if="mode==='sections'"><label>Section name<input v-model="form.section_name" required maxlength="20"></label><label>Course<select v-model="form.course_id" required @change="form.curriculum_id='' "><option value="">Choose Course</option><option v-for="course in options.courses" :key="course.id" :value="course.id">{{ course.course_name }}</option></select></label><label>Curriculum<select v-model="form.curriculum_id" required><option value="">Choose curriculum</option><option v-for="curriculum in sectionCurricula" :key="curriculum.id" :value="curriculum.id">{{ curriculum.curriculum_code }} — {{ curriculum.curriculum_name }}</option></select></label><label>Academic year<select v-model="form.academic_year_id" :disabled="!!form.id" required><option value="">Choose year</option><option v-for="year in options.academic_years" :key="year.id" :value="year.id">{{ year.school_year }}</option></select></label><label>Semester<select v-model="form.semester_id" :disabled="!!form.id" required><option value="">Choose semester</option><option v-for="semester in options.semesters" :key="semester.id" :value="semester.id">{{ semester.semester_name }}</option></select></label><label>Year level<input v-model.number="form.year_level" type="number" min="1" max="20" required></label><label>Capacity<input v-model.number="form.capacity" type="number" min="1" max="65535" required></label><label>State<select v-model="form.status"><option value="open">Open</option><option value="closed">Closed</option></select></label><label>Adviser<select v-model="form.adviser_id"><option :value="null">No adviser</option><option v-for="professor in options.professors.data" :key="professor.id" :value="professor.id">{{ professor.user?.profile?.first_name }} {{ professor.user?.profile?.last_name }} · {{ professor.employee_number }}</option></select></label></template><template v-else><label>Section / copy destination<select v-model="form.section_id" :disabled="!!form.id||!!form.assignment_id" required @change="changeScheduleFormSection"><option v-for="section in scheduleSectionOptions" :key="section.id" :value="section.id">{{ section.section_name }}</option></select><small v-if="fieldError('section_id')" class="en-field-error" role="alert">{{ fieldError('section_id') }}</small></label><label>Subject<select v-model="form.subject_id" :disabled="!!form.assignment_id || formSubjectsLoading" required><option value="">{{ formSubjectsLoading ? 'Loading subjects…' : 'Choose subject' }}</option><option v-for="subject in formSubjects" :key="subject.id" :value="subject.id">{{ subject.subject_code }} — {{ subject.subject_name }}</option></select><small v-if="existingSelectedAssignment && !form.id" class="en-assignment-hint">{{ hasSavedSchedule(existingSelectedAssignment) ? 'This subject already has a schedule. Use Edit on its section card.' : 'This subject is assigned but has no meeting yet. Saving will configure its existing assignment.' }}</small><small v-if="formSubjectsError" class="en-field-error" role="alert">{{ formSubjectsError }}</small><small v-if="fieldError('subject_id')" class="en-field-error" role="alert">{{ fieldError('subject_id') }}</small></label><label>Professor<select v-model="form.professor_id" required><option value="">Choose Professor</option><option v-for="professor in prioritizedProfessors" :key="professor.id" :value="professor.id">{{ professor.user?.profile?.first_name }} {{ professor.user?.profile?.last_name }} · {{ professor.employee_number }}{{ formSubjects.find(subject=>Number(subject.id)===Number(form.subject_id))?.professors?.some(item=>Number(item.id)===Number(professor.id)) ? ' · Associated' : '' }}</option></select><small v-if="fieldError('professor_id')" class="en-field-error" role="alert">{{ fieldError('professor_id') }}</small></label><label>Room<input v-model.trim="form.room" required maxlength="50"><small v-if="fieldError('room')" class="en-field-error" role="alert">{{ fieldError('room') }}</small></label><fieldset class="en-day-picker"><legend>Meeting days</legend><button v-for="day in scheduleDays" :key="day" type="button" :aria-pressed="form.meetings.some(meeting=>meeting.day===day)" :class="{ selected: form.meetings.some(meeting=>meeting.day===day) }" @click="toggleScheduleDay(day)">{{ day.slice(0,3) }}</button></fieldset><div class="en-meeting-editor"><div v-for="(meeting, meetingIndex) in form.meetings" :key="meeting.day" class="en-meeting-row" :class="{ invalid: !meetingTimeState(meeting).valid || meetingServerError(meetingIndex) || meetingAvailability(meeting)?.available===false }"><strong>{{ meeting.day }}</strong><ScheduleTimeSelect v-model="meeting.start_time" label="Start time" :input-id="`meeting-${meeting.day.toLowerCase()}-start`" :disabled="busy"/><ScheduleTimeSelect v-model="meeting.end_time" label="End time" :input-id="`meeting-${meeting.day.toLowerCase()}-end`" :disabled="busy"/><div class="en-meeting-duration"><span>Duration</span><strong>{{ meetingTimeState(meeting).valid ? formatScheduleDuration(meetingTimeState(meeting).duration) : '—' }}</strong></div><button type="button" :disabled="busy||form.meetings.length===1" :aria-label="`Remove ${meeting.day}`" @click="toggleScheduleDay(meeting.day)">Remove</button><p v-if="!meetingTimeState(meeting).valid || meetingServerError(meetingIndex)" class="en-meeting-error" role="alert" tabindex="-1">{{ meetingTimeState(meeting).error || meetingServerError(meetingIndex) }}</p><div v-if="availabilityReady" class="en-meeting-availability" :data-status="scheduleAvailability.status==='checking'?'checking':scheduleAvailability.status==='error'?'error':meetingAvailability(meeting)?.available===false?'conflict':meetingAvailability(meeting)?.available===true?'available':'idle'" aria-live="polite"><span v-if="scheduleAvailability.status==='checking'">Checking availability…</span><span v-else-if="scheduleAvailability.status==='error'">Unable to check availability. {{ scheduleAvailability.message }}</span><span v-else-if="meetingAvailability(meeting)?.available===true">Available</span><template v-else-if="meetingAvailability(meeting)?.available===false"><strong>Conflict</strong><ul><li v-for="(conflict, conflictIndex) in meetingAvailability(meeting).conflicts" :key="conflictIndex">{{ conflictDescription(conflict) }}</li></ul></template></div></div></div><section class="en-weekly-hours" :class="{ invalid: !scheduleTimesValid }" aria-live="polite"><span>Total weekly class hours</span><strong>{{ formatScheduleDuration(totalWeeklyMinutes) }}</strong><small>{{ scheduleTimesValid ? `${form.meetings.length} meeting${form.meetings.length===1?'':'s'} configured` : 'Complete every meeting time before saving.' }}</small></section></template></div><button v-if="options.professors.current_page<options.professors.last_page" type="button" class="en-modern-outline" :disabled="busy" @click="moreProfessors">More Professors</button></div><footer><button type="button" class="en-modern-outline" :disabled="busy" @click="form=null">Cancel</button><button class="en-modern-primary" :disabled="busy||(mode==='scheduling'&&!scheduleCanSave)" type="submit">Save {{ mode==='sections' ? 'section' : 'schedule' }}</button></footer></form>
     </EnrollmentDialog>
     <EnrollmentDialog v-if="record" labelledby="en-record-detail" :busy="busy" wide @cancel="record=null"><header class="en-dialog-header en-no-print"><div><h2 id="en-record-detail">{{ record.name }}</h2><p>{{ record.student_number }} · {{ record.course }}</p></div><button type="button" :disabled="busy" aria-label="Close enrollment record" @click="record=null">Close</button></header><div class="en-dialog-body"><EnrollmentCor :record="record"/></div></EnrollmentDialog>
     <EnrollmentDialog v-if="sectionDetail" labelledby="en-section-detail" @cancel="sectionDetail=null"><div class="en-modern-confirm"><h2 id="en-section-detail">{{ sectionDetail.section_name }}</h2><dl class="en-modern-details"><div><dt>Program</dt><dd>{{ sectionDetail.course?.course_name || 'Program unavailable' }}</dd></div><div><dt>Academic context</dt><dd>Year {{ sectionDetail.year_level }} · {{ termLabel(sectionDetail) }}</dd></div><div><dt>Occupancy</dt><dd>{{ sectionDetail.enrolled_count }} enrolled · {{ sectionDetail.reserved_count }} reserved · {{ sectionDetail.capacity }} capacity</dd></div><div><dt>Status</dt><dd>{{ label(sectionDetail.status) }}</dd></div></dl><footer><button class="en-modern-outline" @click="sectionDetail=null">Close</button><button class="en-modern-primary" @click="editSection(sectionDetail);sectionDetail=null">Edit section</button></footer></div></EnrollmentDialog>
@@ -321,3 +430,30 @@ onBeforeUnmount(() => { epoch++; resetAvailability() })
     <EnrollmentDialog v-if="reassignment" labelledby="en-reassign-professor" :busy="busy" @cancel="reassignment=null"><div class="en-modern-confirm"><h2 id="en-reassign-professor">Reassign this teaching assignment?</h2><p>{{ scheduleData?.subjects?.find(subject=>subject.id===reassignment.subject_id)?.subject_code }} in {{ scheduleData?.section?.section_name }} will be assigned to {{ professorName(reassignment.professor_id) }}.</p><p>The previous Professor will immediately lose access to this class. Submitted, approved, or published grade sheets cannot be reassigned.</p><footer><button class="en-modern-outline" :disabled="busy" @click="reassignment=null">Go back</button><button class="en-modern-primary" :disabled="busy" @click="confirmReassignment">Confirm reassignment</button></footer></div></EnrollmentDialog>
   </section>
 </template>
+
+<style scoped>
+.en-schedule-scope { display: inline-flex; gap: 4px; padding: 4px; margin: 0 0 16px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); }
+.en-schedule-scope button { border: 0; border-radius: 7px; padding: 9px 15px; color: var(--color-eerie-black); background: transparent; cursor: pointer; font: inherit; font-weight: 700; }
+.en-schedule-scope button.active { color: #fff; background: var(--color-dartmouth-green); }
+.en-general-schedule { overflow: hidden; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); }
+.en-general-schedule > header { display: flex; justify-content: space-between; align-items: start; gap: 16px; padding: 20px; border-bottom: 1px solid var(--color-border); }
+.en-general-schedule h2 { margin: 0 0 4px; font-size: 1.15rem; }
+.en-general-schedule header p { margin: 0; color: var(--color-muted); }
+.en-general-schedule header strong { white-space: nowrap; color: var(--color-dartmouth-green); }
+.en-general-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--color-border); }
+.en-general-filters label { display: grid; gap: 5px; min-width: 145px; flex: 1 1 170px; color: var(--color-muted); font-size: .8rem; font-weight: 700; }
+.en-general-filters select { min-height: 38px; width: 100%; padding: 7px 9px; border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-eerie-black); background: var(--color-surface); font: inherit; }
+.en-general-filters button { min-height: 38px; }
+.en-general-table { overflow-x: auto; }
+.en-general-table table { width: 100%; border-collapse: collapse; min-width: 850px; }
+.en-general-table th, .en-general-table td { padding: 12px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.en-general-table th { color: var(--color-muted); background: var(--color-anti-flash-white); font-size: .76rem; text-transform: uppercase; }
+.en-general-table td { color: var(--color-eerie-black); font-size: .86rem; }
+.en-general-table td small { display: block; margin-top: 3px; color: var(--color-muted); }
+.en-general-table td button { white-space: nowrap; }
+.en-general-meeting { display: block; white-space: nowrap; }
+.en-general-pending { color: #8a6100; font-weight: 700; }
+.en-assignment-hint { display: block; color: var(--color-muted); font-size: .77rem; line-height: 1.35; }
+.en-general-schedule > nav { padding: 12px 20px; }
+@media (max-width: 700px) { .en-general-schedule > header { flex-direction: column; } .en-general-filters label { flex-basis: 100%; } }
+</style>

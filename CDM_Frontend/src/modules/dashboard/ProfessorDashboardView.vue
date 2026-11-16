@@ -9,7 +9,7 @@ const loading = ref(true)
 const ProfessorWebsiteDashboard = defineAsyncComponent(() => import('./ProfessorWebsiteDashboard.vue'))
 const error = ref('')
 const dashboard = ref({ identity: {}, summary: {}, has_assignments: false })
-const isWebsitePresentation = clientPlatform === 'web'
+const isWebsitePresentation = clientPlatform === 'web' || clientPlatform === 'mobile'
 
 const cards = computed(() => [
   { label: 'Assigned classes', value: dashboard.value.summary.assigned_classes ?? 0 },

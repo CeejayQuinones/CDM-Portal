@@ -334,7 +334,7 @@ class AdmissionWorkflowTest extends TestCase
         $this->assertDatabaseCount('admission_exam_answers', 0);
     }
 
-    public function test_recommendation_uses_result_evidence_and_provider_fallback(): void
+    public function test_recommendation_uses_result_evidence_without_ai(): void
     {
         $department = Department::create(['department_code' => 'TEST', 'department_name' => 'Test']);
         $course = Course::create(['department_id' => $department->id, 'course_code' => 'BSIT', 'course_name' => 'Information Technology', 'years' => 4, 'status' => 'active']);
@@ -342,7 +342,6 @@ class AdmissionWorkflowTest extends TestCase
             'status' => 'active', 'is_recommendable' => true, 'program_type' => 'degree', 'subjects' => ['Programming'], 'career_paths' => ['Developer'], 'display_order' => 1,
             'recommendation_profile' => ['Digital Literacy' => .4, 'Logical Reasoning' => .3, 'General Mathematics' => .25, 'Reading Comprehension' => .05],
         ]);
-        config(['admission.gemini.api_key' => null]);
         $this->bank();
         $result = $this->submit($this->start());
         $this->act($result, 'approve');
@@ -350,7 +349,9 @@ class AdmissionWorkflowTest extends TestCase
         Sanctum::actingAs($this->guest);
         $ratings = array_fill_keys(ProgramMatcher::INTEREST_CATEGORIES, 5);
         $response = $this->postJson('/api/admission/recommendation', ['interests' => $ratings])->assertOk()
-            ->assertJsonPath('data.result_id', $result->id)->assertJsonPath('data.recommendation.ai_status', 'unavailable')
+            ->assertJsonPath('data.result_id', $result->id)
+            ->assertJsonMissingPath('data.recommendation.ai_status')
+            ->assertJsonMissingPath('data.recommendation.ai_explanations')
             ->assertJsonPath('data.recommendation.ranked_programs.0.course_code', 'BSIT')
             ->assertJsonPath('data.recommendation.evidence.Science.correct', 20);
         $this->assertEquals(100, $response->json('data.recommendation.ranked_programs.0.score'));

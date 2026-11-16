@@ -501,6 +501,82 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->postJson("/api/registrar/document-requests/{$sixth->id}/appointment", ['appointment_date' => '2026-09-09'])->assertOk();
     }
 
+    public function test_window_choice_and_capacity_are_enforced_without_changing_daily_limit(): void
+    {
+        $staff = $this->createRegistrar();
+        $type = DocumentType::create(['document_name' => 'Good Moral Certificate', 'processing_fee' => 0, 'status' => 'active']);
+        $requests = collect(range(1, 3))->map(fn ($i) => DocumentRequest::create([
+            'student_id' => $this->createStudent("26-1120{$i}")->id,
+            'document_type_id' => $type->id,
+            'quantity' => 1,
+            'total_fee' => 0,
+            'purpose' => 'Testing',
+            'status' => 'pending',
+            'request_date' => '2026-09-07',
+        ]));
+        Sanctum::actingAs($staff->user);
+        $date = '2026-09-09';
+        $this->getJson('/api/registrar/document-requests/'.$requests[0]->id)
+            ->assertOk()->assertJsonPath('data.appointment_window_options', ['Window 1', 'Window 2']);
+        $this->postJson('/api/registrar/document-requests/'.$requests[0]->id.'/appointment', ['appointment_date' => $date])->assertUnprocessable();
+        $this->postJson('/api/registrar/document-requests/'.$requests[0]->id.'/appointment', ['appointment_date' => $date, 'service_window' => 'Window 4'])->assertUnprocessable();
+        $this->putJson("/api/registrar/appointment-availability/capacity/{$date}/windows/Window%201", ['capacity' => 1])->assertOk();
+        $this->postJson('/api/registrar/document-requests/'.$requests[0]->id.'/appointment', ['appointment_date' => $date, 'service_window' => 'Window 1'])->assertOk();
+        $this->postJson('/api/registrar/document-requests/'.$requests[1]->id.'/appointment', ['appointment_date' => $date, 'service_window' => 'Window 1'])->assertUnprocessable();
+        $this->postJson('/api/registrar/document-requests/'.$requests[1]->id.'/appointment', ['appointment_date' => $date, 'service_window' => 'Window 2'])->assertOk();
+        $this->assertDatabaseHas('appointments', ['document_request_id' => $requests[1]->id, 'service_window' => 'Window 2']);
+        $this->getJson('/api/registrar/appointment-availability/calendar?month=2026-09')->assertOk()
+            ->assertJsonPath('data.days.8.windows.Window 1.booked', 1)
+            ->assertJsonPath('data.days.8.windows.Window 1.capacity', 1)
+            ->assertJsonPath('data.days.8.windows.Window 2.booked', 1);
+        $this->postJson('/api/registrar/document-requests/'.$requests[2]->id.'/appointment', ['appointment_date' => $date, 'service_window' => 'Window 2'])->assertOk();
+        $this->putJson("/api/registrar/appointment-availability/capacity/{$date}/windows/Window%202", ['capacity' => 1])->assertUnprocessable();
+        $this->putJson("/api/registrar/appointment-availability/capacity/{$date}/windows/Window%202", ['capacity' => 2])->assertOk();
+    }
+
+    public function test_registrar_can_confirm_document_routing_and_existing_bookings_keep_their_window(): void
+    {
+        $staff = $this->createRegistrar();
+        $request = $this->requestFor($this->createStudent('26-11301'));
+        Sanctum::actingAs($staff->user);
+        $this->patchJson('/api/registrar/document-types/'.$request->document_type_id, ['registrar_window' => 'Window 2'])
+            ->assertOk()->assertJsonPath('data.registrar_window', 'Window 2');
+        $this->assertDatabaseHas('document_types', ['id' => $request->document_type_id, 'registrar_window' => 'Window 2']);
+        $this->getJson('/api/registrar/document-requests/'.$request->id)
+            ->assertOk()->assertJsonPath('data.appointment_window_options', ['Window 2']);
+        $this->postJson('/api/registrar/document-requests/'.$request->id.'/appointment', ['appointment_date' => '2026-09-09'])
+            ->assertOk();
+        $this->assertDatabaseHas('appointments', ['document_request_id' => $request->id, 'service_window' => 'Window 2']);
+        $this->patchJson('/api/registrar/document-types/'.$request->document_type_id, ['registrar_window' => 'Window 3'])->assertOk();
+        $this->assertDatabaseHas('appointments', ['document_request_id' => $request->id, 'service_window' => 'Window 2']);
+        $this->postJson('/api/registrar/document-requests/'.$request->id.'/appointment', [
+            'appointment_date' => '2026-09-10', 'service_window' => 'Window 2',
+        ])->assertUnprocessable();
+    }
+
+    public function test_window_defaults_apply_to_future_dates_and_cannot_undercut_bookings(): void
+    {
+        $staff = $this->createRegistrar();
+        $first = $this->requestFor($this->createStudent('26-11401'));
+        $second = $this->requestFor($this->createStudent('26-11402'));
+        $third = $this->requestFor($this->createStudent('26-11403'));
+        Sanctum::actingAs($staff->user);
+        $defaultUrl = '/api/registrar/appointment-availability/windows/Window%204/default';
+        $this->putJson($defaultUrl, ['capacity' => 2])->assertOk();
+        foreach ([$first, $second] as $request) {
+            $this->postJson('/api/registrar/document-requests/'.$request->id.'/appointment', ['appointment_date' => '2026-09-09'])->assertOk();
+        }
+        $this->postJson('/api/registrar/document-requests/'.$third->id.'/appointment', ['appointment_date' => '2026-09-09'])->assertUnprocessable();
+        $this->putJson($defaultUrl, ['capacity' => 1])->assertUnprocessable();
+        $this->putJson('/api/registrar/appointment-availability/capacity/2026-09-09/windows/Window%204', ['capacity' => 2])->assertOk();
+        $this->putJson($defaultUrl, ['capacity' => 1])->assertOk();
+        $this->getJson('/api/registrar/appointment-availability/calendar?month=2026-09')->assertOk()
+            ->assertJsonPath('data.window_defaults.Window 4', 1)
+            ->assertJsonPath('data.days.8.windows.Window 4.capacity', 2)
+            ->assertJsonPath('data.days.8.windows.Window 4.has_custom_capacity', true)
+            ->assertJsonPath('data.days.9.windows.Window 4.capacity', 1);
+    }
+
     public function test_approval_requires_appointment_hashes_code_and_does_not_expose_it(): void
     {
         Mail::fake();
@@ -592,6 +668,73 @@ class DocumentRequestAppointmentTest extends TestCase
         $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-09'])
             ->assertUnprocessable()
             ->assertJsonPath('message', 'This date is unavailable due to College Foundation Day.');
+    }
+
+    public function test_a_date_with_an_active_appointment_cannot_be_blocked_or_reactivated(): void
+    {
+        $request = $this->requestFor($this->createStudent('26-10121'));
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-09'])->assertOk();
+
+        $block = ['blocked_date' => '2026-09-09', 'type' => 'office_closure', 'reason' => 'Registrar closure'];
+        $this->postJson('/api/registrar/appointment-blocked-dates', $block)
+            ->assertUnprocessable()->assertJsonValidationErrors('blocked_date');
+        $this->assertDatabaseMissing('appointment_blocked_dates', $block);
+
+        $inactive = AppointmentBlockedDate::create([...$block, 'is_active' => false]);
+        $this->patchJson("/api/registrar/appointment-blocked-dates/{$inactive->id}", ['is_active' => true])
+            ->assertUnprocessable()->assertJsonValidationErrors('blocked_date');
+        $this->assertFalse($inactive->fresh()->is_active);
+
+        $appointment = Appointment::query()->where('document_request_id', $request->id)->firstOrFail();
+        $this->assertSame('pending', $appointment->status);
+        $appointment->update(['status' => 'cancelled']);
+        $this->patchJson("/api/registrar/appointment-blocked-dates/{$inactive->id}", ['is_active' => true])
+            ->assertOk()->assertJsonPath('data.is_active', true);
+    }
+
+    public function test_weekend_cannot_be_closed_while_an_appointment_is_booked(): void
+    {
+        $request = $this->requestFor($this->createStudent('26-10122'));
+        Sanctum::actingAs($this->createRegistrar()->user);
+        $this->patchJson('/api/registrar/appointment-availability/settings', [
+            'block_saturday' => false, 'block_sunday' => true,
+        ])->assertOk();
+        $this->postJson("/api/registrar/document-requests/{$request->id}/appointment", ['appointment_date' => '2026-09-12'])->assertOk();
+
+        $this->patchJson('/api/registrar/appointment-availability/settings', [
+            'block_saturday' => true, 'block_sunday' => true,
+        ])->assertUnprocessable()->assertJsonValidationErrors('block_saturday');
+        $this->getJson('/api/registrar/appointment-availability/settings')
+            ->assertOk()->assertJsonPath('data.block_saturday', false);
+
+        Appointment::query()->where('document_request_id', $request->id)->update(['status' => 'cancelled']);
+        $this->patchJson('/api/registrar/appointment-availability/settings', [
+            'block_saturday' => true, 'block_sunday' => true,
+        ])->assertOk()->assertJsonPath('data.block_saturday', true);
+    }
+
+    public function test_holiday_preset_does_not_block_an_existing_booking_during_migration(): void
+    {
+        AppointmentBlockedDate::query()->whereDate('blocked_date', '2026-11-30')->where('type', 'holiday')->delete();
+        $request = $this->requestFor($student = $this->createStudent('26-10123'));
+        Appointment::create([
+            'student_id' => $student->id,
+            'document_request_id' => $request->id,
+            'appointment_date' => '2026-11-30',
+            'appointment_time' => '09:00',
+            'purpose' => 'Document claim',
+            'status' => 'pending',
+        ]);
+
+        $migration = require database_path('migrations/2026_11_16_000001_seed_appointment_holiday_defaults.php');
+        $migration->up();
+
+        $this->assertDatabaseHas('appointment_blocked_dates', [
+            'blocked_date' => '2026-11-30',
+            'type' => 'holiday',
+            'is_active' => false,
+        ]);
     }
 
     public function test_no_show_leaves_today_verified_and_terminal_requests_unchanged(): void

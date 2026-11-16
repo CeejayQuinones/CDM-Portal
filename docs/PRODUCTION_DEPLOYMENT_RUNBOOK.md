@@ -123,8 +123,7 @@ After deployment, verify:
 - `/up`, MariaDB, queues, scheduler, storage delivery, and SMTP are operational.
 - Failed-job count is zero or every failure has an assigned resolution.
 - Frontend assets call the HTTPS production API without mixed content.
-- Monitoring AI status matches its approved provider configuration. No Student
-  evidence is sent until provider approval and privacy review are complete.
+- No document-analysis or admission AI provider is configured or running.
 - Logs contain no credentials, claim codes, bearer tokens, prompts, provider bodies,
   or private academic data.
 

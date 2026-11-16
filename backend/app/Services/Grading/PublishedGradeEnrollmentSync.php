@@ -20,7 +20,9 @@ class PublishedGradeEnrollmentSync
             abort_unless(
                 (int) $enrollmentSubject->subject_id === (int) $assignment->subject_id
                 && (int) $enrollment->student_id === (int) $result->student_id
-                && (int) $enrollment->section_id === (int) $assignment->section_id
+                && ($enrollmentSubject->section_subject_id
+                    ? (int) $enrollmentSubject->section_subject_id === (int) $assignment->id
+                    : (int) $enrollment->section_id === (int) $assignment->section_id)
                 && (int) $enrollment->academic_year_id === (int) $assignment->section->academic_year_id
                 && (int) $enrollment->semester_id === (int) $assignment->section->semester_id,
                 409,

@@ -11,6 +11,108 @@ permissions:
   contents: read
 
 jobs:
+  frontend-renderers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: CDM_Frontend
+    env:
+      VITE_API_BASE_URL: https://api.example.invalid/api
+      VITE_DESKTOP_API_BASE_URL: https://api.example.invalid/api
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: CDM_Frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci --ignore-scripts
+      - name: Run frontend tests
+        run: npm test
+      - name: Build Website renderer
+        run: npm run build
+      - name: Build Android renderer
+        run: npm run mobile:build
+      - name: Build Desktop renderer
+        run: npx vite build --mode desktop
+
+  android-debug-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: CDM_Frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: CDM_Frontend/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install locked frontend dependencies
+        run: npm ci --ignore-scripts
+      - name: Build Android renderer with synthetic API endpoint
+        env:
+          VITE_API_BASE_URL: https://api.example.invalid/api
+        run: npm run mobile:build
+      - name: Sync Android native project
+        run: npx cap sync android
+      - name: Compile disposable unsigned Android debug APK
+        run: bash gradlew assembleDebug
+        working-directory: CDM_Frontend/android
+
+  desktop-windows-package:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: CDM_Frontend
+    env:
+      VITE_DESKTOP_API_BASE_URL: https://api.example.invalid/api
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: CDM_Frontend/package-lock.json
+      - name: Install locked frontend and Electron dependencies
+        run: npm ci
+      - name: Build disposable unsigned Windows installer
+        run: npm run desktop:win:build
+
+  backend-sqlite-suite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, fileinfo, gd, intl, mbstring, pdo_sqlite, xml, zip
+          coverage: none
+      - name: Install locked PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Run complete backend suite on disposable SQLite
+        run: php artisan test --compact
+
   mariadb-104:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -82,6 +184,8 @@ jobs:
           tests/Feature/StudentAccountVisitTest.php
           tests/Feature/StudentRosterImportTest.php
           tests/Feature/EnrollmentYearLevelTest.php
+          tests/Feature/AppointmentAvailabilityConfigurationTest.php
+          tests/Feature/LegacyMigrationStagingTest.php
 
   composer-audit:
     runs-on: ubuntu-24.04

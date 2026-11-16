@@ -95,6 +95,16 @@ class StudentRecordsTest extends TestCase
             ->assertJsonPath('data.year_level', 1)
             ->assertJsonPath('data.student_status', 'irregular');
 
+        $this->getJson("/api/students/{$firstStudent->id}/academic-options")
+            ->assertOk()->assertJsonPath('data.identity_locked', true);
+        $this->patchJson("/api/students/{$firstStudent->id}/academic", [
+            'course_id' => $firstStudent->course_id,
+            'curriculum_id' => $firstStudent->curriculum_id,
+            'year_level' => 2,
+            'admission_date' => '2026-08-01',
+            'reason' => 'Requested year level correction from record.',
+        ])->assertUnprocessable()->assertJsonValidationErrors('course_id');
+
         $this->assertDatabaseHas('student_record_audit_events', [
             'student_id' => $firstStudent->id,
             'actor_user_id' => $registrar->id,
@@ -210,7 +220,11 @@ class StudentRecordsTest extends TestCase
             ->assertJsonCount(1, 'data.documents')
             ->assertJsonPath('data.documents.0.name', 'Form 137')
             ->assertJsonPath('data.documents.0.file_kind', 'pdf')
+            ->assertJsonMissingPath('data.documents.0.ai_analysis')
+            ->assertJsonMissingPath('data.documents.0.is_ai_analysis_eligible')
             ->assertJsonMissingPath('data.documents.0.file_path');
+
+        $this->postJson("/api/registrar/students/{$student->id}/documents/analyze-all")->assertNotFound();
 
         $this->assertSame('Form 137', $response->json('data.documents.0.name'));
         $this->assertDatabaseHas('student_documents', ['id' => $birthCertificate->id]);

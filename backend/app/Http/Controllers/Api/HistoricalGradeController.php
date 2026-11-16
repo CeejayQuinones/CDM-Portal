@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\HistoricalGradeRecord;
 use App\Models\Student;
+use App\Services\StudentRecords\HistoricalGradeCsvService;
 use App\Services\StudentRecords\HistoricalGradeImportService;
 use App\Services\StudentRecords\HistoricalGradeService;
 use App\Services\StudentRecords\HistoricalGradeWorkbookService;
@@ -17,6 +18,7 @@ class HistoricalGradeController extends Controller
     public function __construct(
         private readonly HistoricalGradeService $grades,
         private readonly HistoricalGradeWorkbookService $workbook,
+        private readonly HistoricalGradeCsvService $csv,
         private readonly HistoricalGradeImportService $imports,
     ) {}
 
@@ -54,7 +56,10 @@ class HistoricalGradeController extends Controller
     {
         $file = $request->validate(['file' => ['required', 'file', 'max:2048']])['file'];
 
-        return $this->ok($this->imports->preview($this->workbook->rows($file), $request->user()));
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+        $rows = $extension === 'csv' ? $this->csv->rows($file) : $this->workbook->rows($file);
+
+        return $this->ok($this->imports->preview($rows, $request->user()));
     }
 
     public function confirm(Request $request): JsonResponse

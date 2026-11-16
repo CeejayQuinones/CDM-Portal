@@ -3,11 +3,9 @@
 namespace App\Models;
 
 use App\Models\Enrollment\EnrollmentDocument;
-use App\Services\Ai\DocumentAnalysisTypeRegistry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class StudentDocument extends Model
 {
@@ -55,11 +53,6 @@ class StudentDocument extends Model
         return $this->belongsTo(User::class, 'physical_copy_received_by_user_id');
     }
 
-    public function aiAnalysis(): HasOne
-    {
-        return $this->hasOne(StudentDocumentAiAnalysis::class);
-    }
-
     public function enrollmentSources(): HasMany
     {
         return $this->hasMany(EnrollmentDocument::class);
@@ -70,35 +63,4 @@ class StudentDocument extends Model
         return $this->hasMany(StudentDocumentSubmission::class)->orderByDesc('version');
     }
 
-    public function supportsAiAnalysis(): bool
-    {
-        $this->loadMissing('documentType:id,document_name');
-
-        return DocumentAnalysisTypeRegistry::supports($this->documentType?->document_name);
-    }
-
-    /** @return array<string, mixed>|null */
-    public function aiAnalysisType(): ?array
-    {
-        $this->loadMissing('documentType:id,document_name');
-
-        return DocumentAnalysisTypeRegistry::resolve($this->documentType?->document_name);
-    }
-
-    public function resetAiAnalysisToPending(): StudentDocumentAiAnalysis
-    {
-        return $this->aiAnalysis()->updateOrCreate([], [
-            'status' => StudentDocumentAiAnalysis::STATUS_PENDING,
-            'detected_document_type' => null,
-            'confidence' => null,
-            'extracted_data' => null,
-            'checks' => null,
-            'issues' => null,
-            'recommendation' => null,
-            'provider' => null,
-            'model' => null,
-            'analyzed_at' => null,
-            'error_message' => null,
-        ]);
-    }
 }

@@ -13,9 +13,7 @@ class EnvironmentExampleSecurityTest extends TestCase
         foreach ([
             'APP_KEY',
             'DB_PASSWORD',
-            'GEMINI_API_KEY',
             'MAIL_PASSWORD',
-            'ADMISSION_GEMINI_API_KEY',
             'AWS_ACCESS_KEY_ID',
             'AWS_SECRET_ACCESS_KEY',
             'GOOGLE_CLIENT_ID',

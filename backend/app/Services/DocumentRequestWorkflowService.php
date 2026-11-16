@@ -4,7 +4,10 @@ namespace App\Services;
 
 use App\Mail\DocumentRequestApprovedMail;
 use App\Models\Appointment;
+use App\Models\AppointmentAvailabilitySetting;
 use App\Models\AppointmentDateCapacity;
+use App\Models\AppointmentWindowCapacity;
+use App\Models\AppointmentWindowDefault;
 use App\Models\DocumentRequest;
 use App\Models\RegistrarStaff;
 use Carbon\CarbonImmutable;
@@ -19,29 +22,46 @@ class DocumentRequestWorkflowService
 
     public const DEFAULT_CAPACITY = 5;
 
+    // Leave existing booking behavior unchanged until the registrar configures a window.
+    public const DEFAULT_WINDOW_CAPACITY = 100;
+
     public function __construct(
         private readonly AppointmentAvailabilityService $availability,
         private readonly RegistrarWindowService $windows,
     ) {}
 
-    public function assignDate(DocumentRequest $request, RegistrarStaff $staff, string $date): DocumentRequest
+    public function assignDate(DocumentRequest $request, RegistrarStaff $staff, string $date, ?string $serviceWindow = null): DocumentRequest
     {
         $businessDate = CarbonImmutable::createFromFormat('Y-m-d', $date, self::BUSINESS_TIMEZONE)->startOfDay();
         abort_if($businessDate->lessThan(CarbonImmutable::now(self::BUSINESS_TIMEZONE)->startOfDay()), 422, 'Past appointment dates are unavailable.');
-        abort_if($message = $this->availability->unavailableMessage($date), 422, $message);
-
-        return DB::transaction(function () use ($date, $request, $staff): DocumentRequest {
+        return DB::transaction(function () use ($date, $request, $staff, $serviceWindow): DocumentRequest {
             $locked = DocumentRequest::query()->lockForUpdate()->findOrFail($request->id);
             abort_unless($locked->status === 'pending', 422, 'Only pending requests can be assigned an appointment date.');
+            $options = $this->windows->optionsForDocument($locked->documentType->document_name, $locked->documentType->registrar_window);
+            $existing = Appointment::query()->where('document_request_id', $locked->id)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->first();
+            $window = $serviceWindow ?: ($existing?->service_window ?: (count($options) === 1 ? $options[0] : null));
+            abort_unless($window && in_array($window, $options, true), 422, 'Select a valid registrar window for this document.');
 
+            // Serialize booking with changes to weekend rules and closures.
+            AppointmentAvailabilitySetting::query()->whereKey(1)->lockForUpdate()->firstOrFail();
             AppointmentDateCapacity::query()->insertOrIgnore(['appointment_date' => $date, 'capacity' => self::DEFAULT_CAPACITY, 'created_at' => now(), 'updated_at' => now()]);
             $capacity = AppointmentDateCapacity::query()->whereDate('appointment_date', $date)->lockForUpdate()->firstOrFail()->capacity;
-            $booked = Appointment::query()->whereDate('appointment_date', $date)->where('document_request_id', '!=', $locked->id)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->count();
+            $windowCapacity = AppointmentWindowCapacity::query()->whereDate('appointment_date', $date)->where('service_window', $window)->whereNotNull('updated_by')->value('capacity')
+                ?? AppointmentWindowDefault::query()->where('service_window', $window)->value('capacity')
+                ?? self::DEFAULT_WINDOW_CAPACITY;
+            abort_if($message = $this->availability->unavailableMessage($date), 422, $message);
+            $booked = Appointment::query()->whereDate('appointment_date', $date)->where(fn ($query) => $query->where('document_request_id', '!=', $locked->id)->orWhereNull('document_request_id'))->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->count();
             abort_if($booked >= $capacity, 422, 'This appointment date is full.');
+            // Older bookings have no stored window. Count them against every window until reviewed.
+            $windowBooked = Appointment::query()->whereDate('appointment_date', $date)
+                ->where(fn ($query) => $query->where('document_request_id', '!=', $locked->id)->orWhereNull('document_request_id'))
+                ->whereIn('status', ['pending', 'confirmed'])
+                ->where(fn ($query) => $query->where('service_window', $window)->orWhereNull('service_window'))
+                ->lockForUpdate()->count();
+            abort_if($windowBooked >= $windowCapacity, 422, "{$window} is full on this date.");
 
-            $existing = Appointment::query()->where('document_request_id', $locked->id)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->first();
             if ($existing) {
-                $existing->update(['appointment_date' => $date, 'registrar_staff_id' => $staff->id, 'status' => 'pending', 'active_slot_key' => null]);
+                $existing->update(['appointment_date' => $date, 'service_window' => $window, 'registrar_staff_id' => $staff->id, 'status' => 'pending', 'active_slot_key' => null]);
             } else {
                 Appointment::create([
                     'student_id' => $locked->student_id,
@@ -49,6 +69,7 @@ class DocumentRequestWorkflowService
                     'registrar_staff_id' => $staff->id,
                     'appointment_date' => $date,
                     'appointment_time' => '09:00',
+                    'service_window' => $window,
                     'purpose' => $locked->purpose ?: 'Document request claim',
                     'status' => 'pending',
                     'active_slot_key' => null,
@@ -87,7 +108,7 @@ class DocumentRequestWorkflowService
         try {
             $email = $approved->student?->user?->profile?->email;
             if ($email) {
-                Mail::to($email)->send(new DocumentRequestApprovedMail($approved, $code, $this->windows->forDocument($approved->documentType->document_name)));
+                Mail::to($email)->send(new DocumentRequestApprovedMail($approved, $code, $approved->activeAppointment?->service_window ?: ($approved->documentType->registrar_window ?: $this->windows->forDocument($approved->documentType->document_name))));
                 $delivered = true;
             }
         } catch (\Throwable $exception) {
@@ -139,7 +160,7 @@ class DocumentRequestWorkflowService
         try {
             $email = $updated->student?->user?->profile?->email;
             if ($email) {
-                Mail::to($email)->send(new DocumentRequestApprovedMail($updated, $code, $this->windows->forDocument($updated->documentType->document_name)));
+                Mail::to($email)->send(new DocumentRequestApprovedMail($updated, $code, $updated->activeAppointment?->service_window ?: ($updated->documentType->registrar_window ?: $this->windows->forDocument($updated->documentType->document_name))));
                 $delivered = true;
             }
         } catch (\Throwable $exception) {

@@ -110,6 +110,32 @@ class StudentRecordReportTest extends TestCase
         $this->assertStringNotContainsString('email', strtolower($content));
     }
 
+    public function test_enrollment_status_filter_excludes_unenrolled_records_from_report_and_export(): void
+    {
+        $enrolled = $this->student('26-11001', 'Enrolled', 'Student');
+        $this->enroll($enrolled, '2026-2027', 'First Semester', 'BSIT-1A');
+        $pending = $this->student('26-11002', 'Pending', 'Student');
+        $this->enroll($pending, '2025-2026', 'First Semester', 'BSIT-1B');
+        DB::table('enrollments')->where('student_id', $pending->id)->update(['status' => 'pending']);
+        $this->student('26-11003', 'Unenrolled', 'Student');
+        Sanctum::actingAs($this->user(Role::REGISTRAR_STAFF));
+
+        $this->getJson('/api/student-record-reports/master-list?enrollment_status=enrolled')
+            ->assertOk()->assertJsonPath('data.pagination.total', 1)
+            ->assertJsonPath('data.rows.0.student_number', '26-11001')
+            ->assertJsonPath('data.rows.0.enrollment_status', 'enrolled');
+        $this->getJson('/api/student-record-reports/academic-summary?enrollment_status=pending')
+            ->assertOk()->assertJsonPath('data.pagination.total', 1)
+            ->assertJsonPath('data.rows.0.student_number', '26-11002');
+        $this->getJson('/api/student-record-reports/master-list?enrollment_status=invalid')->assertUnprocessable();
+        $this->getJson('/api/student-record-reports/physical-records?enrollment_status=enrolled')->assertUnprocessable();
+
+        $csv = $this->get('/api/student-record-reports/master-list/export?enrollment_status=enrolled')->assertOk()->streamedContent();
+        $this->assertStringContainsString('26-11001', $csv);
+        $this->assertStringNotContainsString('26-11002', $csv);
+        $this->assertStringNotContainsString('26-11003', $csv);
+    }
+
     public function test_empty_and_large_result_sets_remain_valid_and_paginated(): void
     {
         foreach (range(1, 12) as $index) {

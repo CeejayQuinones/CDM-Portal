@@ -6,6 +6,7 @@ import { parseGradePeriods } from '../src/modules/grading/gradePeriodPayload.js'
 const view = readFileSync(new URL('../src/modules/grading/GradingView.vue', import.meta.url), 'utf8')
 const access = readFileSync(new URL('../src/config/accessControl.js', import.meta.url), 'utf8')
 const service = readFileSync(new URL('../src/modules/grading/gradingService.js', import.meta.url), 'utf8')
+const releasePanel = readFileSync(new URL('../src/modules/grading/GradeReleasePanel.vue', import.meta.url), 'utf8')
 
 test('grading workspace exposes Phase 1 professor states and actions', () => {
   for (const text of ['My Classes', 'Search Student', 'Midterm', 'Finals', 'Add Assessment', 'Remove', 'Restore', 'Draft scores saved', 'No enrolled Students', 'Loading grading workspace']) assert.match(view, new RegExp(text, 'i'))
@@ -74,8 +75,9 @@ test('Grade Period staff tabs expose loading, error, empty, and row actions', ()
     'Loading grade periods…',
     'No grade periods have been configured yet.',
     'No submitted grade sheets match the current filters.',
-    'No approved grade sheets are ready for release.',
   ]) assert.match(view, new RegExp(text, 'i'))
+  assert.match(view, /<GradeReleasePanel /)
+  assert.match(releasePanel, /No approved grade sheets match this term and these programs\./)
   assert.match(view, /role="alert">\{\{error\}\}/)
   assert.match(view, /<template v-if="!loading"><nav v-if="!professor&&!isDesktopPresentation"/)
   assert.match(view, /<template v-if="professor">/)

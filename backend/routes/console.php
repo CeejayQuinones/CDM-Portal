@@ -49,12 +49,11 @@ if (app()->environment('local')) {
             $this->info('Local demo document installed in private storage.');
             $this->line('Sample: '.$result['sample']['description']);
             $this->line('Student document type: '.$result['expected_document_type']);
-            $this->line('AI supported now: '.($document->supportsAiAnalysis() ? 'yes' : 'no'));
             $this->warn('Demo fixture only. This is not an authenticated student record.');
 
             return Command::SUCCESS;
         },
-    )->purpose('Install a local-only sample file through the Student Documents observer workflow');
+    )->purpose('Install a local-only sample student document file');
 }
 
 Schedule::command('admission:finalize-expired')->everyMinute()->withoutOverlapping();

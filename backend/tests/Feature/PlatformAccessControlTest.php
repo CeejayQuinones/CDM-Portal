@@ -222,7 +222,7 @@ class PlatformAccessControlTest extends TestCase
             Mail::fake();
         }
         $response = $this->postJson('/api/login', [
-            'username' => $user->username,
+            'username' => $user->role->role_name === Role::PROFESSOR ? $user->profile->email : $user->username,
             'password' => 'Password123!',
         ], [ClientPlatform::HEADER => $client]);
         if ($response->status() !== 202) {

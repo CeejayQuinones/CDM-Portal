@@ -30,6 +30,7 @@ class EnrollmentAcademicService
         private EnrollmentDocumentHandoffService $documentHandoff,
         private EnrollmentYearLevelReview $yearLevels,
         private StudentRecordAuditWriter $studentAudit,
+        private EnrollmentTeachingPlacementService $placements,
     ) {}
 
     public function application(User $user, int $id): EnrollmentApplication
@@ -44,8 +45,25 @@ class EnrollmentAcademicService
     {
         $enrolled = Enrollment::where('section_id', $section->id)->whereIn('status', ['pending', 'enrolled'])->when($lock, fn ($q) => $q->lockForUpdate())->get(['id'])->count();
         $reserved = EnrollmentApplication::where('section_id', $section->id)->where('status', 'approved')->whereNull('enrollment_id')->when($except, fn ($q) => $q->where('id', '!=', $except))->when($lock, fn ($q) => $q->lockForUpdate())->get(['id'])->count();
+        $visiting = DB::table('enrollment_subjects as es')
+            ->join('section_subjects as assignment', 'assignment.id', '=', 'es.section_subject_id')
+            ->join('enrollments as enrollment', 'enrollment.id', '=', 'es.enrollment_id')
+            ->where('assignment.section_id', $section->id)
+            ->where('enrollment.section_id', '!=', $section->id)
+            ->whereIn('enrollment.status', ['pending', 'enrolled'])
+            ->when($lock, fn ($query) => $query->lockForUpdate())
+            ->distinct()->count('enrollment.student_id');
+        $visitingReserved = DB::table('enrollment_application_subjects as selected')
+            ->join('section_subjects as assignment', 'assignment.id', '=', 'selected.section_subject_id')
+            ->join('enrollment_applications as application', 'application.id', '=', 'selected.application_id')
+            ->where('assignment.section_id', $section->id)
+            ->where(fn ($query) => $query->whereNull('application.section_id')->orWhere('application.section_id', '!=', $section->id))
+            ->where('application.status', 'approved')->whereNull('application.enrollment_id')
+            ->when($except, fn ($query) => $query->where('application.id', '!=', $except))
+            ->when($lock, fn ($query) => $query->lockForUpdate())
+            ->distinct()->count('application.id');
 
-        return $enrolled + $reserved;
+        return $enrolled + $reserved + $visiting + $visitingReserved;
     }
 
     public function change(User $user, int $id, string $action, array $input): EnrollmentApplication
@@ -86,8 +104,24 @@ class EnrollmentAcademicService
             if ($action === 'subjects') {
                 abort_unless($staff || $a->classification === 'irregular', 403, 'Only staff can prepare this subject load.');
                 $ids = $a->classification === 'regular' ? $this->subjects->candidates($a, true)->where('year_level', $a->year_level)->pluck('id')->all() : $input['subject_ids'];
-                $this->subjects->validate($a, $ids);
-                $a->subjects()->sync($ids);
+                $load = $this->subjects->validate($a, $ids);
+                $requested = $staff ? ($input['teaching_assignments'] ?? []) : [];
+                $crossYear = $load->filter(fn ($subject) => (int) $subject->year_level !== (int) $a->year_level);
+                $assignmentIds = $crossYear->map(fn ($subject) => (int) ($requested[$subject->id] ?? 0))->filter()->values()->all();
+                $assignments = SectionSubject::with('section')->whereIn('id', $assignmentIds)->lockForUpdate()->get()->keyBy('id');
+                $pivot = [];
+                foreach ($load as $subject) {
+                    $assignmentId = (int) ($requested[$subject->id] ?? 0);
+                    if ((int) $subject->year_level !== (int) $a->year_level && $staff) {
+                        $assignment = $assignments->get($assignmentId);
+                        abort_unless($assignment && $this->placements->valid($a, $subject, $assignment), 422,
+                            "Choose an active teaching section for {$subject->subject_code} before reviewing this cross-year load.");
+                    } else {
+                        abort_if($assignmentId, 422, 'Only cross-year subjects may use a separate teaching section.');
+                    }
+                    $pivot[$subject->id] = ['section_subject_id' => $assignmentId ?: null];
+                }
+                $a->subjects()->sync($pivot);
                 $a->load_reviewed_at = $staff ? now() : null;
                 $a->load_reviewed_by = $staff ? $actor->id : null;
                 $event = $staff ? 'subjects_prepared' : 'subjects_updated';
@@ -111,14 +145,38 @@ class EnrollmentAcademicService
                 }
                 $ids = DB::table('enrollment_application_subjects')->where('application_id', $a->id)->lockForUpdate()->pluck('subject_id')->all();
                 $load = $this->subjects->validate($a, $ids);
+                $placements = DB::table('enrollment_application_subjects')
+                    ->where('application_id', $a->id)->lockForUpdate()->pluck('section_subject_id', 'subject_id');
+                $crossYearIds = $load->filter(fn ($subject) => (int) $subject->year_level !== (int) $section->year_level)
+                    ->map(fn ($subject) => (int) ($placements[$subject->id] ?? 0))->filter()->values()->all();
+                $crossYearAssignments = SectionSubject::with(['section', 'meetings'])->whereIn('id', $crossYearIds)
+                    ->lockForUpdate()->get()->keyBy('id');
+                $externalSections = collect();
+                foreach ($load as $subject) {
+                    if ((int) $subject->year_level === (int) $section->year_level) {
+                        continue;
+                    }
+                    $assignment = $crossYearAssignments->get((int) ($placements[$subject->id] ?? 0));
+                    abort_unless($assignment && $this->placements->valid($a, $subject, $assignment), 422,
+                        "The teaching section for {$subject->subject_code} is unavailable. Review the subject load before finalizing.");
+                    $externalSections->put($assignment->section_id, $assignment->section);
+                }
+                foreach ($externalSections as $teachingSection) {
+                    abort_unless($this->occupied($teachingSection, true, $a->id) < $teachingSection->capacity, 409,
+                        "The teaching section {$teachingSection->section_name} is full.");
+                }
                 // Enrollment and timetable preparation are independent workflows. An
                 // existing teaching assignment may contribute its Professor, but neither
                 // that assignment nor its meetings are prerequisites for finalization.
-                $assignments = SectionSubject::where('section_id', $section->id)
+                $assignments = SectionSubject::with('meetings')->where('section_id', $section->id)
                     ->whereIn('subject_id', $ids)
                     ->lockForUpdate()
                     ->get()
                     ->keyBy('subject_id');
+                $this->placements->assertNoTimetableConflict($load->map(fn ($subject) =>
+                    (int) $subject->year_level === (int) $section->year_level
+                        ? $assignments->get($subject->id)
+                        : $crossYearAssignments->get((int) ($placements[$subject->id] ?? 0))));
                 if (! $student) {
                     abort_unless($owner->role?->role_name === Role::GUEST && $owner->profile, 409, 'The admitted Guest identity needs review.');
                     abort_if(Student::where('user_id', $owner->id)->orWhere('user_profile_id', $owner->profile->id)->lockForUpdate()->exists(), 409, 'A Student identity already exists for this account.');
@@ -141,7 +199,15 @@ class EnrollmentAcademicService
                 }
                 $this->documentHandoff->link($actor, $a, $student);
                 $e = Enrollment::create(['student_id' => $student->id, 'section_id' => $section->id, 'academic_year_id' => $a->academic_year_id, 'semester_id' => $a->semester_id, 'enrollment_date' => now()->toDateString(), 'status' => 'enrolled']);
-                $rows = $load->map(fn ($s) => ['enrollment_id' => $e->id, 'subject_id' => $s->id, 'professor_id' => $assignments->get($s->id)?->professor_id, 'subject_status' => 'enrolled', 'remarks' => 'In Progress', 'created_at' => now(), 'updated_at' => now()])->all();
+                $rows = $load->map(function ($subject) use ($e, $section, $assignments, $crossYearAssignments, $placements): array {
+                    $assignment = (int) $subject->year_level === (int) $section->year_level
+                        ? $assignments->get($subject->id)
+                        : $crossYearAssignments->get((int) ($placements[$subject->id] ?? 0));
+
+                    return ['enrollment_id' => $e->id, 'subject_id' => $subject->id,
+                        'section_subject_id' => $assignment?->id, 'professor_id' => $assignment?->professor_id,
+                        'subject_status' => 'enrolled', 'remarks' => 'In Progress', 'created_at' => now(), 'updated_at' => now()];
+                })->all();
                 EnrollmentSubject::insert($rows);
                 if ($student->year_level < $a->year_level) {
                     $previousYear = $student->year_level;

@@ -154,6 +154,22 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
       try{await settle();assert.match(textOf(root),/CS-1A/);await click(root,'Create section');const form=all(root,'form').at(-1);await model(field(form,'Section name','input'),'CS-1B');await model(field(form,'Course','select'),1);await model(field(form,'Academic year','select'),1);await model(field(form,'Semester','select'),1);await form.props.onSubmit({preventDefault(){}});await settle();assert.match(textOf(root),/Saved successfully/)}finally{app.unmount()}
       await router.push('/enrollment/records');const records=mount();try{await settle();assert.match(textOf(records.root),/26-ACADEMIC/);assert.equal(button(records.root,'Manage OVRF format drafts'),undefined);assert.doesNotMatch(textOf(records.root),/OVRF format drafts/);assert.equal(all(records.root,'input').some(node=>node.props.type==='file'),false);assert.ok(button(records.root,'Preview OVRF'));assert.ok(button(records.root,'Download OVRF'));assert.ok(button(records.root,'Print OVRF'));await model(field(records.root,'Sort','select'),'name');await all(records.root,'form')[0].props.onSubmit({preventDefault(){}});await settle();assert.equal(apiState.calls.filter(c=>c.url==='/enrollment/academic/records').at(-1).payload.params.sort,'name');await click(records.root,'View COR');assert.equal(apiState.calls.at(-1).url,'/enrollment/academic/records/42');const dialogs=all(records.root,'div').filter(n=>n.props.role==='dialog');assert.equal(dialogs.length,1);assert.equal(dialogs[0].props['aria-modal'],'true');assert.match(textOf(dialogs[0]),/Certificate of Registration/);await click(records.root,'Close');assert.equal(all(records.root,'div').filter(n=>n.props.role==='dialog').length,0);assert.doesNotMatch(textOf(records.root),/Certificate of Registration/)}finally{records.app.unmount()}
     })
+    await t.test('general schedule shows all assignments and applies year, program, and level filters',async()=>{
+      auth.currentRole=ROLES.REGISTRAR_STAFF
+      apiState.handler=async(method,url,payload)=>url==='/enrollment/academic/schedules/overview'
+        ? response(pagination([{...schedule,section,meetings:[{id:1,day:'Monday',start_time:'09:00:00',end_time:'10:00:00',room:'Lab 1'}]}, {...unscheduled,section,meetings:[]}]))
+        : handler(method,url,payload)
+      await router.push('/enrollment/scheduling');apiState.calls=[]
+      const {root,app}=mount()
+      try{
+        await settle();await click(root,'All schedules');assert.match(textOf(root),/General schedule/);assert.match(textOf(root),/Schedule pending/)
+        await model(field(root,'Academic year','select'),1);await model(field(root,'Program','select'),1);await model(field(root,'Year level','select'),1)
+        await all(root,'form')[0].props.onSubmit({preventDefault(){}});await settle()
+        const request=apiState.calls.filter(call=>call.url==='/enrollment/academic/schedules/overview').at(-1)
+        assert.deepEqual([request.payload.params.academic_year_id,request.payload.params.course_id,request.payload.params.year_level],[1,1,1])
+        await click(root,'Open section');assert.match(textOf(root),/Weekly timetable/)
+      }finally{app.unmount();apiState.handler=handler}
+    })
     await t.test('scheduling supports views, copy and safe server conflict feedback',async()=>{
       auth.currentRole=ROLES.REGISTRAR_STAFF;apiState.handler=handler;await router.push('/enrollment/scheduling');const {root,app}=mount()
       try{
@@ -168,6 +184,37 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
         await form.props.onSubmit({preventDefault(){}});await settle();assert.match(textOf(form),/temporarily unavailable/)
         assert.equal(all(root,'div').filter(node=>String(node.props.class||'').includes('en-modern-feedback')).some(node=>/temporarily unavailable/.test(textOf(node))),false)
       }finally{scheduleFailure=null;app.unmount()}
+    })
+    await t.test('schedule modal refreshes subject choices for its own section',async()=>{
+      const yearTwoSection={...section,id:2,section_name:'CS-2B',year_level:2}
+      const yearTwoSubject={...subject,id:20,subject_code:'IT201',subject_name:'Year Two Programming',year_level:2}
+      auth.currentRole=ROLES.REGISTRAR_STAFF;await router.push('/enrollment/scheduling');apiState.calls=[]
+      apiState.handler=async(method,url,payload)=>{
+        if(url==='/enrollment/academic/sections')return response(pagination([section,yearTwoSection]))
+        if(url==='/enrollment/academic/schedules'&&Number(payload?.params?.section_id)===2)
+          return response({section:yearTwoSection,schedules:pagination([]),subjects:[yearTwoSubject],days:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']})
+        return handler(method,url,payload)
+      }
+      const {root,app}=mount()
+      try{
+        await settle()
+        const outerSection=all(root,'select').find(node=>node.props.onChange)
+        await model(outerSection,1);await outerSection.props.onChange();await settle()
+        await click(root,'Add schedule')
+        const form=all(root,'form').at(-1)
+        const modalSection=field(form,'Section / copy destination','select')
+        const modalSubject=field(form,'Subject','select')
+        assert.match(textOf(modalSubject),/CS101/)
+        assert.doesNotMatch(textOf(modalSubject),/IT201/)
+        await model(modalSubject,10)
+        await model(modalSection,2);await modalSection.props.onChange();await settle()
+        assert.match(textOf(modalSubject),/IT201/)
+        assert.doesNotMatch(textOf(modalSubject),/CS101/)
+        assert.equal(apiState.calls.filter(call=>call.url==='/enrollment/academic/schedules'&&Number(call.payload?.params?.section_id)===2).length,1)
+        await model(modalSection,1);await modalSection.props.onChange();await settle()
+        assert.match(textOf(modalSubject),/CS101/)
+        assert.doesNotMatch(textOf(modalSubject),/IT201/)
+      }finally{app.unmount();apiState.handler=handler}
     })
     await t.test('unscheduled assignments use Add Schedule and POST while saved schedules use Edit and PUT',async()=>{
       auth.currentRole=ROLES.REGISTRAR_STAFF;apiState.handler=handler;apiState.calls=[];await router.push('/enrollment/scheduling');const {root,app}=mount()

@@ -54,15 +54,6 @@ return [
         ],
     ],
 
-    'document_analysis' => [
-        'driver' => env('AI_DOCUMENT_ANALYZER', 'mock'),
-        'gemini' => [
-            'api_key' => env('GEMINI_API_KEY'),
-            'model' => env('GEMINI_MODEL'),
-            'timeout' => (int) env('GEMINI_TIMEOUT', 60),
-        ],
-    ],
-
     'campus_weather' => [
         'enabled' => filter_var(env('CAMPUS_WEATHER_ENABLED', false), FILTER_VALIDATE_BOOL),
         'provider' => env('CAMPUS_WEATHER_PROVIDER', 'open_meteo'),

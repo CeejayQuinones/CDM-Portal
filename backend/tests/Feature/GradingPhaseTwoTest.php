@@ -104,6 +104,20 @@ class GradingPhaseTwoTest extends TestCase
         return $release['id'];
     }
 
+    public function test_period_options_include_each_programs_institute_for_release_selection(): void
+    {
+        Sanctum::actingAs($this->f['registrar']);
+
+        $courses = $this->withHeader('X-CDM-Client', 'desktop')
+            ->getJson('/api/grading/periods')
+            ->assertOk()
+            ->json('data.courses');
+
+        $course = collect($courses)->firstWhere('id', $this->f['course']->id);
+        $this->assertNotNull($course);
+        $this->assertSame($this->f['department']->department_code, $course['department']['department_code']);
+    }
+
     public function test_server_computation_applies_category_and_final_weights_with_deterministic_rounding(): void
     {
         GradeAssessment::create(['grade_sheet_id' => $this->sheet->id, 'period' => 'midterm', 'label' => 'Archived draft', 'category' => 'Quiz', 'max_score' => 100, 'display_order' => 99, 'status' => 'archived']);
@@ -116,6 +130,91 @@ class GradingPhaseTwoTest extends TestCase
         $this->assertNull($computed['results'][0]['remarks']);
         $this->assertSame('integer hundredths, half up', $computed['configuration']['rounding']);
         $this->assertCount(8, $computed['configuration']['assessments']);
+    }
+
+    public function test_professor_can_add_a_custom_category_without_silently_changing_grading_weights(): void
+    {
+        $created = $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/assessments', [
+            'period' => 'finals', 'label' => 'Notes 1', 'category' => 'Notes', 'create_category' => true,
+            'max_score' => 100, 'display_order' => 99,
+        ])->assertCreated()->json('data');
+
+        $this->assertDatabaseHas('grade_category_weights', ['grade_sheet_id' => $this->sheet->id, 'period' => 'midterm', 'category' => 'Notes', 'weight_percentage' => 0]);
+        $this->assertDatabaseHas('grade_category_weights', ['grade_sheet_id' => $this->sheet->id, 'period' => 'finals', 'category' => 'Notes', 'weight_percentage' => 0]);
+        $this->assertContains('Notes', $this->postJson('/api/grading/classes/'.$this->sheet->section_subject_id.'/workspace')->assertOk()->json('data.categories'));
+        $unweighted = app(GradingWorkflowService::class)->compute($this->sheet);
+        $this->assertEquals(0, $unweighted['configuration']['category_weights']['finals']['Notes']);
+        $this->assertFalse($unweighted['ready']);
+        $this->assertContains('Finals Notes has 0% weight. Set a positive category weight before submitting grades.', $unweighted['errors']);
+
+        $this->putJson('/api/grading/sheets/'.$this->sheet->id.'/scores', [
+            'assessment_id' => $created['id'],
+            'scores' => [['enrollment_subject_id' => $this->enrollmentSubject->id, 'score' => 90]],
+        ])->assertOk();
+
+        $weights = $this->sheet->weights()->where('period', 'finals')->get()->map(fn ($weight) => [
+            'category' => $weight->category,
+            'weight_percentage' => $weight->category === 'Quiz' ? 5 : ($weight->category === 'Notes' ? 10 : $weight->weight_percentage),
+            'version' => $weight->version,
+        ])->all();
+        $this->putJson('/api/grading/sheets/'.$this->sheet->id.'/weights/finals', [
+            'weights' => array_values(array_filter($weights, fn ($weight) => $weight['category'] !== 'Notes')),
+        ])->assertUnprocessable();
+        $this->putJson('/api/grading/sheets/'.$this->sheet->id.'/weights/finals', ['weights' => $weights])->assertOk();
+        $computed = app(GradingWorkflowService::class)->compute($this->sheet);
+        $this->assertTrue($computed['ready']);
+        $this->assertEquals(10, $computed['configuration']['category_weights']['finals']['Notes']);
+
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/assessments', [
+            'period' => 'finals', 'label' => 'Other note', 'category' => 'notes', 'create_category' => true,
+            'max_score' => 100, 'display_order' => 100,
+        ])->assertUnprocessable();
+    }
+
+    public function test_zero_score_is_incomplete_and_cannot_be_submitted_as_a_failing_numeric_grade(): void
+    {
+        $assessmentId = GradeAssessment::query()->where('grade_sheet_id', $this->sheet->id)->where('period', 'midterm')->where('category', 'Quiz')->value('id');
+        GradeScore::query()->where('grade_assessment_id', $assessmentId)->update(['score' => 0]);
+
+        $computed = app(GradingWorkflowService::class)->compute($this->sheet);
+        $this->assertFalse($computed['ready']);
+        $this->assertEmpty($computed['results']);
+        $this->assertContains($this->f['student']->student_number.' has 0 for midterm Quiz (INC). Complete this score before submission.', $computed['errors']);
+
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/submit', ['version' => $this->sheet->version])->assertUnprocessable();
+    }
+
+    public function test_saved_score_history_can_restore_an_earlier_value_without_erasing_the_audit_trail(): void
+    {
+        $assessment = GradeAssessment::query()->where('grade_sheet_id', $this->sheet->id)->where('period', 'finals')->where('category', 'Quiz')->firstOrFail();
+        $score = GradeScore::query()->where('grade_assessment_id', $assessment->id)->firstOrFail();
+
+        $this->putJson('/api/grading/sheets/'.$this->sheet->id.'/scores', [
+            'assessment_id' => $assessment->id,
+            'scores' => [['enrollment_subject_id' => $this->enrollmentSubject->id, 'score' => 95, 'version' => $score->version]],
+        ])->assertOk();
+
+        $history = $this->getJson('/api/grading/sheets/'.$this->sheet->id.'/score-history')->assertOk()->json('data');
+        $this->assertCount(1, $history['entries']);
+        $this->assertSame(95.0, $score->fresh()->score);
+
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/score-history/'.$history['entries'][0]['id'].'/restore', [
+            'revision' => $history['revision'],
+        ])->assertOk();
+
+        $this->assertSame(100.0, $score->fresh()->score);
+        $this->assertDatabaseHas('grade_audit_events', ['grade_sheet_id' => $this->sheet->id, 'action' => 'scores.restored']);
+        $this->assertCount(2, $this->getJson('/api/grading/sheets/'.$this->sheet->id.'/score-history')->assertOk()->json('data.entries'));
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/score-history/'.$history['entries'][0]['id'].'/restore', [
+            'revision' => $history['revision'],
+        ])->assertStatus(409);
+
+        $currentRevision = $this->getJson('/api/grading/sheets/'.$this->sheet->id.'/score-history')->assertOk()->json('data.revision');
+        $this->sheet->update(['status' => 'submitted']);
+        $this->postJson('/api/grading/sheets/'.$this->sheet->id.'/score-history/'.$history['entries'][0]['id'].'/restore', [
+            'revision' => $currentRevision,
+        ])->assertStatus(409);
+        $this->assertSame(100.0, $score->fresh()->score);
     }
 
     public function test_grading_scale_populates_draft_computation_and_submitted_snapshot_stays_immutable(): void

@@ -12,6 +12,7 @@ class StudentRecordAuditWriter
         'student_profile_updated',
         'student_status_changed',
         'student_year_level_promoted',
+        'student_academic_information_corrected',
         'student_account_activation_prepared',
         'student_account_activation_email_corrected',
         'student_account_activated',

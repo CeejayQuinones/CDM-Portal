@@ -51,16 +51,16 @@ test('assessment groups and score columns remain generated from real workspace r
   assert.match(model, /group\.columns\.push/)
 })
 
-test('period and final summary cells use supported readiness fields and remain visibly read-only', async () => {
+test('period and final summary cells show live draft previews and remain visibly read-only', async () => {
   const [view, model] = await Promise.all([
     read('src/modules/grading/GradingView.vue'),
     read('src/modules/grading/gradeTableModel.js'),
   ])
 
   for (const field of ['midterm_grade', 'finals_grade', 'final_grade', 'grade_point', 'remarks']) assert.match(model, new RegExp(`field: '${field}'`))
-  assert.match(view, /resultFor\(s\)\[gradeTableModel\.periodResultColumn\.field\]/)
+  assert.match(view, /displayLiveGrade\(periodPreviewFor\(s\)\)/)
   assert.match(view, /data-readonly="true"/)
-  assert.match(view, /Read-only \$\{gradeTableModel\.periodResultColumn\.label\} result/)
+  assert.match(view, /gradeTableModel\.periodResultColumn\.label\} live preview/)
   assert.doesNotMatch(view, /preliminary_grade/)
   assert.doesNotMatch(view, /rounded_grade/)
 })

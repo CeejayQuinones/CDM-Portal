@@ -1,5 +1,8 @@
 # Admission MVP implementation
 
+> Historical design note: AI-written admission explanations have been removed.
+> Current guidance is produced only by the deterministic `ProgramMatcher`.
+
 Current staff navigation and configurable-exam behavior are documented in
 [Admission staff restructure](ADMISSION_STAFF_RESTRUCTURE.md). That document
 supersedes the original staff URLs and fixed-policy descriptions below.
@@ -24,9 +27,9 @@ Reference repository:
 Behavior was checked against current `docs/OPERATIONS.md`, `ExamSessionService`,
 `ExamSessionController`, `ExamResult`, `ResultReviewController`,
 `AdminManagementController`, `ResultController`, `ProgramMatcher` and
-`ProgramRecommendationAI`. Source matcher and provider logic are copied into the
-Admission namespace, with separate Admission configuration. No Monitoring AI service
-or key is used.
+`ProgramRecommendationAI`. Only the deterministic matcher remains in the current
+Admission implementation; the provider integration described in older notes below
+is retired.
 
 ## Database and migration
 
@@ -202,16 +205,12 @@ courses require explicit Admin configuration; no fuzzy mappings or academic cata
 overwrites occur.
 
 Guidance stores result version, interests, catalog snapshot, fingerprint, rankings,
-evidence and explanation. Saved current-version guidance is returned on GET; an
+evidence and matcher output. Saved current-version guidance is returned on GET; an
 explicit interest update uses the current catalog. Corrections invalidate prior
-result-version guidance. The source Gemini explanation provider uses isolated
-`ADMISSION_GEMINI_API_KEY` and `ADMISSION_GEMINI_MODEL` (source default
-`gemini-3.5-flash`). It cannot change deterministic rankings. Missing key/provider
-failure retains calculated guidance and reports explanation unavailable.
-Live external-provider output has not been integration-tested.
+result-version guidance. No external explanation provider is used.
 
-Exceptional-pass projections omit exact evidence, alignment scores and cached AI
-explanations. Internal Registrar reasons are never sent to applicants.
+Exceptional-pass projections omit exact evidence and alignment scores. Previously
+cached AI explanations are never returned. Internal Registrar reasons are never sent to applicants.
 
 ## Scheduler
 

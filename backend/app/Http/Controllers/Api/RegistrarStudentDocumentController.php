@@ -5,10 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UploadStudentDocumentRequest;
 use App\Http\Resources\StudentDocumentResource;
-use App\Jobs\AnalyzeStudentDocument;
 use App\Models\Student;
 use App\Models\StudentDocument;
-use App\Models\StudentDocumentAiAnalysis;
 use App\Models\StudentDocumentSubmission;
 use App\Services\StudentRecords\StudentRecordAuditWriter;
 use Illuminate\Http\JsonResponse;
@@ -25,67 +23,6 @@ class RegistrarStudentDocumentController extends Controller
     private const DISK = 'local';
 
     public function __construct(private readonly StudentRecordAuditWriter $audit) {}
-
-    public function analyzeAll(Student $student): JsonResponse
-    {
-        $summary = [
-            'queued' => 0,
-            'skipped_missing' => 0,
-            'skipped_unsupported' => 0,
-            'skipped_processing' => 0,
-            'skipped_completed' => 0,
-        ];
-
-        DB::transaction(function () use ($student, &$summary): void {
-            $documents = StudentDocument::query()
-                ->where('student_id', $student->id)
-                ->with(['documentType:id,document_name', 'aiAnalysis'])
-                ->lockForUpdate()
-                ->get();
-
-            foreach ($documents as $document) {
-                if (! filled($document->file_path)) {
-                    $summary['skipped_missing']++;
-
-                    continue;
-                }
-
-                if (! $document->supportsAiAnalysis()) {
-                    $summary['skipped_unsupported']++;
-
-                    continue;
-                }
-
-                $status = $document->aiAnalysis?->status;
-
-                if (in_array($status, [
-                    StudentDocumentAiAnalysis::STATUS_PENDING,
-                    StudentDocumentAiAnalysis::STATUS_PROCESSING,
-                ], true)) {
-                    $summary['skipped_processing']++;
-
-                    continue;
-                }
-
-                if ($status === StudentDocumentAiAnalysis::STATUS_COMPLETED) {
-                    $summary['skipped_completed']++;
-
-                    continue;
-                }
-
-                $analysis = $document->resetAiAnalysisToPending();
-
-                AnalyzeStudentDocument::dispatch($analysis->id, $document->file_path)->afterCommit();
-                $summary['queued']++;
-            }
-        });
-
-        return response()->json([
-            'success' => true,
-            'message' => sprintf('%d document%s queued for AI analysis.', $summary['queued'], $summary['queued'] === 1 ? '' : 's'),
-            'data' => $summary,
-        ]);
-    }
 
     public function upload(
         UploadStudentDocumentRequest $request,
@@ -144,7 +81,7 @@ class RegistrarStudentDocumentController extends Controller
             throw $exception;
         }
 
-        $studentDocument->refresh()->load(['documentType', 'aiAnalysis', 'verifiedBy.profile']);
+        $studentDocument->refresh()->load(['documentType', 'verifiedBy.profile']);
 
         return response()->json([
             'success' => true,
@@ -195,7 +132,7 @@ class RegistrarStudentDocumentController extends Controller
         if ($this->isOwnedStudentDocumentPath($studentDocument, $oldPath)) {
             Storage::disk(self::DISK)->delete($oldPath);
         }
-        $studentDocument->load(['documentType', 'aiAnalysis', 'verifiedBy.profile']);
+        $studentDocument->load(['documentType', 'verifiedBy.profile']);
 
         return response()->json([
             'success' => true,

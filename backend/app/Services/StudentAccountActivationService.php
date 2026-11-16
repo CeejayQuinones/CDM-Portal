@@ -104,9 +104,9 @@ class StudentAccountActivationService
         return $result['token'];
     }
 
-    public function activate(string $number, string $email, string $token, string $username, string $password): void
+    public function activate(string $number, string $email, string $token, string $password): void
     {
-        DB::transaction(function () use ($number, $email, $token, $username, $password): void {
+        DB::transaction(function () use ($number, $email, $token, $password): void {
             $activation = $this->eligible(trim($number), mb_strtolower(trim($email)));
             if ($activation === null) {
                 throw $this->invalidCode();
@@ -122,11 +122,7 @@ class StudentAccountActivationService
                 || $user->google_subject_id !== null || $user->tokens()->exists()) {
                 throw $this->invalidCode();
             }
-            if (User::query()->where('username', $username)->whereKeyNot($user->id)->exists()) {
-                throw ValidationException::withMessages(['username' => ['This username is unavailable.']]);
-            }
             $user->forceFill([
-                'username' => $username,
                 'password' => $password,
                 'status' => 'active',
                 'is_first_login' => false,
@@ -137,7 +133,7 @@ class StudentAccountActivationService
                 'token_hash' => null,
             ])->save();
             $this->audit->record($user, $student->id, 'student_account_activated', [
-                'changed_fields' => ['account.status', 'account.username'],
+                'changed_fields' => ['account.status'],
             ]);
         });
     }

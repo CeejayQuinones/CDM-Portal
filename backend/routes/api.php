@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\GradingExperienceController;
 use App\Http\Controllers\Api\GradingScaleController;
 use App\Http\Controllers\Api\HistoricalGradeController;
 use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\LegacyMigrationReviewController;
 use App\Http\Controllers\Api\PortalNoticeController;
 use App\Http\Controllers\Api\RegistrarAppointmentBlockedDateController;
 use App\Http\Controllers\Api\RegistrarCabinetController;
@@ -65,6 +66,9 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::patch('/registrars/{registrarStaff}/status', [AccountProvisioningController::class, 'registrarStatus']);
     });
     Route::prefix('registrar')->middleware('role.registrar-staff')->group(function (): void {
+        Route::get('/legacy-migration/batches', [LegacyMigrationReviewController::class, 'index']);
+        Route::get('/legacy-migration/batches/{batch}', [LegacyMigrationReviewController::class, 'show']);
+        Route::post('/legacy-migration/batches/{batch}/approve', [LegacyMigrationReviewController::class, 'approve'])->middleware(['step-up', 'throttle:5,1']);
         Route::get('/student-account/visit-requests', [StudentAccountVisitController::class, 'index']);
         Route::patch('/student-account/visit-requests/{visit}', [StudentAccountVisitController::class, 'update'])->middleware(['step-up', 'throttle:20,1']);
         Route::get('/historical-grades/options', [HistoricalGradeController::class, 'options']);
@@ -129,6 +133,8 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
             Route::put('/sheets/{gradeSheet}/assessments/{gradeAssessment}', [GradingController::class, 'updateAssessment']);
             Route::patch('/sheets/{gradeSheet}/assessments/{gradeAssessment}/status', [GradingController::class, 'assessmentStatus']);
             Route::put('/sheets/{gradeSheet}/scores', [GradingController::class, 'scores']);
+            Route::get('/sheets/{gradeSheet}/score-history', [GradingController::class, 'scoreHistory']);
+            Route::post('/sheets/{gradeSheet}/score-history/{save}/restore', [GradingController::class, 'restoreScores'])->middleware('throttle:10,1');
             Route::get('/sheets/{gradeSheet}/workbook', [GradingController::class, 'exportWorkbook'])->middleware('throttle:20,1');
             Route::post('/sheets/{gradeSheet}/workbook/preview', [GradingController::class, 'previewWorkbook'])->middleware('throttle:20,1');
             Route::post('/sheets/{gradeSheet}/workbook/apply', [GradingController::class, 'applyWorkbook'])->middleware('throttle:10,1');
@@ -171,6 +177,7 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::put('/subjects/{subject}/professors', 'syncSubjectProfessors')->middleware('throttle:30,1');
         Route::post('/subjects/{id}/{action}', 'subjectStatus')->whereNumber('id')->whereIn('action', ['archive', 'reactivate'])->middleware('throttle:30,1');
         Route::get('/schedules', 'schedules');
+        Route::get('/schedules/overview', 'scheduleOverview');
         Route::post('/schedules/availability', 'scheduleAvailability')->middleware('throttle:120,1');
         Route::post('/schedules', 'saveSchedule')->middleware('throttle:30,1');
         Route::put('/schedules/{id}', 'saveSchedule')->whereNumber('id')->middleware('throttle:30,1');
@@ -230,6 +237,8 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::patch('/students/{student}/record-requirements/{documentType}/{action}', [StudentRecordRequirementController::class, 'physical'])
             ->whereIn('action', ['require', 'receive', 'reopen']);
         Route::patch('/students/{student}', [StudentController::class, 'update'])->middleware('step-up');
+        Route::get('/students/{student}/academic-options', [StudentController::class, 'academicOptions']);
+        Route::patch('/students/{student}/academic', [StudentController::class, 'updateAcademic'])->middleware('step-up');
         Route::get('/students/{student}/account-activation', [StudentAccountActivationController::class, 'show']);
         Route::post('/students/{student}/account-activation', [StudentAccountActivationController::class, 'prepare'])->middleware(['step-up', 'throttle:10,1']);
         Route::patch('/students/{student}/activation-email', [StudentAccountActivationController::class, 'correctEmail'])->middleware(['step-up', 'throttle:10,1']);
@@ -260,6 +269,8 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::patch('/appointment-availability/settings', [AppointmentAvailabilityController::class, 'updateSettings']);
         Route::get('/appointment-availability/calendar', [AppointmentAvailabilityController::class, 'calendar']);
         Route::put('/appointment-availability/capacity/{date}', [AppointmentAvailabilityController::class, 'updateCapacity']);
+        Route::put('/appointment-availability/capacity/{date}/windows/{window}', [AppointmentAvailabilityController::class, 'updateWindowCapacity']);
+        Route::put('/appointment-availability/windows/{window}/default', [AppointmentAvailabilityController::class, 'updateWindowDefault']);
         Route::apiResource('appointment-blocked-dates', RegistrarAppointmentBlockedDateController::class)
             ->only(['index', 'store', 'update', 'destroy']);
         Route::get('/dashboard', RegistrarDashboardController::class);
@@ -275,7 +286,6 @@ Route::middleware(['auth:sanctum', 'client.platform'])->group(function (): void 
         Route::post('/document-types', [RegistrarDocumentTypeController::class, 'store']);
         Route::patch('/document-types/{documentType}', [RegistrarDocumentTypeController::class, 'update']);
         Route::delete('/document-types/{documentType}', [RegistrarDocumentTypeController::class, 'destroy']);
-        Route::post('/students/{student}/documents/analyze-all', [RegistrarStudentDocumentController::class, 'analyzeAll']);
         Route::post('/student-documents/{studentDocument}/upload', [RegistrarStudentDocumentController::class, 'upload']);
         Route::delete('/student-documents/{studentDocument}/file', [RegistrarStudentDocumentController::class, 'destroy'])
             ->middleware('step-up');

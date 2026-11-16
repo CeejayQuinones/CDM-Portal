@@ -110,10 +110,10 @@ test('web and mobile login state remains unauthenticated until OTP verification 
     assert.equal(JSON.parse(values.get('cdm_portal_auth')).token, 'verified-token')
 
     resumedStore.clearAuth()
-    const googleResult = await resumedStore.exchangeGoogleCode('google-handoff', 'turnstile-google-token')
+    const googleResult = await resumedStore.exchangeGoogleCode('google-handoff')
     assert.equal(googleResult.requiresOtp, true)
     assert.equal(calls.at(-1)[0], '/auth/google/exchange')
-    assert.equal(calls.at(-1)[1].turnstile_token, 'turnstile-google-token')
+    assert.deepEqual(calls.at(-1)[1], { code: 'google-handoff' })
     assert.equal(resumedStore.isAuthenticated, false)
     assert.equal(resumedStore.token, null)
     assert.equal(resumedStore.pendingLoginChallenge.challenge_id, '22222222-2222-4222-8222-222222222222')
@@ -148,4 +148,11 @@ test('login verification UI is accessible, paste-friendly, and contains no OTP b
   assert.match(login, /result\?\.requiresOtp/)
   assert.match(login, /:authenticating="showPostLoginLoading"/)
   assert.doesNotMatch(component, /skip|bypass/i)
+})
+
+test('student sign-in hint uses student number and an ID-card icon', () => {
+  const login = read('src/views/LoginView.vue')
+  assert.equal((login.match(/placeholder="Student number"/g) || []).length, 2)
+  assert.doesNotMatch(login, /placeholder="Student number or email"/)
+  assert.equal((login.match(/<rect x="3" y="5" width="18" height="14" rx="2"/g) || []).length, 2)
 })

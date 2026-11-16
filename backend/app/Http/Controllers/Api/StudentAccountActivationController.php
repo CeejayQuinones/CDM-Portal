@@ -57,10 +57,9 @@ class StudentAccountActivationController extends Controller
             'student_number' => ['required', 'string', 'max:20'],
             'email' => ['required', 'email', 'max:255'],
             'verification_token' => ['required', 'string', 'size:64'],
-            'username' => ['required', 'string', 'max:50', 'alpha_dash'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
-        $this->activation->activate($data['student_number'], $data['email'], $data['verification_token'], $data['username'], $data['password']);
+        $this->activation->activate($data['student_number'], $data['email'], $data['verification_token'], $data['password']);
 
         return response()->json(['success' => true, 'message' => 'Account activated. You can now sign in.']);
     }

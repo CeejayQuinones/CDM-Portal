@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\DocumentType;
+use App\Services\RegistrarWindowService;
 use Illuminate\Validation\Rule;
 
 class UpdateDocumentTypeRequest extends ApiFormRequest
@@ -27,6 +28,7 @@ class UpdateDocumentTypeRequest extends ApiFormRequest
             'student_uploadable' => ['sometimes', 'boolean', Rule::prohibitedIf(fn (): bool => $this->input('workflow_category', $documentType->workflow_category) !== 'supporting_record' && $this->boolean('student_uploadable'))],
             'processing_fee' => ['sometimes', 'numeric', 'min:0', 'max:999999.99'],
             'processing_days' => ['sometimes', 'integer', 'min:1', 'max:255'],
+            'registrar_window' => ['sometimes', 'nullable', Rule::in(RegistrarWindowService::WINDOWS)],
             'status' => ['sometimes', Rule::in(['active', 'inactive'])],
         ];
     }

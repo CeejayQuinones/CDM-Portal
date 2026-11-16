@@ -34,6 +34,7 @@ const reasonDialogOpen = ref(false)
 const reasonDialogBusy = ref(false)
 const modalActionBusy = ref(false)
 const assignmentDate = ref('')
+const assignmentWindow = ref('')
 const assigningDate = ref(false)
 const resendingClaimCode = ref(false)
 const pendingPage = ref(1)
@@ -53,6 +54,12 @@ const currentAppointment = computed(() => {
   const appointments = selected.value?.appointments || []
 
   return appointments.find((appointment) => ['pending', 'confirmed'].includes(appointment.status)) || appointments[0] || null
+})
+const appointmentWindowOptions = computed(() => selected.value?.appointment_window_options || [])
+watch(selected, (request) => {
+  const options = request?.appointment_window_options || []
+  const existing = request?.appointments?.find((appointment) => ['pending', 'confirmed'].includes(appointment.status))?.service_window
+  assignmentWindow.value = options.includes(existing) ? existing : options.length === 1 ? options[0] : ''
 })
 const appointmentContext = computed(() => appointmentReturnContext(route.query))
 const studentFullName = computed(() =>
@@ -269,11 +276,11 @@ async function approveSelected() {
 }
 
 async function assignSelectedDate() {
-  if (!selected.value || !assignmentDate.value) return
+  if (!selected.value || !assignmentDate.value || !assignmentWindow.value) return
   assigningDate.value = true
   error.value = ''
   try {
-    const updated = await api.assignAppointment(selected.value.id, { appointment_date: assignmentDate.value })
+    const updated = await api.assignAppointment(selected.value.id, { appointment_date: assignmentDate.value, service_window: assignmentWindow.value })
     selected.value = mergeDocumentRequestRow(selected.value, updated)
     message.value = 'Appointment date assigned. The request remains Pending until approval.'
   } catch (err) {
@@ -464,7 +471,12 @@ watch(
             <span>Appointment date</span>
             <input v-model="assignmentDate" type="date" :min="new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })" />
           </label>
-          <CdmButton v-if="selected.status === 'pending'" type="button" variant="outline" :disabled="assigningDate || !assignmentDate" @click="assignSelectedDate">
+          <label v-if="selected.status === 'pending' && appointmentWindowOptions.length > 1" class="appointment-date-assignment">
+            <span>Registrar window</span>
+            <select v-model="assignmentWindow"><option value="" disabled>Select window</option><option v-for="window in appointmentWindowOptions" :key="window" :value="window">{{ window }}</option></select>
+          </label>
+          <span v-else-if="selected.status === 'pending' && assignmentWindow" class="appointment-date-assignment">{{ assignmentWindow }}</span>
+          <CdmButton v-if="selected.status === 'pending'" type="button" variant="outline" :disabled="assigningDate || !assignmentDate || !assignmentWindow" @click="assignSelectedDate">
             {{ assigningDate ? 'Assigning…' : currentAppointment ? 'Change Date' : 'Assign Date' }}
           </CdmButton>
           <CdmButton

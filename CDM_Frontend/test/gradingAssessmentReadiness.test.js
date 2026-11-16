@@ -83,8 +83,9 @@ test('website Professor UI exposes automatic naming and a dedicated accessible s
 
   assert.match(view, /label:isWebsitePresentation\?suggestedAssessmentLabel\(category\):''/)
   assert.match(view, /assessmentLabelIsAutomatic\.value=isWebsitePresentation/)
-  assert.match(view, /Use next available/)
-  assert.match(view, /Custom label preserved when the category changes/)
+  assert.doesNotMatch(view, /Use next available/)
+  assert.match(view, /\+ Create new category/)
+  assert.match(view, /Set its weight in Show criteria after adding/)
   assert.match(view, /await gradingService\.addAssessment/)
   assert.match(view, /await openClass\(workspace\.value\.class\)/)
   assert.match(service, /addAssessment: \(sheet, payload\) => apiClient\.post/)

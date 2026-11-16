@@ -341,16 +341,7 @@ Important Background Processes
 
 Some CDM Portal features need additional Laravel processes.
 
-Terminal 3 — Document AI queue
-
-Required for asynchronous document AI analysis:
-
-cd backend
-php artisan queue:work --queue=document-analysis -v
-
-If this is not running, the main portal can still open, but queued document analysis will not be processed.
-
-Terminal 4 — Laravel scheduler
+Terminal 3 — Laravel scheduler
 
 The new Document Request / Appointment workflow uses scheduled tasks, including automatic handling of missed appointments.
 
@@ -363,7 +354,6 @@ For full feature testing, your development setup should therefore be:
 
 MySQL
 ├── Laravel backend
-├── Document AI queue
 ├── Laravel scheduler
 └── Vue/Vite frontend
 

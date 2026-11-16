@@ -177,7 +177,7 @@ class AuthenticationTest extends TestCase
             ->assertUnauthorized()
             ->assertExactJson([
                 'success' => false,
-                'message' => 'Invalid username or password.',
+                'message' => 'Invalid credentials.',
             ]);
     }
 

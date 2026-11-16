@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { apiClient } from '../../services/apiClient'
 import { isStepUpCancelled, useStepUpAuth } from '../../composables/useStepUpAuth'
+import LegacyMigrationReviewPanel from './LegacyMigrationReviewPanel.vue'
 
 const { runWithStepUp } = useStepUpAuth()
 const file = ref(null)
@@ -77,6 +78,8 @@ async function confirm() {
       <div><p class="roster-kicker">Registrar / Student Records</p><h1>Import students and alumni</h1><p>Add existing school records without activating accounts or changing enrolled students.</p></div>
       <router-link to="/student-management">Back to records</router-link>
     </header>
+
+    <LegacyMigrationReviewPanel />
 
     <section class="roster-card" aria-label="Import instructions">
       <h2>How it works</h2>

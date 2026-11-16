@@ -102,8 +102,15 @@ defineExpose({ showRecordActivity: () => { tab.value = 'record activity' } })
         <p v-if="gradeError" role="alert">{{gradeError}} <button type="button" :disabled="gradeLoading" @click="loadGrades">Retry</button></p>
         <form v-if="grades?.terms?.length" class="grade-history-filter" @submit.prevent="loadGrades"><label>Academic Year<select v-model="gradeYear"><option v-for="term in grades.terms" :key="`year-${term.academic_year_id}`" :value="term.academic_year_id">{{term.academic_year}}</option></select></label><label>Semester<select v-model="gradeSemester"><option v-for="term in grades.terms.filter(item=>String(item.academic_year_id)===String(gradeYear))" :key="term.semester_id" :value="term.semester_id">{{term.semester}}</option></select></label><button type="submit">View Term</button></form>
         <p v-if="gradeLoading">Loading published grades…</p>
-        <p v-else-if="!grades?.grades?.length">No published grades are available for this term.</p>
+        <p v-else-if="!grades?.grades?.length">No CDM-published grades for this term. {{ grades?.historical_grades?.length ? `${grades.historical_grades.length} verified previous grade(s) appear below.` : 'There are no verified previous grades for this term either.' }}</p>
         <template v-else><p><strong>{{label(grades.summary.completion)}}</strong> · {{grades.summary.published_subjects}} / {{grades.summary.expected_subjects}} subjects · {{grades.summary.total_units}} units · GWA: {{grades.summary.gwa.message}}</p><div class="grade-history-table"><table><thead><tr><th>Subject</th><th>Professor</th><th>Section</th><th>Units</th><th>Midterm</th><th>Finals</th><th>Final Grade</th><th>Grade Point</th><th>Remarks</th><th>Published</th></tr></thead><tbody><tr v-for="grade in grades.grades" :key="grade.grade_sheet_id"><td><strong>{{grade.subject_code}}</strong><small>{{grade.subject_name}}</small></td><td>{{grade.professor}}</td><td>{{grade.section}}</td><td>{{grade.units}}</td><td>{{grade.midterm_grade}}</td><td>{{grade.finals_grade}}</td><td><strong>{{grade.final_grade}}</strong></td><td>{{grade.grade_point??'N/A'}}</td><td>{{grade.remarks??'Not configured'}}</td><td>{{grade.published_at?new Date(grade.published_at).toLocaleDateString():'—'}}</td></tr></tbody></table></div></template>
+        <section class="previous-grades" aria-label="Verified previous grades">
+          <h3>Previous grades <small v-if="grades?.historical_grades?.length">({{ grades.historical_grades.length }})</small></h3>
+          <p>Registrar-verified grades imported from earlier records. These are separate from published CDM grade sheets.</p>
+          <p v-if="gradeLoading">Loading previous grades…</p>
+          <p v-else-if="!grades?.historical_grades?.length">No verified previous grades for this term.</p>
+          <div v-else class="grade-history-table"><table><thead><tr><th>Subject</th><th>Final grade</th><th>Official result</th><th>Credited units</th><th>Source reference</th></tr></thead><tbody><tr v-for="record in grades.historical_grades" :key="record.id"><td><strong>{{ record.subject_code }}</strong><small>{{ record.subject_name }}</small></td><td>{{ record.final_grade }}</td><td>{{ record.official_result }}</td><td>{{ record.credited_units }}</td><td>{{ record.source_reference }}</td></tr></tbody></table></div>
+        </section>
       </div>
       <div v-else>
         <p v-if="!data.record_activity?.length">No Student Records activity has been recorded.</p>
@@ -131,4 +138,8 @@ defineExpose({ showRecordActivity: () => { tab.value = 'record activity' } })
 .grade-history-table table { border-collapse: collapse; min-width: 850px; width: 100%; }
 .grade-history-table th,.grade-history-table td { border-bottom: 1px solid var(--border-color,#ddd); padding: .6rem; text-align: left; }
 .grade-history-table small { color: var(--text-secondary,#667085); display: block; }
+.previous-grades { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color,#ddd); }
+.previous-grades h3 { margin: 0; }
+.previous-grades p { margin: .4rem 0 1rem; }
+.previous-grades table { min-width: 600px; }
 </style>

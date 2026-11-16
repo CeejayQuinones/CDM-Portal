@@ -9,6 +9,7 @@ use App\Models\Appointment;
 use App\Models\DocumentRequest;
 use App\Models\RegistrarStaff;
 use App\Services\DocumentRequestWorkflowService;
+use App\Services\RegistrarWindowService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -33,7 +34,7 @@ class RegistrarDocumentRequestController extends Controller
 
     private const BUSINESS_TIMEZONE = 'Asia/Manila';
 
-    public function __construct(private readonly DocumentRequestWorkflowService $workflow) {}
+    public function __construct(private readonly DocumentRequestWorkflowService $workflow, private readonly RegistrarWindowService $windows) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -129,7 +130,7 @@ class RegistrarDocumentRequestController extends Controller
         }
 
         $appointments = Appointment::query()
-            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'status', 'remarks', 'created_at', 'updated_at'])
+            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'service_window', 'status', 'remarks', 'created_at', 'updated_at'])
             ->whereNotNull('document_request_id')
             ->with([
                 'student:id,user_id,student_number',
@@ -162,7 +163,10 @@ class RegistrarDocumentRequestController extends Controller
 
     public function show(DocumentRequest $documentRequest): JsonResponse
     {
-        return $this->ok($documentRequest->load($this->detailRelations()), 'Document request retrieved successfully.');
+        $documentRequest->load($this->detailRelations());
+        $documentRequest->setAttribute('appointment_window_options', $this->windows->optionsForDocument($documentRequest->documentType->document_name, $documentRequest->documentType->registrar_window));
+
+        return $this->ok($documentRequest, 'Document request retrieved successfully.');
     }
 
     public function update(UpdateRegistrarRequest $request, DocumentRequest $documentRequest): JsonResponse
@@ -184,9 +188,12 @@ class RegistrarDocumentRequestController extends Controller
 
     public function assignAppointment(Request $request, DocumentRequest $documentRequest): JsonResponse
     {
-        $validated = $request->validate(['appointment_date' => ['required', 'date_format:Y-m-d']]);
+        $validated = $request->validate([
+            'appointment_date' => ['required', 'date_format:Y-m-d'],
+            'service_window' => ['nullable', Rule::in(RegistrarWindowService::WINDOWS)],
+        ]);
 
-        return $this->ok($this->workflow->assignDate($documentRequest, $this->staffFor($request), $validated['appointment_date']), 'Appointment date assigned; request remains pending.');
+        return $this->ok($this->workflow->assignDate($documentRequest, $this->staffFor($request), $validated['appointment_date'], $validated['service_window'] ?? null), 'Appointment date assigned; request remains pending.');
     }
 
     public function verifyCode(Request $request): JsonResponse
@@ -219,7 +226,7 @@ class RegistrarDocumentRequestController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
         $query = Appointment::query()
-            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'status', 'remarks', 'created_at', 'updated_at'])
+            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'service_window', 'status', 'remarks', 'created_at', 'updated_at'])
             ->whereNotNull('document_request_id')
             ->whereIn('status', self::ACTIVE_APPOINTMENT_STATUSES)
             ->whereHas('documentRequest', fn ($requests) => $requests->where('status', 'approved'))
@@ -684,8 +691,8 @@ class RegistrarDocumentRequestController extends Controller
             'student.documents:id,student_id,document_type_id,availability_status,verification_status,remarks,submitted_date',
             'student.documents.documentType:id,document_name',
             'student.physicalRecordLocation.cabinetSlot.cabinet:id,cabinet_code,description,rows,columns',
-            'documentType:id,document_name,requires_appointment',
-            'appointments:id,document_request_id,registrar_staff_id,appointment_date,appointment_time,status,remarks,completed_at,cancelled_at,updated_at',
+            'documentType:id,document_name,requires_appointment,registrar_window',
+            'appointments:id,document_request_id,registrar_staff_id,appointment_date,appointment_time,service_window,status,remarks,completed_at,cancelled_at,updated_at',
             'statusChanges:id,document_request_id,registrar_staff_id,actor_type,from_status,to_status,action,reason,created_at',
             'statusChanges.registrarStaff:id,user_id,employee_number',
             'statusChanges.registrarStaff.user:id',

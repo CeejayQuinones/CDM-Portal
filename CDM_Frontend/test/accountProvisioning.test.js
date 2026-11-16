@@ -26,6 +26,12 @@ test('forms use fixed server-owned role endpoints without an arbitrary role sele
   assert.doesNotMatch(view, /v-model="form\.role(_id)?"/)
 })
 
+test('Professor creation uses email for sign-in and never submits a username', () => {
+  assert.match(view, /v-if="isAdmin"><span>Username<\/span>/)
+  assert.match(view, /isAdmin \? 'Email' : 'Sign-in email'/)
+  assert.match(view, /if \(!isAdmin\.value\) delete payload\.username/)
+})
+
 test('account management supports filtering, status changes, responsive layout, and accessible dialogs', () => {
   for (const label of ['Search', 'Status', 'Department', 'Deactivate', 'Activate']) assert.match(view, new RegExp(label))
   assert.match(view, /CdmDialog/)

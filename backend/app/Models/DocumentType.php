@@ -9,7 +9,7 @@ class DocumentType extends Model
 {
     protected $fillable = [
         'document_name', 'description', 'workflow_category', 'processing_fee', 'processing_days',
-        'requires_appointment', 'requires_physical_retrieval', 'student_requestable', 'student_uploadable', 'status',
+        'requires_appointment', 'requires_physical_retrieval', 'student_requestable', 'student_uploadable', 'registrar_window', 'status',
     ];
 
     protected function casts(): array

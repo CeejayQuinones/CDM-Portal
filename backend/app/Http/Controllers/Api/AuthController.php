@@ -9,6 +9,7 @@ use App\Http\Requests\RegisterGuestRequest;
 use App\Http\Requests\SendEmailVerificationRequest;
 use App\Http\Requests\VerifyEmailCodeRequest;
 use App\Http\Resources\AuthResource;
+use App\Models\Role;
 use App\Models\User;
 use App\Services\AuthenticationService;
 use App\Services\ClientPlatformAccessService;
@@ -86,24 +87,16 @@ class AuthController extends Controller
     }
 
     /**
-     * Authenticate a user by username and password.
+     * Authenticate by the role's login identifier: student number, Professor email, or username.
      */
     public function login(LoginRequest $request): JsonResponse
     {
         $client = $this->clientAccess->clientFrom($request);
         $credentials = $request->safe()->only(['username', 'password']);
 
-        if ($client !== ClientPlatform::DESKTOP) {
-            $this->turnstile->verify(
-                $request->validated('turnstile_token'),
-                'authentication',
-                (string) $request->ip(),
-            );
-        }
-
         $user = $this->authenticationService->authenticate($credentials, $client);
 
-        if ($client !== ClientPlatform::DESKTOP) {
+        if ($client !== ClientPlatform::DESKTOP && $user->role?->role_name !== Role::PROFESSOR) {
             $challenge = $this->loginOtpService->create($user, $client, (string) $request->ip());
 
             return response()->json([

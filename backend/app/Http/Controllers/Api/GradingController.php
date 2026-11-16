@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
 use App\Models\Course;
 use App\Models\GradeAssessment;
+use App\Models\GradeAuditEvent;
 use App\Models\GradeLateSubmissionExtension;
 use App\Models\GradePeriodSchedule;
 use App\Models\GradeReleaseSchedule;
@@ -51,7 +52,7 @@ class GradingController extends Controller
         $items = $query->latest('id')->paginate(25);
         $items->getCollection()->transform(fn ($row) => $this->grading->scheduleData($row));
 
-        return $this->ok(['periods' => $items, 'academic_years' => AcademicYear::orderByDesc('start_date')->limit(50)->get(), 'semesters' => Semester::orderBy('semester_order')->get(), 'courses' => Course::orderBy('course_code')->limit(300)->get(['id', 'course_code', 'course_name']), 'sections' => Section::orderByDesc('id')->limit(500)->get(['id', 'section_name', 'year_level', 'course_id', 'academic_year_id', 'semester_id']), 'subjects' => Subject::orderBy('subject_code')->limit(500)->get(['id', 'subject_code', 'subject_name']), 'professors' => Professor::with('user.profile')->where('status', 'active')->limit(300)->get()]);
+        return $this->ok(['periods' => $items, 'academic_years' => AcademicYear::orderByDesc('start_date')->limit(50)->get(), 'semesters' => Semester::orderBy('semester_order')->get(), 'courses' => Course::with('department:id,department_code')->orderBy('course_code')->limit(300)->get(['id', 'course_code', 'course_name', 'department_id']), 'sections' => Section::orderByDesc('id')->limit(500)->get(['id', 'section_name', 'year_level', 'course_id', 'academic_year_id', 'semester_id']), 'subjects' => Subject::orderBy('subject_code')->limit(500)->get(['id', 'subject_code', 'subject_name']), 'professors' => Professor::with('user.profile')->where('status', 'active')->limit(300)->get()]);
     }
 
     public function storePeriod(Request $request)
@@ -177,7 +178,7 @@ class GradingController extends Controller
             'period' => ['required', Rule::in(['midterm', 'finals'])],
             'assessments' => ['required', 'array', 'min:1', 'max:100'],
             'assessments.*.label' => ['required', 'string', 'max:80'],
-            'assessments.*.category' => ['required', Rule::in(GradingService::CATEGORIES)],
+            'assessments.*.category' => ['required', 'string', 'max:30', 'regex:/^[\pL\pN][\pL\pN\s&\/-]*$/u'],
             'assessments.*.max_score' => ['required', 'numeric', 'gt:0', 'max:999999.99'],
             'assessments.*.display_order' => ['required', 'integer', 'min:1', 'max:65535'],
         ]);
@@ -205,6 +206,19 @@ class GradingController extends Controller
         $input = $request->validate(['assessment_id' => 'required|integer|exists:grade_assessments,id', 'scores' => 'required|array|min:1|max:500', 'scores.*.enrollment_subject_id' => 'required|integer|distinct', 'scores.*.score' => 'required|numeric|min:0', 'scores.*.version' => 'nullable|integer|min:1']);
 
         return $this->ok($this->grading->saveScores($request->user(), $gradeSheet, $input));
+    }
+
+    public function scoreHistory(Request $request, GradeSheet $gradeSheet)
+    {
+        return $this->ok($this->grading->scoreSaveHistory($request->user(), $gradeSheet));
+    }
+
+    public function restoreScores(Request $request, GradeSheet $gradeSheet, GradeAuditEvent $save)
+    {
+        $input = $request->validate(['revision' => 'required|integer|min:0']);
+        $this->grading->restoreScoreSave($request->user(), $gradeSheet, $save, (int) $input['revision']);
+
+        return $this->ok($this->grading->scoreSaveHistory($request->user(), $gradeSheet));
     }
 
     public function exportWorkbook(Request $request, GradeSheet $gradeSheet)
@@ -250,7 +264,7 @@ class GradingController extends Controller
     public function weights(Request $request, GradeSheet $gradeSheet, string $period)
     {
         abort_unless(in_array($period, ['midterm', 'finals'], true), 404);
-        $input = $request->validate(['weights' => 'required|array|size:4', 'weights.*.category' => ['required', 'distinct', Rule::in(GradingService::CATEGORIES)], 'weights.*.weight_percentage' => 'required|numeric|min:0|max:100', 'weights.*.version' => 'required|integer|min:1']);
+        $input = $request->validate(['weights' => 'required|array|min:4|max:20', 'weights.*.category' => ['required', 'distinct', 'string', 'max:30'], 'weights.*.weight_percentage' => 'required|numeric|min:0|max:100', 'weights.*.version' => 'required|integer|min:1']);
 
         return $this->ok($this->grading->updateWeights($request->user(), $gradeSheet, $period, $input['weights']));
     }
@@ -364,6 +378,6 @@ class GradingController extends Controller
 
     private function assessmentRules(bool $updating = false): array
     {
-        return ['period' => ['required', Rule::in(['midterm', 'finals'])], 'label' => 'required|string|max:80', 'category' => ['required', Rule::in(GradingService::CATEGORIES)], 'max_score' => 'required|numeric|gt:0|max:999999.99', 'display_order' => 'required|integer|min:1|max:65535', 'version' => $updating ? 'required|integer|min:1' : 'sometimes|integer'];
+        return ['period' => ['required', Rule::in(['midterm', 'finals'])], 'label' => 'required|string|max:80', 'category' => ['required', 'string', 'max:30', 'regex:/^[\pL\pN][\pL\pN\s&\/-]*$/u'], 'create_category' => 'sometimes|boolean', 'max_score' => 'required|numeric|gt:0|max:999999.99', 'display_order' => 'required|integer|min:1|max:65535', 'version' => $updating ? 'required|integer|min:1' : 'sometimes|integer'];
     }
 }

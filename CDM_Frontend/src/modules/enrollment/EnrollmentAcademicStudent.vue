@@ -13,7 +13,7 @@ import WebsiteModuleHeader from '../../components/website/WebsiteModuleHeader.vu
 import WebsiteSectionPanel from '../../components/website/WebsiteSectionPanel.vue'
 import WebsiteAcademicRecordCard from '../../components/website/WebsiteAcademicRecordCard.vue'
 import EnrollmentRegistrationDocuments from './EnrollmentRegistrationDocuments.vue'
-const isWebsitePresentation=clientPlatform==='web'
+const isWebsitePresentation=clientPlatform==='web'||clientPlatform==='mobile'
 const route=useRoute(),auth=useAuthStore(),data=ref(null),record=ref(null),application=ref(null),busy=ref(false),error=ref(''),page=ref(1)
 const subjects=computed(()=>route.name==='enrollment-subjects'),cor=computed(()=>route.name==='enrollment-cor')
 const pageTitle=computed(()=>subjects.value?'My Subjects':cor.value?'Certificate of Registration':'My Schedule')

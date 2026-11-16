@@ -10,7 +10,7 @@ import { useAuthStore } from '../stores/authStore'
 import { getProfessorDashboard } from '../modules/dashboard/dashboardService'
 import AcademicPageHeader from '../components/AcademicPageHeader.vue'
 import WebsiteModuleHeader from '../components/website/WebsiteModuleHeader.vue'
-const isWebsitePresentation=clientPlatform==='web'
+const isWebsitePresentation=clientPlatform==='web'||clientPlatform==='mobile'
 
 const props = defineProps({ staffMode: { type: Boolean, default: false } })
 const router = useRouter()

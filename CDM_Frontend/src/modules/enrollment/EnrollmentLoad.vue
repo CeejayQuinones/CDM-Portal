@@ -13,11 +13,12 @@ const props = defineProps({ applicationId: { type: Number, required: true } })
 const emit = defineEmits(['changed'])
 const auth = useAuthStore()
 const staff = computed(() => [ROLES.ADMIN, ROLES.REGISTRAR_STAFF].includes(auth.currentRole))
-const isWebsitePresentation = clientPlatform === 'web'
+const isWebsitePresentation = clientPlatform === 'web' || clientPlatform === 'mobile'
 const isDesktopStaff = computed(() => clientPlatform === 'desktop' && staff.value)
 
 const data = ref(null)
 const selected = ref([])
+const teachingAssignments = ref({})
 const section = ref('')
 const busy = ref(false)
 const error = ref('')
@@ -47,6 +48,12 @@ const sectionChanged = computed(() => String(section.value || '') !== String(dat
 const finalized = computed(() => data.value?.application.status === 'enrolled')
 const sortedIds = ids => (ids || []).map(Number).sort((a, b) => a - b)
 const sameIds = (left, right) => JSON.stringify(sortedIds(left)) === JSON.stringify(sortedIds(right))
+const isCrossYear = subject => subject.year_level != null && Number(subject.year_level) !== Number(data.value?.application.year_level)
+const teachingOptions = subject => data.value?.load.teaching_options?.[subject.id] || []
+const selectedTeachingAssignments = () => Object.fromEntries(selectedSubjects.value
+  .filter(isCrossYear)
+  .map(subject => [subject.id, Number(teachingAssignments.value[subject.id] || 0)]))
+const sameTeachingAssignments = (left, right) => JSON.stringify(Object.entries(left).sort()) === JSON.stringify(Object.entries(right).sort())
 const subjectSelectionIssue = computed(() => {
   if (!data.value) return ''
   if (!selected.value.length) return 'Select at least one eligible curriculum subject before reviewing the load.'
@@ -58,13 +65,19 @@ const subjectSelectionIssue = computed(() => {
     if (subject.completed) return `${subject.subject_code} was already completed. Remove it from the load.`
     if (!subject.prerequisite_met) return `${subject.subject_code} has an unmet prerequisite. Review the Student academic record.`
     if (Number(subject.units) < 0) return `${subject.subject_code} has invalid units. Correct the curriculum configuration.`
+    if (staff.value && isCrossYear(subject)) {
+      const options = teachingOptions(subject)
+      if (!options.length) return `${subject.subject_code} needs an active teaching section. Configure its class in Scheduling first.`
+      if (!options.some(option => Number(option.id) === Number(teachingAssignments.value[subject.id]))) return `Choose the teaching section for ${subject.subject_code}.`
+    }
   }
   if (data.value.application.classification === 'regular' && !sameIds(selected.value, data.value.load.standard_subject_ids)) {
     return 'The regular load must include every standard curriculum subject. Review the curriculum configuration.'
   }
   return ''
 })
-const subjectLoadChanged = computed(() => !sameIds(selected.value, data.value?.load.selected_subject_ids))
+const subjectLoadChanged = computed(() => !sameIds(selected.value, data.value?.load.selected_subject_ids)
+  || (staff.value && !sameTeachingAssignments(selectedTeachingAssignments(), data.value?.load.selected_teaching_assignment_ids || {})))
 const finalizationBlockers = computed(() => {
   const application = data.value?.application
   if (!application) return []
@@ -102,6 +115,7 @@ async function load() {
     selected.value = data.value.load.selected_subject_ids.length
       ? data.value.load.selected_subject_ids
       : data.value.application.classification === 'regular' ? data.value.load.standard_subject_ids : []
+    teachingAssignments.value = { ...(data.value.load.selected_teaching_assignment_ids || {}) }
     section.value = data.value.application.section_id || ''
   } catch (reason) {
     if (version === epoch) error.value = safeError(reason)
@@ -112,7 +126,11 @@ async function load() {
 
 function actionPayload(action) {
   const payload = { version: data.value.application.version }
-  if (action === 'subjects') payload.subject_ids = selected.value
+  if (action === 'subjects') {
+    payload.subject_ids = selected.value
+    const placements = selectedTeachingAssignments()
+    if (staff.value && Object.keys(placements).length) payload.teaching_assignments = placements
+  }
   if (action === 'assign') payload.section_id = Number(section.value)
   if (action === 'finalize') payload.confirmed = true
   return payload
@@ -201,7 +219,7 @@ onBeforeUnmount(() => { epoch++ })
 
           <div id="ear-finalization-guidance" class="ear-schedule-note" role="note">
             <span aria-hidden="true">i</span>
-            <div><p><strong>{{ finalized ? 'Academic enrollment is complete.' : busy ? 'Updating enrollment state…' : finalizationBlockers.length ? 'Schedules are not required.' : 'Enrollment can be finalized now.' }}</strong> Class days, times, rooms, and Professors may be assigned later in Scheduling.</p>
+            <div><p><strong>{{ finalized ? 'Academic enrollment is complete.' : busy ? 'Updating enrollment state…' : finalizationBlockers.length ? 'Schedules are not required.' : 'Enrollment can be finalized now.' }}</strong> {{ selectedSubjects.some(isCrossYear) ? 'Cross-year subjects need a teaching section and Professor; class meeting times may be added later in Scheduling.' : 'Class days, times, rooms, and Professors may be assigned later in Scheduling.' }}</p>
               <ul v-if="finalizationBlockers.length"><li v-for="blocker in finalizationBlockers" :key="blocker">{{ blocker }}</li></ul>
             </div>
           </div>
@@ -217,14 +235,14 @@ onBeforeUnmount(() => { epoch++ })
             <div class="ear-section-heading"><div><h3 id="ear-subjects-title">Assigned Subjects <span>({{ selectedSubjects.length }})</span></h3><p>Only approved curriculum subjects are included in finalization.</p></div></div>
             <div class="ear-table-wrap">
               <table>
-                <thead><tr><th scope="col">Include</th><th scope="col">Code and subject</th><th scope="col">Units</th><th scope="col">Schedule</th><th scope="col">Status</th></tr></thead>
+                <thead><tr><th scope="col">Include</th><th scope="col">Code and subject</th><th scope="col">Units</th><th scope="col">Teaching section</th><th scope="col">Status</th></tr></thead>
                 <tbody>
                   <tr v-for="subject in data.load.candidates" :key="subject.id" :class="{ 'is-included': selected.includes(subject.id) }">
                     <td><input v-model="selected" type="checkbox" :value="subject.id" :aria-label="`Include ${subject.subject_code}`" :disabled="busy || !canSelect || subject.completed || !subject.prerequisite_met"></td>
                     <td><strong>{{ subject.subject_code }}</strong><span>{{ subject.subject_name }}</span></td>
                     <td>{{ Number(subject.units).toFixed(1) }}</td>
-                    <td><span class="ear-schedule-copy">{{ subject.schedule_status === 'scheduled' ? 'Scheduled' : 'To be announced' }}</span></td>
-                    <td><span v-if="subject.completed" class="ear-badge ear-badge--muted">Completed</span><span v-else-if="!subject.prerequisite_met" class="ear-badge ear-badge--danger">Prerequisite pending</span><span v-else-if="subject.schedule_status === 'scheduled'" class="ear-badge ear-badge--ready">Schedule ready</span><span v-else class="ear-badge ear-badge--pending">Schedule pending</span></td>
+                    <td><label v-if="staff && selected.includes(subject.id) && isCrossYear(subject)"><span class="sr-only">Teaching section for {{ subject.subject_code }}</span><select v-model="teachingAssignments[subject.id]" :disabled="busy"><option value="">Choose section</option><option v-for="option in teachingOptions(subject)" :key="option.id" :value="option.id">{{ option.section_name }} · Year {{ option.year_level }}</option></select></label><span v-else class="ear-schedule-copy">{{ isCrossYear(subject) ? 'Staff will assign' : 'Home section' }}</span></td>
+                    <td><span v-if="subject.completed" class="ear-badge ear-badge--muted">Completed</span><span v-else-if="!subject.prerequisite_met" class="ear-badge ear-badge--danger">Prerequisite pending</span><span v-else-if="subject.schedule_status === 'scheduled'" class="ear-badge ear-badge--ready">Schedule ready</span><span v-else class="ear-badge ear-badge--pending">Schedule pending · To be announced</span></td>
                   </tr>
                   <tr v-if="!data.load.candidates.length"><td colspan="5" class="ear-empty">No curriculum subjects are configured for this academic term.</td></tr>
                 </tbody>
@@ -273,12 +291,13 @@ onBeforeUnmount(() => { epoch++ })
       <p>{{ label(data.application.classification) }} · {{ termLabel(data.application.period) }}</p>
       <p v-if="data.application.classification === 'regular'">Your standard load comes directly from your curriculum, year level and semester.</p>
       <p v-else>Select an active curriculum load. Recorded completed subjects and prerequisites are checked again before enrollment.</p>
-      <component :is="isWebsitePresentation ? WebsiteDataTable : 'div'" label="Enrolled subject load" :class="{ 'en-table': !isWebsitePresentation }"><table><thead><tr><th>Include</th><th>Subject</th><th>Units</th><th>Eligibility</th></tr></thead><tbody><tr v-for="subject in data.load.candidates" :key="subject.id"><td><input v-model="selected" type="checkbox" :aria-label="`Select ${subject.subject_code}`" :value="subject.id" :disabled="busy || !canSelect || subject.completed || !subject.prerequisite_met"></td><td><strong>{{ subject.subject_code }}</strong><br>{{ subject.subject_name }}</td><td>{{ subject.units }}</td><td>{{ subject.completed ? 'Already completed' : !subject.prerequisite_met ? 'Prerequisite not completed' : 'Eligible' }}</td></tr></tbody></table></component>
+      <component :is="isWebsitePresentation ? WebsiteDataTable : 'div'" label="Enrolled subject load" :class="{ 'en-table': !isWebsitePresentation }"><table><thead><tr><th>Include</th><th>Subject</th><th>Units</th><th>Teaching section</th><th>Eligibility</th></tr></thead><tbody><tr v-for="subject in data.load.candidates" :key="subject.id"><td><input v-model="selected" type="checkbox" :aria-label="`Select ${subject.subject_code}`" :value="subject.id" :disabled="busy || !canSelect || subject.completed || !subject.prerequisite_met"></td><td><strong>{{ subject.subject_code }}</strong><br>{{ subject.subject_name }}</td><td>{{ subject.units }}</td><td><label v-if="staff && selected.includes(subject.id) && isCrossYear(subject)"><span class="sr-only">Teaching section for {{ subject.subject_code }}</span><select v-model="teachingAssignments[subject.id]" :disabled="busy"><option value="">Choose section</option><option v-for="option in teachingOptions(subject)" :key="option.id" :value="option.id">{{ option.section_name }} · Year {{ option.year_level }}</option></select></label><span v-else>{{ isCrossYear(subject) ? 'Staff will assign' : 'Home section' }}</span></td><td>{{ subject.completed ? 'Already completed' : !subject.prerequisite_met ? 'Prerequisite not completed' : 'Eligible' }}</td></tr></tbody></table></component>
       <WebsiteEmptyState v-if="isWebsitePresentation && !data.load.candidates.length" title="No subjects configured" message="No curriculum subjects are available for this academic term."/>
       <p v-else-if="!data.load.candidates.length">No subjects are configured for this curriculum and semester.</p>
       <p class="subject-load-total"><strong>Total units: {{ units }}</strong></p>
+      <p v-if="subjectSelectionIssue" role="status">{{ subjectSelectionIssue }}</p>
       <p>{{ data.application.load_reviewed_at ? 'Staff-reviewed load' : 'Staff review is required before finalization.' }}</p>
-      <div class="en-actions"><button v-if="data.application.status === 'approved' && (staff || canSelect)" :disabled="busy || !selected.length" @click="act('subjects')">{{ staff ? 'Prepare / approve subject load' : 'Save selected subjects' }}</button></div>
+      <div class="en-actions"><button v-if="data.application.status === 'approved' && (staff || canSelect)" :disabled="busy || !!subjectSelectionIssue" @click="act('subjects')">{{ staff ? 'Prepare / approve subject load' : 'Save selected subjects' }}</button></div>
       <template v-if="staff && data.application.status === 'approved'"><label>Assign section<select v-model="section" :disabled="busy"><option value="">Choose section</option><option v-for="item in data.sections.data" :key="item.id" :value="item.id">{{ item.section_name }} — {{ item.enrolled_count + item.reserved_count }}/{{ item.capacity }} seats</option></select></label><div v-if="data.sections.last_page > 1" class="en-actions"><button :disabled="busy || sectionPage <= 1" @click="sectionPage--; load()">Previous sections</button><button :disabled="busy || sectionPage >= data.sections.last_page" @click="sectionPage++; load()">More sections</button></div><div class="en-actions"><button :disabled="busy || !section" @click="act('assign')">Assign section</button><button :disabled="!canFinalize" @click="openConfirmation">Finalize academic enrollment</button></div></template>
       <p v-if="data.application.section">Assigned section: {{ data.application.section.section_name }}</p>
       <p v-if="data.application.enrollment_id">Academically enrolled. <RouterLink v-if="!staff" :to="{name:'enrollment-cor',query:{record:data.application.enrollment_id}}">Open registration documents</RouterLink></p>

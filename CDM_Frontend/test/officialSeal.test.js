@@ -14,7 +14,7 @@ test('approved seal is the original square transparent PNG', async () => {
   assert.equal(createHash('sha256').update(image).digest('hex'), '117da29e58dc7cdcb7054072b4b09f8781ea3e99d3ccec235fa6e1f4e83d4097')
 })
 
-test('website branding selects one shared approved source without replacing nonweb branding', async () => {
+test('website branding uses the updated shared logo with its white center', async () => {
   const [selector, viteConfig, seal, rail, mobile, login, legal, registration, sidebar] = await Promise.all([
     source('src/config/portalSeal.js'),
     source('vite.config.js'),
@@ -27,8 +27,6 @@ test('website branding selects one shared approved source without replacing nonw
     source('src/components/Sidebar.vue'),
   ])
   assert.match(selector, /import sealUrl from '@portal-seal'/)
-  assert.match(viteConfig, /clientPlatformForMode\(mode\) === 'web'/)
-  assert.match(viteConfig, /cdm-seal\.png/)
   assert.match(viteConfig, /cdm_logo\.png/)
   assert.match(seal, /Colegio de Montalban seal/)
   assert.match(seal, /aspect-ratio: 1/)

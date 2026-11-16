@@ -25,7 +25,7 @@ const sidebar = ref(null)
 const navbar = ref(null)
 const authStore = useAuthStore()
 const route = useRoute()
-const isWebsitePresentation = clientPlatform === 'web'
+const isWebsitePresentation = clientPlatform === 'web' || clientPlatform === 'mobile'
 const isDesktopPresentation = clientPlatform === 'desktop'
 const isStudentTheme = computed(() => authStore.currentRole === 'Student')
 const isStaffTheme = computed(() => ['Registrar Staff', 'Admin'].includes(authStore.currentRole))

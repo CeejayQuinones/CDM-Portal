@@ -7,13 +7,17 @@ use App\Http\Requests\StoreAppointmentBlockedDateRequest;
 use App\Http\Requests\UpdateAppointmentBlockedDateRequest;
 use App\Models\Appointment;
 use App\Models\AppointmentBlockedDate;
+use App\Services\AppointmentAvailabilityService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class RegistrarAppointmentBlockedDateController extends Controller
 {
     private const ACTIVE_APPOINTMENT_STATUSES = ['pending', 'confirmed'];
+
+    public function __construct(private readonly AppointmentAvailabilityService $availability) {}
 
     public function index(): JsonResponse
     {
@@ -31,12 +35,17 @@ class RegistrarAppointmentBlockedDateController extends Controller
         $attributes = $request->validated();
         $attributes['reason'] = trim($attributes['reason']);
         $attributes['is_active'] = $attributes['is_active'] ?? true;
-        $this->ensureNotDuplicate($attributes);
+        $blockedDate = DB::transaction(function () use ($attributes, $request): AppointmentBlockedDate {
+            if ($attributes['is_active']) {
+                $this->availability->ensureDateCanClose($attributes['blocked_date']);
+            }
+            $this->ensureNotDuplicate($attributes);
 
-        $blockedDate = AppointmentBlockedDate::create([
-            ...$attributes,
-            'created_by' => $request->user()->id,
-        ]);
+            return AppointmentBlockedDate::create([
+                ...$attributes,
+                'created_by' => $request->user()->id,
+            ]);
+        });
 
         return $this->blockedDateResponse($blockedDate, 'Appointment date blocked successfully.', 201);
     }
@@ -46,21 +55,28 @@ class RegistrarAppointmentBlockedDateController extends Controller
         AppointmentBlockedDate $appointmentBlockedDate
     ): JsonResponse {
         $attributes = $request->validated();
-        if (array_key_exists('reason', $attributes)) {
-            $attributes['reason'] = trim($attributes['reason']);
-        }
-        $candidate = [
-            'blocked_date' => $attributes['blocked_date'] ?? $appointmentBlockedDate->blocked_date->toDateString(),
-            'type' => $attributes['type'] ?? $appointmentBlockedDate->type,
-            'reason' => $attributes['reason'] ?? $appointmentBlockedDate->reason,
-            'is_active' => $attributes['is_active'] ?? $appointmentBlockedDate->is_active,
-        ];
-        $this->ensureNotDuplicate($candidate, $appointmentBlockedDate);
+        $blockedDate = DB::transaction(function () use ($attributes, $appointmentBlockedDate): AppointmentBlockedDate {
+            $blockedDate = AppointmentBlockedDate::query()->lockForUpdate()->findOrFail($appointmentBlockedDate->id);
+            if (array_key_exists('reason', $attributes)) {
+                $attributes['reason'] = trim($attributes['reason']);
+            }
+            $candidate = [
+                'blocked_date' => $attributes['blocked_date'] ?? $blockedDate->blocked_date->toDateString(),
+                'type' => $attributes['type'] ?? $blockedDate->type,
+                'reason' => $attributes['reason'] ?? $blockedDate->reason,
+                'is_active' => $attributes['is_active'] ?? $blockedDate->is_active,
+            ];
+            if ($candidate['is_active'] && (! $blockedDate->is_active || $candidate['blocked_date'] !== $blockedDate->blocked_date->toDateString())) {
+                $this->availability->ensureDateCanClose($candidate['blocked_date']);
+            }
+            $this->ensureNotDuplicate($candidate, $blockedDate);
+            $blockedDate->update($attributes);
 
-        $appointmentBlockedDate->update($attributes);
+            return $blockedDate->fresh();
+        });
 
         return $this->blockedDateResponse(
-            $appointmentBlockedDate->fresh(),
+            $blockedDate,
             'Appointment blocked date updated successfully.'
         );
     }

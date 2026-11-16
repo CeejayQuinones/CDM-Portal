@@ -18,7 +18,7 @@ class RegistrarDocumentTypeController extends Controller
     {
         return $this->ok(DocumentType::query()->orderBy('document_name')->get([
             'id', 'document_name', 'description', 'workflow_category', 'processing_fee', 'processing_days',
-            'requires_appointment', 'requires_physical_retrieval', 'student_requestable', 'student_uploadable', 'status', 'created_at', 'updated_at',
+            'requires_appointment', 'requires_physical_retrieval', 'student_requestable', 'student_uploadable', 'registrar_window', 'status', 'created_at', 'updated_at',
         ]), 'Document types retrieved successfully.');
     }
 
@@ -68,7 +68,7 @@ class RegistrarDocumentTypeController extends Controller
 
                 $snapshot = $locked->only([
                     'document_name', 'description', 'workflow_category', 'processing_fee', 'processing_days',
-                    'requires_appointment', 'requires_physical_retrieval', 'student_requestable', 'student_uploadable', 'status',
+                    'requires_appointment', 'requires_physical_retrieval', 'student_requestable', 'student_uploadable', 'registrar_window', 'status',
                 ]);
                 $locked->delete();
 

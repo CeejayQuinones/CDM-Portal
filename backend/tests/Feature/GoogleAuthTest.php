@@ -131,6 +131,25 @@ class GoogleAuthTest extends TestCase
         $this->postJson('/api/auth/google/exchange', ['code' => $code])->assertUnauthorized();
     }
 
+    public function test_professor_google_handoff_issues_token_without_email_otp(): void
+    {
+        $professor = $this->user(Role::PROFESSOR, 'professor-google@example.com');
+        config(['mail.default' => 'smtp']);
+        Mail::fake();
+        $code = str_repeat('b', 64);
+        Cache::put('google-auth-handoff:'.hash('sha256', $code), ['user_id' => $professor->id, 'client' => ClientPlatform::WEB], now()->addMinute());
+
+        $this->postJson('/api/auth/google/exchange', ['code' => $code])
+            ->assertOk()
+            ->assertJsonPath('data.user.id', $professor->id)
+            ->assertJsonStructure(['data' => ['token']]);
+
+        $this->assertDatabaseCount('login_otp_challenges', 0);
+        $this->assertSame(1, $professor->tokens()->count());
+        Mail::assertNothingSent();
+        $this->postJson('/api/auth/google/exchange', ['code' => $code])->assertUnauthorized();
+    }
+
     public function test_callback_without_the_original_session_is_reported_as_a_state_mismatch(): void
     {
         Log::spy();
@@ -144,12 +163,19 @@ class GoogleAuthTest extends TestCase
     public function test_professor_supports_password_login_and_rejects_an_incorrect_password(): void
     {
         $professor = $this->user(Role::PROFESSOR, 'professor-password@example.com');
-        $this->loginAndCompleteOtp($professor, ClientPlatform::WEB)
+        $this->postJson('/api/login', [
+            'username' => 'Professor-Password@Example.com',
+            'password' => 'Password123!',
+        ], [ClientPlatform::HEADER => ClientPlatform::WEB])
             ->assertOk()
-            ->assertJsonPath('data.user.id', $professor->id);
-        $this->postJson('/api/login', ['username' => $professor->username, 'password' => 'WrongPassword123!'])
+            ->assertJsonPath('data.user.id', $professor->id)
+            ->assertJsonStructure(['data' => ['token']]);
+        $this->postJson('/api/login', ['username' => $professor->profile->email, 'password' => 'WrongPassword123!'])
             ->assertUnauthorized()
-            ->assertJsonPath('message', 'Invalid username or password.');
+            ->assertJsonPath('message', 'Invalid credentials.');
+        $this->postJson('/api/login', ['username' => $professor->username, 'password' => 'Password123!'])
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Invalid credentials.');
     }
 
     public function test_student_supports_password_login_and_rejects_an_incorrect_password(): void
@@ -160,7 +186,7 @@ class GoogleAuthTest extends TestCase
             ->assertJsonPath('data.user.id', $student->id);
         $this->postJson('/api/login', ['username' => $student->username, 'password' => 'WrongPassword123!'])
             ->assertUnauthorized()
-            ->assertJsonPath('message', 'Invalid username or password.');
+            ->assertJsonPath('message', 'Invalid credentials.');
     }
 
     public function test_staff_and_guest_password_policies_remain_unchanged(): void

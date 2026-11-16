@@ -91,15 +91,13 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     base: './',
+    build: {
+      outDir: clientPlatformForMode(mode) === 'mobile' ? 'dist-mobile' : 'dist',
+    },
 
     resolve: {
       alias: {
-        '@portal-seal': fileURLToPath(new URL(
-          clientPlatformForMode(mode) === 'web'
-            ? './src/assets/styles/images/cdm-seal.png'
-            : './src/assets/styles/images/cdm_logo.png',
-          import.meta.url,
-        )),
+        '@portal-seal': fileURLToPath(new URL('./src/assets/styles/images/cdm_logo.png', import.meta.url)),
       },
     },
 
@@ -156,6 +154,8 @@ export default defineConfig(({ command, mode }) => {
       workbox: {
         navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // The campus photo is larger than Workbox's precache limit; load it on demand.
+        globIgnores: ['**/CDM-bdng-*.png'],
       },
       }),
     ],

@@ -26,8 +26,6 @@ const uploading = ref(false)
 const uploadProgress = ref(0)
 const uploadError = ref('')
 const uploadSuccess = ref('')
-const bulkSubmitting = ref(false)
-const refreshingAnalyses = ref(false)
 const previewStates = ref({})
 const viewerDocument = ref(null)
 const viewerCloseButton = ref(null)
@@ -36,34 +34,9 @@ const requirementAction = ref(null)
 const requirementNote = ref('')
 const requirementActionButton = ref(null)
 const isReplacing = computed(() => Boolean(uploadDocument.value?.has_file))
-const activeAnalysisStatuses = ['pending', 'processing']
-let analysisPollTimer = null
 let viewerTrigger = null
 let previousBodyOverflow = ''
 
-const aiSummary = computed(() => ({
-  uploaded: documents.value.filter((document) => document.has_file).length,
-  pending: documents.value.filter((document) => document.ai_analysis?.status === 'pending').length,
-  processing: documents.value.filter((document) => document.ai_analysis?.status === 'processing').length,
-  completed: documents.value.filter((document) => document.ai_analysis?.status === 'completed').length,
-  failedOrNeedsReview: documents.value.filter(
-    (document) =>
-      document.ai_analysis?.status === 'failed' ||
-      ['needs_review', 'likely_incorrect'].includes(document.ai_analysis?.recommendation),
-  ).length,
-}))
-const bulkEligibleDocuments = computed(() =>
-  documents.value.filter(
-    (document) =>
-      document.has_file &&
-      document.is_ai_analysis_eligible &&
-      !activeAnalysisStatuses.includes(document.ai_analysis?.status) &&
-      document.ai_analysis?.status !== 'completed',
-  ),
-)
-const hasActiveAnalyses = computed(() =>
-  documents.value.some((document) => activeAnalysisStatuses.includes(document.ai_analysis?.status)),
-)
 const title = (value) =>
   value
     ? String(value)
@@ -74,34 +47,9 @@ const date = (value) =>
   value
     ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'long' }).format(new Date(`${String(value).slice(0, 10)}T00:00:00`))
     : 'Not available'
-const confidence = (value) =>
-  value === null || value === undefined ? 'Not available' : `${(Number(value) * 100).toFixed(1)}%`
-const checkEntries = (checks) => Object.entries(checks || {})
-const checkLabel = (check, passed) => {
-  const labels = {
-    document_type_match: ['Document Type Matches', 'Document Type Does Not Match'],
-    name_match: ['Student Name Matches', 'Student Name Needs Review'],
-    date_of_birth_match: ['Date of Birth Matches', 'Date of Birth Needs Review'],
-    student_number_match: ['Student Number Matches', 'Student Number Needs Review'],
-    course_match: ['Course Matches', 'Course Needs Review'],
-    year_level_match: ['Year Level Matches', 'Year Level Needs Review'],
-    school_document_structure_present: ['Academic Record Structure Detected', 'Academic Record Structure Needs Review'],
-    issuer_present: ['School / Issuer Detected', 'School / Issuer Needs Review'],
-    readable: ['Document Is Readable', 'Readability Needs Review'],
-    development_mock: ['Development Mock Check', 'Development Mock Needs Review'],
-  }
-
-  return labels[check]?.[passed === true ? 0 : 1] || title(check)
-}
-
-async function loadDocuments({ silent = false } = {}) {
-  if (silent && refreshingAnalyses.value) return
-
-  if (silent) refreshingAnalyses.value = true
-  else {
-    loading.value = true
-    error.value = ''
-  }
+async function loadDocuments() {
+  loading.value = true
+  error.value = ''
 
   try {
     const { data } = await apiClient.get(`/students/${route.params.id}/documents`)
@@ -112,15 +60,12 @@ async function loadDocuments({ silent = false } = {}) {
     await nextTick()
     if (route.query.document) window.document.getElementById(`requirement-${route.query.document}`)?.scrollIntoView({ block: 'center' })
   } catch (requestError) {
-    if (!silent) {
-      error.value =
-        requestError.response?.status === 404
-          ? 'This student record could not be found.'
-          : requestError.response?.data?.message || 'Unable to load student documents.'
-    }
+    error.value =
+      requestError.response?.status === 404
+        ? 'This student record could not be found.'
+        : requestError.response?.data?.message || 'Unable to load student documents.'
   } finally {
-    if (silent) refreshingAnalyses.value = false
-    else loading.value = false
+    loading.value = false
   }
 }
 
@@ -223,55 +168,6 @@ function handleViewerKeydown(event) {
   if (event.key === 'Tab') {
     event.preventDefault()
     viewerCloseButton.value?.focus()
-  }
-}
-
-function stopAnalysisPolling() {
-  if (analysisPollTimer) window.clearInterval(analysisPollTimer)
-  analysisPollTimer = null
-}
-
-function startAnalysisPolling() {
-  if (analysisPollTimer) return
-  analysisPollTimer = window.setInterval(() => loadDocuments({ silent: true }), 4_000)
-}
-
-async function analyzeAllDocuments() {
-  if (!bulkEligibleDocuments.value.length || bulkSubmitting.value) return
-
-  const eligibleIds = new Set(bulkEligibleDocuments.value.map((document) => document.id))
-  bulkSubmitting.value = true
-  actionError.value = ''
-  success.value = ''
-
-  try {
-    const { data } = await apiClient.post(`/registrar/students/${student.value.id}/documents/analyze-all`)
-
-    documents.value = documents.value.map((document) =>
-      eligibleIds.has(document.id)
-        ? {
-            ...document,
-            ai_analysis: {
-              status: 'pending',
-              detected_document_type: null,
-              confidence: null,
-              checks: null,
-              issues: null,
-              recommendation: null,
-              provider: null,
-              model: null,
-              is_mock: false,
-              analyzed_at: null,
-            },
-          }
-        : document,
-    )
-    success.value = data.message
-    await loadDocuments({ silent: true })
-  } catch (requestError) {
-    actionError.value = requestError.response?.data?.message || 'Unable to queue document analysis.'
-  } finally {
-    bulkSubmitting.value = false
   }
 }
 
@@ -492,19 +388,13 @@ async function deleteDocumentFile(document) {
   }
 }
 
-watch(hasActiveAnalyses, (active) => {
-  if (active) startAnalysisPolling()
-  else stopAnalysisPolling()
-})
 watch(() => route.params.id, () => {
-  stopAnalysisPolling()
   clearDocumentPreviews()
   closeImageViewer()
   loadDocuments()
 })
 onMounted(loadDocuments)
 onBeforeUnmount(() => {
-  stopAnalysisPolling()
   clearDocumentPreviews()
   closeImageViewer()
 })
@@ -517,7 +407,7 @@ onBeforeUnmount(() => {
     <p class="page-description">
       {{
         canManageDocuments
-          ? 'Manage securely stored student files and review saved analysis results.'
+          ? 'Manage securely stored student files and review submissions.'
           : 'Review student document records.'
       }}
     </p>
@@ -550,36 +440,6 @@ onBeforeUnmount(() => {
         <p>Status</p>
         <span class="badge">{{ title(student.student_status) }}</span>
       </div>
-    </section>
-    <section v-if="canManageDocuments" class="ai-overview">
-      <div class="ai-overview-heading">
-        <div>
-          <p class="analysis-kicker">AI document analysis</p>
-          <h2>Analyze All Documents</h2>
-          <p>
-            Currently supports Form 137, Good Moral Certificate, and Certificate of Enrollment. Missing and unsupported documents are skipped.
-          </p>
-        </div>
-        <button
-          class="analyze-all-button"
-          type="button"
-          :disabled="bulkSubmitting || !bulkEligibleDocuments.length"
-          :title="!bulkEligibleDocuments.length ? 'No supported documents are ready for analysis.' : ''"
-          @click="analyzeAllDocuments"
-        >
-          {{ bulkSubmitting ? 'Queueing…' : bulkEligibleDocuments.length ? 'Analyze All Documents' : 'No Documents to Analyze' }}
-        </button>
-      </div>
-      <div class="ai-summary" aria-label="AI analysis summary">
-        <div><span>Uploaded documents</span><strong>{{ aiSummary.uploaded }}</strong></div>
-        <div><span>Pending</span><strong>{{ aiSummary.pending }}</strong></div>
-        <div><span>Processing</span><strong>{{ aiSummary.processing }}</strong></div>
-        <div><span>Completed</span><strong>{{ aiSummary.completed }}</strong></div>
-        <div><span>Failed / Needs Review</span><strong>{{ aiSummary.failedOrNeedsReview }}</strong></div>
-      </div>
-      <p v-if="hasActiveAnalyses" class="polling-note" role="status">
-        Analysis is running in the background. Status refreshes automatically.
-      </p>
     </section>
     <section v-if="!documents.length" class="panel state">
       <h2>No document records</h2>
@@ -686,59 +546,6 @@ onBeforeUnmount(() => {
             <button v-if="document.physical_status === 'submitted'" type="button" :disabled="activeAction" @click="openRequirementAction('reopen', document, $event)">Require Again</button>
           </div>
 
-          <section v-if="document.is_ai_analysis_eligible && document.has_file" class="ai-analysis">
-          <div class="analysis-heading">
-            <div>
-              <p class="analysis-kicker">AI Analysis</p>
-              <h3 v-if="document.ai_analysis?.status === 'completed'">
-                {{ document.ai_analysis.is_mock ? 'Development Mock Result' : 'Stored Analysis Result' }}
-              </h3>
-              <h3 v-else-if="document.ai_analysis?.status === 'failed'">Analysis failed</h3>
-              <h3 v-else-if="document.ai_analysis?.status === 'processing'">Analyzing document…</h3>
-              <h3 v-else>Pending analysis…</h3>
-            </div>
-            <span v-if="document.ai_analysis?.status" class="analysis-status" :class="document.ai_analysis.status">
-              {{ title(document.ai_analysis.status) }}
-            </span>
-          </div>
-
-          <template v-if="document.ai_analysis?.status === 'completed'">
-            <p v-if="document.ai_analysis.is_mock" class="mock-warning">
-              Mock analysis does not inspect the real uploaded document.
-            </p>
-            <dl class="analysis-facts">
-              <div>
-                <dt>Provider</dt>
-                <dd>{{ title(document.ai_analysis.provider) }}</dd>
-              </div>
-              <div>
-                <dt>Detected Type</dt>
-                <dd>{{ document.ai_analysis.detected_document_type || 'Not detected' }}</dd>
-              </div>
-              <div>
-                <dt>Confidence</dt>
-                <dd>{{ confidence(document.ai_analysis.confidence) }}</dd>
-              </div>
-              <div>
-                <dt>Recommendation</dt>
-                <dd>{{ title(document.ai_analysis.recommendation) }}</dd>
-              </div>
-            </dl>
-            <div v-if="checkEntries(document.ai_analysis.checks).length" class="checks">
-              <strong>Checks</strong>
-              <ul>
-                <li v-for="([check, passed]) in checkEntries(document.ai_analysis.checks)" :key="check">
-                  <span :class="passed ? 'check-pass' : 'check-fail'">{{ passed ? '✓' : '!' }}</span>
-                  {{ checkLabel(check, passed) }}
-                </li>
-              </ul>
-            </div>
-          </template>
-          <p v-else-if="document.ai_analysis?.status === 'failed'" class="analysis-message">
-            Registrar can still review the document manually.
-          </p>
-          <p v-else class="analysis-message">The saved analysis status will update after the background worker finishes.</p>
-          </section>
         </div>
       </article>
     </section>
@@ -830,7 +637,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .panel,
 .summary,
-.ai-overview,
 .document-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -861,46 +667,7 @@ dt {
   text-transform: uppercase;
 }
 .summary strong { font-size: 0.92rem; overflow-wrap: anywhere; }
-.ai-overview { background: linear-gradient(135deg, #f4faf6, #fffdf3); }
-.ai-overview-heading {
-  align-items: center;
-  display: flex;
-  gap: 20px;
-  justify-content: space-between;
-}
-.ai-overview-heading h2 { font-size: 1.15rem; margin: 0; }
-.ai-overview-heading p:not(.analysis-kicker) { color: var(--color-muted); margin: 5px 0 0; }
-.analyze-all-button {
-  background: var(--color-dartmouth-green);
-  border: 0;
-  border-radius: 7px;
-  color: #fff;
-  cursor: pointer;
-  font-weight: 800;
-  min-height: 42px;
-  padding: 10px 16px;
-}
-.analyze-all-button:disabled { cursor: not-allowed; opacity: 0.55; }
-.ai-summary {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  margin-top: 16px;
-}
-.ai-summary div {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid var(--color-border);
-  border-radius: 7px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px;
-}
-.ai-summary span { color: var(--color-muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
-.ai-summary strong { color: var(--color-dartmouth-green); font-size: 1.15rem; }
-.polling-note { color: var(--color-muted); font-size: 0.8rem; margin: 12px 0 0; }
-.badge,
-.analysis-status {
+.badge {
   border-radius: 999px;
   display: inline-block;
   font-size: 0.78rem;
@@ -908,12 +675,8 @@ dt {
   padding: 5px 9px;
 }
 .badge,
-.badge.available,
-.analysis-status.completed { background: var(--color-green-tint); color: var(--color-dartmouth-green); }
-.badge.missing,
-.analysis-status.failed { background: #fee2e2; color: #991b1b; }
-.analysis-status.pending { background: #fff4cc; color: #8a6100; }
-.analysis-status.processing { background: #e0f2fe; color: #075985; }
+.badge.available { background: var(--color-green-tint); color: var(--color-dartmouth-green); }
+.badge.missing { background: #fee2e2; color: #991b1b; }
 .documents { display: grid; gap: 18px; min-width: 0; }
 .document-card {
   display: grid;
@@ -1067,48 +830,6 @@ dt {
 .more-menu summary { align-items: center; display: flex; list-style: none; }
 .more-menu summary::-webkit-details-marker { display: none; }
 .more-menu .danger { background: #fff; border: 1px solid #fecaca; color: #991b1b; margin-top: 5px; }
-.ai-analysis {
-  background: linear-gradient(135deg, #f4faf6, #fffdf3);
-  border: 1px solid var(--color-border);
-  border-radius: 9px;
-  margin-top: 18px;
-  padding: 16px;
-}
-.analysis-kicker {
-  color: var(--color-dark-spring-green);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.09em;
-  margin: 0 0 3px;
-  text-transform: uppercase;
-}
-.analysis-heading h3 { font-size: 1rem; }
-.mock-warning {
-  background: #fff4cc;
-  border-left: 4px solid #d69e00;
-  color: #684b00;
-  font-weight: 700;
-  margin: 14px 0;
-  padding: 10px 12px;
-}
-.analysis-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 14px 0; }
-.checks strong { font-size: 0.82rem; text-transform: uppercase; }
-.checks ul { display: grid; gap: 7px; list-style: none; margin: 9px 0 0; padding: 0; }
-.checks li { align-items: center; display: flex; gap: 8px; }
-.check-pass,
-.check-fail {
-  align-items: center;
-  border-radius: 50%;
-  display: inline-flex;
-  font-size: 0.72rem;
-  font-weight: 900;
-  height: 20px;
-  justify-content: center;
-  width: 20px;
-}
-.check-pass { background: #dcfce7; color: #166534; }
-.check-fail { background: #fee2e2; color: #991b1b; }
-.analysis-message { color: var(--color-muted); margin: 12px 0 0; }
 .state { color: var(--color-muted); text-align: center; }
 .state h2 { color: var(--color-eerie-black); margin-top: 0; }
 .modal-backdrop {
@@ -1187,9 +908,7 @@ dt {
 .modal-actions { justify-content: flex-end; }
 @media (max-width: 850px) {
   .summary,
-  .ai-summary,
-  .document-information > dl,
-  .analysis-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .document-information > dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .document-card { grid-template-columns: minmax(160px, 200px) minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
@@ -1198,9 +917,7 @@ dt {
 }
 @media (max-width: 500px) {
   .summary,
-  .ai-summary,
-  .document-information > dl,
-  .analysis-facts { grid-template-columns: 1fr; }
+  .document-information > dl { grid-template-columns: 1fr; }
   .panel,
   .summary,
   .document-card,
@@ -1209,10 +926,6 @@ dt {
   .document-actions > button,
   .back-bar button,
   .modal-actions button { flex: 1; }
-  .doc-head,
-  .analysis-heading,
-  .ai-overview-heading { align-items: flex-start; }
-  .ai-overview-heading { flex-direction: column; }
-  .analyze-all-button { width: 100%; }
+  .doc-head { align-items: flex-start; }
 }
 </style>

@@ -8,12 +8,12 @@ const styles = readFileSync(new URL('../src/assets/styles/public-home.css', impo
 const frontendSources = [login, store, readFileSync(new URL('../src/services/apiClient.js', import.meta.url), 'utf8')].join('\n')
 const developmentEnvironment = readFileSync(new URL('../.env.development', import.meta.url), 'utf8')
 
-test('login keeps password access and clearly offers Google for existing Professor and Student accounts', () => {
-  for (const text of ['Username', 'Password', 'Sign in to portal', 'Continue with Google', 'Professor and Student accounts must already exist']) {
+test('login keeps password access and clearly offers Google for Professor and Student accounts', () => {
+  for (const text of ['Username', 'Password', 'Sign in to portal', 'Continue with Google']) {
     assert.match(login, new RegExp(text, 'i'))
   }
   assert.match(login, /clientPlatform === 'web'/)
-  assert.match(login, /Google does not create an account/)
+  assert.doesNotMatch(login, /Google does not create an account/)
   assert.doesNotMatch(frontendSources, /This (Professor|Student) account must sign in with Google/)
 })
 

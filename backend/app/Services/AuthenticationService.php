@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Role;
 use App\Models\User;
 use App\Support\ClientPlatform;
 use App\Support\SanctumTokenExpiration;
@@ -17,20 +18,40 @@ class AuthenticationService
 
     /**
      * Validate credentials and platform access without creating a session.
+     * Students use their student number, Professors use email, and other roles use username.
      *
      * @param  array{username: string, password: string}  $credentials
      */
     public function authenticate(array $credentials, string $client): User
     {
+        $identifier = trim($credentials['username']);
         $user = User::query()
             ->with(['role', 'profile'])
-            ->where('username', $credentials['username'])
+            ->whereHas('role', fn ($query) => $query->where('role_name', Role::STUDENT))
+            ->whereHas('student', fn ($query) => $query->where('student_number', $identifier))
+            ->first();
+
+        $user ??= User::query()
+            ->with(['role', 'profile'])
+            ->whereHas('role', fn ($query) => $query->where('role_name', Role::PROFESSOR))
+            ->whereHas('profile', fn ($query) => $query->whereRaw('LOWER(TRIM(email)) = ?', [mb_strtolower($identifier)]))
+            ->first();
+
+        $user ??= User::query()
+            ->with(['role', 'profile'])
+            ->where('username', $identifier)
+            // Legacy student accounts without a linked student record remain usable.
+            ->where(fn ($query) => $query
+                ->whereHas('role', fn ($role) => $role->whereNotIn('role_name', [Role::STUDENT, Role::PROFESSOR]))
+                ->orWhere(fn ($legacy) => $legacy
+                    ->whereHas('role', fn ($role) => $role->where('role_name', Role::STUDENT))
+                    ->whereDoesntHave('student')))
             ->first();
 
         if ($user === null
             || $user->status !== 'active'
             || ! Hash::check($credentials['password'], $user->password)) {
-            throw new AuthenticationException('Invalid username or password.');
+            throw new AuthenticationException('Invalid credentials.');
         }
 
         $this->clientAccess->ensureUserMayUse($user, $client);

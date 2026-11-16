@@ -20,9 +20,8 @@ class LoginRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'username' => ['required', 'string', 'max:50'],
+            'username' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
-            'turnstile_token' => ['nullable', 'string', 'max:2048'],
         ];
     }
 }

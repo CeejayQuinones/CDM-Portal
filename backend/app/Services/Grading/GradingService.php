@@ -10,6 +10,7 @@ use App\Models\GradeLateSubmissionExtension;
 use App\Models\GradePeriodSchedule;
 use App\Models\GradeScore;
 use App\Models\GradeSheet;
+use App\Models\GradingScale;
 use App\Models\Professor;
 use App\Models\Role;
 use App\Models\SectionSubject;
@@ -42,8 +43,10 @@ class GradingService
             ->with(['section.course.department', 'section.academicYear', 'section.semester', 'subject', 'gradeSheet'])
             ->select('section_subjects.*')->selectSub(function ($query) {
                 $query->from('enrollment_subjects as es')->join('enrollments as e', 'e.id', '=', 'es.enrollment_id')
-                    ->whereColumn('e.section_id', 'section_subjects.section_id')
                     ->whereColumn('es.subject_id', 'section_subjects.subject_id')
+                    ->where(fn ($roster) => $roster->whereColumn('es.section_subject_id', 'section_subjects.id')
+                        ->orWhere(fn ($home) => $home->whereNull('es.section_subject_id')
+                            ->whereColumn('e.section_id', 'section_subjects.section_id')))
                     ->whereIn('e.status', ['enrolled', 'completed'])->whereIn('es.subject_status', ['enrolled', 'completed'])
                     ->selectRaw('count(*)');
             }, 'student_count');
@@ -112,18 +115,33 @@ class GradingService
         $this->assertOpen($sheet, $input['period'] ?? $assessment?->period);
 
         return DB::transaction(function () use ($user, $sheet, $input, $assessment) {
+            $lockedSheet = GradeSheet::query()->lockForUpdate()->findOrFail($sheet->id);
+            $this->ownedSheet($user, $lockedSheet);
+            $categories = GradeCategoryWeight::query()->where('grade_sheet_id', $sheet->id)->lockForUpdate()->pluck('category')->unique()->values();
+            $category = trim($input['category']);
+            $existingCategory = $categories->first(fn ($value) => mb_strtolower($value) === mb_strtolower($category));
+            if (! empty($input['create_category'])) {
+                abort_unless(! $assessment && ! $existingCategory, 422, 'Choose a new category name that is not already used.');
+                abort_unless($categories->count() < 20, 422, 'This grade sheet has reached the category limit.');
+                foreach (['midterm', 'finals'] as $period) {
+                    GradeCategoryWeight::create(['grade_sheet_id' => $sheet->id, 'period' => $period, 'category' => $category, 'weight_percentage' => 0]);
+                }
+                $this->audit($user, 'grade_category.created', $sheet, null, ['category' => $category]);
+            } else {
+                abort_unless($existingCategory === $category, 422, 'Choose a category already configured for this grade sheet.');
+            }
             if ($assessment) {
                 $row = GradeAssessment::lockForUpdate()->where('grade_sheet_id', $sheet->id)->findOrFail($assessment->id);
                 abort_unless($row->version === (int) $input['version'], 409, 'This assessment changed. Reload before continuing.');
                 $old = $row->only(['label', 'category', 'max_score', 'display_order', 'status']);
-                $row->fill(collect($input)->only(['label', 'category', 'max_score', 'display_order'])->all());
+                $row->fill(collect($input)->only(['label', 'max_score', 'display_order'])->all() + ['category' => $category]);
                 $row->version++;
                 $row->save();
                 $this->audit($user, 'assessment.updated', $sheet, null, ['assessment_id' => $row->id, 'old' => $old, 'new' => $row->only(array_keys($old))]);
 
                 return $row;
             }
-            $row = GradeAssessment::create($input + ['grade_sheet_id' => $sheet->id]);
+            $row = GradeAssessment::create(collect($input)->only(['period', 'label', 'max_score', 'display_order'])->all() + ['category' => $category, 'grade_sheet_id' => $sheet->id]);
             $this->audit($user, 'assessment.created', $sheet, null, ['assessment_id' => $row->id, 'new' => $row->only(['period', 'label', 'category', 'max_score', 'display_order'])]);
 
             return $row;
@@ -153,7 +171,9 @@ class GradingService
             abort_if($labels->intersect($existingLabels)->isNotEmpty(), 409, 'An assessment with the same label already exists in this grading period.');
 
             $created = [];
+            $categories = GradeCategoryWeight::query()->where('grade_sheet_id', $lockedSheet->id)->where('period', $input['period'])->pluck('category')->all();
             foreach ($input['assessments'] as $assessment) {
+                abort_unless(in_array($assessment['category'], $categories, true), 422, 'Bulk entry uses a category that is not configured for this grade sheet.');
                 $created[] = GradeAssessment::create($assessment + [
                     'grade_sheet_id' => $lockedSheet->id,
                     'period' => $input['period'],
@@ -198,6 +218,7 @@ class GradingService
             $assessment = GradeAssessment::query()->lockForUpdate()->where('grade_sheet_id', $sheet->id)->where('status', 'active')->findOrFail($assessment->id);
             $this->assertOpen($sheet, $assessment->period);
             $saved = [];
+            $changes = [];
             foreach ($input['scores'] as $entry) {
                 abort_unless((float) $entry['score'] <= (float) $assessment->max_score, 422, 'A score exceeds the assessment maximum.');
                 $valid = $this->rosterQuery($sheet)->where('es.id', $entry['enrollment_subject_id'])->exists();
@@ -217,10 +238,70 @@ class GradingService
                     $action = 'score.created';
                 }
                 $this->audit($user, $action, $sheet, null, ['assessment_id' => $assessment->id, 'enrollment_subject_id' => $score->enrollment_subject_id, 'old' => $old, 'new' => $score->score]);
+                $changes[] = ['assessment_id' => $assessment->id, 'enrollment_subject_id' => $score->enrollment_subject_id, 'before' => $old, 'after' => $score->score];
                 $saved[] = $score;
             }
 
+            $this->audit($user, 'scores.saved', $sheet, null, ['period' => $assessment->period, 'assessment_label' => $assessment->label, 'changes' => $changes]);
+
             return $saved;
+        });
+    }
+
+    public function scoreSaveHistory(User $user, GradeSheet $sheet): array
+    {
+        $this->assertOwnedSheetAccess($user, $sheet);
+
+        return [
+            'revision' => GradeAuditEvent::query()->where('grade_sheet_id', $sheet->id)->where('action', 'like', 'score.%')->max('id') ?? 0,
+            'entries' => GradeAuditEvent::query()->where('grade_sheet_id', $sheet->id)
+                ->whereIn('action', ['scores.saved', 'scores.restored'])
+                ->latest('id')->limit(30)->get()
+                ->map(fn ($event) => [
+                    'id' => $event->id,
+                    'action' => $event->action,
+                    'saved_at' => $event->created_at?->toIso8601String(),
+                    'period' => $event->metadata['period'] ?? null,
+                    'assessment_label' => $event->metadata['assessment_label'] ?? 'Assessment',
+                    'count' => count($event->metadata['changes'] ?? []),
+                ])->all(),
+        ];
+    }
+
+    public function restoreScoreSave(User $user, GradeSheet $sheet, GradeAuditEvent $save, int $expectedRevision): void
+    {
+        $this->ownedSheet($user, $sheet);
+        abort_unless($save->grade_sheet_id === $sheet->id && in_array($save->action, ['scores.saved', 'scores.restored'], true), 404, 'Saved score history not found.');
+        $metadata = $save->metadata ?? [];
+        $changes = $metadata['changes'] ?? [];
+        abort_unless(is_array($changes) && $changes !== [], 422, 'This save has no restorable score changes.');
+
+        DB::transaction(function () use ($user, $sheet, $save, $expectedRevision, $metadata, $changes): void {
+            $locked = GradeSheet::query()->lockForUpdate()->findOrFail($sheet->id);
+            $this->ownedSheet($user, $locked);
+            $latestRevision = (int) (GradeAuditEvent::query()->where('grade_sheet_id', $locked->id)->where('action', 'like', 'score.%')->max('id') ?? 0);
+            abort_unless($latestRevision === $expectedRevision, 409, 'Scores changed since this history was opened. Reload the save history before restoring.');
+
+            $restored = [];
+            foreach ($changes as $change) {
+                $assessment = GradeAssessment::query()->lockForUpdate()->where('grade_sheet_id', $locked->id)->where('status', 'active')->findOrFail($change['assessment_id']);
+                $this->assertOpen($locked, $assessment->period);
+                abort_unless($this->rosterQuery($locked)->where('es.id', $change['enrollment_subject_id'])->exists(), 409, 'A Student is no longer enrolled in this class.');
+                $score = GradeScore::query()->lockForUpdate()->where('grade_assessment_id', $assessment->id)->where('enrollment_subject_id', $change['enrollment_subject_id'])->first();
+                $current = $score?->score;
+                $previous = $change['before'];
+                abort_unless($previous === null || ($previous >= 0 && $previous <= $assessment->max_score), 422, 'A historical score no longer fits the assessment maximum.');
+                if ($previous === null) {
+                    $score?->delete();
+                } elseif ($score) {
+                    $score->forceFill(['score' => $previous, 'updated_by' => $user->id, 'version' => $score->version + 1])->save();
+                } else {
+                    GradeScore::create(['grade_assessment_id' => $assessment->id, 'enrollment_subject_id' => $change['enrollment_subject_id'], 'score' => $previous, 'updated_by' => $user->id]);
+                }
+                $this->audit($user, 'score.restored', $locked, null, ['assessment_id' => $assessment->id, 'enrollment_subject_id' => $change['enrollment_subject_id'], 'old' => $current, 'new' => $previous, 'source_save_id' => $save->id]);
+                $restored[] = ['assessment_id' => $assessment->id, 'enrollment_subject_id' => $change['enrollment_subject_id'], 'before' => $current, 'after' => $previous];
+            }
+            $this->audit($user, 'scores.restored', $locked, null, ['period' => $metadata['period'] ?? null, 'assessment_label' => $metadata['assessment_label'] ?? 'Assessment', 'source_save_id' => $save->id, 'changes' => $restored]);
         });
     }
 
@@ -231,6 +312,9 @@ class GradingService
         abort_unless(abs(array_sum(array_column($weights, 'weight_percentage')) - 100) < 0.001, 422, 'Category weights must total 100%.');
 
         return DB::transaction(function () use ($user, $sheet, $period, $weights) {
+            $configured = GradeCategoryWeight::query()->where('grade_sheet_id', $sheet->id)->where('period', $period)->lockForUpdate()->pluck('category')->sort()->values()->all();
+            $submitted = collect($weights)->pluck('category')->sort()->values()->all();
+            abort_unless($submitted === $configured, 422, 'Include every configured category exactly once.');
             foreach ($weights as $input) {
                 $row = GradeCategoryWeight::lockForUpdate()->where(['grade_sheet_id' => $sheet->id, 'period' => $period, 'category' => $input['category']])->firstOrFail();
                 abort_unless($row->version === (int) $input['version'], 409, 'Category weights changed. Reload before continuing.');
@@ -452,7 +536,10 @@ class GradingService
 
         return EnrollmentSubject::query()->from('enrollment_subjects as es')
             ->join('enrollments as e', 'e.id', '=', 'es.enrollment_id')
-            ->where('e.section_id', $assignment->section_id)->where('es.subject_id', $assignment->subject_id)
+            ->where('es.subject_id', $assignment->subject_id)
+            ->where(fn ($roster) => $roster->where('es.section_subject_id', $assignment->id)
+                ->orWhere(fn ($home) => $home->whereNull('es.section_subject_id')
+                    ->where('e.section_id', $assignment->section_id)))
             ->whereIn('e.status', ['enrolled', 'completed'])->whereIn('es.subject_status', ['enrolled', 'completed']);
     }
 
@@ -464,7 +551,7 @@ class GradingService
         $sheet->load(['assessments.scores', 'weights']);
         $schedule = GradePeriodSchedule::where(['academic_year_id' => $assignment->section->academic_year_id, 'semester_id' => $assignment->section->semester_id])->first();
 
-        return ['class' => $this->classData($assignment, $roster->count(), $schedule), 'sheet' => $sheet, 'roster' => $roster, 'schedule' => $this->scheduleData($schedule), 'late_submission_extension' => $this->lateExtensionData($this->activeLateExtension($sheet)), 'categories' => self::CATEGORIES];
+        return ['class' => $this->classData($assignment, $roster->count(), $schedule), 'sheet' => $sheet, 'roster' => $roster, 'schedule' => $this->scheduleData($schedule), 'late_submission_extension' => $this->lateExtensionData($this->activeLateExtension($sheet)), 'categories' => collect(self::CATEGORIES)->merge($sheet->weights->pluck('category'))->unique()->values()->all(), 'grade_scales' => GradingScale::query()->where('is_active', true)->orderByDesc('min_percentage')->get(['min_percentage', 'max_percentage', 'grade_point', 'remark', 'is_active'])];
     }
 
     private function classData(SectionSubject $assignment, ?int $count = null, ?GradePeriodSchedule $schedule = null): array

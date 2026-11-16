@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Http\Requests\BulkUpdateStudentsRequest;
 use App\Models\CabinetSlot;
 use App\Models\Course;
+use App\Models\Curriculum;
+use App\Models\HistoricalGradeRecord;
 use App\Models\Student;
 use App\Models\StudentDocument;
 use App\Models\StudentRecordLocation;
@@ -89,7 +91,6 @@ class StudentService
                 'course.department',
                 'curriculum',
                 'documents.documentType',
-                'documents.aiAnalysis',
                 'physicalRecordLocation.cabinetSlot.cabinet',
                 'documentRequests' => fn ($requests) => $requests
                     ->with('documentType:id,document_name')
@@ -248,6 +249,88 @@ class StudentService
             if ($studentFields !== []) {
                 $this->audit->record($actor, $student->id, 'student_status_changed', [
                     'changed_fields' => $studentFields,
+                ]);
+            }
+
+            return $this->find($student->id);
+        });
+    }
+
+    public function academicOptions(Student $student): array
+    {
+        $courses = Course::query()
+            ->where(fn (Builder $query) => $query->where('status', 'active')->orWhereKey($student->course_id))
+            ->with(['department:id,department_code,department_name', 'curriculums' => fn ($query) => $query
+                ->where(fn ($options) => $options->where('status', 'active')->orWhereKey($student->curriculum_id))
+                ->orderBy('curriculum_code')])
+            ->orderBy('course_code')->get();
+
+        return [
+            'identity_locked' => $student->enrollments()->exists()
+                || $student->enrollmentApplications()->exists()
+                || HistoricalGradeRecord::query()->where('student_id', $student->id)->exists(),
+            'courses' => $courses->map(fn (Course $course) => [
+                'id' => $course->id,
+                'code' => $course->course_code,
+                'name' => $course->course_name,
+                'years' => $course->years,
+                'department' => $course->department ? [
+                    'id' => $course->department->id,
+                    'code' => $course->department->department_code,
+                    'name' => $course->department->department_name,
+                ] : null,
+                'curriculums' => $course->curriculums->map(fn (Curriculum $curriculum) => [
+                    'id' => $curriculum->id,
+                    'code' => $curriculum->curriculum_code,
+                    'name' => $curriculum->curriculum_name,
+                ])->all(),
+            ])->all(),
+        ];
+    }
+
+    /** @param array<string, mixed> $attributes */
+    public function updateAcademic(User $actor, int $studentId, array $attributes): Student
+    {
+        return DB::transaction(function () use ($actor, $studentId, $attributes): Student {
+            $student = Student::query()->lockForUpdate()->findOrFail($studentId);
+            $course = Course::query()->findOrFail($attributes['course_id']);
+            $curriculum = Curriculum::query()->findOrFail($attributes['curriculum_id']);
+
+            if ($curriculum->course_id !== $course->id) {
+                throw ValidationException::withMessages(['curriculum_id' => 'Choose a curriculum that belongs to the selected course.']);
+            }
+            if ($attributes['year_level'] > $course->years) {
+                throw ValidationException::withMessages(['year_level' => 'Year level exceeds the selected course duration.']);
+            }
+            if (($course->status !== 'active' && $course->id !== $student->course_id)
+                || ($curriculum->status !== 'active' && $curriculum->id !== $student->curriculum_id)) {
+                throw ValidationException::withMessages(['course_id' => 'Only active course and curriculum options can be selected.']);
+            }
+
+            $identityChanged = $student->course_id !== $course->id
+                || $student->curriculum_id !== $curriculum->id
+                || $student->year_level !== (int) $attributes['year_level'];
+            if ($identityChanged && ($student->enrollments()->exists()
+                || $student->enrollmentApplications()->exists()
+                || HistoricalGradeRecord::query()->where('student_id', $student->id)->exists())) {
+                throw ValidationException::withMessages(['course_id' => 'Course, curriculum, and year level cannot be changed after enrollment or grades are linked. Use the appropriate academic correction workflow.']);
+            }
+
+            $student->fill([
+                'course_id' => $course->id,
+                'curriculum_id' => $curriculum->id,
+                'year_level' => (int) $attributes['year_level'],
+                'admission_date' => $attributes['admission_date'],
+            ]);
+            $changes = array_keys($student->getDirty());
+            if ($changes !== []) {
+                $before = $student->only($changes);
+                $student->save();
+                $this->audit->record($actor, $student->id, 'student_academic_information_corrected', [
+                    'changed_fields' => $changes,
+                    'before' => $before,
+                    'after' => $student->only($changes),
+                    'reason' => trim($attributes['reason']),
                 ]);
             }
 

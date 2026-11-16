@@ -55,7 +55,7 @@ class StudentDocumentRequestController extends Controller
             ->with([
                 'batch:id,student_id',
                 'documentType:id,document_name,requires_appointment',
-                'appointments:id,document_request_id,appointment_date,appointment_time,status,remarks',
+                'appointments:id,document_request_id,appointment_date,appointment_time,service_window,status,remarks',
             ])
             ->latest()
             ->get();
@@ -104,7 +104,7 @@ class StudentDocumentRequestController extends Controller
             return $created;
         }, 3);
 
-        return $this->ok($item->load(['documentType:id,document_name,requires_appointment', 'appointments:id,document_request_id,appointment_date,appointment_time,status,remarks']), 'Document request submitted successfully.', 201);
+        return $this->ok($item->load(['documentType:id,document_name,requires_appointment', 'appointments:id,document_request_id,appointment_date,appointment_time,service_window,status,remarks']), 'Document request submitted successfully.', 201);
     }
 
     public function show(Request $request, DocumentRequest $documentRequest): JsonResponse
@@ -182,7 +182,7 @@ class StudentDocumentRequestController extends Controller
             ->latest()
             ->get();
         $appointments = $student->appointments()
-            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'status', 'remarks'])
+            ->select(['id', 'student_id', 'document_request_id', 'appointment_date', 'appointment_time', 'service_window', 'status', 'remarks'])
             ->whereNotNull('document_request_id')
             ->with(
                 'documentRequest:id,document_type_id,status',
@@ -249,7 +249,7 @@ class StudentDocumentRequestController extends Controller
         return $this->ok(
             $cancelledRequest->fresh()->load([
                 'documentType:id,document_name,requires_appointment',
-                'appointments:id,document_request_id,appointment_date,appointment_time,status,remarks,cancelled_at',
+                'appointments:id,document_request_id,appointment_date,appointment_time,service_window,status,remarks,cancelled_at',
             ]),
             'Document request cancelled successfully.',
         );

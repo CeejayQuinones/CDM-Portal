@@ -106,7 +106,9 @@ test('Registrar sidebar keeps labels visible, navigates, and leaves Admin icon-o
   const adminAside = byClass(adminTree, 'desktop-primary-rail')[0]
   assert.ok(adminAside)
   assert.equal(byClass(adminTree, 'desktop-registrar-sidebar').length, 0)
-  assert.equal(byClass(adminTree, 'desktop-rail-action').length, 2)
+  assert.equal(byClass(adminTree, 'desktop-rail-action').length, 3)
+  assert.equal(byClass(adminTree, 'desktop-theme-shortcut')[0].type, 'button')
+  assert.equal(byClass(adminTree, 'desktop-theme-shortcut')[0].children.some(child => child.type === 'span'), false)
   adminApp.unmount()
 
   const mobileTree = node('root')
@@ -148,6 +150,7 @@ test('Registrar sidebar keeps labels visible, navigates, and leaves Admin icon-o
     themeApp.mount(themeTree)
     const shortcut = () => byClass(themeTree, 'registrar-theme-shortcut')[0]
     assert.equal(shortcut().props['aria-label'], 'Switch to Dark Mode')
+    assert.equal(shortcut().children.some(child => child.type === 'span'), false)
     shortcut().props.onClick()
     await nextTick()
     assert.equal(globalThis.document.documentElement.dataset.studentTheme, 'dark')

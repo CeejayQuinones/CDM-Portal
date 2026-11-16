@@ -64,6 +64,50 @@ class StepUpAuthenticationTest extends TestCase
             ->assertJsonPath('data.year_level', 1);
     }
 
+    public function test_academic_correction_requires_step_up_catalog_match_and_audit_reason(): void
+    {
+        $registrar = $this->userWithRole(Role::REGISTRAR_STAFF);
+        $student = $this->createStudent();
+        $token = $registrar->createToken('academic-correction', ['client:desktop'])->plainTextToken;
+        $payload = [
+            'course_id' => $student->course_id,
+            'curriculum_id' => $student->curriculum_id,
+            'year_level' => 2,
+            'admission_date' => '2026-07-15',
+            'reason' => 'Corrected from the signed enrollment register.',
+        ];
+
+        $this->withToken($token)->getJson("/api/students/{$student->id}/academic-options")
+            ->assertOk()
+            ->assertJsonPath('data.identity_locked', false)
+            ->assertJsonPath('data.courses.0.code', 'BSIT')
+            ->assertJsonPath('data.courses.0.department.code', 'ICS');
+        $this->withToken($token)->patchJson("/api/students/{$student->id}/academic", $payload)
+            ->assertStatus(428);
+
+        $this->withToken($token)->postJson('/api/step-up/verify', ['password' => 'password'])->assertOk();
+        $otherCourse = Course::query()->create([
+            'department_id' => $student->course->department_id,
+            'course_code' => 'BSCS', 'course_name' => 'Computer Science', 'years' => 4, 'status' => 'active',
+        ]);
+        $this->withToken($token)->patchJson("/api/students/{$student->id}/academic", [
+            ...$payload, 'course_id' => $otherCourse->id,
+        ])->assertUnprocessable()->assertJsonValidationErrors('curriculum_id');
+
+        $this->withToken($token)->patchJson("/api/students/{$student->id}/academic", [
+            ...$payload, 'student_number' => 'UNAUTHORIZED-CHANGE', 'enrollment_status' => 'completed',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.year_level', 2)
+            ->assertJsonPath('data.admission_date', '2026-07-15')
+            ->assertJsonPath('data.student_number', '2026-000001');
+        $this->assertDatabaseHas('student_record_audit_events', [
+            'student_id' => $student->id,
+            'actor_user_id' => $registrar->id,
+            'action' => 'student_academic_information_corrected',
+        ]);
+    }
+
     public function test_expired_step_up_is_blocked(): void
     {
         $registrar = $this->userWithRole(Role::REGISTRAR_STAFF);

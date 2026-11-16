@@ -116,6 +116,30 @@ class HistoricalGradesTest extends TestCase
         $this->assertSame(2, HistoricalGradeRecord::where('source_type', 'import')->count());
     }
 
+    public function test_access_style_csv_can_preview_and_import_without_excel_template(): void
+    {
+        $csv = implode("\n", [
+            'Remarks,Student No,School Year,Semester,Subject Code,Final Grade,Credits,Official Result,Grade Source Reference',
+            'Passed,'.$this->f['student']->student_number.','.$this->f['year']->school_year.','.$this->f['semester']->semester_name.','.$this->f['subjects'][0]->subject_code.',1.75,3,Passed,Archive page 12',
+        ]);
+        $file = UploadedFile::fake()->createWithContent('access-grades.csv', $csv);
+        $preview = $this->post('/api/registrar/historical-grades/preview', ['file' => $file])->assertOk()
+            ->assertJsonPath('data.counts.valid', 1)->json('data');
+        $this->assertDatabaseCount('historical_grade_records', 0);
+        $this->postJson('/api/registrar/historical-grades/confirm', ['preview_token' => $preview['preview_token']])
+            ->assertOk()->assertJsonPath('data.imported', 1);
+        $this->assertSame('Archive page 12', HistoricalGradeRecord::firstOrFail()->source_reference);
+    }
+
+    public function test_csv_remarks_cannot_replace_missing_verified_official_result(): void
+    {
+        $csv = "student_number,academic_year,semester,subject_code,final_grade,remarks,credited_units,source_reference\n"
+            .$this->f['student']->student_number.','.$this->f['year']->school_year.','.$this->f['semester']->semester_name.','.$this->f['subjects'][0]->subject_code.",1.75,Passed,3,Archive page 12\n";
+        $this->post('/api/registrar/historical-grades/preview', ['file' => UploadedFile::fake()->createWithContent('access-grades.csv', $csv)])
+            ->assertUnprocessable()->assertJsonValidationErrors(['file']);
+        $this->assertDatabaseCount('historical_grade_records', 0);
+    }
+
     public function test_invalid_duplicate_unknown_and_changed_rows_save_nothing(): void
     {
         $preview = $this->post('/api/registrar/historical-grades/preview', ['file' => $this->workbook([

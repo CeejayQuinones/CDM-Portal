@@ -8,6 +8,7 @@ import StepUpAuthModal from '../components/StepUpAuthModal.vue'
 import { desktopModuleForRoute, desktopModulesFromMenu } from '../config/desktopNavigation'
 import { useAuthStore } from '../stores/authStore'
 import { useNavigationStore } from '../stores/navigation'
+import { apiClient } from '../services/apiClient'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +27,9 @@ const activeModule = computed(() => desktopModuleForRoute(modules.value, route) 
 const hasContextPanel = computed(() => (activeModule.value?.destinations.length || 0) > 1)
 const pageTitle = computed(() => route.meta.title || activeModule.value?.label || 'CDM Portal')
 const studentRecordsRoute = computed(() => ['student-management', 'physical-records', 'student-record-reports'].includes(String(route.name)))
+const saveStudentTheme = theme => {
+  if (auth.currentRole === 'Student') apiClient.patch('/student/settings/preferences', { appearance: theme }).catch(() => {})
+}
 
 async function selectModule(module) {
   if (module.destinations.length === 1) {
@@ -96,7 +100,7 @@ onBeforeUnmount(() => {
   <div class="desktop-workspace-shell" :class="{ 'registrar-workspace': registrarRail }">
     <StepUpAuthModal />
     <div v-if="registrarRail && narrowWindow && registrarDrawerOpen" class="registrar-sidebar-backdrop" @click="closeRegistrarDrawer"></div>
-    <DesktopPrimaryRail ref="primaryRail" :modules="modules" :active-module="activeModule" :module-panel-open="modulePanelOpen" :registrar-presentation="registrarRail" :appearance-account="auth.currentUser?.id || auth.currentUser?.username" :mobile-drawer="registrarRail && narrowWindow" :drawer-open="registrarDrawerOpen" @select="selectModule" @close="closeRegistrarDrawer" />
+    <DesktopPrimaryRail ref="primaryRail" :modules="modules" :active-module="activeModule" :module-panel-open="modulePanelOpen" :registrar-presentation="registrarRail" :appearance-role="auth.currentRole" :appearance-account="auth.currentUser?.id || auth.currentUser?.username" :mobile-drawer="registrarRail && narrowWindow" :drawer-open="registrarDrawerOpen" @select="selectModule" @close="closeRegistrarDrawer" @theme-change="saveStudentTheme" />
     <Transition name="desktop-context-float">
       <div v-if="!registrarRail && activeModule && hasContextPanel && modulePanelOpen" class="desktop-context-overlay" @mousedown.self="closeModuleNavigation">
         <DesktopContextPanel ref="contextPanel" :module="activeModule" :route="route" overlay @close="closeModuleNavigation" />

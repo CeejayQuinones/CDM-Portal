@@ -105,6 +105,7 @@ async function save() {
     delete payload.id
     delete payload.user_id
     delete payload.account_status
+    if (!isAdmin.value) delete payload.username
     if (form.value.id) {
       delete payload.status
       if (!payload.password) {
@@ -240,8 +241,8 @@ onMounted(load)
       <div class="directory-heading"><div><span class="directory-icon"><AccountManagementIcon :name="isAdmin ? 'registrar' : 'professor'"/></span><div><h2>{{ accountKind }} directory</h2><p>{{ accounts.total ?? accounts.data.length }} account{{ (accounts.total ?? accounts.data.length) === 1 ? '' : 's' }} match the current filters.</p></div></div><CdmBadge status="active">{{ accounts.data.length }} shown</CdmBadge></div>
       <table><thead><tr><th>Identity</th><th>Employee</th><th v-if="!isAdmin">Department</th><th>{{ isAdmin ? 'Office / role' : 'Employment' }}</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
         <tbody><tr v-for="account in accounts.data" :key="account.id">
-          <td data-label="Identity"><div class="account-identity"><span class="account-avatar">{{ initials(account) }}</span><div><strong>{{ displayName(account) }}</strong><small>{{ account.email || account.username }}</small></div></div></td>
-          <td data-label="Employee"><strong>{{ account.employee_number }}</strong><small>@{{ account.username }}</small></td>
+          <td data-label="Identity"><div class="account-identity"><span class="account-avatar">{{ initials(account) }}</span><div><strong>{{ displayName(account) }}</strong><small>{{ account.email || (isAdmin ? account.username : 'No email on record') }}</small></div></div></td>
+          <td data-label="Employee"><strong>{{ account.employee_number }}</strong><small v-if="isAdmin">@{{ account.username }}</small></td>
           <td v-if="!isAdmin" data-label="Department"><strong>{{ departments.find(item => item.id === account.department_id)?.department_code || '—' }}</strong><small>{{ departments.find(item => item.id === account.department_id)?.department_name || 'Department not available' }}</small></td>
           <td :data-label="isAdmin ? 'Office / role' : 'Employment'"><strong>{{ isAdmin ? (account.position || 'Registrar Staff') : formatValue(account.employment_status) }}</strong><small>{{ isAdmin ? formatValue(account.employment_status) : (account.specialization || account.position || 'No specialization listed') }}</small></td>
           <td data-label="Status"><CdmBadge :status="account.status"/></td>
@@ -255,8 +256,8 @@ onMounted(load)
         <p v-if="error" class="account-alert error account-dialog-error" role="alert">{{ error }}</p>
         <form class="account-dialog-form" @submit.prevent="save">
           <section class="form-section"><header><span><AccountManagementIcon name="identity"/></span><div><h3>Account identity</h3><p>Personal and sign-in information.</p></div></header><div class="account-form-grid">
-            <label><span>Username</span><input v-model.trim="form.username" required maxlength="50" autocomplete="off"></label>
-            <label><span>Email</span><input v-model.trim="form.email" type="email" required maxlength="255"></label>
+            <label v-if="isAdmin"><span>Username</span><input v-model.trim="form.username" required maxlength="50" autocomplete="off"></label>
+            <label><span>{{ isAdmin ? 'Email' : 'Sign-in email' }}</span><input v-model.trim="form.email" type="email" required maxlength="255"></label>
             <label><span>First name</span><input v-model.trim="form.first_name" required maxlength="100"></label>
             <label><span>Middle name</span><input v-model.trim="form.middle_name" maxlength="100"></label>
             <label><span>Last name</span><input v-model.trim="form.last_name" required maxlength="100"></label>

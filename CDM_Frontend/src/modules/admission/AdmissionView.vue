@@ -9,7 +9,7 @@ import AdmissionStaffWorkspace from './components/AdmissionStaffWorkspace.vue'
 import { fetchAdmissionIdentity, fetchAdmissionAvailability, createAdmissionApplication, admissionCreationMessage } from './services/admissionService.js'
 import WebsiteModuleHeader from '../../components/website/WebsiteModuleHeader.vue'
 import WebsiteStepper from '../../components/website/WebsiteStepper.vue'
-const isWebsitePresentation=clientPlatform==='web'
+const isWebsitePresentation=clientPlatform==='web'||clientPlatform==='mobile'
 const admissionSteps=['Application','Exam','Review','Result','Recommendation']
 
 defineProps({ title: { type: String, default: 'Admission Status' } })

@@ -27,6 +27,7 @@ use App\Services\Admission\AdmissionCompletionService;
 use App\Services\Enrollment\EnrollmentEligibilityService;
 use App\Services\Enrollment\EnrollmentWorkflowService;
 use App\Services\Enrollment\StudentNumberAllocator;
+use App\Services\Grading\GradingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -944,6 +945,124 @@ class EnrollmentAcademicTest extends TestCase
         $this->getJson($this->base().'/applications/'.$a->id)->assertJsonPath('data.total_units', 3);
     }
 
+    public function test_cross_year_irregular_load_requires_a_real_teaching_assignment(): void
+    {
+        $this->f['application']->update(['classification' => 'irregular']);
+        $subject = $this->f['subjects'][2];
+
+        $this->action('subjects', ['subject_ids' => [$subject->id]])->assertUnprocessable()
+            ->assertJsonPath('message', "Choose an active teaching section for {$subject->subject_code} before reviewing this cross-year load.");
+
+        $this->assertDatabaseMissing('enrollments', ['student_id' => $this->f['student']->id, 'academic_year_id' => $this->f['year']->id]);
+        $this->assertSame('approved', $this->f['application']->fresh()->status);
+    }
+
+    public function test_cross_year_irregular_subject_joins_its_teaching_section_roster_and_student_record(): void
+    {
+        $this->f['application']->update(['classification' => 'irregular']);
+        $subject = $this->f['subjects'][2];
+        $teachingSection = Section::create([
+            'course_id' => $this->f['course']->id,
+            'curriculum_id' => $this->f['curriculum']->id,
+            'academic_year_id' => $this->f['year']->id,
+            'semester_id' => $this->f['semester']->id,
+            'section_name' => 'AC-YEAR-2', 'year_level' => 2, 'capacity' => 2, 'status' => 'open',
+        ]);
+        $assignmentId = $this->schedule(['section_id' => $teachingSection->id, 'subject_id' => $subject->id])
+            ->assertCreated()->json('data.id');
+        $this->getJson($this->base().'/applications/'.$this->f['application']->id)
+            ->assertOk()->assertJsonPath("data.load.teaching_options.{$subject->id}.0.id", $assignmentId);
+
+        $this->action('subjects', ['subject_ids' => [$subject->id], 'teaching_assignments' => [$subject->id => $assignmentId]])->assertOk();
+        $this->action('assign', ['section_id' => $this->f['section']->id])->assertOk();
+        $this->action('finalize')->assertOk();
+
+        $enrollment = Enrollment::where('student_id', $this->f['student']->id)->firstOrFail();
+        $this->assertSame($this->f['section']->id, $enrollment->section_id);
+        $this->assertDatabaseHas('enrollment_subjects', [
+            'enrollment_id' => $enrollment->id, 'subject_id' => $subject->id,
+            'section_subject_id' => $assignmentId, 'professor_id' => $this->f['professor']->id,
+        ]);
+        $this->getJson($this->base().'/records/'.$enrollment->id)
+            ->assertOk()->assertJsonPath('data.subjects.0.teaching_section', 'AC-YEAR-2');
+        $workspace = app(GradingService::class)->openWorkspace($this->f['professorUser'], SectionSubject::findOrFail($assignmentId));
+        $this->assertSame($this->f['student']->student_number, $workspace['roster']->first()->student_number);
+    }
+
+    public function test_cross_year_irregular_load_cannot_overfill_its_teaching_section(): void
+    {
+        $this->f['application']->update(['classification' => 'irregular']);
+        $subject = $this->f['subjects'][2];
+        $teachingSection = Section::create([
+            'course_id' => $this->f['course']->id, 'curriculum_id' => $this->f['curriculum']->id,
+            'academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id,
+            'section_name' => 'AC-FULL-2', 'year_level' => 2, 'capacity' => 1, 'status' => 'open',
+        ]);
+        $assignmentId = $this->schedule(['section_id' => $teachingSection->id, 'subject_id' => $subject->id])
+            ->assertCreated()->json('data.id');
+        $other = User::factory()->create(['role_id' => Role::where('role_name', Role::STUDENT)->value('id')]);
+        $profile = $other->profile()->create(['first_name' => 'Already', 'last_name' => 'Enrolled', 'gender' => 'Prefer not to say']);
+        $student = Student::create([
+            'user_id' => $other->id, 'user_profile_id' => $profile->id,
+            'course_id' => $this->f['course']->id, 'curriculum_id' => $this->f['curriculum']->id,
+            'student_number' => 'ACADEMIC-YEAR2-OCCUPIED', 'year_level' => 2,
+            'admission_date' => now()->toDateString(), 'student_status' => 'regular',
+        ]);
+        Enrollment::create([
+            'student_id' => $student->id, 'section_id' => $teachingSection->id,
+            'academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id,
+            'enrollment_date' => now()->toDateString(), 'status' => 'enrolled',
+        ]);
+
+        $this->action('subjects', ['subject_ids' => [$subject->id], 'teaching_assignments' => [$subject->id => $assignmentId]])->assertOk();
+        $this->action('assign', ['section_id' => $this->f['section']->id])->assertOk();
+        $this->action('finalize')->assertConflict()
+            ->assertJsonPath('message', 'The teaching section AC-FULL-2 is full.');
+        $this->assertDatabaseMissing('enrollments', ['student_id' => $this->f['student']->id, 'academic_year_id' => $this->f['year']->id]);
+    }
+
+    public function test_cross_year_irregular_load_rejects_overlapping_student_class_times(): void
+    {
+        $this->f['application']->update(['classification' => 'irregular']);
+        $subject = $this->f['subjects'][2];
+        $teachingSection = Section::create([
+            'course_id' => $this->f['course']->id, 'curriculum_id' => $this->f['curriculum']->id,
+            'academic_year_id' => $this->f['year']->id, 'semester_id' => $this->f['semester']->id,
+            'section_name' => 'AC-CONFLICT-2', 'year_level' => 2, 'capacity' => 2, 'status' => 'open',
+        ]);
+        $assignmentId = $this->schedule([
+            'section_id' => $teachingSection->id, 'subject_id' => $subject->id,
+            'start_time' => '10:00', 'end_time' => '11:00',
+        ])->assertCreated()->json('data.id');
+        $this->schedule()->assertCreated();
+        SectionSubject::findOrFail($assignmentId)->meetings()->update(['start_time' => '09:00', 'end_time' => '10:00']);
+
+        $this->action('subjects', [
+            'subject_ids' => [$this->f['subjects'][0]->id, $subject->id],
+            'teaching_assignments' => [$subject->id => $assignmentId],
+        ])->assertOk();
+        $this->action('assign', ['section_id' => $this->f['section']->id])->assertOk();
+        $this->action('finalize')->assertConflict()
+            ->assertJsonPath('message', 'The selected teaching sections have overlapping class times. Choose a different section before finalizing.');
+    }
+
+    public function test_same_year_irregular_load_still_finalizes(): void
+    {
+        $this->f['application']->update(['classification' => 'irregular']);
+        $subject = $this->f['subjects'][0];
+
+        $this->action('subjects', ['subject_ids' => [$subject->id]])->assertOk();
+        $this->action('assign', ['section_id' => $this->f['section']->id])->assertOk();
+        $this->action('finalize')->assertOk();
+
+        $enrollment = Enrollment::where('student_id', $this->f['student']->id)->firstOrFail();
+        $this->assertDatabaseHas('enrollment_subjects', [
+            'enrollment_id' => $enrollment->id,
+            'subject_id' => $subject->id,
+            'subject_status' => 'enrolled',
+        ]);
+    }
+
     public function test_completed_subjects_and_missing_prerequisites_are_blocked(): void
     {
         $this->f['application']->update(['classification' => 'irregular']);
@@ -1155,6 +1274,57 @@ class EnrollmentAcademicTest extends TestCase
             ->assertConflict()
             ->assertJsonPath('message', 'This subject already has a schedule. Reload before continuing.');
         $this->assertDatabaseCount('section_subjects', 1);
+    }
+
+    public function test_add_schedule_without_assignment_id_configures_pending_subject_instead_of_duplicating_it(): void
+    {
+        $assignment = SectionSubject::create([
+            'section_id' => $this->f['section']->id,
+            'subject_id' => $this->f['subjects'][0]->id,
+            'professor_id' => $this->f['professor']->id,
+        ]);
+
+        $this->schedule(['day' => 'Wednesday', 'room' => 'Room 225'])
+            ->assertCreated()
+            ->assertJsonPath('data.id', $assignment->id)
+            ->assertJsonPath('data.day', 'Wednesday');
+
+        $this->assertDatabaseCount('section_subjects', 1);
+        $this->schedule(['day' => 'Thursday', 'room' => 'Room 226'])
+            ->assertConflict()
+            ->assertJsonPath('message', 'This subject already has a schedule. Use Edit instead.');
+    }
+
+    public function test_general_schedule_lists_assignments_across_sections_and_filters_academic_context(): void
+    {
+        $this->schedule()->assertCreated();
+        SectionSubject::create([
+            'section_id' => $this->f['section']->id,
+            'subject_id' => $this->f['subjects'][1]->id,
+            'professor_id' => $this->f['professor']->id,
+        ]);
+        $otherSection = $this->f['section']->replicate();
+        $otherSection->section_name = 'GENERAL-2B';
+        $otherSection->save();
+        SectionSubject::create([
+            'section_id' => $otherSection->id,
+            'subject_id' => $this->f['subjects'][0]->id,
+            'professor_id' => $this->f['professor']->id,
+        ]);
+
+        $url = $this->base().'/schedules/overview';
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.total', 3)
+            ->assertJsonPath('data.data.0.section.section_name', 'GENERAL-2B')
+            ->assertJsonPath('data.data.0.section.course.course_code', $this->f['course']->course_code);
+        $this->getJson($url.'?course_id='.$this->f['course']->id.'&academic_year_id='.$this->f['section']->academic_year_id.'&year_level=1')
+            ->assertOk()
+            ->assertJsonPath('data.total', 3);
+        $this->getJson($url.'?year_level=2')->assertOk()->assertJsonPath('data.total', 0);
+
+        Sanctum::actingAs($this->f['user']);
+        $this->getJson($url)->assertForbidden();
     }
 
     public function test_schedule_versions_edits_deletion_and_referenced_protection(): void

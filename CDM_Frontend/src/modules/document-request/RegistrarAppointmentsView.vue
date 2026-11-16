@@ -9,9 +9,14 @@ import { documentRequestService as api } from './documentRequestService'
 const appointments = ref([]), loading = ref(false), error = ref(''), message = ref('')
 const code = ref(''), verifying = ref(false), verifiedRequest = ref(null), finalizing = ref(false), cancellationReason = ref('')
 const resendingId = ref(null)
-const { isOpen: availabilityOpen, close: closeAvailability } = useAppointmentAvailabilityState()
+const { isOpen: availabilityOpen, open: openAvailability, close: closeAvailability } = useAppointmentAvailabilityState()
 const month = ref(new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', timeZone: 'Asia/Manila' }).format(new Date()))
 const calendar = ref(null), calendarLoading = ref(false), calendarError = ref(''), capacityDraft = ref(5), selectedDate = ref(''), savingCapacity = ref(false)
+const selectedWindow = ref('Window 1'), windowCapacityDraft = ref(5), savingWindowCapacity = ref(false)
+const windowDefaultDraft = ref(100), savingWindowDefault = ref(false)
+const windows = ['Window 1', 'Window 2', 'Window 3', 'Window 4']
+const holidayRows = ref([]), weekendDraft = ref({ block_saturday: true, block_sunday: true }), savingSettings = ref(false)
+const closureDate = ref(''), closureReason = ref(''), savingBlock = ref(false)
 const today = () => new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Manila' }).format(new Date())
 const requestError = (err) => Object.values(err.response?.data?.errors || {}).flat()[0] || err.response?.data?.message || 'The request could not be completed.'
 const formatDate = (value) => value ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'long', timeZone: 'Asia/Manila' }).format(new Date(`${String(value).slice(0, 10)}T00:00:00+08:00`)) : 'Not assigned'
@@ -27,13 +32,27 @@ const studentName = (item) => [profileOf(item)?.first_name, profileOf(item)?.las
 const documentName = (item) => item?.document_request?.document_type?.document_name || item?.document_type?.document_name || 'Document'
 const calendarDays = computed(() => calendar.value?.days || [])
 const defaultCapacity = computed(() => Number(calendar.value?.default_capacity || 5))
+const defaultWindowCapacity = computed(() => Number(calendar.value?.default_window_capacity || 100))
+const selectedWindowDefault = computed(() => Number(calendar.value?.window_defaults?.[selectedWindow.value] || defaultWindowCapacity.value))
 const monthLabel = computed(() => new Intl.DateTimeFormat('en-PH', { month: 'long', year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date(`${month.value}-01T00:00:00+08:00`)))
 const selectedDay = computed(() => calendarDays.value.find((day) => day.date === selectedDate.value) || null)
+const selectedWindowStats = computed(() => selectedDay.value?.windows?.[selectedWindow.value] || null)
+const windowCapacityValidation = computed(() => {
+  const booked = (selectedWindowStats.value?.booked || 0) + (selectedWindowStats.value?.unassigned || 0)
+  if (!Number.isInteger(Number(windowCapacityDraft.value)) || windowCapacityDraft.value < 1 || windowCapacityDraft.value > 100) return 'Enter a whole number between 1 and 100.'
+  if (windowCapacityDraft.value < booked) return `Capacity cannot be below ${booked} booked appointments (including unassigned legacy appointments).`
+  return ''
+})
+watch(selectedWindow, () => { windowCapacityDraft.value = selectedWindowStats.value?.capacity || selectedWindowDefault.value; windowDefaultDraft.value = selectedWindowDefault.value })
 const calendarLeadingDays = computed(() => {
   const day = new Date(`${month.value}-01T00:00:00+08:00`).getDay()
   return (day + 6) % 7
 })
-const blockedDates = computed(() => Object.fromEntries((calendar.value?.blocked_dates || []).map((item) => [item.date || item.blocked_date, item])))
+const blockedDates = computed(() => Object.fromEntries((calendar.value?.blocked_dates || []).filter((item) => item.is_active !== false).map((item) => [item.date || item.blocked_date, item])))
+const monthHolidays = computed(() => holidayRows.value.filter((item) => item.type === 'holiday' && item.blocked_date?.slice(0, 7) === month.value))
+const weekendChanged = computed(() => weekendDraft.value.block_saturday !== calendar.value?.settings?.block_saturday || weekendDraft.value.block_sunday !== calendar.value?.settings?.block_sunday)
+const bookedOn = (date) => calendarDays.value.find((day) => day.date === date)?.booked || 0
+const closureBooked = computed(() => bookedOn(closureDate.value))
 const calendarSummary = computed(() => {
   const businessDays = calendarDays.value.filter((day) => !isUnavailable(day))
   const fullDays = businessDays.filter((day) => day.booked >= day.capacity).length
@@ -75,11 +94,52 @@ async function resend(appointment) {
 async function loadCalendar() {
   calendarLoading.value = true; calendarError.value = ''
   try {
-    calendar.value = await api.registrarCalendar(month.value)
+    const [calendarResult, blockedResult] = await Promise.all([api.registrarCalendar(month.value), api.appointmentBlockedDates()])
+    calendar.value = calendarResult
+    holidayRows.value = blockedResult
+    weekendDraft.value = { ...calendarResult.settings }
     const current = calendarDays.value.find((day) => day.date === selectedDate.value)
-    if (current && !isUnavailable(current)) capacityDraft.value = current.capacity
+    windowDefaultDraft.value = selectedWindowDefault.value
+    if (current && !isUnavailable(current)) { capacityDraft.value = current.capacity; windowCapacityDraft.value = current.windows?.[selectedWindow.value]?.capacity || selectedWindowDefault.value }
     else selectFirstEditableDay()
   } catch (err) { calendarError.value = requestError(err) } finally { calendarLoading.value = false }
+}
+async function saveWeekends() {
+  savingSettings.value = true; calendarError.value = ''
+  try {
+    const response = await api.updateAppointmentAvailabilitySettings(weekendDraft.value)
+    calendar.value = { ...calendar.value, settings: response.data }
+    message.value = 'Weekend appointment availability updated.'
+    selectFirstEditableDay()
+  } catch (err) { calendarError.value = requestError(err) } finally { savingSettings.value = false }
+}
+async function toggleHoliday(holiday) {
+  savingBlock.value = true; calendarError.value = ''
+  try {
+    const response = await api.updateAppointmentBlockedDate(holiday.id, { is_active: !holiday.is_active })
+    message.value = response.message || 'Holiday availability updated.'
+    await loadCalendar()
+  } catch (err) { calendarError.value = requestError(err) } finally { savingBlock.value = false }
+}
+async function addClosure() {
+  if (!closureDate.value || !closureReason.value.trim()) return
+  savingBlock.value = true; calendarError.value = ''
+  try {
+    const response = await api.createAppointmentBlockedDate({
+      blocked_date: closureDate.value, type: 'office_closure', reason: closureReason.value.trim(),
+    })
+    message.value = response.message || 'Date blocked.'
+    closureDate.value = ''; closureReason.value = ''
+    await loadCalendar()
+  } catch (err) { calendarError.value = requestError(err) } finally { savingBlock.value = false }
+}
+async function reopenDate(block) {
+  savingBlock.value = true; calendarError.value = ''
+  try {
+    const response = await api.updateAppointmentBlockedDate(block.id, { is_active: false })
+    message.value = response.message || 'Date reopened.'
+    await loadCalendar()
+  } catch (err) { calendarError.value = requestError(err) } finally { savingBlock.value = false }
 }
 function blockedDate(day) { return blockedDates.value[day.date] }
 function isWeekend(day) {
@@ -107,6 +167,7 @@ function selectDay(day) {
   if (isUnavailable(day)) return
   selectedDate.value = day.date
   capacityDraft.value = day.capacity
+  windowCapacityDraft.value = day.windows?.[selectedWindow.value]?.capacity || selectedWindowDefault.value
   calendarError.value = ''
 }
 function selectFirstEditableDay() {
@@ -135,6 +196,26 @@ async function saveCapacity() {
     message.value = capacity === defaultCapacity.value ? `${formatDate(updated.date)} now uses the default capacity of ${defaultCapacity.value}.` : `Capacity for ${formatDate(updated.date)} updated to ${capacity}.`
   } catch (err) { calendarError.value = requestError(err) } finally { savingCapacity.value = false }
 }
+async function saveWindowCapacity() {
+  if (!selectedDay.value || windowCapacityValidation.value) return
+  savingWindowCapacity.value = true; calendarError.value = ''
+  try {
+    const date = selectedDay.value.date, window = selectedWindow.value, capacity = Number(windowCapacityDraft.value)
+    await api.updateWindowCapacity(date, window, capacity)
+    calendar.value = { ...calendar.value, days: calendarDays.value.map((day) => day.date === date ? { ...day, windows: { ...day.windows, [window]: { ...day.windows?.[window], capacity, has_custom_capacity: true } } } : day) }
+    message.value = `${window} capacity for ${formatDate(date)} updated to ${capacity}.`
+  } catch (err) { calendarError.value = requestError(err) } finally { savingWindowCapacity.value = false }
+}
+async function saveWindowDefault() {
+  const capacity = Number(windowDefaultDraft.value)
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 100) return
+  savingWindowDefault.value = true; calendarError.value = ''
+  try {
+    await api.updateWindowDefault(selectedWindow.value, capacity)
+    message.value = `${selectedWindow.value} now defaults to ${capacity} appointments per day.`
+    await loadCalendar()
+  } catch (err) { calendarError.value = requestError(err) } finally { savingWindowDefault.value = false }
+}
 function changeMonth(offset) {
   const [year, monthNumber] = month.value.split('-').map(Number), next = new Date(year, monthNumber - 1 + offset, 1)
   month.value = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`
@@ -161,13 +242,13 @@ onMounted(refresh)
   </section>
 
   <section class="dr-panel appointment-main-table" aria-live="polite">
-    <header class="release-queue-header"><div><p class="page-kicker">{{ formatDate(today()) }}</p><h2>Scheduled Today</h2></div><strong class="work-queue-count">{{ appointments.length }}</strong></header>
+    <header class="release-queue-header"><div><p class="page-kicker">{{ formatDate(today()) }}</p><h2>Scheduled Today</h2></div><div class="appointment-heading-actions"><button type="button" class="secondary-action" @click="openAvailability">Configure availability</button><strong class="work-queue-count">{{ appointments.length }}</strong></div></header>
     <DocumentRequestAppointmentSkeleton v-if="loading" :rows="4" />
     <p v-else-if="!appointments.length" class="empty">No approved appointments scheduled today.</p>
     <TransitionGroup v-else name="appointment-row" tag="div" class="work-queue-list"><article v-for="appointment in appointments" :key="appointment.id" class="release-request-row">
       <div class="release-request-summary"><strong>{{ studentName(appointment) }}</strong><span>{{ appointment.student?.student_number }}</span><span class="badge" :class="appointment.document_request?.code_verified_at ? 'approved' : appointment.status">{{ appointment.document_request?.code_verified_at ? 'Verified' : formatStatus(appointment.status) }}</span></div>
       <div class="release-request-document"><small>Document</small><strong>{{ documentName(appointment) }}</strong></div>
-      <div class="release-request-schedule"><small>Appointment</small><strong>{{ formatDate(appointment.appointment_date) }}</strong><span>{{ formatTime(appointment.appointment_time) }}</span></div>
+      <div class="release-request-schedule"><small>Appointment</small><strong>{{ formatDate(appointment.appointment_date) }}</strong><span>{{ appointment.service_window || 'Window not assigned' }} · {{ formatTime(appointment.appointment_time) }}</span></div>
       <div class="release-request-actions"><button v-if="!appointment.document_request?.code_verified_at" class="secondary-action" :disabled="resendingId === appointment.document_request_id" @click="resend(appointment)">{{ resendingId === appointment.document_request_id ? 'Sending…' : 'Resend Claim Code' }}</button><span v-else class="release-verified-copy">Code verified</span></div>
     </article></TransitionGroup>
   </section>
@@ -175,21 +256,38 @@ onMounted(refresh)
   <DocumentRequestDialog v-if="availabilityOpen" labelledby="capacity-title" panel-class="capacity-planner-modal" wide :busy="savingCapacity" @cancel="closeAvailability">
     <header class="appointment-details-header"><div><p class="page-kicker">Availability</p><h2 id="capacity-title">Daily Appointment Capacity</h2></div><button class="capacity-close" aria-label="Close daily appointment capacity" @click="closeAvailability">&times;</button></header>
     <div class="appointment-details-body capacity-planner-body">
-      <div class="capacity-month-heading"><div><h3>{{ monthLabel }}</h3><p>Default daily capacity: <strong>{{ defaultCapacity }}</strong></p></div><nav class="calendar-navigation" aria-label="Calendar navigation"><button type="button" @click="changeMonth(-1)">Previous</button><button type="button" @click="goToToday">Today</button><button type="button" @click="changeMonth(1)">Next</button></nav></div>
+      <p v-if="message" class="notice success" role="status">{{ message }}</p>
+      <div class="capacity-month-heading"><div><h3>{{ monthLabel }}</h3><p>Choose a day to change its capacity. Default: <strong>{{ defaultCapacity }} appointments per day</strong>.</p></div><nav class="calendar-navigation" aria-label="Calendar navigation"><button type="button" @click="changeMonth(-1)">Previous</button><button type="button" @click="goToToday">Today</button><button type="button" @click="changeMonth(1)">Next</button></nav></div>
+      <p v-if="calendarError && calendar" class="capacity-validation" role="alert">{{ calendarError }}</p>
 
       <div v-if="calendarLoading" class="capacity-state" role="status">Loading appointment availability...</div>
       <div v-else-if="calendarError && !calendar" class="capacity-state capacity-state-error" role="alert"><span>Could not load appointment availability.</span><button type="button" @click="loadCalendar">Retry</button></div>
       <template v-else-if="calendarDays.length">
         <dl class="capacity-summary" aria-label="Monthly appointment capacity summary"><div><dt>Business days</dt><dd>{{ calendarSummary.businessDays }}</dd></div><div><dt>Scheduled</dt><dd>{{ calendarSummary.booked }}</dd></div><div><dt>Full days</dt><dd>{{ calendarSummary.fullDays }}</dd></div><div><dt>Available days</dt><dd>{{ calendarSummary.availableDays }}</dd></div></dl>
+        <section class="availability-rules" aria-label="Closed days">
+          <div><h3>Closed days</h3><p>Weekends and listed holidays are blocked by default. You can reopen either. National holiday presets cover the rest of 2026 and 2027; add later or local closures as needed.</p></div>
+          <div class="availability-weekend-controls"><label><input v-model="weekendDraft.block_saturday" type="checkbox"> Block Saturdays</label><label><input v-model="weekendDraft.block_sunday" type="checkbox"> Block Sundays</label><button type="button" :disabled="savingSettings || !weekendChanged" @click="saveWeekends">{{ savingSettings ? 'Saving…' : 'Save weekends' }}</button></div>
+          <div class="availability-holidays"><strong>Holidays in {{ monthLabel }}</strong><p v-if="!monthHolidays.length">No preset holidays this month. Add a closure below if needed.</p><div v-for="holiday in monthHolidays" :key="holiday.id" class="holiday-row"><span>{{ formatDate(holiday.blocked_date) }} · {{ holiday.reason }}<small v-if="!holiday.is_active && bookedOn(holiday.blocked_date)"> · {{ bookedOn(holiday.blocked_date) }} booked; reschedule first</small></span><button type="button" :disabled="savingBlock || (!holiday.is_active && bookedOn(holiday.blocked_date) > 0)" @click="toggleHoliday(holiday)">{{ holiday.is_active ? 'Reopen' : 'Block again' }}</button></div></div>
+          <form class="availability-closure-form" @submit.prevent="addClosure"><label>Block another date<input v-model="closureDate" type="date" required></label><label>Reason<input v-model="closureReason" type="text" maxlength="255" placeholder="Office closure or school event" required></label><button type="submit" :disabled="savingBlock || !closureDate || !closureReason.trim() || closureBooked > 0">{{ savingBlock ? 'Saving…' : 'Block date' }}</button></form>
+          <p v-if="closureBooked" class="capacity-validation" role="alert">{{ closureBooked }} active {{ closureBooked === 1 ? 'appointment must' : 'appointments must' }} be rescheduled or cancelled before this date can be blocked.</p>
+        </section>
         <div class="capacity-workspace">
           <section class="capacity-calendar" aria-label="Appointment capacity calendar"><div class="calendar-weekdays" aria-hidden="true"><span v-for="weekday in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']" :key="weekday">{{ weekday }}</span></div><div class="capacity-calendar-grid">
             <span v-for="(_, index) in calendarLeadingDays" :key="`blank-${index}`" class="calendar-blank" aria-hidden="true"></span>
             <button v-for="day in calendarDays" :key="day.date" type="button" class="appointment-calendar-day" :class="[dayStatusClass(day), { selected: day.date === selectedDate, today: day.date === today(), 'is-unavailable': isUnavailable(day) }]" :disabled="isUnavailable(day)" :aria-label="dayAriaLabel(day)" @click="selectDay(day)"><span class="calendar-day-number">{{ Number(day.date.slice(-2)) }}</span><template v-if="!isUnavailable(day)"><span class="calendar-booked">{{ day.booked }} / {{ day.capacity }} booked</span><span class="calendar-remaining">{{ slotsLeft(day) }} {{ slotsLeft(day) === 1 ? 'slot' : 'slots' }} left</span><span class="calendar-status">{{ dayStatus(day) }}</span><span class="calendar-progress" aria-hidden="true"><i :style="{ width: `${Math.min(100, (day.booked / day.capacity) * 100)}%` }"></i></span></template><template v-else><span class="calendar-status">{{ dayStatus(day) }}</span><small v-if="blockedDate(day)?.reason">{{ blockedDate(day).reason }}</small></template></button>
           </div></section>
 
-          <aside v-if="selectedDay" class="capacity-editor" aria-labelledby="capacity-editor-title"><header><p class="page-kicker">Selected date</p><h3 id="capacity-editor-title">{{ formatDate(selectedDay.date) }}</h3><span class="capacity-status-badge" :class="dayStatusClass(selectedDay)">{{ dayStatus(selectedDay) }}</span></header><dl class="capacity-editor-stats"><div><dt>Appointments</dt><dd>{{ selectedDay.booked }} booked</dd></div><div><dt>Capacity</dt><dd>{{ selectedDay.capacity }}</dd></div><div><dt>Remaining</dt><dd>{{ slotsLeft(selectedDay) }} slots</dd></div><div><dt>Capacity type</dt><dd>{{ selectedDay.has_custom_capacity ? 'Custom' : 'Default' }}</dd></div></dl><label class="capacity-stepper-label" for="daily-capacity">Daily capacity</label><div class="capacity-stepper"><button type="button" aria-label="Decrease daily capacity" :disabled="savingCapacity || capacityDraft <= selectedDay.booked" @click="adjustCapacity(-1)">-</button><input id="daily-capacity" v-model.number="capacityDraft" type="number" :min="selectedDay.booked" max="100" inputmode="numeric" :aria-describedby="capacityValidation ? 'capacity-validation' : undefined" /><button type="button" aria-label="Increase daily capacity" :disabled="savingCapacity || capacityDraft >= 100" @click="adjustCapacity(1)">+</button></div><p v-if="capacityValidation" id="capacity-validation" class="capacity-validation" role="alert">{{ capacityValidation }}</p><p v-else class="capacity-editor-hint">{{ selectedDay.has_custom_capacity ? `Custom capacity: ${selectedDay.capacity}` : `Uses the default capacity of ${defaultCapacity}` }}</p><div v-if="calendarError" class="capacity-validation" role="alert">{{ calendarError }}</div><footer><button type="button" class="reset-capacity" :disabled="savingCapacity || capacityDraft === defaultCapacity" @click="resetCapacity">Reset to Default</button><button type="button" class="save-capacity" :disabled="savingCapacity || Boolean(capacityValidation) || capacityDraft === selectedDay.capacity" @click="saveCapacity">{{ savingCapacity ? 'Saving...' : 'Save Changes' }}</button></footer></aside>
+          <aside v-if="selectedDay" class="capacity-editor" aria-labelledby="capacity-editor-title"><header><p class="page-kicker">Selected date</p><h3 id="capacity-editor-title">{{ formatDate(selectedDay.date) }}</h3><span class="capacity-status-badge" :class="dayStatusClass(selectedDay)">{{ dayStatus(selectedDay) }}</span></header><dl class="capacity-editor-stats"><div><dt>Appointments</dt><dd>{{ selectedDay.booked }} booked</dd></div><div><dt>Capacity</dt><dd>{{ selectedDay.capacity }}</dd></div><div><dt>Remaining</dt><dd>{{ slotsLeft(selectedDay) }} slots</dd></div><div><dt>Capacity type</dt><dd>{{ selectedDay.has_custom_capacity ? 'Custom' : 'Default' }}</dd></div></dl><label class="capacity-stepper-label" for="daily-capacity">Daily capacity</label><div class="capacity-stepper"><button type="button" aria-label="Decrease daily capacity" :disabled="savingCapacity || capacityDraft <= selectedDay.booked" @click="adjustCapacity(-1)">-</button><input id="daily-capacity" v-model.number="capacityDraft" type="number" :min="selectedDay.booked" max="100" inputmode="numeric" :aria-describedby="capacityValidation ? 'capacity-validation' : undefined" /><button type="button" aria-label="Increase daily capacity" :disabled="savingCapacity || capacityDraft >= 100" @click="adjustCapacity(1)">+</button></div><p v-if="capacityValidation" id="capacity-validation" class="capacity-validation" role="alert">{{ capacityValidation }}</p><p v-else class="capacity-editor-hint">{{ selectedDay.has_custom_capacity ? `Custom capacity: ${selectedDay.capacity}` : `Uses the default capacity of ${defaultCapacity}` }}</p><footer><button type="button" class="reset-capacity" :disabled="savingCapacity || capacityDraft === defaultCapacity" @click="resetCapacity">Reset to Default</button><button type="button" class="save-capacity" :disabled="savingCapacity || Boolean(capacityValidation) || capacityDraft === selectedDay.capacity" @click="saveCapacity">{{ savingCapacity ? 'Saving...' : 'Save Changes' }}</button></footer></aside>
         </div>
+        <section v-if="selectedDay" class="window-capacity-editor" aria-label="Registrar window capacity">
+          <div><h3>Capacity by window</h3><p>Set a daily default for the selected window, or override it for {{ formatDate(selectedDay.date) }}. The overall daily limit still applies.</p></div>
+          <div class="window-capacity-controls"><label>Window<select v-model="selectedWindow"><option v-for="window in windows" :key="window" :value="window">{{ window }}</option></select></label><label>Daily default<input v-model.number="windowDefaultDraft" type="number" min="1" max="100" inputmode="numeric"></label><button type="button" :disabled="savingWindowDefault || !Number.isInteger(Number(windowDefaultDraft)) || windowDefaultDraft < 1 || windowDefaultDraft > 100 || windowDefaultDraft === selectedWindowDefault" @click="saveWindowDefault">{{ savingWindowDefault ? 'Saving…' : 'Save default' }}</button></div>
+          <div class="window-capacity-controls"><label>Selected-date limit<input v-model.number="windowCapacityDraft" type="number" min="1" max="100" inputmode="numeric"></label><button type="button" :disabled="savingWindowCapacity || Boolean(windowCapacityValidation) || windowCapacityDraft === selectedWindowStats?.capacity" @click="saveWindowCapacity">{{ savingWindowCapacity ? 'Saving…' : 'Save date override' }}</button></div>
+          <p v-if="selectedWindowStats">{{ selectedWindowStats.booked }} assigned to {{ selectedWindow }}<span v-if="selectedWindowStats.unassigned"> · {{ selectedWindowStats.unassigned }} older appointments have no recorded window</span> · {{ selectedWindowStats.has_custom_capacity ? 'date override' : 'daily default' }} {{ selectedWindowStats.capacity }}</p>
+          <p v-if="windowCapacityValidation" class="capacity-validation" role="alert">{{ windowCapacityValidation }}</p>
+        </section>
         <div class="capacity-legend" aria-label="Calendar legend"><span><i class="legend-dot available"></i>Available</span><span><i class="legend-dot nearly-full"></i>Nearly full</span><span><i class="legend-dot full"></i>Full</span><span><i class="legend-dot closed"></i>Closed / blocked</span></div>
+        <div v-if="calendar.blocked_dates?.some(item => item.type !== 'holiday' && (item.date || item.blocked_date)?.slice(0, 7) === month)" class="availability-custom-blocks"><strong>Other closures this month</strong><div v-for="block in calendar.blocked_dates.filter(item => item.type !== 'holiday' && (item.date || item.blocked_date)?.slice(0, 7) === month)" :key="block.id" class="holiday-row"><span>{{ formatDate(block.date || block.blocked_date) }} · {{ block.reason }}</span><button type="button" :disabled="savingBlock" @click="reopenDate(block)">Reopen</button></div></div>
       </template>
       <div v-else class="capacity-state">No appointment availability data for this month.</div>
     </div>
@@ -198,6 +296,7 @@ onMounted(refresh)
 
 <style scoped src="./documentRequest.css"></style>
 <style scoped>
+.window-capacity-editor{background:var(--bg-surface,#fff);border:1px solid #d5e1d7;border-radius:8px;display:grid;gap:12px;padding:16px}.window-capacity-editor h3{font-size:1rem;margin:0 0 4px}.window-capacity-editor p{color:var(--color-muted);font-size:.78rem;margin:0}.window-capacity-controls{align-items:end;display:flex;flex-wrap:wrap;gap:10px}.window-capacity-controls label{display:grid;flex:1 1 140px;font-size:.75rem;font-weight:800;gap:5px}.window-capacity-controls select,.window-capacity-controls input{background:var(--bg-surface,#fff);border:1px solid #bdcdbf;border-radius:6px;color:var(--text-primary,#193e29);font:inherit;min-height:38px;padding:6px 9px}.window-capacity-controls button{background:var(--color-dartmouth-green);border:0;border-radius:6px;color:#fff;cursor:pointer;font:inherit;font-size:.78rem;font-weight:800;min-height:38px;padding:8px 14px}.window-capacity-controls button:disabled{opacity:.5;cursor:not-allowed}
 .verification-panel{transition:border-color .22s ease,background-color .22s ease}.verification-panel.is-verified{border-color:rgba(38,166,91,.65)}
 .verified-details-enter-active,.verified-details-leave-active{transition:opacity .24s ease,transform .24s ease}.verified-details-enter-from,.verified-details-leave-to{opacity:0;transform:translateY(8px)}
 .appointment-row-enter-active,.appointment-row-leave-active{transition:opacity .28s ease,transform .28s ease}.appointment-row-leave-to{opacity:0;transform:translateY(-6px)}.modal-enter-active,.modal-leave-active{transition:opacity .2s ease}.modal-enter-from,.modal-leave-to{opacity:0}
@@ -248,4 +347,22 @@ onMounted(refresh)
 .capacity-status-badge.available { background: var(--success-bg); color: var(--success); }
 .capacity-status-badge.nearly-full { background: var(--warning-bg); color: var(--warning); }
 .capacity-status-badge.full { background: var(--danger-bg); color: var(--danger); }
+.appointment-heading-actions { align-items: center; display: flex; gap: 10px; }
+.availability-rules, .availability-custom-blocks { background: var(--bg-surface-alt); border: 1px solid var(--border-color); border-radius: 10px; display: grid; gap: 12px; padding: 15px; }
+.availability-rules h3, .availability-rules p { margin: 0; }
+.availability-rules h3 { color: var(--text-primary); font-size: 1rem; }
+.availability-rules p { color: var(--text-muted); font-size: .8rem; }
+.availability-weekend-controls { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; }
+.availability-weekend-controls label { align-items: center; display: inline-flex; gap: 6px; }
+.availability-weekend-controls input { accent-color: var(--accent); }
+.availability-rules button, .availability-custom-blocks button { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 7px; color: var(--text-primary); cursor: pointer; font: inherit; font-size: .78rem; font-weight: 700; min-height: 34px; padding: 6px 10px; }
+.availability-rules button:disabled, .availability-custom-blocks button:disabled { cursor: not-allowed; opacity: .5; }
+.availability-holidays, .availability-custom-blocks { display: grid; gap: 8px; }
+.availability-holidays > strong, .availability-custom-blocks > strong { font-size: .8rem; }
+.holiday-row { align-items: center; border-top: 1px solid var(--border-color); display: flex; gap: 10px; justify-content: space-between; padding-top: 7px; }
+.holiday-row span { font-size: .8rem; }
+.availability-closure-form { align-items: end; display: grid; gap: 10px; grid-template-columns: 180px minmax(0, 1fr) auto; }
+.availability-closure-form label { display: grid; font-size: .76rem; font-weight: 700; gap: 5px; }
+.availability-closure-form input { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 7px; color: var(--text-primary); font: inherit; min-height: 36px; padding: 6px 9px; }
+@media(max-width: 640px) { .availability-closure-form { grid-template-columns: 1fr; } .appointment-heading-actions { flex-wrap: wrap; justify-content: flex-end; } }
 </style>

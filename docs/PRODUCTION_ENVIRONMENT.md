@@ -10,17 +10,14 @@ in `CORS_ALLOWED_ORIGINS`.
 
 Configure real `MAIL_*` delivery, `QUEUE_CONNECTION`, `CACHE_STORE`,
 `SESSION_SECURE_COOKIE=true`, `FILESYSTEM_DISK`, and `OCTANE_SERVER=frankenphp`.
-The selected queue should keep its `*_RETRY_AFTER` setting above the 120-second
-document analysis timeout; database, Redis, and Beanstalkd defaults are 180 seconds.
+Set the selected queue's `*_RETRY_AFTER` above the longest remaining job timeout.
 
 When TLS terminates at a reverse proxy, set `TRUSTED_PROXIES` to a comma-separated
 list of that proxy's IP addresses or CIDRs. An empty value trusts no proxy. Forwarded
 host headers are intentionally not trusted; configure the public URL with `APP_URL`.
 
-Document AI requires `AI_DOCUMENT_ANALYZER=gemini`, `GEMINI_API_KEY`,
-`GEMINI_MODEL`, and `GEMINI_TIMEOUT`. Admission recommendation AI uses
-`ADMISSION_GEMINI_API_KEY` and `ADMISSION_GEMINI_MODEL`. Monitoring AI remains
-disabled unless `MONITORING_AI_ENABLED=true` and its provider settings are present.
+Document verification is manual. Program guidance uses the deterministic matcher;
+no AI provider configuration is required.
 
 Run `php artisan portal:production-audit --json` on the deployed host before and
 after a release. The complete backup, bootstrap-account, migration, worker, scheduler,

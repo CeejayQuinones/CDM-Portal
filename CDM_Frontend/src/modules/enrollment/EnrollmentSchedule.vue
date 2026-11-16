@@ -5,7 +5,7 @@ import { hasSavedSchedule } from './enrollment'
 import WebsiteActionBar from '../../components/website/WebsiteActionBar.vue'
 import WebsiteEmptyState from '../../components/website/WebsiteEmptyState.vue'
 
-const isWebsitePresentation = clientPlatform === 'web'
+const isWebsitePresentation = clientPlatform === 'web' || clientPlatform === 'mobile'
 const isDesktopPresentation = clientPlatform === 'desktop'
 const props = defineProps({ schedules: { type: Array, default: () => [] } })
 const view = ref(isDesktopPresentation ? 'timetable' : 'cards')
@@ -61,12 +61,12 @@ const print = () => window.print()
         <template v-if="isWebsitePresentation">
           <div class="ui4-schedule-heading"><span>{{ schedule.subject?.subject_code || 'Subject' }}</span><strong>{{ hasSavedSchedule(schedule) ? schedule.day : 'Schedule pending' }}</strong></div>
           <h3>{{ schedule.subject?.subject_name || 'Subject details unavailable' }}</h3>
-          <dl class="ui4-schedule-details"><div><dt>Time</dt><dd>{{ hasSavedSchedule(schedule) ? `${schedule.start_time.slice(0,5)}–${schedule.end_time.slice(0,5)}` : 'Time pending' }}</dd></div><div><dt>Room</dt><dd>{{ hasSavedSchedule(schedule) ? (schedule.room || 'Not assigned') : 'Not assigned' }}</dd></div><div><dt>Professor</dt><dd>{{ professorName(schedule) }}</dd></div></dl>
+          <dl class="ui4-schedule-details"><div v-if="schedule.subject?.teaching_section"><dt>Class section</dt><dd>{{ schedule.subject.teaching_section }}</dd></div><div><dt>Time</dt><dd>{{ hasSavedSchedule(schedule) ? `${schedule.start_time.slice(0,5)}–${schedule.end_time.slice(0,5)}` : 'Time pending' }}</dd></div><div><dt>Room</dt><dd>{{ hasSavedSchedule(schedule) ? (schedule.room || 'Not assigned') : 'Not assigned' }}</dd></div><div><dt>Professor</dt><dd>{{ professorName(schedule) }}</dd></div></dl>
         </template>
         <template v-else-if="isDesktopPresentation">
-          <header><span>{{ schedule.subject?.subject_code || 'Subject' }}</span><strong>{{ hasSavedSchedule(schedule) ? schedule.day : 'Schedule pending' }}</strong></header><div><h3>{{ schedule.subject?.subject_name || 'Subject details unavailable' }}</h3><dl><div><dt>Time</dt><dd>{{ hasSavedSchedule(schedule) ? `${schedule.start_time.slice(0,5)}–${schedule.end_time.slice(0,5)}` : 'To be announced' }}</dd></div><div><dt>Room</dt><dd>{{ hasSavedSchedule(schedule) ? schedule.room : 'To be announced' }}</dd></div><div><dt>Professor</dt><dd>{{ professorName(schedule) }}</dd></div></dl></div>
+          <header><span>{{ schedule.subject?.subject_code || 'Subject' }}</span><strong>{{ hasSavedSchedule(schedule) ? schedule.day : 'Schedule pending' }}</strong></header><div><h3>{{ schedule.subject?.subject_name || 'Subject details unavailable' }}</h3><dl><div v-if="schedule.subject?.teaching_section"><dt>Class section</dt><dd>{{ schedule.subject.teaching_section }}</dd></div><div><dt>Time</dt><dd>{{ hasSavedSchedule(schedule) ? `${schedule.start_time.slice(0,5)}–${schedule.end_time.slice(0,5)}` : 'To be announced' }}</dd></div><div><dt>Room</dt><dd>{{ hasSavedSchedule(schedule) ? schedule.room : 'To be announced' }}</dd></div><div><dt>Professor</dt><dd>{{ professorName(schedule) }}</dd></div></dl></div>
         </template>
-        <template v-else><h3>{{ schedule.subject?.subject_code }}</h3><p>{{ schedule.subject?.subject_name }}</p><p>{{ hasSavedSchedule(schedule)?`${schedule.day} · ${schedule.start_time.slice(0,5)}–${schedule.end_time.slice(0,5)}`:'Schedule pending' }}</p><p>{{ hasSavedSchedule(schedule)?schedule.room:'Room: To be announced' }} · {{ professorName(schedule) }}</p></template>
+        <template v-else><h3>{{ schedule.subject?.subject_code }}</h3><p>{{ schedule.subject?.subject_name }}</p><p v-if="schedule.subject?.teaching_section">Class section: {{ schedule.subject.teaching_section }}</p><p>{{ hasSavedSchedule(schedule)?`${schedule.day} · ${schedule.start_time.slice(0,5)}–${schedule.end_time.slice(0,5)}`:'Schedule pending' }}</p><p>{{ hasSavedSchedule(schedule)?schedule.room:'Room: To be announced' }} · {{ professorName(schedule) }}</p></template>
         <slot name="actions" :schedule="schedule"/>
       </article>
     </div>
@@ -83,7 +83,7 @@ const print = () => window.print()
       <section v-if="unscheduled.length" class="en-unscheduled-list"><header><h3>Schedule pending</h3><span>{{ unscheduled.length }}</span></header><article v-for="schedule in unscheduled" :key="schedule.id"><div><strong>{{ schedule.subject?.subject_code }}</strong><span>{{ schedule.subject?.subject_name }}</span></div><small>Day, time, and room are to be announced.</small><slot name="actions" :schedule="schedule"/></article></section>
     </template>
 
-    <div v-else class="en-table en-schedule-list"><table><thead><tr><th>Subject</th><th>Day / time</th><th>Room / Professor</th><th class="en-no-print">Actions</th></tr></thead><tbody><tr v-for="schedule in ordered" :key="schedule.id"><td><strong>{{ schedule.subject?.subject_code }}</strong><br>{{ schedule.subject?.subject_name }}</td><td>{{ hasSavedSchedule(schedule)?`${schedule.day} ${schedule.start_time.slice(0,5)}–${schedule.end_time.slice(0,5)}`:'Schedule pending' }}</td><td>{{ hasSavedSchedule(schedule)?schedule.room:'To be announced' }} · {{ professorName(schedule) }}</td><td class="en-no-print"><slot name="actions" :schedule="schedule"/></td></tr></tbody></table></div>
+    <div v-else class="en-table en-schedule-list"><table><thead><tr><th>Subject</th><th>Day / time</th><th>Room / Professor</th><th class="en-no-print">Actions</th></tr></thead><tbody><tr v-for="schedule in ordered" :key="schedule.id"><td><strong>{{ schedule.subject?.subject_code }}</strong><br>{{ schedule.subject?.subject_name }}<small v-if="schedule.subject?.teaching_section"><br>{{ schedule.subject.teaching_section }}</small></td><td>{{ hasSavedSchedule(schedule)?`${schedule.day} ${schedule.start_time.slice(0,5)}–${schedule.end_time.slice(0,5)}`:'Schedule pending' }}</td><td>{{ hasSavedSchedule(schedule)?schedule.room:'To be announced' }} · {{ professorName(schedule) }}</td><td class="en-no-print"><slot name="actions" :schedule="schedule"/></td></tr></tbody></table></div>
   </section>
 </template>
 

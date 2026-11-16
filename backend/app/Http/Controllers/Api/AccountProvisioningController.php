@@ -159,7 +159,7 @@ class AccountProvisioningController extends Controller
     /** @return array<string, mixed> */
     private function professorRules(?Professor $professor = null): array
     {
-        return $this->commonRules($professor?->user_id, $professor?->user_profile_id, $professor === null) + [
+        return ['username' => ['prohibited']] + $this->commonRules($professor?->user_id, $professor?->user_profile_id, $professor === null) + [
             'department_id' => ['required', 'integer', Rule::exists('departments', 'id')->where('status', 'active')],
             'employee_number' => ['required', 'string', 'max:20', Rule::unique('professors')->ignore($professor?->id)],
             'position' => ['nullable', 'string', 'max:100'],
@@ -226,10 +226,11 @@ class AccountProvisioningController extends Controller
      */
     private function validated(Request $request, array $rules): array
     {
-        $request->merge([
-            'username' => trim((string) $request->input('username')),
-            'email' => mb_strtolower(trim((string) $request->input('email'))),
-        ]);
+        $normalized = ['email' => mb_strtolower(trim((string) $request->input('email')))];
+        if ($request->exists('username')) {
+            $normalized['username'] = trim((string) $request->input('username'));
+        }
+        $request->merge($normalized);
 
         return $request->validate($rules);
     }
@@ -248,7 +249,7 @@ class AccountProvisioningController extends Controller
         return [
             'id' => $record->id,
             'user_id' => $record->user_id,
-            'username' => $record->user->username,
+            ...($record instanceof Professor ? [] : ['username' => $record->user->username]),
             'email' => $profile?->email,
             'first_name' => $profile?->first_name,
             'middle_name' => $profile?->middle_name,

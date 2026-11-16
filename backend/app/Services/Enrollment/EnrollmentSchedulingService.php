@@ -16,6 +16,7 @@ use App\Models\Semester;
 use App\Models\Subject;
 use App\Models\User;
 use App\Notifications\EnrollmentNotice;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -254,7 +255,7 @@ class EnrollmentSchedulingService
                 abort_unless($s->section_id === $input['section_id'] && $s->subject_id === $input['subject_id'], 422, 'The teaching assignment cannot change section or subject.');
                 abort_if($s->meetings()->exists() || $s->day || $s->start_time || $s->end_time || $s->room, 409, 'This subject already has a schedule. Reload before continuing.');
             }
-            $used = $recordId ? EnrollmentSubject::where('subject_id', $s->subject_id)->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id))->lockForUpdate()->first() : null;
+            $used = $recordId ? $this->enrolledSubjectsForAssignment($s)->lockForUpdate()->first() : null;
             if ($delete) {
                 abort_if($used, 409, 'A schedule referenced by academic enrollment cannot be deleted.');
                 $this->audit->record($actor, 'schedule_deleted', 'schedule', $s->id, ['version' => $s->version]);
@@ -270,7 +271,21 @@ class EnrollmentSchedulingService
             $subject = Subject::with('curriculum')->whereKey($input['subject_id'])->lockForUpdate()->firstOrFail();
             abort_unless($subject->status === 'active' && $subject->curriculum_id === $curriculum->id && $subject->semester_id === $section->semester_id && (int) $subject->year_level === (int) $section->year_level && $subject->curriculum?->status === 'active', 422, 'Choose an active subject from this Section curriculum, year level and semester.');
             $this->professor($input['professor_id']);
+            if (! $recordId) {
+                $existing = SectionSubject::query()
+                    ->where('section_id', $section->id)
+                    ->where('subject_id', $subject->id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($existing) {
+                    abort_if($existing->meetings()->exists() || $existing->day || $existing->start_time || $existing->end_time || $existing->room, 409, 'This subject already has a schedule. Use Edit instead.');
+                    $assignmentId = $recordId = $existing->id;
+                    $s = $existing;
+                    $previousProfessorId = $existing->professor_id;
+                }
+            }
             $used ??= EnrollmentSubject::where('subject_id', $subject->id)
+                ->whereNull('section_subject_id')
                 ->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id))
                 ->lockForUpdate()
                 ->first();
@@ -302,18 +317,29 @@ class EnrollmentSchedulingService
                     $sheet->forceFill(['professor_id' => $s->professor_id, 'version' => $sheet->version + 1])->save();
                 }
             }
-            EnrollmentSubject::where('subject_id', $s->subject_id)
-                ->whereHas('enrollment', fn ($q) => $q->where('section_id', $section->id)->where('status', 'enrolled'))
+            $this->enrolledSubjectsForAssignment($s)
+                ->whereHas('enrollment', fn ($q) => $q->where('status', 'enrolled'))
                 ->update(['professor_id' => $s->professor_id]);
             $metadata = ['version' => $s->version];
             if ($recordId && (int) $previousProfessorId !== (int) $s->professor_id) {
                 $metadata += ['previous_professor_id' => $previousProfessorId, 'professor_id' => $s->professor_id];
             }
             $this->audit->record($actor, $id ? 'schedule_updated' : 'schedule_created', 'schedule', $s->id, $metadata);
-            $recipients = User::whereHas('student', fn ($q) => $q->whereHas('enrollments', fn ($e) => $e->where('section_id', $section->id)->where('status', 'enrolled')))->get();
+            $studentIds = $this->enrolledSubjectsForAssignment($s)
+                ->whereHas('enrollment', fn ($q) => $q->where('status', 'enrolled'))
+                ->with('enrollment:id,student_id')->get()->pluck('enrollment.student_id')->unique()->all();
+            $recipients = User::whereHas('student', fn ($q) => $q->whereIn('id', $studentIds))->get();
             Notification::send($recipients, new EnrollmentNotice('schedule_changed', 'Your section schedule has changed. Review My Schedule.', $section->id));
 
             return $s->fresh(['meetings', 'section', 'subject', 'professor.user.profile']);
         }, 3);
+    }
+
+    private function enrolledSubjectsForAssignment(SectionSubject $assignment): Builder
+    {
+        return EnrollmentSubject::query()->where('subject_id', $assignment->subject_id)
+            ->where(fn (Builder $query) => $query->where('section_subject_id', $assignment->id)
+                ->orWhere(fn (Builder $home) => $home->whereNull('section_subject_id')
+                    ->whereHas('enrollment', fn (Builder $enrollment) => $enrollment->where('section_id', $assignment->section_id))));
     }
 }

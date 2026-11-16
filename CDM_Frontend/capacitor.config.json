@@ -1,7 +1,7 @@
 {
   "appId": "edu.cdm.portal",
   "appName": "CDM Portal",
-  "webDir": "dist",
+  "webDir": "dist-mobile",
   "bundledWebRuntime": false,
   "server": {
     "androidScheme": "https"

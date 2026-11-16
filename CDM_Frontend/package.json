@@ -10,6 +10,11 @@
     "dev": "vite",
     "test": "node --test",
     "build": "vite build",
+    "it:check": "node scripts/it-validation-preflight.mjs",
+    "it:web:build": "node scripts/it-validation-preflight.mjs web && vite build",
+    "it:mobile:build": "node scripts/it-validation-preflight.mjs mobile && vite build --mode mobile",
+    "it:desktop:renderer": "node scripts/it-validation-preflight.mjs desktop && vite build --mode desktop",
+    "it:desktop:win:build": "node scripts/it-validation-preflight.mjs desktop && vite build --mode desktop && electron-builder --win nsis && node scripts/verify-desktop-installer.mjs --require-signature",
     "demo": "vite --mode demo",
     "demo:build": "vite build --mode demo",
     "demo:android": "vite build --mode demo-mobile && npx cap sync android",
@@ -23,7 +28,10 @@
     "mobile:add:ios": "npx cap add ios",
     "mobile:open:ios": "npx cap open ios",
     "desktop:dev": "vite build --mode desktop-development && electron .",
-    "desktop:build": "vite build --mode desktop && electron-builder"
+    "desktop:build": "vite build --mode desktop && electron-builder",
+    "desktop:win:build": "vite build --mode desktop && electron-builder --win nsis && node scripts/verify-desktop-installer.mjs",
+    "desktop:check-installer": "node scripts/verify-desktop-installer.mjs",
+    "desktop:verify-signed": "node scripts/verify-desktop-installer.mjs --require-signature"
   },
   "dependencies": {
     "@capacitor/app": "^7.1.2",

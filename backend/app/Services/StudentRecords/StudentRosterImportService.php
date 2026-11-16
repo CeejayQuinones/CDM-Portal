@@ -63,47 +63,61 @@ class StudentRosterImportService
             $roleId = Role::query()->where('role_name', Role::STUDENT)->value('id');
             abort_unless($roleId, 409, 'Student role is not configured.');
             foreach ($preview->rows as $row) {
-                $user = User::query()->create([
-                    'username' => 'unclaimed-'.Str::uuid(),
-                    'password' => Str::random(64),
-                    'role_id' => $roleId,
-                    'status' => 'inactive',
-                    'is_first_login' => true,
-                ]);
-                $profile = UserProfile::query()->create([
-                    'user_id' => $user->id,
-                    'first_name' => $row['first_name'],
-                    'middle_name' => $row['middle_name'] ?: null,
-                    'last_name' => $row['last_name'],
-                    'suffix' => $row['suffix'] ?: null,
-                    'email' => $row['enrollment_email'] ?: null,
-                    'gender' => $row['gender'],
-                    'birth_date' => $row['birth_date'] ?: null,
-                    'contact_number' => $row['contact_number'] ?: null,
-                    'address' => $row['address'] ?: null,
-                ]);
-                $course = Course::query()->where('course_code', $row['course_code'])->firstOrFail();
-                $curriculum = Curriculum::query()->where('curriculum_code', $row['curriculum_code'])->where('course_id', $course->id)->firstOrFail();
-                $student = Student::query()->create([
-                    'user_id' => $user->id,
-                    'user_profile_id' => $profile->id,
-                    'student_number' => $row['student_number'],
-                    'course_id' => $course->id,
-                    'curriculum_id' => $curriculum->id,
-                    'year_level' => (int) $row['year_level'],
-                    'student_status' => $row['student_status'],
-                    'admission_date' => $row['admission_date'],
-                ]);
-                $this->audit->record($actor, $student->id, 'student_roster_record_imported', [
-                    'record_reference' => $row['record_reference'],
-                    'student_number' => $row['student_number'],
-                    'email_needs_registrar_review' => true,
-                ]);
+                $this->importRow($row, $actor);
             }
             $preview->delete();
 
             return ['imported' => count($preview->rows), 'message' => 'Inactive student and alumni records imported. Review original enrollment emails before preparing activation.'];
         }, 3);
+    }
+
+    /** Revalidate and create one inactive identity inside the caller's transaction. */
+    public function importRow(array $row, User $actor, ?array $provenance = null): Student
+    {
+        if (DB::transactionLevel() < 1 || $this->inspect([$row])[0]['errors'] !== []) {
+            throw ValidationException::withMessages(['row' => ['Student row no longer passes roster validation.']]);
+        }
+        $roleId = Role::query()->where('role_name', Role::STUDENT)->value('id');
+        abort_unless($roleId, 409, 'Student role is not configured.');
+        $user = User::query()->create([
+            'username' => 'unclaimed-'.Str::uuid(),
+            'password' => Str::random(64),
+            'role_id' => $roleId,
+            'status' => 'inactive',
+            'is_first_login' => true,
+        ]);
+        $profile = UserProfile::query()->create([
+            'user_id' => $user->id,
+            'first_name' => $row['first_name'],
+            'middle_name' => $row['middle_name'] ?: null,
+            'last_name' => $row['last_name'],
+            'suffix' => $row['suffix'] ?: null,
+            'email' => $row['enrollment_email'] ?: null,
+            'gender' => $row['gender'],
+            'birth_date' => $row['birth_date'] ?: null,
+            'contact_number' => $row['contact_number'] ?: null,
+            'address' => $row['address'] ?: null,
+        ]);
+        $course = Course::query()->where('course_code', $row['course_code'])->firstOrFail();
+        $curriculum = Curriculum::query()->where('curriculum_code', $row['curriculum_code'])->where('course_id', $course->id)->firstOrFail();
+        $student = Student::query()->create([
+            'user_id' => $user->id,
+            'user_profile_id' => $profile->id,
+            'student_number' => $row['student_number'],
+            'course_id' => $course->id,
+            'curriculum_id' => $curriculum->id,
+            'year_level' => (int) $row['year_level'],
+            'student_status' => $row['student_status'],
+            'admission_date' => $row['admission_date'],
+        ]);
+        $this->audit->record($actor, $student->id, 'student_roster_record_imported', [
+            'record_reference' => $row['record_reference'],
+            'student_number' => $row['student_number'],
+            'email_needs_registrar_review' => true,
+            ...($provenance ?? []),
+        ]);
+
+        return $student;
     }
 
     private function readCsv(UploadedFile $file): array
@@ -145,7 +159,8 @@ class StudentRosterImportService
         }
     }
 
-    private function inspect(array $rows): array
+    /** Shared row validation for the small-file importer and legacy migration preflight. */
+    public function inspect(array $rows): array
     {
         $numbers = [];
         $emails = [];

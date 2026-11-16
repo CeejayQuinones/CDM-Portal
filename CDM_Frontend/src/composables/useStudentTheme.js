@@ -6,19 +6,18 @@ import {
   persistPortalAppearance,
   portalAppearanceStorageKey,
   portalAppearanceStorageKeys,
+  portalAppearanceRevision,
   previewPortalAppearance,
   storedPortalAppearance,
 } from './portalAppearance.js'
 
 const storageKeys = portalAppearanceStorageKeys
-let revision = 0
 let activeRole = null
 let activeAccount = null
 
 export function applyPortalAppearance(appearance, role = activeRole, account = activeAccount, storage = localStorage, target = document.documentElement) {
   const theme = persistPortalAppearance(appearance, role, account, storage, target)
   if (!theme) return null
-  revision += 1
   return theme
 }
 
@@ -41,14 +40,14 @@ export function useStudentTheme(auth) {
     applyPortalAppearance(storedPortalAppearance(role, activeAccount), role, activeAccount)
     if (role !== 'Student') return
 
-    const startedAt = revision
+    const startedAt = portalAppearanceRevision()
     const profileRevision = studentProfile.revision
     try {
       const { data } = await apiClient.get('/student/settings')
       // Reuse this response for the sidebar, without overwriting newer profile changes.
       if (active && studentProfile.revision === profileRevision) studentProfile.setProfile(data.data.profile, userId)
       // A late response must not override a new selection or another session.
-      if (active && revision === startedAt) applyPortalAppearance(data.data.appearance, role, activeAccount)
+      if (active && portalAppearanceRevision() === startedAt) applyPortalAppearance(data.data.appearance, role, activeAccount)
     } catch {
       // Keep the cached choice when settings are temporarily unavailable.
     }

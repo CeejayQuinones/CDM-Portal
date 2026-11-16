@@ -2,13 +2,35 @@ import { offlineDb } from './offlineDb.js'
 
 const date = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return d.toISOString().slice(0, 10) }
 const now = () => new Date().toISOString()
-const SEED_VERSION = 3
+const SEED_VERSION = 4
+const presetHolidays = [
+  ['2026-11-30', 'Bonifacio Day'], ['2026-12-08', 'Feast of the Immaculate Conception'],
+  ['2026-12-24', 'Christmas Eve'], ['2026-12-25', 'Christmas Day'], ['2026-12-30', 'Rizal Day'],
+  ['2026-12-31', 'Last Day of the Year'], ['2027-01-01', "New Year's Day"],
+  ['2027-02-06', 'Chinese New Year'], ['2027-03-25', 'Maundy Thursday'],
+  ['2027-03-26', 'Good Friday'], ['2027-03-27', 'Black Saturday'],
+  ['2027-04-09', 'Araw ng Kagitingan'], ['2027-05-01', 'Labor Day'],
+  ['2027-06-12', 'Independence Day'], ['2027-08-21', 'Ninoy Aquino Day'],
+  ['2027-08-30', 'National Heroes Day'], ['2027-11-01', "All Saints' Day"],
+  ['2027-11-02', "All Souls' Day"], ['2027-11-30', 'Bonifacio Day'],
+  ['2027-12-08', 'Feast of the Immaculate Conception'], ['2027-12-24', 'Christmas Eve'],
+  ['2027-12-25', 'Christmas Day'], ['2027-12-30', 'Rizal Day'],
+  ['2027-12-31', 'Last Day of the Year'],
+]
+async function seedMissingHolidays() {
+  const existing = new Set((await offlineDb.all('blocked_dates')).filter(row => row.type === 'holiday').map(row => row.blocked_date))
+  for (const [blocked_date, reason] of presetHolidays) {
+    if (existing.has(blocked_date)) continue
+    await offlineDb.put('blocked_dates', { id: await offlineDb.nextId('blocked_dates'), blocked_date, reason, type: 'holiday', is_active: true })
+  }
+}
 let seeding
 
 export async function ensureOfflineSeeded() {
   const seedMarker = await offlineDb.get('meta', 'seed')
   if (seedMarker) {
     if (seedMarker.version !== SEED_VERSION) {
+      await seedMissingHolidays()
       await offlineDb.put('meta', { ...seedMarker, version: SEED_VERSION })
     }
     return
@@ -39,6 +61,7 @@ export async function ensureOfflineSeeded() {
     await offlineDb.put('physical_records', { id:1, student_id:1, cabinet_code:'CAB-DEMO-A', slot_code:'A-01' })
     await offlineDb.put('grades', { id:1, student_id:1, subject:'Web Development', grade:'1.50', term:'1st Semester' })
     await offlineDb.put('settings', { id:'availability', block_saturday:true, block_sunday:true })
+    await seedMissingHolidays()
     await offlineDb.put('meta', { id:'seed', version:SEED_VERSION })
   })().finally(() => { seeding = null })
   return seeding

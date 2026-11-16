@@ -11,6 +11,8 @@ const panel = read('../src/modules/student-management/HistoricalGradesPanel.vue'
 const records = read('../src/modules/student-management/StudentRecordsView.vue')
 const profile = read('../src/modules/student-management/StudentProfileView.vue')
 const grades = read('../src/modules/grading/StudentGradesView.vue')
+const staffHistory = read('../src/modules/grading/StudentGradeHistoryView.vue')
+const profileHistory = read('../src/modules/student-management/StudentAcademicHistory.vue')
 
 test('Registrar historical grades panel compiles with review-before-save flows', () => {
   const { descriptor, errors } = parse(panel, { filename: 'HistoricalGradesPanel.vue' })
@@ -20,10 +22,11 @@ test('Registrar historical grades panel compiles with review-before-save flows',
   for (const label of ['Download Excel template', 'Import grades', 'Add manually', 'Validate and preview', 'Confirm all grades', 'Cancel', 'reason', 'Source Reference']) {
     assert.match(panel, new RegExp(label, 'i'))
   }
-  for (const label of ['Download template', 'Fill workbook', 'Upload file', 'Review rows', 'Save grades', 'Student Number', 'Academic Year', 'Semester', 'Subject Code', 'Final Grade', 'Official Result', 'Credited Units']) {
+  for (const label of ['Choose format', 'Prepare file', 'Upload file', 'Review rows', 'Save grades', 'Student Number', 'Academic Year', 'Semester', 'Subject Code', 'Final Grade', 'Official Result', 'Credited Units']) {
     assert.match(panel, new RegExp(label, 'i'))
   }
-  assert.match(panel, /Start entering grade records on <strong>row 2<\/strong>/)
+  assert.match(panel, /The first row contains headers/)
+  assert.match(panel, /\.xlsx or \.csv/)
   assert.match(panel, /One invalid row prevents the entire import/)
   assert.match(panel, /validating does not create, update, or publish any grade/)
   assert.match(panel, /v-if="preview\.preview_token"[^>]*@click="confirmImport"/)
@@ -68,9 +71,23 @@ test('historical XLSX preview keeps the selected file bytes in multipart form da
 test('historical grades stay contextual to Student Records and read-only in Student Grades', () => {
   assert.match(records, /v-if="auth\.currentRole === ROLES\.REGISTRAR_STAFF"[^>]*class="student-records-tools"/)
   assert.match(records, /<details><summary>Historical grades<\/summary><HistoricalGradesPanel \/><\/details>/)
-  assert.match(profile, /HistoricalGradesPanel v-if="canManagePhysicalRecords"[^>]*:student-id="student\.id"/)
+  assert.match(profile, /v-if="canManagePhysicalRecords" v-show="activeSection === 'academic'"[^>]*><HistoricalGradesPanel :student-id="student\.id"/)
   assert.match(grades, /Verified historical grades/)
   assert.match(grades, /data\.historical_grades/)
   assert.match(grades, /VIEWING PURPOSES ONLY/)
   assert.doesNotMatch(grades, /@click="(?:save|edit|delete)Historical/)
+})
+
+test('Registrar grade views distinguish imported previous grades from published sheets', () => {
+  for (const [filename, source] of [
+    ['StudentGradeHistoryView.vue', staffHistory],
+    ['StudentAcademicHistory.vue', profileHistory],
+  ]) {
+    const { descriptor, errors } = parse(source, { filename })
+    assert.deepEqual(errors, [])
+    assert.deepEqual(compileTemplate({ source: descriptor.template.content, filename, id: filename }).errors, [])
+    assert.match(source, /grades\.historical_grades/)
+    assert.match(source, /Previous grades/)
+    assert.match(source, /separate from (?:CDM-published|published CDM)/)
+  }
 })

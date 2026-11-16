@@ -23,24 +23,18 @@ test('Turnstile widget uses explicit managed rendering with accessible retry sta
   assert.doesNotMatch(component, /SECRET|TURNSTILE_SECRET/i)
 })
 
-test('website and Android credentials require a disposable Turnstile token before OTP', async () => {
+test('website and Android sign-in do not require Turnstile while retaining OTP handling', async () => {
   const [login, store] = await Promise.all([
     source('src/views/LoginView.vue'),
     source('src/stores/authStore.js'),
   ])
 
-  assert.match(login, /clientPlatform !== 'desktop' && !turnstileToken\.value/)
-  assert.match(login, /turnstile_token: turnstileToken\.value/)
-  assert.match(login, /<TurnstileVerification[^>]*action="authentication"/)
-  assert.match(login, /exchangeGoogleCode\(event\.data\.code, turnstileToken\.value\)/)
-  assert.match(login, /googlePopupMonitor = window\.setInterval[\s\S]*turnstileWidget\.value\?\.reset\(\)/)
-  assert.match(login, /if \(event\.data\.error\)[\s\S]*turnstileToken\.value = ''[\s\S]*turnstileWidget\.value\?\.reset\(\)/)
-  assert.match(store, /turnstile_token: turnstileToken/)
-  assert.match(login, /if \(result\?\.requiresOtp\) return/)
+  assert.doesNotMatch(login, /TurnstileVerification|turnstileToken|turnstile_token|turnstileWidget/)
+  assert.match(login, /exchangeGoogleCode\(event\.data\.code\)/)
+  assert.match(store, /post\('\/auth\/google\/exchange', \{ code \}\)/)
+  assert.doesNotMatch(store, /turnstile_token/)
+  assert.match(login, /<LoginOtpVerification/)
   assert.match(login, /:authenticating="showPostLoginLoading"/)
-
-  const desktop = login.match(/<div v-else-if="clientPlatform === 'desktop'"[\s\S]*?<div v-else class="public-page">/)?.[0] || ''
-  assert.doesNotMatch(desktop, /TurnstileVerification/)
 })
 
 test('registration protects email-code initiation without challenging code verification', async () => {

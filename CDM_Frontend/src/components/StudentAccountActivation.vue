@@ -4,7 +4,7 @@ import { apiClient } from '../services/apiClient'
 import TurnstileVerification from './TurnstileVerification.vue'
 
 const emit = defineEmits(['close', 'activated'])
-const form = reactive({ student_number: '', email: '', code: '', username: '', password: '', password_confirmation: '' })
+const form = reactive({ student_number: '', email: '', code: '', password: '', password_confirmation: '' })
 const step = ref(1)
 const busy = ref(false)
 const error = ref('')
@@ -59,7 +59,7 @@ async function verifyCode() {
     const { data } = await apiClient.post('/student-account/verify-code', { ...details(), code: form.code.trim() })
     token.value = data.data.verification_token
     step.value = 3
-    message.value = 'Email verified. Set your account credentials.'
+    message.value = 'Email verified. Set your password; your student number will be your sign-in ID.'
   } catch (requestError) {
     error.value = errorText(requestError)
   } finally {
@@ -74,7 +74,7 @@ async function activate() {
   try {
     await apiClient.post('/student-account/activate', {
       ...details(), verification_token: token.value,
-      username: form.username.trim(), password: form.password,
+      password: form.password,
       password_confirmation: form.password_confirmation,
     })
     emit('activated')
@@ -160,7 +160,7 @@ async function checkVisit() {
         <button type="button" @click="step = 1">Change details or resend</button>
       </form>
       <form v-else @submit.prevent="activate">
-        <label>Username<input v-model.trim="form.username" autocomplete="username" maxlength="50" required /></label>
+        <p>Sign in with student number {{ form.student_number }} after activation.</p>
         <label>Password<input v-model="form.password" type="password" autocomplete="new-password" minlength="8" required /></label>
         <label>Confirm password<input v-model="form.password_confirmation" type="password" autocomplete="new-password" minlength="8" required /></label>
         <button class="activation-primary" type="submit" :disabled="busy">{{ busy ? 'Activating…' : 'Activate account' }}</button>

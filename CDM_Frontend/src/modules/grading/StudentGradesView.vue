@@ -7,7 +7,7 @@ import WebsiteEmptyState from '../../components/website/WebsiteEmptyState.vue'
 import WebsiteFilterToolbar from '../../components/website/WebsiteFilterToolbar.vue'
 import WebsiteLoadingState from '../../components/website/WebsiteLoadingState.vue'
 import WebsiteModuleHeader from '../../components/website/WebsiteModuleHeader.vue'
-const isWebsitePresentation=clientPlatform==='web'
+const isWebsitePresentation=clientPlatform==='web'||clientPlatform==='mobile'
 
 const loading=ref(true),exporting=ref(false),error=ref(''),data=ref(null),year=ref(''),semester=ref('')
 const label=value=>String(value||'').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase())

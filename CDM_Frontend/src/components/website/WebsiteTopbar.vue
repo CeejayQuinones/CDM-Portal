@@ -1,8 +1,9 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { authorizedSearchDestinations, filterWebsiteDestinations, moveSearchSelection } from '../../config/websiteSearch'
 import WebsiteUserAvatar from './WebsiteUserAvatar.vue'
+import { usePortalThemeToggle } from '../../composables/usePortalThemeToggle'
 
 const props = defineProps({
   title: { type: String, default: 'Dashboard' },
@@ -10,13 +11,15 @@ const props = defineProps({
   modules: { type: Array, default: () => [] },
   displayName: { type: String, default: 'Portal User' },
   role: { type: String, default: '' },
+  appearanceAccount: { type: [String, Number], default: null },
   initials: { type: String, default: 'CDM' },
   avatarUrl: { type: String, default: '' },
   avatarRevision: { type: Number, default: 0 },
   accountOpen: Boolean,
 })
-const emit = defineEmits(['open-navigation', 'toggle-account', 'open-profile', 'logout'])
+const emit = defineEmits(['open-navigation', 'toggle-account', 'open-profile', 'logout', 'theme-change'])
 const router = useRouter()
+const { effectiveDark, themeAction, toggleTheme } = usePortalThemeToggle(toRef(props, 'role'), toRef(props, 'appearanceAccount'), theme => emit('theme-change', theme))
 const searchOpen = ref(false)
 const search = ref('')
 const selectedResult = ref(-1)
@@ -109,6 +112,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
           </div>
         </Transition>
       </div>
+      <button class="icon-button theme-toggle" type="button" :aria-label="themeAction" :aria-pressed="effectiveDark" :title="themeAction" @click="toggleTheme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z" /></svg>
+      </button>
       <button class="account-trigger" type="button" :aria-expanded="accountOpen" aria-label="Open account actions" @click="toggleAccount">
         <span class="account-avatar"><WebsiteUserAvatar :src="avatarUrl" :initials="initials" :revision="avatarRevision" :label="`${displayName} profile picture`" /></span><span class="account-copy"><strong>{{ displayName }}</strong><small>{{ role }}</small></span><span aria-hidden="true">⌄</span>
       </button>
@@ -135,6 +141,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
 .icon-button,.mobile-menu { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--website-border); border-radius: 12px; background: var(--website-surface-elevated); color: var(--website-muted); cursor: pointer; text-decoration: none; }
 .icon-button svg,.mobile-menu svg { width: 20px; height: 20px; }
 .icon-button:hover,.mobile-menu:hover { color: var(--website-deep-green); border-color: rgba(5,150,105,.3); }
+.theme-toggle[aria-pressed='true'] { color: var(--website-emerald); border-color: color-mix(in srgb,var(--website-emerald) 45%,var(--website-border)); }
+.theme-toggle:focus-visible { outline: 2px solid var(--website-focus); outline-offset: 2px; }
 .mobile-menu { display: none; }
 .search-wrap { position: relative; width: 42px; flex: 0 0 auto; transition: width 290ms cubic-bezier(.22,1,.36,1); }
 .search-wrap.open { width: min(340px,38vw); }
@@ -175,7 +183,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
 .account-popover a,.account-popover button { min-height: 42px; display: flex; align-items: center; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--website-ink); text-align: left; text-decoration: none; font: inherit; font-size: 13px; cursor: pointer; }
 .account-popover a:hover,.account-popover button:hover { background: var(--website-hover); }
 @media (max-width: 900px) { .website-topbar { min-height: 64px; padding: 10px max(14px,env(safe-area-inset-right)) 10px max(14px,env(safe-area-inset-left)); } .mobile-menu { display: grid; } .workspace-location span,.workspace-location b { display: none; } .account-copy,.account-trigger>span:last-child { display: none; } .account-trigger { grid-template-columns: 34px; padding: 4px; } .search-wrap.open { width: min(310px,40vw); } }
-@media (max-width: 680px) { .website-topbar.search-active .workspace-location,.website-topbar.search-active .notification-button { display: none; } .website-topbar.search-active .topbar-actions { min-width: 0; flex: 1; justify-content: flex-end; } .search-wrap.open { width: min(310px,calc(100vw - 130px)); } }
+@media (max-width: 680px) { .website-topbar.search-active .workspace-location,.website-topbar.search-active .notification-button { display: none; } .website-topbar.search-active .topbar-actions { min-width: 0; flex: 1; justify-content: flex-end; } .website-topbar.search-active .theme-toggle { display: none; } .search-wrap.open { width: min(310px,calc(100vw - 130px)); } }
 @media (max-width: 480px) { .website-topbar { gap: 8px; } .mobile-menu { flex-shrink: 0; } .workspace-location strong { min-width: 0; max-width: 100%; } .topbar-actions { gap: 5px; } .search-wrap.open { width: min(280px,calc(100vw - 126px)); } .search-popover { min-width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .search-wrap,.search-surface,.search-results-enter-active,.search-results-leave-active { transition: none; } .search-input-content { animation: none; } }
 </style>

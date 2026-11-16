@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 const view = readFileSync(new URL('../src/modules/grading/GradingView.vue', import.meta.url), 'utf8')
 const service = readFileSync(new URL('../src/modules/grading/gradingService.js', import.meta.url), 'utf8')
 const css = readFileSync(new URL('../src/modules/grading/grading.css', import.meta.url), 'utf8')
+const releasePanel = readFileSync(new URL('../src/modules/grading/GradeReleasePanel.vue', import.meta.url), 'utf8')
 
 test('Professor Phase 2 workflow exposes readiness, submission, locks, return, and resubmission', () => {
   for (const text of ['Submission readiness', 'Submit to Registrar', 'Resubmit to Registrar', 'Returned:', 'Final Grade', 'Final weighting saved']) assert.match(view, new RegExp(text, 'i'))
@@ -22,10 +23,11 @@ test('Professor submission readiness separates grade completeness from the Final
 })
 
 test('Registrar Phase 2 workflow exposes review, approve, return, and release scheduling', () => {
-  for (const text of ['Grade Sheets', 'Pending Review', 'Review Grade Sheet', 'Approve', 'Reject &amp; Return', 'Release &amp; Schedule', 'Create Release Schedule', 'Release Now']) assert.match(view, new RegExp(text, 'i'))
+  for (const text of ['Grade Sheets', 'Pending Review', 'Review Grade Sheet', 'Approve', 'Reject &amp; Return', 'Release &amp; Schedule', 'GradeReleasePanel', 'releaseNow']) assert.match(view, new RegExp(text, 'i'))
+  for (const text of ['Schedule grade release', 'Programs to release', 'Approved grade sheets', 'Release now']) assert.match(releasePanel, new RegExp(text, 'i'))
   for (const endpoint of ['/grading/reviews', '/grading/releases', '/approve', '/return', '/execute']) assert.match(service, new RegExp(endpoint.replaceAll('/', '\\/')))
   assert.match(view, /No submitted grade sheets match the current filters\./)
-  assert.match(view, /No approved grade sheets are ready for release\./)
+  assert.match(releasePanel, /No approved grade sheets match this term and these programs\./)
 })
 
 test('Registrar and Admin grading management exposes authoritative scale configuration', () => {

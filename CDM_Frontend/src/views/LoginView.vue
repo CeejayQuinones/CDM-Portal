@@ -4,7 +4,6 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import RegistrationWizard from '../components/RegistrationWizard.vue'
 import StudentAccountActivation from '../components/StudentAccountActivation.vue'
 import LoginOtpVerification from '../components/LoginOtpVerification.vue'
-import TurnstileVerification from '../components/TurnstileVerification.vue'
 import { useAuthStore } from '../stores/authStore'
 import { dashboardForRole } from '../utils/roleDashboard'
 import { runLoginRequest } from '../utils/loginFlow'
@@ -34,9 +33,6 @@ const showStudentActivation = ref(false)
 const registrationSuccess = ref(Boolean(route.query.registered))
 const mobileMenuOpen = ref(false)
 const otpError = ref('')
-const turnstileToken = ref('')
-const turnstileError = ref('')
-const turnstileWidget = ref(null)
 let viewActive = true
 let googleMessageHandler = null
 let googlePopup = null
@@ -80,17 +76,14 @@ const submit = async () => {
   if (isLoading.value) return
   errors.value = {}
   formError.value = ''
-  if (!form.username.trim()) errors.value.username = 'Username is required.'
+  if (!form.username.trim()) errors.value.username = 'Enter your student number, professor email, or username.'
   if (!form.password) errors.value.password = 'Password is required.'
-  if (clientPlatform !== 'desktop' && !turnstileToken.value) turnstileError.value = 'Complete the human verification check to continue.'
   if (Object.keys(errors.value).length) return
-  if (clientPlatform !== 'desktop' && !turnstileToken.value) return
 
-  const result = await runLoginRequest({
+  await runLoginRequest({
     credentials: {
       username: form.username.trim(),
       password: form.password,
-      ...(clientPlatform !== 'desktop' ? { turnstile_token: turnstileToken.value } : {}),
     },
     login: authStore.login,
     setLoading: setLoginLoading,
@@ -99,23 +92,14 @@ const submit = async () => {
       if (!viewActive) return
       const backendErrors = error.response?.data?.errors
       errors.value = Object.fromEntries(Object.entries(backendErrors || {}).map(([field, messages]) => [field, messages[0]]))
-      turnstileError.value = backendErrors?.turnstile_token?.[0] || ''
       formError.value = message
     },
   })
-  if (clientPlatform !== 'desktop') {
-    turnstileToken.value = ''
-    if (!result?.requiresOtp) turnstileWidget.value?.reset()
-  }
 }
 
 const googleSignIn = () => {
   if (isLoading.value || googlePopup) return
   formError.value = ''
-  if (!turnstileToken.value) {
-    turnstileError.value = 'Complete the human verification check before continuing with Google.'
-    return
-  }
   const base = new URL(apiClient.defaults.baseURL || '/api', window.location.origin)
   const backendOrigin = base.pathname.replace(/\/api\/?$/, '')
   googlePopup = window.open(`${base.origin}${backendOrigin}/auth/google/redirect?client=${encodeURIComponent(clientPlatform)}`, 'cdm-google-auth', 'popup,width=520,height=700')
@@ -130,8 +114,6 @@ const googleSignIn = () => {
     googlePopup = null
     if (googleMessageHandler) window.removeEventListener('message', googleMessageHandler)
     googleMessageHandler = null
-    turnstileToken.value = ''
-    turnstileWidget.value?.reset()
   }, 400)
   googleMessageHandler = async (event) => {
     if (event.origin !== base.origin || event.data?.type !== 'cdm-google-auth') return
@@ -144,22 +126,16 @@ const googleSignIn = () => {
     if (!viewActive) return
     if (event.data.error) {
       formError.value = event.data.error
-      turnstileToken.value = ''
-      turnstileWidget.value?.reset()
       return
     }
     setLoginLoading(true)
     try {
-      const result = await authStore.exchangeGoogleCode(event.data.code, turnstileToken.value)
-      turnstileToken.value = ''
+      const result = await authStore.exchangeGoogleCode(event.data.code)
       if (result?.requiresOtp) return
       await navigateAfterAuthentication()
     } catch (error) {
       if (viewActive) {
-        turnstileError.value = error.response?.data?.errors?.turnstile_token?.[0] || ''
         formError.value = error.response?.data?.message || 'Google sign-in could not be completed. Please try again.'
-        turnstileToken.value = ''
-        turnstileWidget.value?.reset()
       }
     } finally {
       setLoginLoading(false)
@@ -208,15 +184,6 @@ const cancelLoginOtp = () => {
   form.password = ''
 }
 
-const acceptTurnstileToken = (token) => {
-  turnstileToken.value = token
-  if (token) turnstileError.value = ''
-}
-
-const expireTurnstileToken = () => {
-  turnstileToken.value = ''
-}
-
 const registrationComplete = () => {
   showRegistration.value = false
   registrationSuccess.value = true
@@ -244,13 +211,12 @@ const registrationComplete = () => {
         />
         <form v-else novalidate @submit.prevent="submit">
           <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
-          <label for="website-username">Username</label>
-          <div class="input-with-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" /></svg><input id="website-username" v-model="form.username" autocomplete="username" placeholder="Enter your username" :aria-invalid="Boolean(errors.username)" /></div>
+          <label for="website-username">Student number, professor email, or username</label>
+          <div class="input-with-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 10h4M7 14h7M16 10h2" /></svg><input id="website-username" v-model="form.username" autocomplete="username" placeholder="Student number" :aria-invalid="Boolean(errors.username)" /></div>
           <p v-if="errors.username" class="field-error">{{ errors.username }}</p>
           <label for="website-password">Password</label>
           <div class="input-with-icon password-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="website-password" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Enter your password" :aria-invalid="Boolean(errors.password)" /><button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Hide' : 'Show' }}</button></div>
           <p v-if="errors.password" class="field-error">{{ errors.password }}</p>
-          <TurnstileVerification ref="turnstileWidget" action="authentication" :error="turnstileError" @verified="acceptTurnstileToken" @expired="expireTurnstileToken" @error="turnstileError = $event" />
           <button class="sign-in-button" type="submit" :disabled="isLoading">{{ isLoading ? 'Signing in…' : 'Sign in to portal' }} <span>→</span></button>
           <div class="google-auth-option">
             <div class="divider google-divider"><span>Professor or Student?</span></div>
@@ -263,7 +229,6 @@ const registrationComplete = () => {
               </svg>
               <span>Continue with Google</span>
             </button>
-            <p class="google-account-note">Professor and Student accounts must already exist in CDM Portal. Google does not create an account.</p>
           </div>
           <div class="divider guest-divider"><span>New to CDM Portal?</span></div>
           <button class="sign-up-button" type="button" @click="showRegistration = true">Create a Guest account</button>
@@ -302,10 +267,10 @@ const registrationComplete = () => {
 
         <p v-if="formError" class="desktop-login-error" role="alert">{{ formError }}</p>
         <form novalidate @submit.prevent="submit">
-          <label for="desktop-username">Email or username</label>
+          <label for="desktop-username">Username</label>
           <div class="desktop-login-field" :class="{ 'desktop-login-field--invalid': errors.username }">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Z"/><path d="m5 7 7 5 7-5"/></svg>
-            <input id="desktop-username" v-model="form.username" autocomplete="username" inputmode="email" placeholder="name@cdm.edu.ph" :aria-invalid="Boolean(errors.username)" :aria-describedby="errors.username ? 'desktop-username-error' : undefined" />
+            <input id="desktop-username" v-model="form.username" autocomplete="username" placeholder="Enter your username" :aria-invalid="Boolean(errors.username)" :aria-describedby="errors.username ? 'desktop-username-error' : undefined" />
           </div>
           <p v-if="errors.username" id="desktop-username-error" class="desktop-login-field-error">{{ errors.username }}</p>
 
@@ -385,13 +350,12 @@ const registrationComplete = () => {
             />
             <form v-else novalidate @submit.prevent="submit">
               <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
-              <label for="username">Username</label>
-              <div class="input-with-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" /></svg><input id="username" v-model="form.username" autocomplete="username" placeholder="Enter your username" :aria-invalid="Boolean(errors.username)" /></div>
+              <label for="username">Student number, professor email, or username</label>
+              <div class="input-with-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 10h4M7 14h7M16 10h2" /></svg><input id="username" v-model="form.username" autocomplete="username" placeholder="Student number" :aria-invalid="Boolean(errors.username)" /></div>
               <p v-if="errors.username" class="field-error">{{ errors.username }}</p>
               <label for="password">Password</label>
               <div class="input-with-icon password-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="password" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Enter your password" :aria-invalid="Boolean(errors.password)" /><button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Hide' : 'Show' }}</button></div>
               <p v-if="errors.password" class="field-error">{{ errors.password }}</p>
-              <TurnstileVerification ref="turnstileWidget" action="authentication" :error="turnstileError" @verified="acceptTurnstileToken" @expired="expireTurnstileToken" @error="turnstileError = $event" />
               <button class="sign-in-button" type="submit" :disabled="isLoading">{{ isLoading ? 'Signing in…' : 'Sign in to portal' }} <span>→</span></button>
               <template v-if="clientPlatform === 'web'">
                 <div class="google-auth-option">
@@ -405,7 +369,6 @@ const registrationComplete = () => {
                     </svg>
                     <span>Continue with Google</span>
                   </button>
-                  <p class="google-account-note">Professor and Student accounts must already exist in CDM Portal. Google does not create an account.</p>
                 </div>
               </template>
               <div class="divider guest-divider"><span>New to CDM Portal?</span></div>

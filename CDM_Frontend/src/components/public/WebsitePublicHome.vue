@@ -111,7 +111,7 @@ onBeforeUnmount(() => revealObserver?.disconnect())
             <slot name="login"></slot>
           </div>
         </div>
-        <p class="website-home-photo-label">Ynares School Building · Colegio de Montalban</p>
+        <p class="website-home-photo-label">Colegio de Montalban</p>
       </section>
 
       <section id="about" class="website-home-section website-home-about" aria-labelledby="about-cdm-title">

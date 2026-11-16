@@ -80,11 +80,13 @@ class AccountProvisioningTest extends TestCase
 
         $response = $this->postJson('/api/registrar/professors', $this->professorPayload())
             ->assertCreated()
-            ->assertJsonPath('data.account.username', 'new_professor')
+            ->assertJsonPath('data.account.email', 'professor@cdm.edu.ph')
+            ->assertJsonMissingPath('data.account.username')
             ->assertJsonPath('data.account.department_id', $this->department()->id)
             ->assertJsonMissingPath('data.account.password');
 
         $userId = $response->json('data.account.user_id');
+        $this->assertStringStartsWith('prof-', User::query()->findOrFail($userId)->username);
         $this->assertDatabaseHas('users', ['id' => $userId, 'role_id' => Role::where('role_name', Role::PROFESSOR)->value('id')]);
         $this->assertDatabaseHas('user_profiles', ['user_id' => $userId, 'email' => 'professor@cdm.edu.ph']);
         $this->assertDatabaseHas('professors', ['user_id' => $userId, 'employee_number' => 'FAC-NEW-001']);
@@ -100,7 +102,7 @@ class AccountProvisioningTest extends TestCase
     {
         Sanctum::actingAs($this->user($role));
         $this->postJson('/api/registrar/professors', $this->professorPayload())->assertForbidden();
-        $this->assertDatabaseMissing('users', ['username' => 'new_professor']);
+        $this->assertDatabaseMissing('user_profiles', ['email' => 'professor@cdm.edu.ph']);
     }
 
     public static function nonRegistrarRoles(): array
@@ -153,7 +155,6 @@ class AccountProvisioningTest extends TestCase
 
         $this->postJson('/api/registrar/professors', $this->professorPayload())->assertStatus(500);
 
-        $this->assertDatabaseMissing('users', ['username' => 'new_professor']);
         $this->assertDatabaseMissing('user_profiles', ['email' => 'professor@cdm.edu.ph']);
         $this->assertSame(0, Professor::query()->count());
     }
@@ -191,14 +192,14 @@ class AccountProvisioningTest extends TestCase
             ->assertOk()->assertJsonPath('data.accounts.total', 1);
 
         $payload = $this->professorPayload([
-            'username' => 'updated_professor',
             'email' => 'updated.professor@cdm.edu.ph',
             'position' => 'Assistant Professor',
         ]);
         unset($payload['password'], $payload['password_confirmation'], $payload['status']);
         $this->putJson('/api/registrar/professors/'.$created['id'], $payload)
             ->assertOk()
-            ->assertJsonPath('data.account.username', 'updated_professor')
+            ->assertJsonPath('data.account.email', 'updated.professor@cdm.edu.ph')
+            ->assertJsonMissingPath('data.account.username')
             ->assertJsonPath('data.account.position', 'Assistant Professor');
 
         $this->patchJson('/api/registrar/professors/'.$created['id'].'/status', ['status' => 'inactive'])
@@ -253,6 +254,15 @@ class AccountProvisioningTest extends TestCase
         $this->withHeader('X-CDM-Client', 'mobile')->withToken($mobileToken)->getJson('/api/me')->assertUnauthorized();
     }
 
+    public function test_professor_management_rejects_a_submitted_username(): void
+    {
+        Sanctum::actingAs($this->user(Role::REGISTRAR_STAFF));
+        $this->postJson('/api/registrar/professors', $this->professorPayload(['username' => 'unwanted_login']))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('username');
+        $this->assertSame(0, Professor::query()->count());
+    }
+
     public function test_public_signup_rejects_privileged_role_fields(): void
     {
         $this->postJson('/api/register', ['role' => Role::ADMIN, 'role_id' => 1])
@@ -298,7 +308,6 @@ class AccountProvisioningTest extends TestCase
     private function professorPayload(array $overrides = []): array
     {
         return array_merge([
-            'username' => 'new_professor',
             'email' => 'Professor@CDM.edu.ph',
             'password' => 'InitialPass123!',
             'password_confirmation' => 'InitialPass123!',

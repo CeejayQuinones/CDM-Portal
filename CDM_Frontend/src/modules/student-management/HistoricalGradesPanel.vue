@@ -20,7 +20,7 @@ const importReachedStep = ref(1)
 const templateDownloaded = ref(false)
 const importedCount = ref(0)
 const editingId = ref(null)
-const importSteps = ['Download template', 'Fill workbook', 'Upload file', 'Review rows', 'Save grades']
+const importSteps = ['Choose format', 'Prepare file', 'Upload file', 'Review rows', 'Save grades']
 const importColumns = [
   ['A', 'Student Number', 'Exact existing CDM student number. Do not enter a name.'],
   ['B', 'Academic Year', 'Use the configured format, for example 2025-2026.'],
@@ -163,23 +163,23 @@ async function saveManual() {
         <form class="historical-import-body" @submit.prevent="previewFile">
           <p v-if="error" class="historical-dialog-error" role="alert">{{ error }}</p>
           <section v-if="importStep === 1" class="historical-import-step">
-            <span class="historical-step-label">Step 1 of 5</span><h4>Download the official template</h4><p>Always begin with the CDM template. Its column names and order are required for validation.</p>
-            <div class="historical-callout"><strong>Before you continue</strong><ul><li>Use Microsoft Excel or another application that preserves <code>.xlsx</code> files.</li><li>Do not rename or reorder the eight headers in row 1.</li><li>Keep the Instructions worksheet in the downloaded file.</li></ul></div>
+            <span class="historical-step-label">Step 1 of 5</span><h4>Choose how to prepare grades</h4><p>Use the optional Excel template, or export a CSV from Access. CSV columns can be in any order and familiar Access field names are recognized.</p>
+            <div class="historical-callout"><strong>Before you continue</strong><ul><li>For Excel, keep the eight template headers and Instructions worksheet.</li><li>For Access CSV, include student number, academic year, semester, subject code, final grade, official result, credited units, and source reference.</li><li>Do not infer official result from remarks or grade value; confirm it against the official record.</li></ul></div>
             <button class="historical-download" type="button" :disabled="busy" @click="downloadTemplate">{{ busy ? 'Preparing…' : '↓ Download Excel template' }}</button>
             <p v-if="templateDownloaded" class="historical-success-note" role="status">Template download started. Open it and continue to the filling guide.</p>
             <footer><button type="button" @click="close">Cancel</button><button class="historical-primary-action" type="button" @click="goImportStep(2)">Continue to column guide</button></footer>
           </section>
 
           <section v-else-if="importStep === 2" class="historical-import-step">
-            <span class="historical-step-label">Step 2 of 5</span><h4>Fill one subject per row</h4><p>Row 1 contains the required headers. Start entering grade records on <strong>row 2</strong>; each row represents one student and one subject.</p>
+            <span class="historical-step-label">Step 2 of 5</span><h4>Prepare one subject per row</h4><p>The first row contains headers. Each data row represents one student and one subject. The Excel template uses the column order below; CSV headers may be reordered.</p>
             <div class="historical-column-guide historical-scroll"><table><thead><tr><th>Column</th><th>Header</th><th>What to enter</th></tr></thead><tbody><tr v-for="column in importColumns" :key="column[0]"><td><b>{{ column[0] }}</b></td><td><strong>{{ column[1] }}</strong></td><td>{{ column[2] }}</td></tr></tbody></table></div>
-            <div class="historical-rules"><div><strong>Required format</strong><span>.xlsx · Maximum 200 data rows · Maximum 2 MB</span></div><div><strong>Do not use</strong><span>Formulas, renamed headers, blank required cells, or duplicate rows</span></div><div><strong>Saving rule</strong><span>All rows must pass. One invalid row prevents the entire import.</span></div></div>
-            <footer><button type="button" @click="goImportStep(1)">Back</button><button class="historical-primary-action" type="button" @click="goImportStep(3)">I filled the workbook</button></footer>
+            <div class="historical-rules"><div><strong>Accepted files</strong><span>.xlsx or .csv · Maximum 200 data rows · Maximum 2 MB</span></div><div><strong>Do not use</strong><span>Formulas, blank required cells, or duplicate rows</span></div><div><strong>Saving rule</strong><span>All rows must pass. One invalid row prevents the entire import.</span></div></div>
+            <footer><button type="button" @click="goImportStep(1)">Back</button><button class="historical-primary-action" type="button" @click="goImportStep(3)">My file is ready</button></footer>
           </section>
 
           <section v-else-if="importStep === 3" class="historical-import-step">
-            <span class="historical-step-label">Step 3 of 5</span><h4>Upload the completed workbook</h4><p>Select the completed template. Validation reads the file only; no grade is saved at this step.</p>
-            <label class="historical-file-picker"><span aria-hidden="true">⇧</span><strong>{{ file ? file.name : 'Choose completed Excel workbook' }}</strong><small>{{ file ? `${Math.ceil(file.size / 1024)} KB selected` : '.xlsx only · up to 200 rows and 2 MB' }}</small><input ref="fileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required @change="selectFile" /></label>
+            <span class="historical-step-label">Step 3 of 5</span><h4>Upload the completed file</h4><p>Select an Excel workbook or Access CSV. Validation reads the file only; no grade is saved at this step.</p>
+            <label class="historical-file-picker"><span aria-hidden="true">⇧</span><strong>{{ file ? file.name : 'Choose Excel workbook or Access CSV' }}</strong><small>{{ file ? `${Math.ceil(file.size / 1024)} KB selected` : '.xlsx or .csv · up to 200 rows and 2 MB' }}</small><input ref="fileInput" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required @change="selectFile" /></label>
             <p class="historical-safety-note"><strong>Safe preview:</strong> validating does not create, update, or publish any grade.</p>
             <footer><button type="button" @click="goImportStep(2)">Back</button><button class="historical-primary-action" type="submit" :disabled="busy || !file">{{ busy ? 'Checking every row…' : 'Validate and preview' }}</button></footer>
           </section>
@@ -188,9 +188,9 @@ async function saveManual() {
             <span class="historical-step-label">Step 4 of 5</span><h4>Review validation results</h4>
             <div class="historical-counts"><div><strong>{{ preview.counts.total }}</strong><span>Total rows</span></div><div data-state="valid"><strong>{{ preview.counts.valid }}</strong><span>Valid</span></div><div data-state="invalid"><strong>{{ preview.counts.invalid }}</strong><span>Invalid</span></div><div><strong>{{ preview.counts.duplicates }}</strong><span>Duplicates</span></div><div><strong>{{ preview.counts.manual_review }}</strong><span>Review</span></div></div>
             <p class="historical-preview-summary">{{ preview.counts.unknown_students }} unknown students · {{ preview.counts.unknown_subjects }} unknown subjects. {{ preview.message }}</p>
-            <div class="historical-scroll historical-preview-table"><table><thead><tr><th>Excel row</th><th>Student Number</th><th>Academic term</th><th>Subject</th><th>Final grade / result</th><th>Validation</th></tr></thead><tbody><tr v-for="row in preview.rows" :key="row.row"><td>{{ row.row }}</td><td>{{ row.data.student_number }}</td><td>{{ row.data.academic_year }} · {{ row.data.semester }}</td><td>{{ row.data.subject_code }}</td><td>{{ row.data.final_grade }} · {{ row.data.official_result }}</td><td><span class="historical-row-status" :data-state="row.status">{{ row.status }}</span><small v-for="reason in row.errors" :key="reason">{{ reason }}</small></td></tr></tbody></table></div>
+            <div class="historical-scroll historical-preview-table"><table><thead><tr><th>File row</th><th>Student Number</th><th>Academic term</th><th>Subject</th><th>Final grade / result</th><th>Validation</th></tr></thead><tbody><tr v-for="row in preview.rows" :key="row.row"><td>{{ row.row }}</td><td>{{ row.data.student_number }}</td><td>{{ row.data.academic_year }} · {{ row.data.semester }}</td><td>{{ row.data.subject_code }}</td><td>{{ row.data.final_grade }} · {{ row.data.official_result }}</td><td><span class="historical-row-status" :data-state="row.status">{{ row.status }}</span><small v-for="reason in row.errors" :key="reason">{{ reason }}</small></td></tr></tbody></table></div>
             <div v-if="preview.preview_token" class="historical-confirm-note"><strong>Ready to save</strong><span>Confirming will atomically create all {{ preview.counts.valid }} verified historical grade records and audit entries.</span></div>
-            <div v-else class="historical-confirm-note invalid"><strong>Nothing can be saved yet</strong><span>Correct every reported row in Excel, save the workbook, and upload it again.</span></div>
+            <div v-else class="historical-confirm-note invalid"><strong>Nothing can be saved yet</strong><span>Correct every reported row in the file, save it, and upload it again.</span></div>
             <footer><button type="button" @click="preview = null; file = null; goImportStep(3)">{{ preview.preview_token ? 'Choose another file' : 'Fix and upload again' }}</button><button v-if="preview.preview_token" class="historical-primary-action" type="button" :disabled="busy" @click="confirmImport">{{ busy ? 'Saving all grades…' : 'Confirm all grades' }}</button></footer>
           </section>
 

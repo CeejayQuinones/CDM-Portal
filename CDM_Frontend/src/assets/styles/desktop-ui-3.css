@@ -267,7 +267,9 @@ html.cdm-desktop-client[data-student-theme='dark']:has(.desktop-workspace-shell.
 .registrar-sidebar-children a:hover { color: var(--desk-green-700); }
 .registrar-sidebar-children a.active { border-left-color: var(--desk-green-700); color: var(--desk-green-700); font-weight: 750; }
 .registrar-sidebar-footer { border-top: 1px solid var(--desk-line); padding: 17px 12px 18px; }
-.registrar-theme-shortcut { cursor: pointer; }
+.registrar-theme-shortcut { display: grid; place-items: center; width: 40px; height: 40px; margin: 0 12px 8px; padding: 0; border: 1px solid var(--desk-line); border-radius: 8px; background: transparent; color: var(--desk-sidebar-ink); cursor: pointer; }
+.registrar-theme-shortcut svg { width: 19px; height: 19px; }
+.registrar-theme-shortcut:hover, .registrar-theme-shortcut[aria-pressed='true'] { background: var(--desk-sidebar-hover); color: var(--desk-green-700); }
 .desktop-registrar-sidebar :is(a, button):focus-visible { outline: 2px solid var(--desk-green-700); outline-offset: 2px; }
 .registrar-sidebar-backdrop { display: none; }
 @media (max-width: 1100px) {

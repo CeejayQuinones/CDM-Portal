@@ -97,7 +97,7 @@ class EnrollmentApplication extends Model
 
     public function subjects()
     {
-        return $this->belongsToMany(Subject::class, 'enrollment_application_subjects', 'application_id', 'subject_id')->withTimestamps();
+        return $this->belongsToMany(Subject::class, 'enrollment_application_subjects', 'application_id', 'subject_id')->withPivot('section_subject_id')->withTimestamps();
     }
 
     public function section()

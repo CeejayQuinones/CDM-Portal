@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiClient } from '../../services/apiClient'
 import { useAuthStore } from '../../stores/authStore'
@@ -35,6 +35,27 @@ const locationSaving = ref(false)
 const locationError = ref('')
 const locationForm = reactive({ cabinet_slot_id: '', remarks: '' })
 const historyPanel = ref(null)
+const activeSection = ref('overview')
+const profileSections = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'academic', label: 'Academic & grades' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'account', label: 'Account & records' },
+]
+const academicEditMode = ref(false)
+const academicLoading = ref(false)
+const academicSaving = ref(false)
+const academicError = ref('')
+const academicValidationErrors = ref({})
+const academicOptions = ref({ courses: [], identity_locked: false })
+const academicForm = reactive({ course_id: '', curriculum_id: '', year_level: 1, admission_date: '', reason: '' })
+const selectedAcademicCourse = computed(() => academicOptions.value.courses.find(course => course.id === Number(academicForm.course_id)))
+const academicChanged = computed(() => student.value && (
+  Number(academicForm.course_id) !== student.value.course?.id
+  || Number(academicForm.curriculum_id) !== student.value.curriculum?.id
+  || Number(academicForm.year_level) !== student.value.year_level
+  || academicForm.admission_date !== student.value.admission_date
+))
 const text = (value) =>
   value
     ? String(value)
@@ -75,6 +96,8 @@ async function loadProfile() {
   loading.value = true
   error.value = ''
   student.value = null
+  activeSection.value = 'overview'
+  academicEditMode.value = false
   photoFailed.value = false
   locationEditing.value = false
   locationError.value = ''
@@ -210,8 +233,11 @@ function scrollTo(sectionId) {
 }
 
 function showRecordActivity() {
-  historyPanel.value?.showRecordActivity()
-  scrollTo('academic-history')
+  activeSection.value = 'academic'
+  nextTick(() => {
+    historyPanel.value?.showRecordActivity()
+    scrollTo('academic-history')
+  })
 }
 
 function returnToSource() {
@@ -219,6 +245,7 @@ function returnToSource() {
 }
 
 function startEdit() {
+  activeSection.value = 'overview'
   Object.assign(form, {
     first_name: student.value.profile?.first_name || '',
     middle_name: student.value.profile?.middle_name || '',
@@ -235,6 +262,52 @@ function startEdit() {
   validationErrors.value = {}
   success.value = ''
   editMode.value = true
+}
+
+async function startAcademicEdit() {
+  academicLoading.value = true
+  academicError.value = ''
+  academicValidationErrors.value = {}
+  try {
+    const { data } = await apiClient.get(`/students/${student.value.id}/academic-options`)
+    academicOptions.value = data.data
+    Object.assign(academicForm, {
+      course_id: student.value.course?.id || '',
+      curriculum_id: student.value.curriculum?.id || '',
+      year_level: student.value.year_level,
+      admission_date: student.value.admission_date || '',
+      reason: '',
+    })
+    academicEditMode.value = true
+  } catch (requestError) {
+    academicError.value = requestError.response?.data?.message || 'Unable to load academic options.'
+  } finally {
+    academicLoading.value = false
+  }
+}
+
+function changeAcademicCourse() {
+  academicForm.curriculum_id = selectedAcademicCourse.value?.curriculums[0]?.id || ''
+  academicForm.year_level = Math.min(Number(academicForm.year_level) || 1, selectedAcademicCourse.value?.years || 1)
+}
+
+async function saveAcademic() {
+  academicSaving.value = true
+  academicError.value = ''
+  academicValidationErrors.value = {}
+  try {
+    const { data } = await runWithStepUp(() => apiClient.patch(`/students/${student.value.id}/academic`, { ...academicForm }))
+    student.value = data.data
+    academicEditMode.value = false
+    success.value = data.message
+  } catch (requestError) {
+    if (!isStepUpCancelled(requestError)) {
+      academicValidationErrors.value = requestError.response?.data?.errors || {}
+      academicError.value = requestError.response?.data?.message || 'Unable to save academic information.'
+    }
+  } finally {
+    academicSaving.value = false
+  }
 }
 
 function cancelEdit() {
@@ -270,9 +343,9 @@ onMounted(loadProfile)
     <button v-if="returnContext" class="contextual-back" type="button" @click="returnToSource">
       {{ returnContext.label }}
     </button>
-    <p class="page-kicker">Registrar / Student Management</p>
-    <h1 class="page-title">Student Profile</h1>
-    <p class="page-description">Official Student Management record and registrar activity.</p>
+    <p class="page-kicker">Students / Official record</p>
+    <h1 class="page-title">Student record</h1>
+    <p class="page-description">Identity, academic history, documents, and account details in one place.</p>
   </section>
 
   <section v-if="loading" class="record-card state">Loading student profile…</section>
@@ -284,7 +357,7 @@ onMounted(loadProfile)
     <section class="student-id-card" aria-label="Student identification card">
       <div class="id-card-banner">
         <span>CDM Portal</span>
-        <strong>Student Record</strong>
+        <strong>Official student record</strong>
       </div>
       <div class="id-card-body">
         <div class="id-photo-frame">
@@ -299,7 +372,7 @@ onMounted(loadProfile)
           </div>
         </div>
         <div class="id-identity">
-          <p class="id-label">Full Name</p>
+          <p class="id-label">Student profile</p>
           <h2>{{ student.full_name }}</h2>
           <p class="id-number">{{ student.student_number }}</p>
           <div class="id-facts">
@@ -330,29 +403,24 @@ onMounted(loadProfile)
     <p v-if="editMode && error" class="save-error" role="alert">{{ error }}</p>
     <p v-if="editMode" class="security-note">Saving official record changes may require password verification.</p>
 
-    <nav class="action-bar" aria-label="Student profile actions">
-      <button v-if="!editMode && !returnContext" class="back" type="button" @click="router.push({ name: 'student-management' })">
-        ← Back to Student List
-      </button>
-      <button v-if="!editMode" type="button" @click="startEdit">✏ Edit Allowed Profile Information</button>
-      <button v-if="!editMode" type="button" @click="scrollTo('academic-history')">Academic History</button>
-      <button v-if="!editMode" type="button" @click="scrollTo('physical-record')">Physical Record</button>
-      <button
-        v-if="!editMode"
-        type="button"
-        @click="router.push({ name: 'student-documents', params: { id: student.id } })"
-      >
-        📁 Documents
-      </button>
-      <button v-if="!editMode" type="button" @click="showRecordActivity">Activity History</button>
-      <button v-if="!editMode" type="button" @click="router.push({ name: 'student-record-reports', query: { search: student.student_number } })">Reports</button>
-      <button v-if="editMode" type="button" @click="cancelEdit">Cancel</button>
-      <button v-if="editMode" class="back" type="button" :disabled="saving" @click="saveChanges">
-        {{ saving ? 'Saving…' : 'Save Changes' }}
-      </button>
-    </nav>
+    <div class="profile-toolbar">
+      <nav class="action-bar" aria-label="Student profile actions">
+        <button v-if="!editMode && !returnContext" class="back" type="button" @click="router.push({ name: 'student-management' })">
+          ← Students
+        </button>
+        <button v-if="!editMode" type="button" @click="startEdit">Edit profile</button>
+        <button v-if="editMode" type="button" @click="cancelEdit">Cancel</button>
+        <button v-if="editMode" class="back" type="button" :disabled="saving" @click="saveChanges">
+          {{ saving ? 'Saving…' : 'Save Changes' }}
+        </button>
+      </nav>
+      <details v-if="!editMode" class="profile-more-actions"><summary>More actions</summary><div><button type="button" @click="router.push({ name: 'student-record-reports', query: { search: student.student_number } })">Open reports</button><button type="button" @click="router.push({ name: 'student-documents', params: { id: student.id } })">Open document page</button></div></details>
+      <nav v-if="!editMode" class="profile-section-nav" aria-label="Student record sections">
+        <button v-for="section in profileSections" :key="section.id" type="button" :class="{ active: activeSection === section.id }" :aria-current="activeSection === section.id ? 'page' : undefined" @click="activeSection = section.id">{{ section.label }}</button>
+      </nav>
+    </div>
 
-    <section class="record-health" aria-label="Student record completeness">
+    <section v-show="activeSection === 'overview'" class="record-health" aria-label="Student record completeness">
       <div>
         <p class="section-kicker">Record health</p>
         <h2><span class="completeness-badge" :class="student.record_completeness?.status">{{ student.record_completeness?.label || 'Unavailable' }}</span></h2>
@@ -363,7 +431,7 @@ onMounted(loadProfile)
       <p v-else>All tracked Student Records information is complete.</p>
     </section>
 
-    <section v-if="canManagePhysicalRecords && activation && (activation.prepared || activation.eligible_to_prepare)" class="record-card account-activation-card" aria-label="Student account activation">
+    <section v-if="canManagePhysicalRecords && activation && (activation.prepared || activation.eligible_to_prepare)" v-show="activeSection === 'account'" class="record-card account-activation-card" aria-label="Student account activation">
       <h2>Account activation</h2>
       <p>Only inactive, never-used student accounts can be prepared. Verify the enrollment email against the original school record first.</p>
       <p v-if="activationError" role="alert" class="save-error">{{ activationError }}</p>
@@ -383,7 +451,7 @@ onMounted(loadProfile)
       <p v-else>This record has already been activated. Use the normal account recovery process for any later email change.</p>
     </section>
 
-    <section v-if="student.duplicate_warnings?.length" class="duplicate-warning" role="status">
+    <section v-if="student.duplicate_warnings?.length" v-show="activeSection === 'overview'" class="duplicate-warning" role="status">
       <strong>Possible duplicate identity — review only</strong>
       <p>This warning does not merge or change records.</p>
       <button v-for="warning in student.duplicate_warnings" :key="warning.student_id" type="button" @click="router.push({ name: 'student-details', params: { id: warning.student_id } })">
@@ -391,7 +459,7 @@ onMounted(loadProfile)
       </button>
     </section>
 
-    <section id="personal-information" class="record-card">
+    <section id="personal-information" v-show="activeSection === 'overview' || editMode" class="record-card">
       <h2>Personal Information</h2>
       <dl class="information-grid">
         <div>
@@ -455,7 +523,7 @@ onMounted(loadProfile)
       </dl>
     </section>
 
-    <section class="record-card">
+    <section v-show="activeSection === 'overview' || editMode" class="record-card">
       <h2>Contact Information</h2>
       <dl class="information-grid">
         <div>
@@ -479,8 +547,11 @@ onMounted(loadProfile)
       </dl>
     </section>
 
-    <section class="record-card">
-      <h2>Academic Information</h2>
+    <section v-show="activeSection === 'academic' || editMode" class="record-card academic-information-card">
+      <div class="section-heading"><div><p class="section-kicker">Student master record</p><h2>Academic Information</h2></div><button v-if="!editMode && !academicEditMode" type="button" :disabled="academicLoading" @click="startAcademicEdit">{{ academicLoading ? 'Loading…' : 'Correct information' }}</button></div>
+      <p class="academic-help">Course and curriculum come from the school catalog. Department follows the selected course; term and enrollment status come from enrollment records.</p>
+      <p v-if="academicError" class="save-error" role="alert">{{ academicError }}</p>
+      <p v-if="academicEditMode && academicOptions.identity_locked" class="academic-locked-note">Enrollment or grades are already linked. Course, curriculum, and year level are locked here; admission date may still be corrected.</p>
       <dl class="information-grid">
         <div>
           <dt>Student Number</dt>
@@ -488,19 +559,19 @@ onMounted(loadProfile)
         </div>
         <div>
           <dt>Course</dt>
-          <dd>{{ student.course?.code }} — {{ student.course?.name }}</dd>
+          <dd><select v-if="academicEditMode" v-model.number="academicForm.course_id" :disabled="academicOptions.identity_locked" @change="changeAcademicCourse"><option value="" disabled>Select course</option><option v-for="course in academicOptions.courses" :key="course.id" :value="course.id">{{ course.code }} — {{ course.name }}</option></select><template v-else>{{ student.course?.code }} — {{ student.course?.name }}</template><small v-if="academicValidationErrors.course_id">{{ academicValidationErrors.course_id[0] }}</small></dd>
         </div>
         <div>
           <dt>Curriculum</dt>
-          <dd>{{ student.curriculum?.code }} — {{ student.curriculum?.name }}</dd>
+          <dd><select v-if="academicEditMode" v-model.number="academicForm.curriculum_id" :disabled="academicOptions.identity_locked"><option value="" disabled>Select curriculum</option><option v-for="curriculum in selectedAcademicCourse?.curriculums || []" :key="curriculum.id" :value="curriculum.id">{{ curriculum.code }} — {{ curriculum.name }}</option></select><template v-else>{{ student.curriculum?.code }} — {{ student.curriculum?.name }}</template><small v-if="academicValidationErrors.curriculum_id">{{ academicValidationErrors.curriculum_id[0] }}</small></dd>
         </div>
         <div>
           <dt>Department</dt>
-          <dd>{{ student.department?.code }} — {{ student.department?.name }}</dd>
+          <dd>{{ academicEditMode ? (selectedAcademicCourse?.department?.code && `${selectedAcademicCourse.department.code} — ${selectedAcademicCourse.department.name}`) || 'Not assigned to course' : `${student.department?.code || '—'} — ${student.department?.name || 'Not assigned'}` }}</dd>
         </div>
         <div>
           <dt>Year Level</dt>
-          <dd>Year {{ student.current_enrollment?.year_level || student.year_level }}</dd>
+          <dd><select v-if="academicEditMode" v-model.number="academicForm.year_level" :disabled="academicOptions.identity_locked"><option v-for="level in selectedAcademicCourse?.years || 4" :key="level" :value="level">Year {{ level }}</option></select><template v-else>Year {{ student.current_enrollment?.year_level || student.year_level }}</template><small v-if="academicValidationErrors.year_level">{{ academicValidationErrors.year_level[0] }}</small></dd>
         </div>
         <div>
           <dt>Student Status</dt>
@@ -527,16 +598,17 @@ onMounted(loadProfile)
         </div>
         <div>
           <dt>Admission Date</dt>
-          <dd>{{ date(student.admission_date) }}</dd>
+          <dd><input v-if="academicEditMode" v-model="academicForm.admission_date" type="date" /><template v-else>{{ date(student.admission_date) }}</template><small v-if="academicValidationErrors.admission_date">{{ academicValidationErrors.admission_date[0] }}</small></dd>
         </div>
         <div>
           <dt>Enrollment Status</dt>
           <dd>{{ text(student.enrollment_status) }}</dd>
         </div>
       </dl>
+      <form v-if="academicEditMode" class="academic-correction-form" @submit.prevent="saveAcademic"><label>Reason for correction <textarea v-model.trim="academicForm.reason" required minlength="10" maxlength="500" rows="2" placeholder="Briefly cite the source record and why this correction is needed"></textarea><small v-if="academicValidationErrors.reason">{{ academicValidationErrors.reason[0] }}</small></label><p>Saving requires password confirmation and records the change in the audit history.</p><div><button type="button" :disabled="academicSaving" @click="academicEditMode = false">Cancel</button><button class="academic-save" type="submit" :disabled="academicSaving || !academicChanged || !academicForm.course_id || !academicForm.curriculum_id || !academicForm.admission_date || academicForm.reason.trim().length < 10">{{ academicSaving ? 'Saving…' : 'Save correction' }}</button></div></form>
     </section>
 
-    <section class="record-card">
+    <section v-show="activeSection === 'account'" class="record-card">
       <h2>Account Information</h2>
       <dl class="information-grid">
         <div>
@@ -562,7 +634,7 @@ onMounted(loadProfile)
       </dl>
     </section>
 
-    <section class="record-card">
+    <section v-show="activeSection === 'account'" class="record-card">
       <h2>Registrar Information</h2>
       <dl class="information-grid">
         <div>
@@ -580,7 +652,7 @@ onMounted(loadProfile)
       </dl>
     </section>
 
-    <section id="physical-record" class="record-card physical-location-card">
+    <section id="physical-record" v-show="activeSection === 'account'" class="record-card physical-location-card">
       <div class="section-heading">
         <div>
           <p class="section-kicker">Paper records storage</p>
@@ -662,7 +734,7 @@ onMounted(loadProfile)
       </form>
     </section>
 
-    <section id="student-documents" class="record-card">
+    <section id="student-documents" v-show="activeSection === 'documents'" class="record-card">
       <div class="section-heading">
         <h2>Document Records</h2>
         <button
@@ -696,12 +768,13 @@ onMounted(loadProfile)
       </div>
     </section>
 
-    <div id="academic-history">
+    <div id="academic-history" v-show="activeSection === 'academic'">
+      <div class="profile-subsection-heading"><div><p class="section-kicker">Official record</p><h2>Academic history and grades</h2></div><button type="button" @click="showRecordActivity">View activity</button></div>
       <StudentAcademicHistory ref="historyPanel" :student-id="student.id" />
     </div>
-    <HistoricalGradesPanel v-if="canManagePhysicalRecords" :student-id="student.id" :student-number="student.student_number" />
+    <div v-if="canManagePhysicalRecords" v-show="activeSection === 'academic'"><HistoricalGradesPanel :student-id="student.id" :student-number="student.student_number" /></div>
 
-    <section class="record-card">
+    <section v-show="activeSection === 'documents'" class="record-card">
       <h2>Recent Document Requests</h2>
       <p v-if="!student.recent_document_requests?.length" class="empty-state">
         No document requests recorded for this student.
@@ -1187,4 +1260,56 @@ onMounted(loadProfile)
     flex: 1;
   }
 }
+
+/* Focused record workspace: identity first, one task area at a time. */
+.student-id-card { box-shadow: 0 8px 24px rgba(16, 86, 50, .07); margin-bottom: 14px; }
+.id-card-banner { padding: 8px 20px; background: var(--color-dartmouth-green); }
+.id-card-banner span { font-size: .8rem; }
+.id-card-banner strong { font-size: .68rem; }
+.id-card-body { gap: 18px; padding: 18px 22px; background: var(--color-surface); }
+.id-photo-frame { width: 72px; height: 72px; border: 0; border-radius: 14px; box-shadow: none; }
+.photo-placeholder { font-size: 1.35rem; }
+.id-identity h2 { font-size: clamp(1.4rem, 2.5vw, 1.8rem); margin: 1px 0; }
+.id-number { font-size: .88rem; margin-bottom: 10px; }
+.id-facts { grid-template-columns: minmax(150px, 1.7fr) minmax(80px, .55fr) minmax(110px, .7fr); gap: 12px; }
+.id-facts div { border-left: 0; padding-left: 0; }
+.id-facts span { font-size: .65rem; }
+.id-account { align-self: center; text-align: left; box-shadow: none; }
+.profile-toolbar { display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-bottom: 18px; }
+.profile-toolbar .action-bar { margin: 0; }
+.profile-toolbar .action-bar button, .profile-more-actions summary { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 9px; color: var(--accent); font-weight: 700; }
+.profile-toolbar .action-bar .back { background: var(--color-dartmouth-green); border-color: var(--color-dartmouth-green); color: #fff; }
+.profile-more-actions { position: relative; z-index: 3; }
+.profile-more-actions summary { cursor: pointer; display: flex; align-items: center; min-height: 40px; padding: 8px 13px; list-style: none; }
+.profile-more-actions summary::-webkit-details-marker { display: none; }
+.profile-more-actions summary::after { content: '⌄'; padding-left: 8px; }
+.profile-more-actions > div { position: absolute; right: 0; top: calc(100% + 5px); display: grid; min-width: 205px; padding: 5px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); box-shadow: 0 12px 30px rgba(0,0,0,.12); }
+.profile-more-actions button { border: 0; border-radius: 6px; padding: 10px; background: transparent; color: var(--color-eerie-black); font: inherit; text-align: left; cursor: pointer; }
+.profile-more-actions button:hover { background: var(--color-green-tint); }
+.profile-section-nav { grid-column: 1 / -1; display: flex; gap: 5px; overflow-x: auto; padding: 5px; border: 1px solid var(--color-border); border-radius: 11px; background: var(--color-surface); }
+.profile-section-nav button { flex: 1 0 auto; min-height: 40px; padding: 8px 14px; border: 0; border-radius: 8px; background: transparent; color: var(--color-muted); font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.profile-section-nav button:hover { background: var(--color-green-tint); color: var(--accent); }
+.profile-section-nav button.active { background: var(--color-dartmouth-green); color: #fff; }
+.profile-section-nav button:focus-visible, .profile-more-actions summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.record-card, .record-health { box-shadow: none; }
+.information-grid div { background: var(--surface-2, var(--color-anti-flash-white)); border: 1px solid var(--color-border); border-radius: 9px; }
+.record-health { grid-template-columns: minmax(150px, .35fr) 1fr; }
+.record-health ul { display: grid; gap: 5px; }
+.profile-subsection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 0 12px; }
+.profile-subsection-heading h2 { margin: 3px 0 0; font-size: 1.2rem; }
+.profile-subsection-heading button { border: 1px solid var(--color-border); border-radius: 8px; padding: 8px 12px; background: var(--color-surface); color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
+.academic-information-card .section-heading { margin-bottom: 9px; }
+.academic-help { margin: 0 0 16px; color: var(--color-muted); font-size: .85rem; line-height: 1.5; }
+.academic-locked-note { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--surface-2); color: var(--color-muted); font-size: .84rem; }
+.academic-correction-form { display: grid; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+.academic-correction-form label { display: grid; gap: 6px; max-width: 650px; font-size: .84rem; font-weight: 700; }
+.academic-correction-form textarea { width: 100%; border: 1px solid var(--color-border); border-radius: 8px; padding: 10px; background: var(--color-surface); color: var(--color-eerie-black); font: inherit; }
+.academic-correction-form small { color: #9c2222; }
+.academic-correction-form p { margin: 0; color: var(--color-muted); font-size: .8rem; }
+.academic-correction-form > div { display: flex; justify-content: flex-end; gap: 8px; }
+.academic-correction-form button { border: 1px solid var(--color-border); border-radius: 8px; padding: 9px 14px; background: var(--color-surface); color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
+.academic-correction-form .academic-save { border-color: var(--color-dartmouth-green); background: var(--color-dartmouth-green); color: #fff; }
+.academic-correction-form button:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 700px) { .profile-toolbar { grid-template-columns: 1fr auto; } .id-card-body { grid-template-columns: auto 1fr; } .id-account { grid-column: 1 / -1; } .id-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .id-card-body { grid-template-columns: auto 1fr; padding: 16px; } .id-facts { grid-template-columns: 1fr; } .profile-toolbar .action-bar button { flex: initial; } .record-health { grid-template-columns: 1fr; } .profile-section-nav button { flex-grow: 0; } }
 </style>

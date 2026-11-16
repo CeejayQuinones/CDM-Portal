@@ -6,6 +6,9 @@ const storageKeys = {
   Admin: 'cdm-admin-appearance',
 }
 const AUTH_STORAGE_KEY = 'cdm_portal_auth'
+let appearanceRevision = 0
+
+export const portalAppearanceRevision = () => appearanceRevision
 
 export function portalAppearanceStorageKey(role, account) {
   if (!storageKeys[role] || account === undefined || account === null || account === '') return null
@@ -28,6 +31,7 @@ export function persistPortalAppearance(appearance, role, account, storage = loc
   const theme = previewPortalAppearance(appearance, target)
   const key = portalAppearanceStorageKey(role, account)
   if (key) storage.setItem(key, theme)
+  appearanceRevision += 1
   return theme
 }
 

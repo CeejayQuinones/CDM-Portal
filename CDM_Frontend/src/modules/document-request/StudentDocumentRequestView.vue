@@ -535,7 +535,7 @@ onMounted(refresh)
         <DocumentRequestEmptyState v-if="!selectedRequest.appointments?.length" message="Not assigned yet." />
         <ul v-else class="student-request-appointments">
           <li v-for="appointment in selectedRequest.appointments" :key="appointment.id">
-            <span><strong>{{ formatDate(appointment.appointment_date) }} · {{ formatTime(appointment.appointment_time) }}</strong><small v-if="appointment.remarks">{{ appointment.remarks }}</small></span>
+            <span><strong>{{ formatDate(appointment.appointment_date) }} · {{ formatTime(appointment.appointment_time) }}</strong><small v-if="appointment.service_window">{{ appointment.service_window }}</small><small v-if="appointment.remarks">{{ appointment.remarks }}</small></span>
             <span class="student-appointment-record-actions">
               <span class="badge" :class="appointment.status">{{ formatStatus(appointment.status) }}</span>
             </span>

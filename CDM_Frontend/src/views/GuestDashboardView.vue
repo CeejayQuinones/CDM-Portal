@@ -9,7 +9,7 @@ import { getPortalNotices } from '../services/portalNoticeService'
 
 const authStore = useAuthStore()
 const GuestWebsiteDashboard = defineAsyncComponent(() => import('../modules/dashboard/GuestWebsiteDashboard.vue'))
-const isWebsitePresentation = clientPlatform === 'web'
+const isWebsitePresentation = clientPlatform === 'web' || clientPlatform === 'mobile'
 const displayName = computed(() => {
   const profile = authStore.currentUser?.profile
   return [profile?.first_name, profile?.last_name].filter(Boolean).join(' ')

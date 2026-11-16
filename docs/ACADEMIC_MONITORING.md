@@ -1,5 +1,8 @@
 # Academic Monitoring
 
+> Historical design document. The Phase 3 AI Help section below is not part of the
+> current application's active routes or user interface; do not configure or deploy it.
+
 ## Phase 1, Phase 2, and Phase 3 scope
 
 Academic Monitoring Phase 1 provides a read-only academic risk overview for:

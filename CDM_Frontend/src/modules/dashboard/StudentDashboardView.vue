@@ -13,7 +13,7 @@ const error = ref('')
 const dashboard = ref({ identity: {}, summary: {}, has_finalized_enrollment: false })
 const notices = ref([])
 const enrollment = ref(null)
-const isWebsitePresentation = clientPlatform === 'web'
+const isWebsitePresentation = clientPlatform === 'web' || clientPlatform === 'mobile'
 const cards = computed(() => [
   { label: 'Enrollment', value: formatDashboardStatus(dashboard.value.summary.enrollment_status) },
   { label: 'Academic term', value: dashboard.value.summary.academic_term || 'No current term' },

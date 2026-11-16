@@ -4,6 +4,8 @@ namespace App\Services;
 
 class RegistrarWindowService
 {
+    public const WINDOWS = ['Window 1', 'Window 2', 'Window 3', 'Window 4'];
+
     private const WINDOW_4 = [
         'certified true copy', 'certification authentication and verification', 'cav',
         'course description', 'general weighted average', 'gwa', 'nstp serial number',
@@ -29,5 +31,16 @@ class RegistrarWindowService
         }
 
         return 'Window 1 or 2';
+    }
+
+    /** @return list<string> */
+    public function optionsForDocument(string $name, ?string $configuredWindow = null): array
+    {
+        if ($configuredWindow && in_array($configuredWindow, self::WINDOWS, true)) {
+            return [$configuredWindow];
+        }
+        $window = $this->forDocument($name);
+
+        return $window === 'Window 1 or 2' ? ['Window 1', 'Window 2'] : [$window];
     }
 }

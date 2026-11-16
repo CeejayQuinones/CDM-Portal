@@ -9,6 +9,7 @@ use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class AccountProvisioningService
 {
@@ -191,7 +192,7 @@ class AccountProvisioningService
         $role = Role::query()->where('role_name', $roleName)->firstOrFail();
 
         return User::query()->create([
-            'username' => $data['username'],
+            'username' => $roleName === Role::PROFESSOR ? 'prof-'.Str::ulid() : $data['username'],
             'password' => Hash::make($data['password']),
             'role_id' => $role->id,
             'status' => $data['status'],
@@ -208,12 +209,17 @@ class AccountProvisioningService
     /** @param array<string, mixed> $data */
     private function updateIdentity(User $user, array $data): void
     {
-        $updates = ['username' => $data['username']];
+        $updates = [];
+        if (array_key_exists('username', $data)) {
+            $updates['username'] = $data['username'];
+        }
         if (filled($data['password'] ?? null)) {
             $updates['password'] = Hash::make($data['password']);
             $updates['is_first_login'] = true;
         }
-        $user->update($updates);
+        if ($updates !== []) {
+            $user->update($updates);
+        }
         if (array_key_exists('password', $updates)) {
             $user->tokens()->delete();
             $this->invalidateLoginChallenges($user);

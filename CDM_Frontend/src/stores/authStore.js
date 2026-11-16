@@ -101,9 +101,9 @@ export const useAuthStore = defineStore('auth', () => {
     return data.data.user
   }
 
-  const exchangeGoogleCode = async (code, turnstileToken) => {
+  const exchangeGoogleCode = async (code) => {
     setPendingLoginChallenge(null)
-    const { data } = await apiClient.post('/auth/google/exchange', { code, turnstile_token: turnstileToken })
+    const { data } = await apiClient.post('/auth/google/exchange', { code })
     if (data.data.requires_otp) {
       setPendingLoginChallenge(data.data)
       return { requiresOtp: true, challenge: data.data }

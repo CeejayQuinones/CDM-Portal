@@ -49,13 +49,20 @@ class GradingWorkflowService
         $weights = [];
         foreach (['midterm', 'finals'] as $period) {
             $rows = $sheet->weights->where('period', $period)->sortBy('category');
-            if ($rows->count() !== count(GradingService::CATEGORIES) || $rows->sum(fn ($row) => $this->scaled($row->weight_percentage)) !== 10000) {
+            if (array_diff(GradingService::CATEGORIES, $rows->pluck('category')->all()) || $rows->sum(fn ($row) => $this->scaled($row->weight_percentage)) !== 10000) {
                 $errors[] = ucfirst($period).' category weights must contain all categories and total 100%.';
             }
             $weights[$period] = $rows->mapWithKeys(fn ($row) => [$row->category => $this->scaled($row->weight_percentage)])->all();
             $periodAssessments = $sheet->assessments->where('period', $period);
             if ($periodAssessments->isEmpty()) {
                 $errors[] = ucfirst($period).' requires active assessments.';
+            }
+            foreach ($periodAssessments as $assessment) {
+                if (! array_key_exists($assessment->category, $weights[$period])) {
+                    $errors[] = ucfirst($period).' '.$assessment->label.' has no configured category weight.';
+                } elseif ($weights[$period][$assessment->category] <= 0) {
+                    $errors[] = ucfirst($period).' '.$assessment->category.' has 0% weight. Set a positive category weight before submitting grades.';
+                }
             }
             foreach ($weights[$period] as $category => $weight) {
                 if ($weight > 0 && $periodAssessments->where('category', $category)->isEmpty()) {
@@ -89,6 +96,9 @@ class GradingWorkflowService
                         $scoreValue = $this->scaled($score->score);
                         if ($scoreValue < 0 || $scoreValue > $this->scaled($assessment->max_score)) {
                             $errors[] = $student->student_number.' has an invalid score for '.$assessment->label.'.';
+                        }
+                        if ($scoreValue === 0) {
+                            $errors[] = $student->student_number.' has 0 for '.$assessment->label.' (INC). Complete this score before submission.';
                         }
                         $earned += $scoreValue;
                     }
@@ -336,7 +346,12 @@ class GradingWorkflowService
     {
         $assignment = $sheet->sectionSubject;
 
-        return EnrollmentSubject::query()->from('enrollment_subjects as es')->join('enrollments as e', 'e.id', '=', 'es.enrollment_id')->join('students as s', 's.id', '=', 'e.student_id')->join('user_profiles as up', 'up.id', '=', 's.user_profile_id')->where('e.section_id', $assignment->section_id)->where('es.subject_id', $assignment->subject_id)->whereIn('e.status', ['enrolled', 'completed'])->whereIn('es.subject_status', ['enrolled', 'completed'])->orderBy('up.last_name')->orderBy('up.first_name')->select(['es.id as enrollment_subject_id', 's.id as student_id', 's.student_number', 'up.first_name', 'up.middle_name', 'up.last_name']);
+        return EnrollmentSubject::query()->from('enrollment_subjects as es')->join('enrollments as e', 'e.id', '=', 'es.enrollment_id')->join('students as s', 's.id', '=', 'e.student_id')->join('user_profiles as up', 'up.id', '=', 's.user_profile_id')
+            ->where('es.subject_id', $assignment->subject_id)
+            ->where(fn ($roster) => $roster->where('es.section_subject_id', $assignment->id)
+                ->orWhere(fn ($home) => $home->whereNull('es.section_subject_id')
+                    ->where('e.section_id', $assignment->section_id)))
+            ->whereIn('e.status', ['enrolled', 'completed'])->whereIn('es.subject_status', ['enrolled', 'completed'])->orderBy('up.last_name')->orderBy('up.first_name')->select(['es.id as enrollment_subject_id', 's.id as student_id', 's.student_number', 'up.first_name', 'up.middle_name', 'up.last_name']);
     }
 
     private function checksum(array $configuration, array $results): string

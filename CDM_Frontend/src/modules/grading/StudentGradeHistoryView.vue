@@ -114,9 +114,9 @@ onMounted(() => Promise.all([loadStudents(), loadOptions()]))
   <main class="grading-page grade-history-page">
     <header class="grading-hero">
       <div>
-        <p class="grading-eyebrow">Official published records</p>
+        <p class="grading-eyebrow">Official academic records</p>
         <h1>Student Grade History</h1>
-        <p>Find a student and review released grades from immutable grading snapshots.</p>
+        <p>Review published CDM grade sheets and verified grades imported from earlier records.</p>
       </div>
     </header>
 
@@ -186,7 +186,7 @@ onMounted(() => Promise.all([loadStudents(), loadOptions()]))
       <button class="grading-back" type="button" @click="closeStudent">← Back to student search</button>
       <section class="grade-history-student-heading">
         <div>
-          <p class="grading-eyebrow">Published grade history</p>
+          <p class="grading-eyebrow">Academic grade history</p>
           <h2>{{ selectedStudent.full_name }}</h2>
           <p>{{ selectedStudent.student_number }} · {{ selectedStudent.current_enrollment?.course?.code || selectedStudent.course?.code || 'Program not assigned' }}</p>
         </div>
@@ -212,7 +212,7 @@ onMounted(() => Promise.all([loadStudents(), loadOptions()]))
       <div v-if="detailLoading" class="grading-state">Loading published grades…</div>
       <div v-else-if="!grades?.grades?.length" class="grading-state">
         <strong>No published grades</strong>
-        <span>No official released grades are available for this student and term.</span>
+        <span>No CDM-published grades for this term. {{ grades?.historical_grades?.length ? `${grades.historical_grades.length} verified previous grade(s) appear below.` : 'There are no verified previous grades for this term either.' }}</span>
       </div>
       <template v-else>
         <section class="grading-summary grade-history-summary">
@@ -232,6 +232,27 @@ onMounted(() => Promise.all([loadStudents(), loadOptions()]))
           </table>
         </div>
       </template>
+      <section class="grade-history-previous" aria-label="Verified previous grades">
+        <div>
+          <p class="grading-eyebrow">Registrar-verified records</p>
+          <h3>Previous grades <small v-if="grades?.historical_grades?.length">({{ grades.historical_grades.length }})</small></h3>
+          <p>Imported grades are separate from CDM-published professor grade sheets.</p>
+        </div>
+        <p v-if="detailLoading">Loading previous grades…</p>
+        <p v-else-if="!grades?.historical_grades?.length">No verified previous grades for this term.</p>
+        <div v-else class="grading-table-wrap grade-history-detail-table">
+          <table>
+            <thead><tr><th>Subject</th><th>Final grade</th><th>Official result</th><th>Credited units</th><th>Source reference</th></tr></thead>
+            <tbody><tr v-for="record in grades.historical_grades" :key="record.id"><td><strong>{{ record.subject_code }}</strong><br>{{ record.subject_name }}</td><td>{{ record.final_grade }}</td><td>{{ record.official_result }}</td><td>{{ record.credited_units }}</td><td>{{ record.source_reference }}</td></tr></tbody>
+          </table>
+        </div>
+      </section>
     </template>
   </main>
 </template>
+
+<style scoped>
+.grade-history-previous { display: grid; gap: 12px; margin-top: 20px; padding: 20px; border: 1px solid var(--color-border, #dce4e0); border-radius: 16px; background: var(--color-surface, #fff); }
+.grade-history-previous h3, .grade-history-previous p { margin: 0; }
+.grade-history-previous table { min-width: 580px; }
+</style>

@@ -471,7 +471,6 @@
 
 .google-sign-in-button:disabled { cursor: wait; opacity: 0.58; box-shadow: none; }
 .google-sign-in-icon { width: 20px; height: 20px; flex: 0 0 20px; }
-.google-account-note { margin: 0.65rem auto 0; max-width: 280px; color: #66736d; font-size: 0.74rem; line-height: 1.42; text-align: center; }
 .google-divider { margin: 18px 0 14px; color: #75817b; }
 .guest-divider { margin: 18px 0 14px; }
 

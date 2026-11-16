@@ -10,7 +10,7 @@ use App\Models\User;
 
 class AdmissionRecommendationService
 {
-    public function __construct(private AdmissionExamService $exams, private ProgramMatcher $matcher, private ProgramRecommendationAI $ai) {}
+    public function __construct(private AdmissionExamService $exams, private ProgramMatcher $matcher) {}
 
     public function recommend(User $user, ?array $interests = null): array
     {
@@ -28,24 +28,13 @@ class AdmissionRecommendationService
                 'id' => $s->course_id, 'code' => $s->course->course_code, 'name' => $s->course->course_name,
                 'description' => $s->description, 'subjects' => $s->subjects, 'career_paths' => $s->career_paths, 'recommendation_profile' => $s->recommendation_profile,
             ])->sortBy('code')->values()->all();
-        $fingerprint = hash('sha256', json_encode([ProgramMatcher::VERSION, $result->id, $result->version, $result->category_scores, $result->category_maximums, $ratings, $catalog, config('admission.gemini.model')]));
+        $fingerprint = hash('sha256', json_encode([ProgramMatcher::VERSION, $result->id, $result->version, $result->category_scores, $result->category_maximums, $ratings, $catalog]));
         $existing = AdmissionRecommendation::where('result_id', $result->id)->where('input_fingerprint', $fingerprint)->first();
         if ($existing) {
             return $this->safe($result, $existing->explanations, $existing->interests);
         }
         $matches = $this->matcher->match($result->category_scores, $result->category_maximums, $ratings, $catalog);
-        $matches['ai_status'] = 'not_requested';
-        if ($interests !== null && $matches['status'] === 'ready') {
-            try {
-                $matches['ai_explanations'] = $this->ai->explain($matches, $ratings, $catalog);
-                $matches['ai_status'] = 'generated';
-            } catch (\Throwable $e) {
-                // Do not log evidence, provider responses or credentials.
-                $matches['ai_status'] = 'unavailable';
-            }
-        }
-
-        // Provider runs outside locks. Recheck publication/version/latest attempt before saving.
+        // Recheck publication/version/latest attempt before saving.
         return $this->exams->locked($user, function ($actor) use ($result, $fingerprint, $catalog, $ratings, $matches, $interests) {
             AdmissionAccess::require($actor, $interests === null ? 'read' : 'write');
             $current = $this->exams->published($actor)['result'];
@@ -56,8 +45,8 @@ class AdmissionRecommendationService
             }
             $row = AdmissionRecommendation::firstOrCreate(['result_id' => $result->id, 'input_fingerprint' => $fingerprint], [
                 'result_version' => $result->version, 'interests' => $ratings, 'catalog_snapshot' => $catalog, 'matcher_version' => ProgramMatcher::VERSION,
-                'model_name' => $matches['ai_status'] === 'generated' ? config('admission.gemini.model') : null,
-                'generation_status' => $matches['status'] === 'ready' ? 'ready' : 'unavailable', 'ai_status' => $matches['ai_status'],
+                'model_name' => null,
+                'generation_status' => $matches['status'] === 'ready' ? 'ready' : 'unavailable', 'ai_status' => 'not_used',
                 'ranked_programs' => $matches['ranked_programs'], 'evidence' => $matches['evidence'], 'explanations' => $matches,
                 'top_course_id' => count($matches['tied_top_codes'] ?? []) === 1 ? $matches['ranked_programs'][0]['course_id'] : null, 'generated_at' => now(),
             ]);
@@ -68,8 +57,10 @@ class AdmissionRecommendationService
 
     private function safe(AdmissionExamResult $result, array $matches, array $interests): array
     {
+        // Older saved recommendations may still contain generated text; never expose it.
+        unset($matches['ai_explanations'], $matches['ai_status']);
         if ($result->registrar_pass) {
-            unset($matches['evidence'],$matches['ai_explanations']);
+            unset($matches['evidence']);
             $matches['ranked_programs'] = array_map(fn ($p) => array_intersect_key($p, array_flip(['course_id', 'course_code', 'course_name'])), $matches['ranked_programs']);
         }
 

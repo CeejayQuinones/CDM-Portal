@@ -57,12 +57,12 @@ class StudentAccountActivationTest extends TestCase
         $this->assertSame('inactive', $student->user->fresh()->status);
         $this->postJson('/api/student-account/activate', [
             'student_number' => '26-30001', 'email' => 'wrong@gmail.com', 'verification_token' => $token,
-            'username' => 'claimedstudent', 'password' => 'SecurePassword123!',
+            'password' => 'SecurePassword123!',
             'password_confirmation' => 'SecurePassword123!',
         ])->assertUnprocessable();
         $this->postJson('/api/student-account/activate', [
             'student_number' => '26-30001', 'email' => 'original@gmail.com', 'verification_token' => $token,
-            'username' => 'claimedstudent', 'password' => 'SecurePassword123!',
+            'password' => 'SecurePassword123!',
             'password_confirmation' => 'SecurePassword123!',
         ])->assertOk();
         $this->assertSame('active', $student->user->fresh()->status);
@@ -71,8 +71,11 @@ class StudentAccountActivationTest extends TestCase
         $this->getJson('/api/me')->assertUnauthorized();
         $this->travel(61)->seconds();
         config(['mail.default' => 'smtp']);
+        $this->postJson('/api/login', [
+            'username' => $student->user->username, 'password' => 'SecurePassword123!',
+        ])->assertUnauthorized();
         $challenge = $this->postJson('/api/login', [
-            'username' => 'claimedstudent', 'password' => 'SecurePassword123!',
+            'username' => '26-30001', 'password' => 'SecurePassword123!',
         ])->assertAccepted();
         $this->getJson('/api/me')->assertUnauthorized();
         $loginCode = null;
@@ -87,7 +90,7 @@ class StudentAccountActivationTest extends TestCase
         $this->travel(61)->seconds();
         $this->postJson('/api/student-account/activate', [
             'student_number' => '26-30001', 'email' => 'original@gmail.com', 'verification_token' => $token,
-            'username' => 'anotherstudent', 'password' => 'SecurePassword123!',
+            'password' => 'SecurePassword123!',
             'password_confirmation' => 'SecurePassword123!',
         ])->assertUnprocessable();
     }

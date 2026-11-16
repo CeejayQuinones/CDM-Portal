@@ -162,7 +162,7 @@ class StudentDocumentDemoFixtureService
         }
 
         return [
-            'document' => $document->fresh(['documentType', 'aiAnalysis']),
+            'document' => $document->fresh(['documentType']),
             'sample' => $sample,
             'expected_document_type' => $expectedDocumentType,
         ];

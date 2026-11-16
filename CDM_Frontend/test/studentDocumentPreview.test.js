@@ -34,13 +34,9 @@ test('image preview opens an accessible full-screen viewer with keyboard and bac
   assert.match(source, /viewerTrigger\?\.focus\?\.\(\)/)
 })
 
-test('upload replacement refreshes preview and AI support copy names only current types', () => {
+test('upload replacement refreshes preview without document-analysis controls', () => {
   assert.match(source, /await loadDocumentPreview\(data\.data, true\)/)
-  assert.match(
-    source,
-    /Currently supports Form 137, Good Moral Certificate, and Certificate of Enrollment\. Missing and unsupported documents are skipped\./,
-  )
-  assert.doesNotMatch(source, /Currently supports Birth Certificate/)
+  assert.doesNotMatch(source, /analyze-all|ai_analysis|AI document analysis/i)
 })
 
 test('document cards stack their left-side preview at narrow widths and stay overflow-safe', () => {

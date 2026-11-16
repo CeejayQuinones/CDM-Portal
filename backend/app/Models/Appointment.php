@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Appointment extends Model
 {
-    protected $fillable = ['student_id', 'document_request_id', 'registrar_staff_id', 'appointment_date', 'appointment_time', 'purpose', 'status', 'remarks', 'active_slot_key', 'completed_at', 'cancelled_at'];
+    protected $fillable = ['student_id', 'document_request_id', 'registrar_staff_id', 'appointment_date', 'appointment_time', 'service_window', 'purpose', 'status', 'remarks', 'active_slot_key', 'completed_at', 'cancelled_at'];
 
     protected function casts(): array
     {

@@ -1,9 +1,9 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, toRef, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { destinationContainsDesktopRoute } from '../../config/desktopNavigation'
-import { persistPortalAppearance } from '../../composables/portalAppearance'
-import logoUrl from '../../assets/styles/images/cdm-seal.png'
+import { usePortalThemeToggle } from '../../composables/usePortalThemeToggle'
+import logoUrl from '../../assets/styles/images/cdm_logo.png'
 
 const props = defineProps({
   modules: { type: Array, default: () => [] },
@@ -13,47 +13,15 @@ const props = defineProps({
   mobileDrawer: { type: Boolean, default: false },
   drawerOpen: { type: Boolean, default: false },
   appearanceAccount: { type: [String, Number], default: null },
+  appearanceRole: { type: String, default: 'Registrar Staff' },
 })
-const emit = defineEmits(['select', 'close'])
+const emit = defineEmits(['select', 'close', 'theme-change'])
 const router = useRouter()
 const route = useRoute()
 const expandedModule = ref(null)
 const drawerClose = ref(null)
 const sidebar = ref(null)
-const selectedTheme = ref('system')
-const systemDark = ref(false)
-const effectiveDark = computed(() => selectedTheme.value === 'dark' || (selectedTheme.value === 'system' && systemDark.value))
-const themeAction = computed(() => effectiveDark.value ? 'Switch to Light Mode' : 'Switch to Dark Mode')
-let themeObserver
-let themeMedia
-
-function syncTheme() {
-  if (typeof document !== 'undefined') selectedTheme.value = document.documentElement.dataset.studentTheme || 'system'
-}
-
-function syncSystemTheme(event) { systemDark.value = event.matches }
-
-function toggleTheme() {
-  if (!props.registrarPresentation) return
-  selectedTheme.value = persistPortalAppearance(effectiveDark.value ? 'light' : 'dark', 'Registrar Staff', props.appearanceAccount) || selectedTheme.value
-}
-
-onMounted(() => {
-  if (!props.registrarPresentation || typeof document === 'undefined') return
-  syncTheme()
-  themeObserver = new MutationObserver(syncTheme)
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-student-theme'] })
-  themeMedia = window.matchMedia?.('(prefers-color-scheme: dark)')
-  if (themeMedia) {
-    systemDark.value = themeMedia.matches
-    themeMedia.addEventListener?.('change', syncSystemTheme)
-  }
-})
-
-onBeforeUnmount(() => {
-  themeObserver?.disconnect()
-  themeMedia?.removeEventListener?.('change', syncSystemTheme)
-})
+const { effectiveDark, themeAction, toggleTheme } = usePortalThemeToggle(toRef(props, 'appearanceRole'), toRef(props, 'appearanceAccount'), theme => emit('theme-change', theme))
 
 const icons = {
   'registrar-dashboard': 'M4 13h6V4H4v9Zm10 7h6v-9h-6v9ZM4 20h6v-3H4v3Zm10-13h6V4h-6v3Z',
@@ -129,12 +97,10 @@ defineExpose({ focusDrawerClose: () => nextTick(() => drawerClose.value?.focus()
         </template>
       </template>
     </nav>
-    <nav v-if="utilityModules.length" class="registrar-sidebar-footer" aria-label="Registrar account">
+    <nav class="registrar-sidebar-footer" aria-label="Registrar account">
       <p class="registrar-sidebar-section">ACCOUNT</p>
-      <button class="registrar-sidebar-entry registrar-theme-shortcut" type="button" :aria-label="themeAction" :title="themeAction" @click="toggleTheme">
-        <svg v-if="effectiveDark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></svg>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z" /></svg>
-        <span>{{ themeAction }}</span>
+      <button class="registrar-theme-shortcut" type="button" :aria-label="themeAction" :aria-pressed="effectiveDark" :title="themeAction" @click="toggleTheme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z" /></svg>
       </button>
       <RouterLink v-for="module in utilityModules" :key="module.name" :to="module.destinations[0].path" class="registrar-sidebar-entry" :class="{ active: isActive(module) }" :aria-current="isActive(module) ? 'page' : undefined" @click="closeDrawer">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" /></svg><span>{{ module.label }}</span>
@@ -148,7 +114,10 @@ defineExpose({ focusDrawerClose: () => nextTick(() => drawerClose.value?.focus()
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" /></svg><span class="desktop-rail-tooltip" role="tooltip">{{ module.label }}</span>
       </button>
     </nav>
-    <nav v-if="utilityModules.length" class="desktop-rail-utilities" aria-label="Workspace settings">
+    <nav class="desktop-rail-utilities" aria-label="Workspace settings">
+      <button type="button" class="desktop-rail-action desktop-theme-shortcut" :aria-label="themeAction" :aria-pressed="effectiveDark" :title="themeAction" @click="toggleTheme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z" /></svg>
+      </button>
       <button v-for="module in utilityModules" :key="module.name" type="button" class="desktop-rail-action" :class="{ active: isActive(module) }" :aria-label="module.label" :title="module.label" @click="select(module)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path :d="iconFor(module.name)" stroke-linecap="round" stroke-linejoin="round" /></svg><span class="desktop-rail-tooltip" role="tooltip">{{ module.label }}</span>
       </button>

@@ -47,6 +47,8 @@ export const documentRequestService = {
     (await apiClient.patch('/registrar/appointment-availability/settings', payload)).data,
   registrarCalendar: (month) => unwrap(apiClient.get('/registrar/appointment-availability/calendar', { params: { month } })),
   updateDateCapacity: (date, capacity) => unwrap(apiClient.put(`/registrar/appointment-availability/capacity/${date}`, { capacity })),
+  updateWindowCapacity: (date, window, capacity) => unwrap(apiClient.put(`/registrar/appointment-availability/capacity/${date}/windows/${encodeURIComponent(window)}`, { capacity })),
+  updateWindowDefault: (window, capacity) => unwrap(apiClient.put(`/registrar/appointment-availability/windows/${encodeURIComponent(window)}/default`, { capacity })),
   appointmentBlockedDates: () => unwrap(apiClient.get('/registrar/appointment-blocked-dates')),
   createAppointmentBlockedDate: async (payload) =>
     (await apiClient.post('/registrar/appointment-blocked-dates', payload)).data,

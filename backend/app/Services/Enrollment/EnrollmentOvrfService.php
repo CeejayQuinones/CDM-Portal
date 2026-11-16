@@ -37,6 +37,9 @@ class EnrollmentOvrfService
             'semester',
             'application.course.department',
             'enrollmentSubjects.subject',
+            'enrollmentSubjects.teachingAssignment.section',
+            'enrollmentSubjects.teachingAssignment.meetings',
+            'enrollmentSubjects.teachingAssignment.professor.user.profile',
         ])->find($enrollmentId);
 
         if (! $enrollment) {
@@ -62,7 +65,7 @@ class EnrollmentOvrfService
         $course = $enrollment->application?->course ?? $enrollment->section?->course ?? $enrollment->student->course;
         $classification = $enrollment->application?->classification;
         $subjects = $enrollment->enrollmentSubjects->map(function ($enrollmentSubject) use ($schedules, $enrollment): array {
-            $schedule = $schedules->get($enrollmentSubject->subject_id);
+            $schedule = $enrollmentSubject->teachingAssignment ?: $schedules->get($enrollmentSubject->subject_id);
             $meetings = $schedule?->meetings
                 ?->filter(fn ($meeting): bool => filled($meeting->day)
                     && filled($meeting->start_time)
@@ -88,7 +91,7 @@ class EnrollmentOvrfService
             return [
                 'code' => $enrollmentSubject->subject->subject_code,
                 'title' => $enrollmentSubject->subject->subject_name,
-                'section' => $enrollment->section->section_name,
+                'section' => $schedule?->section?->section_name ?? $enrollment->section->section_name,
                 'units' => (float) $enrollmentSubject->subject->units,
                 'lecture_hours' => $enrollmentSubject->subject->lecture_hours,
                 'laboratory_hours' => $enrollmentSubject->subject->laboratory_hours,

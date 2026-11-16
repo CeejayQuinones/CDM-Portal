@@ -238,13 +238,14 @@ class StudentRecordReportService
         $query
             ->when($filters['academic_year_id'] ?? null, fn (Builder $q, int $id) => $q->where('academic_year_id', $id))
             ->when($filters['semester_id'] ?? null, fn (Builder $q, int $id) => $q->where('semester_id', $id))
-            ->when($filters['section_id'] ?? null, fn (Builder $q, int $id) => $q->where('section_id', $id));
+            ->when($filters['section_id'] ?? null, fn (Builder $q, int $id) => $q->where('section_id', $id))
+            ->when($filters['enrollment_status'] ?? null, fn (Builder $q, string $status) => $q->where('status', $status));
     }
 
     /** @param array<string, mixed> $filters */
     private function hasEnrollmentFilters(array $filters): bool
     {
-        return isset($filters['academic_year_id']) || isset($filters['semester_id']) || isset($filters['section_id']);
+        return isset($filters['academic_year_id']) || isset($filters['semester_id']) || isset($filters['section_id']) || isset($filters['enrollment_status']);
     }
 
     private function studentIdentity(Student $student, ?Enrollment $enrollment): array
@@ -367,7 +368,7 @@ class StudentRecordReportService
     public function filterLabels(array $filters): array
     {
         $labels = [];
-        foreach (['search', 'student_number', 'year_level', 'availability', 'action_type', 'date_from', 'date_to'] as $key) {
+        foreach (['search', 'student_number', 'year_level', 'enrollment_status', 'availability', 'action_type', 'date_from', 'date_to'] as $key) {
             if (isset($filters[$key]) && $filters[$key] !== '') {
                 $labels[$key] = (string) $filters[$key];
             }

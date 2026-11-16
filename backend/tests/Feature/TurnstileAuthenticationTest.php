@@ -37,15 +37,14 @@ class TurnstileAuthenticationTest extends TestCase
         Mail::fake();
     }
 
-    public function test_valid_turnstile_allows_an_otp_challenge_without_issuing_a_token(): void
+    public function test_student_login_no_longer_requires_turnstile_but_still_requires_otp(): void
     {
         $user = $this->user(Role::STUDENT);
-        $this->fakeSuccess('authentication');
+        Http::preventStrayRequests();
 
         $this->postJson('/api/login', [
             'username' => $user->username,
             'password' => 'Password123!',
-            'turnstile_token' => 'valid-token',
         ])->assertAccepted()
             ->assertJsonPath('data.requires_otp', true)
             ->assertJsonMissingPath('data.token');
@@ -53,45 +52,43 @@ class TurnstileAuthenticationTest extends TestCase
         $this->assertSame(1, LoginOtpChallenge::query()->count());
         $this->assertSame(0, $user->tokens()->count());
         Mail::assertSent(LoginVerificationCodeMail::class);
-        Http::assertSent(fn ($request): bool => $request['response'] === 'valid-token'
-            && $request['secret'] === 'real-secret-key-for-isolated-tests');
+        Http::assertNothingSent();
     }
 
-    public function test_missing_or_invalid_turnstile_creates_no_challenge_or_session(): void
+    public function test_invalid_password_still_creates_no_challenge_or_session(): void
     {
         $user = $this->user(Role::STUDENT);
+        Http::preventStrayRequests();
 
         $this->postJson('/api/login', [
             'username' => $user->username,
-            'password' => 'Password123!',
-        ])->assertUnprocessable()
-            ->assertJsonPath('errors.turnstile_token.0', 'Please complete the human verification check.');
-
-        Http::fake(['*' => Http::response(['success' => false, 'error-codes' => ['invalid-input-response']])]);
-        $this->postJson('/api/login', [
-            'username' => $user->username,
-            'password' => 'Password123!',
-            'turnstile_token' => 'invalid-token',
-        ])->assertUnprocessable();
+            'password' => 'IncorrectPassword123!',
+        ])->assertUnauthorized();
 
         $this->assertSame(0, LoginOtpChallenge::query()->count());
         $this->assertSame(0, $user->tokens()->count());
         Mail::assertNothingSent();
+        Http::assertNothingSent();
     }
 
-    public function test_expired_or_reused_token_is_rejected_with_a_retryable_message(): void
+    public function test_professor_login_issues_token_without_turnstile_or_email_code(): void
     {
-        $user = $this->user(Role::STUDENT);
-        Http::fake(['*' => Http::response(['success' => false, 'error-codes' => ['timeout-or-duplicate']])]);
+        $user = $this->user(Role::PROFESSOR);
+        Http::preventStrayRequests();
 
-        $this->postJson('/api/login', [
-            'username' => $user->username,
-            'password' => 'Password123!',
-            'turnstile_token' => 'consumed-token',
-        ])->assertUnprocessable()
-            ->assertJsonPath('errors.turnstile_token.0', 'Human verification expired or was already used. Please try again.');
+        foreach ([ClientPlatform::WEB, ClientPlatform::MOBILE] as $client) {
+            $this->postJson('/api/login', [
+                'username' => $user->profile->email,
+                'password' => 'Password123!',
+            ], [ClientPlatform::HEADER => $client])
+                ->assertOk()->assertJsonPath('data.user.id', $user->id)
+                ->assertJsonStructure(['data' => ['token']]);
+        }
 
         $this->assertDatabaseCount('login_otp_challenges', 0);
+        $this->assertSame(2, $user->tokens()->count());
+        Mail::assertNothingSent();
+        Http::assertNothingSent();
     }
 
     public function test_unexpected_hostname_and_action_are_rejected(): void
@@ -118,43 +115,34 @@ class TurnstileAuthenticationTest extends TestCase
         }
     }
 
-    public function test_service_outage_and_malformed_response_fail_closed(): void
+    public function test_turnstile_service_outage_does_not_block_sign_in(): void
     {
         $user = $this->user(Role::STUDENT);
-
-        foreach ([Http::response([], 503), Http::response(['unexpected' => true])] as $response) {
-            Http::fake(['*' => $response]);
-            $this->postJson('/api/login', [
-                'username' => $user->username,
-                'password' => 'Password123!',
-                'turnstile_token' => Str::random(24),
-            ])->assertUnprocessable();
-        }
-
-        $this->assertDatabaseCount('login_otp_challenges', 0);
+        Http::fake(['*' => Http::response([], 503)]);
+        $this->postJson('/api/login', [
+            'username' => $user->username,
+            'password' => 'Password123!',
+        ])->assertAccepted()->assertJsonPath('data.requires_otp', true);
+        $this->assertDatabaseCount('login_otp_challenges', 1);
         $this->assertSame(0, $user->tokens()->count());
+        Http::assertNothingSent();
     }
 
-    public function test_google_handoff_requires_turnstile_before_it_creates_otp(): void
+    public function test_google_handoff_no_longer_requires_turnstile_before_it_creates_otp(): void
     {
         $user = $this->user(Role::STUDENT);
         $code = Str::random(64);
         $key = 'google-auth-handoff:'.hash('sha256', $code);
         Cache::put($key, ['user_id' => $user->id, 'client' => ClientPlatform::WEB], now()->addMinute());
 
-        $this->postJson('/api/auth/google/exchange', ['code' => $code])->assertUnprocessable();
-        $this->assertTrue(Cache::has($key));
-
-        $this->fakeSuccess('authentication');
-        $this->postJson('/api/auth/google/exchange', [
-            'code' => $code,
-            'turnstile_token' => 'valid-google-token',
-        ])->assertAccepted()
+        Http::preventStrayRequests();
+        $this->postJson('/api/auth/google/exchange', ['code' => $code])->assertAccepted()
             ->assertJsonPath('data.requires_otp', true)
             ->assertJsonMissingPath('data.token');
 
         $this->assertFalse(Cache::has($key));
         $this->assertSame(0, $user->tokens()->count());
+        Http::assertNothingSent();
     }
 
     public function test_registration_email_initiation_requires_turnstile(): void

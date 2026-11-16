@@ -79,11 +79,45 @@ test('Android release networking is HTTPS-only while debug keeps local HTTP supp
   ])
 
   assert.match(capacitor, /"androidScheme": "https"/)
+  assert.match(releaseManifest, /allowBackup="false"/)
   assert.match(releaseManifest, /usesCleartextTraffic="false"/)
   assert.match(releaseNetwork, /cleartextTrafficPermitted="false"/)
   assert.doesNotMatch(releaseNetwork, /192\.168\.|10\.0\.2\.2|127\.0\.0\.1/)
   assert.match(debugManifest, /usesCleartextTraffic="true"/)
   assert.match(debugNetwork, /cleartextTrafficPermitted="true"/)
+})
+
+test('Android uses the responsive academic presentation without changing its mobile API identity', async () => {
+  const paths = [
+    'src/layouts/DashboardLayout.vue',
+    'src/modules/dashboard/StudentDashboardView.vue',
+    'src/modules/dashboard/ProfessorDashboardView.vue',
+    'src/modules/enrollment/EnrollmentStudent.vue',
+    'src/modules/enrollment/EnrollmentAcademicStudent.vue',
+    'src/modules/enrollment/EnrollmentLoad.vue',
+    'src/modules/enrollment/EnrollmentSchedule.vue',
+    'src/modules/grading/GradingView.vue',
+    'src/modules/grading/StudentGradesView.vue',
+    'src/views/GuestDashboardView.vue',
+    'src/views/SettingsView.vue',
+    'src/modules/admission/AdmissionView.vue',
+  ]
+  const sources = await Promise.all(paths.map(path => readFile(new URL(`../${path}`, import.meta.url), 'utf8')))
+  for (const [index, source] of sources.entries()) {
+    assert.match(source, /const isWebsitePresentation\s*=\s*clientPlatform\s*===\s*'web'\s*\|\|\s*clientPlatform\s*===\s*'mobile'/, paths[index])
+  }
+
+  const [vite, api, android] = await Promise.all([
+    readFile(new URL('../vite.config.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/services/apiClient.js', import.meta.url), 'utf8'),
+    readFile(new URL('../android/app/build.gradle', import.meta.url), 'utf8'),
+  ])
+  assert.match(vite, /mode === 'mobile'[\s\S]*return 'mobile'/)
+  assert.match(vite, /outDir: clientPlatformForMode\(mode\) === 'mobile' \? 'dist-mobile' : 'dist'/)
+  assert.match(api, /'X-CDM-Client': clientPlatform/)
+  const capacitor = await readFile(new URL('../capacitor.config.json', import.meta.url), 'utf8')
+  assert.equal(JSON.parse(capacitor).webDir, 'dist-mobile')
+  assert.match(android, /versionCode 2/)
 })
 
 test('the shared API client sends the build-owned platform header', async () => {

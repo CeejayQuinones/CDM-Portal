@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Services\RegistrarWindowService;
 use Illuminate\Validation\Rule;
 
 class StoreDocumentTypeRequest extends ApiFormRequest
@@ -23,6 +24,7 @@ class StoreDocumentTypeRequest extends ApiFormRequest
             'student_uploadable' => ['required', 'boolean', Rule::prohibitedIf(fn (): bool => $this->input('workflow_category') !== 'supporting_record' && $this->boolean('student_uploadable'))],
             'processing_fee' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
             'processing_days' => ['nullable', 'integer', 'min:1', 'max:255'],
+            'registrar_window' => ['nullable', Rule::in(RegistrarWindowService::WINDOWS)],
             'status' => ['sometimes', Rule::in(['active', 'inactive'])],
         ];
     }
