@@ -114,6 +114,7 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
         return {data:new Blob(['%PDF-test'],{type:'application/pdf'}),headers:{'content-disposition':'attachment; filename="OVRF-26-ACADEMIC.pdf"'}}
       }
       if(url==='/enrollment/academic/professor')return response(pagination([{...section,schedules:[schedule]}]))
+      if(url==='/enrollment/academic/professor/timetable')return response([{...schedule,section},{...unscheduled,section:{...section,id:2,section_name:'CS-2B',year_level:2}}])
       if(url==='/enrollment/academic/professor/sections/1')return response(pagination([recordRow]))
       throw new Error('Unexpected '+method+' '+url)
     }
@@ -331,7 +332,14 @@ test('Enrollment academic UI supports subjects, scheduling, COR and protected na
         await actions.props.onChange({target:{value:'download'}});await settle();assert.equal(apiState.calls.at(-1).payload.params.disposition,'attachment');assert.equal(downloads,1)
         await actions.props.onChange({target:{value:'print'}});await settle();assert.equal(pdfPrints,1)
       }finally{cor.app.unmount()}
-      auth.currentRole=ROLES.PROFESSOR;await router.push('/enrollment/teaching');const prof=mount();try{await settle();await click(prof.root,'View enrolled Students');assert.match(textOf(prof.root),/Academic Student/);assert.equal(button(prof.root,'Create section'),undefined)}finally{prof.app.unmount()}
+      auth.currentRole=ROLES.PROFESSOR;await router.push('/enrollment/teaching');const prof=mount();try{
+        await settle();assert.match(textOf(prof.root),/Showing 2 of 2 meetings/)
+        await model(field(prof.root,'Year level','select'),'2');assert.match(textOf(prof.root),/Showing 1 of 2 meetings/)
+        await model(field(prof.root,'Day','select'),'Monday');assert.match(textOf(prof.root),/No classes match these filters/)
+        await click(prof.root,'Clear filters');assert.match(textOf(prof.root),/Showing 2 of 2 meetings/)
+        await click(prof.root,'Print schedule');assert.equal(prints,2)
+        await click(prof.root,'View enrolled Students');assert.match(textOf(prof.root),/Academic Student/);assert.equal(button(prof.root,'Create section'),undefined)
+      }finally{prof.app.unmount()}
     })
     await t.test('read enrollment updates stay hidden and marking unread removes it before the request settles',async()=>{
       auth.currentRole=ROLES.STUDENT;enrollmentNotices=[
